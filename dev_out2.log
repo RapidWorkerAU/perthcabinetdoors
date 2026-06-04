@@ -1,0 +1,23 @@
+
+> perth-cabinet-doors@1.0.0 dev
+> next dev --port 3011
+
+   ▲ Next.js 15.5.12
+   - Local:        http://localhost:3011
+   - Network:      http://192.168.68.52:3011
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.3s
+ ○ Compiling /admin/products ...
+ ✓ Compiled /admin/products in 1116ms (765 modules)
+ GET /admin/products 307 in 1774ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 943ms (787 modules)
+ GET /admin 200 in 1214ms
+ ✓ Compiled /admin/products/new in 301ms (785 modules)
+ GET /admin/products/new 307 in 509ms
+ GET /admin 200 in 89ms
+ ✓ Compiled /admin/products/[id]/edit in 364ms (787 modules)
+ GET /admin/products/00000000-0000-0000-0000-000000000000/edit 307 in 2092ms
+ GET /admin 200 in 112ms

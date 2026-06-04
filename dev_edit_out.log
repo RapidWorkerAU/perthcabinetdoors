@@ -1,0 +1,20 @@
+
+> perth-cabinet-doors@1.0.0 dev
+> next dev --port 3020
+
+   ▲ Next.js 15.5.12
+   - Local:        http://localhost:3020
+   - Network:      http://192.168.68.52:3020
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.4s
+ ○ Compiling /admin/products/[id]/edit ...
+ ✓ Compiled /admin/products/[id]/edit in 1523ms (765 modules)
+ GET /admin/products/acdc9e73-8881-4361-bdc3-2ac37927d70c/edit 307 in 3136ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 2s (787 modules)
+ GET /admin 200 in 2495ms
+ ✓ Compiled in 39ms
+ ✓ Compiled in 283ms (286 modules)
+ ✓ Compiled in 330ms (296 modules)

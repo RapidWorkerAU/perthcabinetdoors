@@ -1,0 +1,453 @@
+.page {
+  min-height: 100dvh;
+  position: relative;
+  overflow: hidden;
+  background: #111b13;
+  color: #f0ede4;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 13, 9, 0.54), rgba(8, 13, 9, 0.62)),
+    radial-gradient(circle at 50% 42%, rgba(28, 43, 30, 0.12), rgba(3, 7, 4, 0.62) 72%),
+    url("/images/kitchen-detail-landscape.jpg") center / cover;
+  opacity: 0.92;
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  max-width: 1650px;
+  margin: 0 auto;
+  padding: 22px 32px;
+}
+
+.logo {
+  width: min(210px, 56vw);
+  height: auto;
+  display: block;
+}
+
+.statusPill {
+  border: 1px solid rgba(240, 237, 228, 0.36);
+  border-radius: 2px;
+  color: rgba(240, 237, 228, 0.82);
+  padding: 9px 15px;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.content {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 22px;
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 54px 32px 86px;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0;
+  border: 1px solid #a8c5a0;
+  border-radius: 2px;
+  color: #a8c5a0;
+  padding: 5px 16px;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.content h1 {
+  max-width: 850px;
+  margin: 0;
+  color: #f0ede4;
+  font-size: clamp(42px, 5vw, 68px);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.08;
+}
+
+.content h1 em {
+  color: #a8c5a0;
+  font-style: italic;
+}
+
+.copy {
+  max-width: 680px;
+  margin: 0;
+  color: #c3c0b5;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.countdown {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1px;
+  margin-top: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(240, 237, 228, 0.16);
+  border-radius: 2px;
+  background: rgba(17, 27, 19, 0.42);
+}
+
+.countdown div {
+  display: grid;
+  gap: 2px;
+  min-width: 104px;
+  padding: 13px 16px 12px;
+  border-right: 1px solid rgba(240, 237, 228, 0.12);
+  text-align: center;
+}
+
+.countdown div:last-child {
+  border-right: 0;
+}
+
+.countdown strong {
+  color: #f0ede4;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.countdown span {
+  color: #a8c5a0;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.form {
+  display: grid;
+  gap: 9px;
+  width: min(360px, 100%);
+  margin-top: 6px;
+  text-align: left;
+}
+
+.label {
+  color: #a8c5a0;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.passwordRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border: 1px solid rgba(240, 237, 228, 0.34);
+  border-radius: 2px;
+  background: rgba(240, 237, 228, 0.08);
+  overflow: hidden;
+}
+
+.input {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: #f0ede4;
+  padding: 0 12px;
+  font: inherit;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 15px;
+  outline: none;
+}
+
+.toggleButton {
+  border: 0;
+  border-left: 1px solid rgba(240, 237, 228, 0.18);
+  background: rgba(240, 237, 228, 0.08);
+  color: #f0ede4;
+  padding: 0 13px;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.submitButton {
+  min-height: 46px;
+  border: 1px solid #a8c5a0;
+  border-radius: 2px;
+  background: #a8c5a0;
+  color: #1c2b1e;
+  padding: 0 18px;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.submitButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.statusMessage {
+  width: min(420px, 100%);
+  margin: 0;
+  border: 1px solid rgba(168, 197, 160, 0.5);
+  border-radius: 2px;
+  background: rgba(17, 27, 19, 0.66);
+  color: #f0ede4;
+  padding: 10px 12px;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.statusSuccess {
+  border-color: rgba(168, 197, 160, 0.75);
+  color: #dcebd8;
+}
+
+.enquiryPrompt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #8b8a81;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.enquiryPrompt button,
+.secondaryButton {
+  min-height: 38px;
+  border: 1px solid rgba(240, 237, 228, 0.35);
+  border-radius: 2px;
+  background: transparent;
+  color: #f0ede4;
+  padding: 0 15px;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(8, 13, 9, 0.68);
+  backdrop-filter: blur(3px);
+}
+
+.enquiryModal {
+  width: min(720px, 100%);
+  max-height: min(720px, calc(100dvh - 40px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  background: #faf9f6;
+  color: #1a1a18;
+  box-shadow: 0 28px 76px rgba(0, 0, 0, 0.34);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid #dbd8cc;
+}
+
+.modalHeader .eyebrow {
+  display: inline-block;
+  margin-bottom: 8px;
+  border-color: #a8c5a0;
+  color: #6b9e61;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  color: #1a1a18;
+  font-size: 31px;
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.closeButton {
+  min-height: 36px;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #1c2b1e;
+  padding: 0 12px;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.enquiryForm {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  padding: 20px 22px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.formGrid label {
+  display: grid;
+  gap: 6px;
+  color: #4a4a42;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.formGrid input,
+.formGrid select,
+.formGrid textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #1a1a18;
+  padding: 8px 10px;
+  font: inherit;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  box-sizing: border-box;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.formGrid textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+
+.fullField {
+  grid-column: 1 / -1;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modalFooter .secondaryButton {
+  border-color: #dbd8cc;
+  color: #1c2b1e;
+}
+
+@media (max-width: 680px) {
+  .brandRow {
+    padding: 18px;
+  }
+
+  .statusPill {
+    display: none;
+  }
+
+  .content {
+    align-content: start;
+    gap: 18px;
+    padding: 68px 18px 42px;
+  }
+
+  .content h1 {
+    font-size: clamp(37px, 12vw, 50px);
+  }
+
+  .copy {
+    font-size: 15px;
+  }
+
+  .countdown {
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .countdown div {
+    flex: 1 1 calc(50% - 1px);
+    min-width: 0;
+    padding: 11px 10px;
+  }
+
+  .modalOverlay {
+    padding: 12px;
+    place-items: end center;
+  }
+
+  .enquiryModal {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .modalHeader,
+  .enquiryForm {
+    padding: 18px;
+  }
+
+  .modalHeader h2 {
+    font-size: 28px;
+  }
+
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .modalFooter {
+    flex-direction: column-reverse;
+  }
+
+  .modalFooter button {
+    width: 100%;
+  }
+}

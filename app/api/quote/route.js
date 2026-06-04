@@ -19,6 +19,13 @@ const lineSchema = z.object({
 });
 
 const payloadSchema = z.object({
+  product: z
+    .object({
+      id: z.string().optional(),
+      slug: z.string().optional(),
+      name: z.string().optional(),
+    })
+    .optional(),
   customerDetails: z.object({
     customerName: z.string().optional(),
     customerEmail: z.string().email().optional().or(z.literal("")),
@@ -42,6 +49,8 @@ const payloadSchema = z.object({
 function textFromQuote(data) {
   const lines = [];
   lines.push("Perth Cabinet Doors - Quote Request");
+  lines.push("");
+  lines.push(`Product: ${data.product?.name || ""}`);
   lines.push("");
   lines.push("Customer Details:");
   lines.push(`Customer/Company: ${data.customerDetails.customerName || ""}`);
@@ -108,7 +117,7 @@ export async function POST(request) {
         process.env.SUPABASE_SERVICE_ROLE_KEY
       );
 
-      await supabase.from("quote_requests").insert({
+      const quoteInsert = {
         customer_name: payload.customerDetails.customerName || null,
         customer_email: payload.customerDetails.customerEmail || null,
         required_by_date: payload.customerDetails.orderDate || null,
@@ -117,9 +126,27 @@ export async function POST(request) {
         address: payload.customerDetails.address || null,
         po_reference: payload.customerDetails.po || null,
         notes: payload.customerDetails.customerNotes || null,
+        product_name: payload.product?.name || null,
+        product_slug: payload.product?.slug || null,
         lines_json: payload.lines,
         totals_json: payload.totals,
-      });
+      };
+
+      const { error: insertError } = await supabase.from("quote_requests").insert(quoteInsert);
+      if (insertError) {
+        await supabase.from("quote_requests").insert({
+          customer_name: payload.customerDetails.customerName || null,
+          customer_email: payload.customerDetails.customerEmail || null,
+          required_by_date: payload.customerDetails.orderDate || null,
+          project: payload.customerDetails.project || null,
+          phone: payload.customerDetails.phone || null,
+          address: payload.customerDetails.address || null,
+          po_reference: payload.customerDetails.po || null,
+          notes: payload.customerDetails.customerNotes || null,
+          lines_json: payload.lines,
+          totals_json: payload.totals,
+        });
+      }
     }
 
     const resendApiKey = process.env.RESEND_API_KEY;

@@ -1,0 +1,10 @@
+   ▲ Next.js 15.5.12
+   - Local:        http://localhost:3014
+   - Network:      http://192.168.68.55:3014
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.3s
+ ○ Compiling / ...
+ ✓ Compiled / in 977ms (530 modules)
+ GET / 200 in 1479ms

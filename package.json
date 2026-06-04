@@ -1,11 +1,11 @@
-﻿{
+{
   "name": "perth-cabinet-doors",
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "node --use-system-ca node_modules/next/dist/bin/next dev --port 3000",
+    "build": "node --use-system-ca node_modules/next/dist/bin/next build",
+    "start": "node --use-system-ca node_modules/next/dist/bin/next start",
     "lint": "next lint"
   },
   "dependencies": {
@@ -16,5 +16,9 @@
     "react-dom": "^19.0.0",
     "resend": "^4.5.1",
     "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.15",
+    "typescript": "6.0.3"
   }
 }
