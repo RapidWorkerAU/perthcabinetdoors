@@ -4,7 +4,11 @@ async function countRows(supabase, table, filters = {}) {
   let query = supabase.from(table).select("id", { count: "exact", head: true });
 
   Object.entries(filters).forEach(([field, value]) => {
-    query = query.eq(field, value);
+    if (value === null) {
+      query = query.is(field, null);
+    } else {
+      query = query.eq(field, value);
+    }
   });
 
   const { count, error } = await query;
@@ -17,9 +21,10 @@ export async function GET() {
   if (context.error) return context.error;
 
   try {
-    const [newEnquiries, newQuoteRequests] = await Promise.all([
+    const [newEnquiries, newQuoteRequests, newOrders] = await Promise.all([
       countRows(context.supabase, "pcd_enquiries", { status: "new" }),
       countRows(context.supabase, "pcd_quote_requests", { status: "new" }),
+      countRows(context.supabase, "pcd_orders", { admin_viewed_at: null }),
     ]);
 
     return Response.json({
@@ -27,6 +32,7 @@ export async function GET() {
       notifications: {
         "/admin/enquiries": newEnquiries,
         "/admin/quote-requests": newQuoteRequests,
+        "/admin/orders": newOrders,
       },
     });
   } catch (error) {

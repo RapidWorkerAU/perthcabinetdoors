@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../lib/admin-api";
+import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { GST_RATE } from "../../../../lib/pcd-quote-utils";
 
@@ -78,6 +79,20 @@ export async function POST(request) {
       .single();
     if (quoteError) throw quoteError;
 
+    await logOrderActivity(context.supabase, {
+      quote_id: quote.id,
+      actor_type: "admin",
+      action_type: "quote_created",
+      title: "Quote created from quote request",
+      description: [quote.quote_number, quoteRequest.customer_name].filter(Boolean).join(" - "),
+      metadata: {
+        quote_number: quote.quote_number,
+        source: "quote_request",
+      },
+      event_key: `quote:${quote.id}:created`,
+      created_at: quote.created_at,
+    });
+
     const requestLines = [...(quoteRequest.pcd_quote_request_line_items || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
     if (requestLines.length) {
       const quoteLines = requestLines.map((line, index) => ({
@@ -109,6 +124,20 @@ export async function POST(request) {
       .from("pcd_quote_requests")
       .update({ status: "converted_to_quote", converted_quote_id: quote.id })
       .eq("id", quoteRequest.id);
+
+    await logOrderActivity(context.supabase, {
+      quote_id: quote.id,
+      quote_request_id: quoteRequest.id,
+      actor_type: "admin",
+      action_type: "quote_request_converted",
+      title: "Quote request converted to quote",
+      description: [quote.quote_number, quoteRequest.customer_name].filter(Boolean).join(" - "),
+      metadata: {
+        quote_number: quote.quote_number,
+        line_items: requestLines.length,
+      },
+      event_key: `quote_request:${quoteRequest.id}:converted`,
+    });
 
     return Response.json({ ok: true, quoteId: quote.id });
   } catch (error) {

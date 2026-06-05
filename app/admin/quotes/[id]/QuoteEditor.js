@@ -17,6 +17,7 @@ import {
   thicknessOptionsForMaterial,
 } from "../../../request-quote/quote-form-data";
 import styles from "../../admin-shell.module.css";
+import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 const sections = [
   { key: "details", label: "Information & Contacts" },
@@ -160,6 +161,26 @@ function lineValue(value, fallback = "-") {
   return value || fallback;
 }
 
+function defaultQuoteEmailSubject(form) {
+  return `${form.quote_number || "Your quote"} - Perth Cabinet Doors quote`;
+}
+
+function defaultQuoteEmailMessage(form, viewUrl) {
+  return [
+    `Hi ${form.customer_name || "there"},`,
+    "",
+    "Your Perth Cabinet Doors quote is ready to review.",
+    "",
+    "Please use the secure link below to view the quote, check the line items and approve or reject it online.",
+    "",
+    `View quote: ${viewUrl || "Quote link will be generated when sent."}`,
+    form.access_code ? `Access code: ${form.access_code}` : "",
+    "",
+    "Regards,",
+    "Perth Cabinet Doors",
+  ].filter((line) => line !== "").join("\n");
+}
+
 function colourSrcForLine(line) {
   return line.colour_src || "";
 }
@@ -299,7 +320,9 @@ function QuoteColourCombobox({ disabled = false, line, onChange }) {
       if (!line.material || !line.thickness) return;
 
       try {
-        const response = await fetch(`/api/colour-library?material=${encodeURIComponent(line.material)}&thickness=${encodeURIComponent(line.thickness)}`);
+        const response = await fetch(`/api/colour-library?material=${encodeURIComponent(line.material)}&thickness=${encodeURIComponent(line.thickness)}`, {
+          cache: "no-store",
+        });
         const payload = await response.json();
         if (!cancelled) {
           setDatabaseOptions(payload?.colourFamily?.groups?.length ? optionsFromColourFamily(payload.colourFamily) : []);
@@ -339,6 +362,7 @@ export default function QuoteEditor({ quoteId }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [publishEmail, setPublishEmail] = useState(null);
   const [feedback, setFeedback] = useState("");
 
   const totals = useMemo(
@@ -357,6 +381,7 @@ export default function QuoteEditor({ quoteId }) {
     typeof window !== "undefined" && form.access_code
       ? `${window.location.origin}/quotes/view?code=${form.access_code}`
       : "";
+  const attachmentPagination = useAdminTablePagination(form.attachments);
 
   async function loadQuote() {
     setIsLoading(true);
@@ -564,12 +589,53 @@ export default function QuoteEditor({ quoteId }) {
     try {
       const saved = await saveQuote();
       if (!saved) return;
-      const response = await fetch(`/api/admin/quotes/${quoteId}/send`, { method: "POST" });
+      const nextViewUrl =
+        typeof window !== "undefined" && form.access_code
+          ? `${window.location.origin}/quotes/view?code=${form.access_code}`
+          : publicUrl;
+      setPublishEmail({
+        subject: defaultQuoteEmailSubject(form),
+        message: defaultQuoteEmailMessage(form, nextViewUrl),
+      });
+      setFeedback("");
+    } catch (error) {
+      setFeedback(error?.message || "Could not prepare quote email.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function updatePublishEmail(field, value) {
+    setPublishEmail((current) => ({ ...(current || {}), [field]: value }));
+  }
+
+  async function sendPublishedQuote() {
+    if (!publishEmail?.subject?.trim()) {
+      setFeedback("Enter an email subject before sending.");
+      return;
+    }
+    if (!publishEmail?.message?.trim()) {
+      setFeedback("Enter email content before sending.");
+      return;
+    }
+
+    setIsSaving(true);
+    setFeedback("");
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: publishEmail.subject,
+          message: publishEmail.message,
+        }),
+      });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
         setFeedback(payload.error || "Could not publish quote.");
         return;
       }
+      setPublishEmail(null);
       setFeedback(
         payload.emailSent
           ? "Quote published and sent to customer."
@@ -1050,32 +1116,41 @@ export default function QuoteEditor({ quoteId }) {
             </button>
           </div>
         </label>
-        <table className={`${styles.productsTable} ${styles.quoteAttachmentsTable}`}>
-          <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th>Actions</th></tr></thead>
-          <tbody>
-            {form.attachments.map((attachment) => (
-              <tr key={attachment.id}>
-                <td>{attachment.file_name}</td>
-                <td>{attachment.file_type || "File"}</td>
-                <td>{formatFileSize(attachment.file_size)}</td>
-                <td>{attachment.created_at ? new Date(attachment.created_at).toLocaleString("en-AU") : "-"}</td>
-                <td className={styles.rowActions}>
-                  <a className={styles.rowEditButton} href={attachment.file_url} target="_blank" rel="noreferrer">View</a>
-                  <button
-                    type="button"
-                    className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                    onClick={() => deleteAttachment(attachment)}
-                    aria-label={`Delete ${attachment.file_name}`}
-                    title="Delete"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!form.attachments.length ? <tr><td colSpan="5" className={styles.emptyCell}>No attachments yet.</td></tr> : null}
-          </tbody>
-        </table>
+        <div className={styles.productsTableWrap}>
+          <table className={`${styles.productsTable} ${styles.quoteAttachmentsTable}`}>
+            <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th>Actions</th></tr></thead>
+            <tbody>
+              {attachmentPagination.pageItems.map((attachment) => (
+                <tr key={attachment.id}>
+                  <td>{attachment.file_name}</td>
+                  <td>{attachment.file_type || "File"}</td>
+                  <td>{formatFileSize(attachment.file_size)}</td>
+                  <td>{attachment.created_at ? new Date(attachment.created_at).toLocaleString("en-AU") : "-"}</td>
+                  <td className={styles.rowActions}>
+                    <a className={styles.rowEditButton} href={attachment.file_url} target="_blank" rel="noreferrer">View</a>
+                    <button
+                      type="button"
+                      className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
+                      onClick={() => deleteAttachment(attachment)}
+                      aria-label={`Delete ${attachment.file_name}`}
+                      title="Delete"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!form.attachments.length ? <tr><td colSpan="5" className={styles.emptyCell}>No attachments yet.</td></tr> : null}
+            </tbody>
+          </table>
+          <AdminTablePagination
+            label="attachments"
+            page={attachmentPagination.page}
+            pageCount={attachmentPagination.pageCount}
+            totalItems={attachmentPagination.totalItems}
+            onPageChange={attachmentPagination.setPage}
+          />
+        </div>
       </div>
     );
   }
@@ -1135,6 +1210,52 @@ export default function QuoteEditor({ quoteId }) {
           </div>
         </section>
       </form>
+      {publishEmail && typeof document !== "undefined"
+        ? createPortal(
+            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="publish-quote-email-title">
+              <div className={`${styles.customerModal} ${styles.publishQuoteModal}`}>
+                <div className={styles.customerModalHeader}>
+                  <span className={styles.customerModalIcon}>PCD</span>
+                  <div>
+                    <p className={styles.tableMeta}>Publish quote</p>
+                    <h2 id="publish-quote-email-title">Email customer</h2>
+                  </div>
+                </div>
+                <div className={styles.customerModalBody}>
+                  <div className={styles.customerModalGrid}>
+                    <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+                      To
+                      <input className={styles.fieldInput} value={form.customer_email || ""} disabled />
+                    </label>
+                    <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+                      Subject
+                      <input className={styles.fieldInput} value={publishEmail.subject} onChange={(event) => updatePublishEmail("subject", event.target.value)} />
+                    </label>
+                    <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+                      Email message
+                      <textarea
+                        className={`${styles.textareaInput} ${styles.quoteEmailTextarea}`}
+                        value={publishEmail.message}
+                        onChange={(event) => updatePublishEmail("message", event.target.value)}
+                      />
+                    </label>
+                  </div>
+                  {!form.customer_email ? <p className={styles.inlineNotice}>Add a customer email before sending this quote.</p> : null}
+                  {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
+                </div>
+                <div className={styles.customerModalFooter}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => setPublishEmail(null)} disabled={isSaving}>
+                    Cancel
+                  </button>
+                  <button type="button" className={styles.primaryButton} onClick={sendPublishedQuote} disabled={isSaving || !form.customer_email}>
+                    {isSaving ? "Sending..." : "Send quote"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
       {isCustomerModalOpen && typeof document !== "undefined"
         ? createPortal(
             <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="create-customer-title">

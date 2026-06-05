@@ -9,13 +9,14 @@ import {
   ORDER_STATUSES,
 } from "../../../../lib/pcd-quote-utils";
 import styles from "../../admin-shell.module.css";
+import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 const sections = [
   { key: "overview", label: "Overview" },
   { key: "items", label: "Items & Workflow" },
   { key: "purchasing", label: "Purchasing & Board" },
   { key: "payments", label: "Payments" },
-  { key: "comms", label: "Customer Comms" },
+  { key: "activity", label: "Activity Log" },
   { key: "notes", label: "Notes" },
 ];
 
@@ -33,6 +34,12 @@ function sortedItems(order) {
 function sortedPayments(order) {
   return [...(order?.pcd_order_payments || [])].sort(
     (a, b) => (a.sort_order || 0) - (b.sort_order || 0) || String(a.created_at || "").localeCompare(String(b.created_at || ""))
+  );
+}
+
+function sortedActivity(order) {
+  return [...(order?.pcd_order_activity || [])].sort(
+    (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
   );
 }
 
@@ -56,6 +63,12 @@ function titleCaseStatus(status) {
   return String(status || "active")
     .replace(/[_-]/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function activityActorLabel(actor) {
+  if (actor === "customer") return "Customer";
+  if (actor === "admin") return "Admin";
+  return "System";
 }
 
 function itemMeta(item) {
@@ -94,6 +107,10 @@ export default function OrderDetail({ orderId }) {
 
   const items = useMemo(() => sortedItems(order), [order]);
   const payments = useMemo(() => sortedPayments(order), [order]);
+  const activity = useMemo(() => sortedActivity(order), [order]);
+  const workflowPagination = useAdminTablePagination(items);
+  const purchasingPagination = useAdminTablePagination(items);
+  const paymentPagination = useAdminTablePagination(payments);
   const depositPayment = payments.find((payment) => payment.payment_type === "deposit");
   const paymentTotals = useMemo(() => {
     const orderTotal = Number(order?.total_inc_gst || 0);
@@ -191,6 +208,7 @@ export default function OrderDetail({ orderId }) {
       }
       setOrder(payload.order);
       setFeedback("Order updated.");
+      await loadOrder();
     } catch (error) {
       setFeedback(error?.message || "Could not update order.");
     } finally {
@@ -249,6 +267,7 @@ export default function OrderDetail({ orderId }) {
       });
       setPaymentModal(null);
       setFeedback("Payment line added.");
+      await loadOrder();
     } catch (error) {
       setFeedback(error?.message || "Could not add payment.");
     } finally {
@@ -282,6 +301,7 @@ export default function OrderDetail({ orderId }) {
         return withSyncedDepositFields(current, nextPayments);
       });
       setFeedback("Payment line updated.");
+      await loadOrder();
     } catch (error) {
       setOrder(previousOrder);
       setFeedback(error?.message || "Could not update payment.");
@@ -313,6 +333,7 @@ export default function OrderDetail({ orderId }) {
         return withSyncedDepositFields(current, current.pcd_order_payments || []);
       });
       setFeedback("Payment line deleted.");
+      await loadOrder();
     } catch (error) {
       setOrder(previousOrder);
       setFeedback(error?.message || "Could not delete payment.");
@@ -342,6 +363,7 @@ export default function OrderDetail({ orderId }) {
       }
       setOrder((current) => (current ? setOrderItem(current, item.id, payload.item) : current));
       setFeedback("Order item updated.");
+      await loadOrder();
     } catch (error) {
       setOrder(previousOrder);
       setFeedback(error?.message || "Could not update order item.");
@@ -446,7 +468,7 @@ export default function OrderDetail({ orderId }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {workflowPagination.pageItems.map((item) => (
               <tr key={item.id}>
                 <td>
                   <div className={styles.orderItemIdentity}>
@@ -482,6 +504,13 @@ export default function OrderDetail({ orderId }) {
             {!items.length ? <tr><td className={styles.emptyCell} colSpan="7">No order items yet.</td></tr> : null}
           </tbody>
         </table>
+        <AdminTablePagination
+          label="order items"
+          page={workflowPagination.page}
+          pageCount={workflowPagination.pageCount}
+          totalItems={workflowPagination.totalItems}
+          onPageChange={workflowPagination.setPage}
+        />
       </div>
     );
   }
@@ -503,7 +532,7 @@ export default function OrderDetail({ orderId }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {purchasingPagination.pageItems.map((item) => (
               <tr key={item.id}>
                 <td>
                   <div className={styles.orderItemIdentity}>
@@ -527,6 +556,13 @@ export default function OrderDetail({ orderId }) {
             ))}
           </tbody>
         </table>
+        <AdminTablePagination
+          label="order items"
+          page={purchasingPagination.page}
+          pageCount={purchasingPagination.pageCount}
+          totalItems={purchasingPagination.totalItems}
+          onPageChange={purchasingPagination.setPage}
+        />
       </div>
     );
   }
@@ -615,7 +651,7 @@ export default function OrderDetail({ orderId }) {
               </tr>
             </thead>
             <tbody>
-              {payments.map((payment) => (
+              {paymentPagination.pageItems.map((payment) => (
                 <tr key={payment.id}>
                   <td>
                     <select
@@ -692,6 +728,13 @@ export default function OrderDetail({ orderId }) {
               ) : null}
             </tbody>
           </table>
+          <AdminTablePagination
+            label="payments"
+            page={paymentPagination.page}
+            pageCount={paymentPagination.pageCount}
+            totalItems={paymentPagination.totalItems}
+            onPageChange={paymentPagination.setPage}
+          />
         </div>
       </div>
     );
@@ -788,12 +831,47 @@ export default function OrderDetail({ orderId }) {
     );
   }
 
-  function renderComms() {
+  function renderActivity() {
     return (
-      <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-        Customer communications
-        <textarea className={styles.textareaInput} rows={10} value={order.customer_comms || ""} onChange={(event) => updateOrderField("customer_comms", event.target.value)} onBlur={(event) => saveOrder({ customer_comms: event.target.value })} placeholder="Record calls, SMS/email updates, installation timing, deposit reminders, or customer decisions." />
-      </label>
+      <section className={styles.activityLogShell}>
+        <div className={styles.activityLogHeader}>
+          <div>
+            <p className={styles.tableMeta}>Order history</p>
+            <h2>Activity log</h2>
+          </div>
+          <span className={styles.projectListMetric}>{activity.length} entries</span>
+        </div>
+
+        <div className={styles.activityLogList}>
+          <div className={styles.activityLogTableHead}>
+            <span>Event</span>
+            <span>Details</span>
+            <span>Source</span>
+            <span>Activity</span>
+            <span>Date</span>
+          </div>
+          {activity.map((entry) => (
+            <article className={styles.activityLogItem} key={entry.id}>
+              <div className={styles.activityLogEvent}>
+                <span className={styles.activityLogMarker} aria-hidden="true" />
+                <strong>{entry.title}</strong>
+              </div>
+              <p className={styles.activityLogDescription}>{entry.description || "-"}</p>
+              <span className={styles.activityLogPill}>{activityActorLabel(entry.actor_type)}</span>
+              <span className={styles.activityLogPill}>{titleCaseStatus(entry.action_type)}</span>
+              <time className={styles.activityLogDate} dateTime={entry.created_at || undefined}>
+                {formatDateTime(entry.created_at)}
+              </time>
+            </article>
+          ))}
+          {!activity.length ? (
+            <div className={styles.emptyState}>
+              <p>No activity has been recorded for this order yet.</p>
+            </div>
+          ) : null}
+        </div>
+
+      </section>
     );
   }
 
@@ -810,7 +888,7 @@ export default function OrderDetail({ orderId }) {
     if (activeSection === "items") return renderItems();
     if (activeSection === "purchasing") return renderPurchasing();
     if (activeSection === "payments") return renderPayments();
-    if (activeSection === "comms") return renderComms();
+    if (activeSection === "activity") return renderActivity();
     if (activeSection === "notes") return renderNotes();
     return renderOverview();
   }

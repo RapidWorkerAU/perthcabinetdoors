@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import styles from "../admin-shell.module.css";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
+import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 const STATUSES = ["new", "in_progress", "responded", "closed", "not_required"];
 const FILTERS = ["all", ...STATUSES];
@@ -36,6 +37,7 @@ export default function EnquiriesManager() {
     }
     return enquiries.filter((enquiry) => (enquiry.status || "new") === statusFilter);
   }, [enquiries, statusFilter]);
+  const enquiryPagination = useAdminTablePagination(visibleEnquiries, statusFilter);
 
   async function loadEnquiries() {
     setIsLoading(true);
@@ -101,7 +103,7 @@ export default function EnquiriesManager() {
             </tr>
           </thead>
           <tbody>
-            {visibleEnquiries.map((enquiry) => (
+            {enquiryPagination.pageItems.map((enquiry) => (
               <tr key={enquiry.id}>
                 <td className={styles.productNameCell}>{enquiry.customer_name || "-"}</td>
                 <td>{enquiry.customer_email || enquiry.customer_phone || "-"}</td>
@@ -124,6 +126,13 @@ export default function EnquiriesManager() {
           </tbody>
         </table>
       </div>
+      <AdminTablePagination
+        label="enquiries"
+        page={enquiryPagination.page}
+        pageCount={enquiryPagination.pageCount}
+        totalItems={enquiryPagination.totalItems}
+        onPageChange={enquiryPagination.setPage}
+      />
     </section>
   );
 }

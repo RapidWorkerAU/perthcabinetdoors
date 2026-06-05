@@ -2966,9 +2966,102 @@
   background: var(--pcd-surface-soft);
 }
 
+.tablePagination {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid var(--admin-line);
+  background: var(--admin-surface);
+  padding: 10px 16px;
+}
+
+.tablePaginationMuted {
+  opacity: 0.62;
+}
+
+.tablePaginationMeta {
+  margin: 0;
+  color: var(--admin-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tablePaginationControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tablePaginationButton {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+  color: var(--admin-dark);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tablePaginationButton:disabled {
+  color: var(--admin-muted);
+  background: var(--pcd-surface-soft);
+  cursor: default;
+}
+
+.tablePaginationPage {
+  min-width: 54px;
+  color: var(--admin-muted);
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+@media (max-width: 720px) {
+  .tablePagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tablePaginationControls {
+    width: 100%;
+  }
+
+  .tablePaginationButton {
+    flex: 1 1 0;
+  }
+}
+
 .productNameCell {
   color: var(--admin-text);
   font-weight: 800;
+}
+
+.orderNameWithUnread {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.orderUnreadDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 999px;
+  background: #ef1d26;
+  box-shadow: 0 0 0 3px rgba(239, 29, 38, 0.12);
 }
 
 .accessCodeCell {
@@ -3034,6 +3127,173 @@
 .emptyCell {
   text-align: center;
   color: var(--admin-muted);
+}
+
+.quoteRequestActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quoteRequestActions .primaryButton,
+.quoteRequestActions .secondaryButton {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.quoteRequestPreviewModal {
+  background: var(--admin-surface);
+  border: 1px solid rgba(107, 158, 97, 0.28);
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(13, 20, 14, 0.26);
+  display: flex;
+  flex-direction: column;
+  max-height: min(780px, calc(100dvh - 48px));
+  overflow: hidden;
+  width: min(1500px, calc(100vw - 32px));
+}
+
+.quoteRequestPreviewHeader,
+.quoteRequestPreviewFooter {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px 22px;
+}
+
+.quoteRequestPreviewHeader {
+  background: var(--pcd-green-panel);
+  border-bottom: 1px solid rgba(107, 158, 97, 0.24);
+}
+
+.quoteRequestPreviewHeader h2 {
+  color: var(--admin-text);
+  font-family: var(--pcd-font-display);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.1;
+  margin: 3px 0 5px;
+}
+
+.quoteRequestPreviewHeader span {
+  color: var(--admin-muted);
+  display: block;
+  font-size: 13px;
+}
+
+.quoteRequestPreviewBody {
+  display: grid;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 18px 22px;
+}
+
+.quoteRequestPreviewCard {
+  background: var(--admin-bg);
+  border: 1px solid var(--admin-line);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.quoteRequestPreviewCard h3,
+.quoteRequestPreviewSectionTitle {
+  color: var(--admin-dark);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+.quoteRequestDetailGrid {
+  display: grid;
+  gap: 12px 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.quoteRequestDetailGrid div {
+  min-width: 0;
+}
+
+.quoteRequestDetailGrid dt {
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.quoteRequestDetailGrid dd {
+  color: var(--admin-text);
+  font-size: 14px;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.quoteRequestNotes {
+  color: var(--admin-muted);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.quoteRequestPreviewGrid {
+  display: grid;
+  align-items: center;
+  gap: 0;
+  grid-template-columns:
+    34px
+    minmax(110px, 0.8fr)
+    minmax(160px, 1fr)
+    minmax(96px, 0.65fr)
+    minmax(130px, 0.8fr)
+    minmax(130px, 0.85fr)
+    minmax(170px, 1fr)
+    56px
+    minmax(150px, 0.9fr)
+    minmax(210px, 1.15fr)
+    minmax(190px, 1fr);
+  min-width: 1440px;
+  padding: 0 10px;
+}
+
+.quoteRequestPreviewFooter {
+  border-top: 1px solid var(--admin-line);
+}
+
+.quoteRequestHingeCell {
+  color: var(--admin-text);
+  display: grid;
+  gap: 4px;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.quoteRequestHingeCell span {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.quoteRequestHingeCell strong {
+  color: var(--admin-dark);
+  display: inline-flex;
+  font-size: 0.82rem;
+  justify-content: center;
+  min-width: 12px;
+}
+
+.quoteRequestHingeCell small {
+  color: var(--admin-muted);
+  font-size: 0.72rem;
 }
 
 .imageCol {
@@ -4270,6 +4530,15 @@
   box-shadow: 0 30px 70px rgba(15, 23, 42, 0.26);
 }
 
+.quoteEmailModal {
+  width: min(860px, calc(100vw - 48px));
+}
+
+.quoteEmailTextarea {
+  min-height: 260px;
+  resize: vertical;
+}
+
 .customerModalHeader {
   display: flex;
   align-items: center;
@@ -5093,6 +5362,171 @@
   border: 1px solid rgba(24, 29, 39, 0.08);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
+}
+
+.activityLogShell {
+  overflow: hidden;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+}
+
+.activityLogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--pcd-surface-soft);
+  padding: 14px 16px;
+}
+
+.activityLogHeader h2 {
+  margin: 2px 0 0;
+  color: var(--admin-dark);
+  font-family: Montserrat, Arial, sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.activityLogList {
+  display: grid;
+  gap: 0;
+  max-height: min(420px, calc(100dvh - 330px));
+  overflow: auto;
+  background: var(--admin-surface);
+}
+
+.activityLogTableHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(260px, 1.3fr) minmax(92px, auto) minmax(180px, auto) minmax(150px, auto);
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--pcd-surface-soft);
+  padding: 9px 16px;
+}
+
+.activityLogTableHead span {
+  color: var(--admin-muted);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.activityLogTableHead span:last-child {
+  text-align: right;
+}
+
+.activityLogTableHead span:nth-child(3),
+.activityLogTableHead span:nth-child(4) {
+  text-align: center;
+}
+
+.activityLogItem {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(260px, 1.3fr) minmax(92px, auto) minmax(180px, auto) minmax(150px, auto);
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--pcd-line-soft);
+}
+
+.activityLogMarker {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--admin-accent);
+  box-shadow: none;
+}
+
+.activityLogEvent {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.activityLogEvent strong {
+  min-width: 0;
+  color: var(--admin-text);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityLogDescription {
+  margin: 0;
+  color: var(--admin-muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityLogPill {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border: 0;
+  border-radius: var(--pcd-radius-xs);
+  background: var(--pcd-green-panel);
+  color: var(--admin-muted);
+  padding: 0 7px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.activityLogDate {
+  color: var(--admin-muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .activityLogTableHead {
+    display: none;
+  }
+
+  .activityLogItem {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 6px;
+    padding: 10px 14px;
+  }
+
+  .activityLogEvent strong,
+  .activityLogDescription {
+    white-space: normal;
+  }
+
+  .activityLogPill {
+    justify-self: start;
+  }
+
+  .activityLogDate {
+    text-align: left;
+  }
 }
 
 .projectProgressHeader {
@@ -6932,6 +7366,144 @@
   color: var(--admin-dark);
 }
 
+.viewport .colourLibraryModal,
+.colourLibraryModal {
+  width: min(900px, calc(100vw - 40px));
+  border: 1px solid rgba(107, 158, 97, 0.24);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  box-shadow: 0 32px 80px rgba(24, 29, 39, 0.24);
+}
+
+.viewport .colourLibraryModal .customerModalHeader,
+.colourLibraryModal .customerModalHeader {
+  align-items: flex-start;
+  gap: 14px;
+  border-bottom: 1px solid rgba(107, 158, 97, 0.2);
+  background: var(--pcd-green-panel);
+  padding: 22px 24px;
+}
+
+.viewport .colourLibraryModal .customerModalHeader h2,
+.colourLibraryModal .customerModalHeader h2 {
+  margin: 4px 0 0;
+  color: var(--admin-dark);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.28rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.12;
+}
+
+.viewport .colourLibraryModal .customerModalIcon,
+.colourLibraryModal .customerModalIcon {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(107, 158, 97, 0.26);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+  color: var(--admin-accent);
+}
+
+.viewport .colourLibraryModal .tableMeta,
+.colourLibraryModal .tableMeta {
+  color: var(--admin-accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.viewport .colourLibraryModal .customerModalBody,
+.colourLibraryModal .customerModalBody {
+  background: #fbfaf7;
+  padding: 22px 24px;
+}
+
+.viewport .colourLibraryModalGrid,
+.colourLibraryModalGrid {
+  gap: 16px 18px;
+}
+
+.viewport .colourLibraryModal .fieldLabel,
+.colourLibraryModal .fieldLabel {
+  display: grid;
+  gap: 7px;
+  color: var(--admin-dark);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.viewport .colourLibraryModal .fieldInput,
+.viewport .colourLibraryModal select,
+.viewport .colourLibraryModal textarea,
+.colourLibraryModal .fieldInput,
+.colourLibraryModal select,
+.colourLibraryModal textarea {
+  min-height: 42px;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  box-shadow: none;
+}
+
+.viewport .colourLibraryModal .fieldInput:focus,
+.viewport .colourLibraryModal select:focus,
+.viewport .colourLibraryModal textarea:focus,
+.colourLibraryModal .fieldInput:focus,
+.colourLibraryModal select:focus,
+.colourLibraryModal textarea:focus {
+  border-color: var(--admin-accent);
+  outline: 3px solid rgba(107, 158, 97, 0.16);
+}
+
+.viewport .colourLibraryCheckboxGroup,
+.colourLibraryCheckboxGroup,
+.viewport .colourLibraryFileControl,
+.colourLibraryFileControl {
+  min-height: 42px;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+}
+
+.viewport .colourLibraryModal .checkboxRow,
+.colourLibraryModal .checkboxRow {
+  color: var(--admin-text);
+  font-size: 0.86rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.viewport .colourLibraryModal .customerModalFooter,
+.colourLibraryModal .customerModalFooter {
+  border-top: 1px solid var(--admin-line);
+  background: var(--admin-surface);
+  padding: 18px 24px;
+}
+
+.viewport .colourLibraryModal .primaryButton,
+.viewport .colourLibraryModal .secondaryButton,
+.colourLibraryModal .primaryButton,
+.colourLibraryModal .secondaryButton {
+  min-height: 42px;
+  border-radius: var(--pcd-radius-xs);
+  padding: 0 18px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .rowIconButton {
   --row-icon-color: currentColor;
   width: 34px;
@@ -7017,6 +7589,34 @@
 }
 
 @media (max-width: 760px) {
+  .quoteRequestPreviewModal {
+    max-height: calc(100dvh - 24px);
+    width: calc(100vw - 24px);
+  }
+
+  .quoteRequestPreviewHeader,
+  .quoteRequestPreviewFooter {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .quoteRequestPreviewHeader h2 {
+    font-size: 24px;
+  }
+
+  .quoteRequestPreviewBody {
+    padding: 14px;
+  }
+
+  .quoteRequestDetailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .quoteRequestPreviewGrid {
+    min-width: 1440px;
+  }
+
   .body,
   .content {
     padding-left: 14px;
@@ -7232,4 +7832,297 @@
   .fieldLabel {
     min-width: 0;
   }
+}
+
+/* Colour library modal should match the customer modal pattern. */
+.colourLibraryModal {
+  width: min(760px, calc(100vw - 48px));
+  max-height: min(680px, calc(100dvh - 48px));
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 30px 70px rgba(15, 23, 42, 0.26);
+}
+
+.colourLibraryModal .customerModalHeader {
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px;
+  border-bottom: 1px solid #d7dee8;
+  background: var(--pcd-green-panel);
+}
+
+.colourLibraryModal .customerModalIcon {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--admin-dark);
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.colourLibraryModal .tableMeta {
+  color: var(--admin-accent);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.colourLibraryModal .customerModalHeader h2 {
+  margin: 4px 0 0;
+  color: #1f2937;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.colourLibraryModal .customerModalBody {
+  background: #ffffff;
+  padding: 20px 22px;
+}
+
+.colourLibraryModalGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.colourLibraryModal .fieldLabel {
+  display: grid;
+  gap: 5px;
+  color: var(--admin-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.colourLibraryModal .fieldInput,
+.colourLibraryModal select,
+.colourLibraryModal textarea {
+  min-height: 44px;
+  border: 1px solid var(--admin-line);
+  border-radius: 0;
+  background: #ffffff;
+  color: var(--admin-text);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+
+.colourLibraryModal .fieldInput:focus,
+.colourLibraryModal select:focus,
+.colourLibraryModal textarea:focus {
+  border-color: var(--admin-accent);
+  outline: 3px solid rgba(107, 158, 97, 0.16);
+}
+
+.colourLibraryCheckboxGroup,
+.colourLibraryFileControl {
+  min-height: 44px;
+  border: 1px solid var(--admin-line);
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.colourLibraryModal .checkboxRow {
+  color: var(--admin-text);
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.colourLibraryModal .customerModalFooter {
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.colourLibraryModal .primaryButton,
+.colourLibraryModal .secondaryButton {
+  min-height: 42px;
+  border-radius: var(--pcd-radius-xs);
+  padding: 0 18px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.colourLibraryModal .primaryButton {
+  border-color: var(--admin-dark);
+  background: var(--admin-dark);
+  color: var(--pcd-cream);
+}
+
+.colourLibraryModal .secondaryButton {
+  border-color: var(--admin-line);
+  background: var(--admin-surface);
+  color: var(--admin-dark);
+}
+
+/* Publish quote modal should follow the add customer modal pattern. */
+.publishQuoteModal {
+  width: min(860px, calc(100vw - 48px));
+  max-height: min(680px, calc(100dvh - 48px));
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 30px 70px rgba(15, 23, 42, 0.26);
+}
+
+.publishQuoteModal .customerModalHeader {
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px;
+  border-bottom: 1px solid #d7dee8;
+  background: var(--pcd-green-panel);
+}
+
+.publishQuoteModal .customerModalIcon {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 42px;
+  background: #17321f !important;
+  color: #ffffff !important;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.publishQuoteModal .tableMeta {
+  color: var(--admin-accent);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.publishQuoteModal .customerModalHeader h2 {
+  margin: 4px 0 0;
+  color: #1f2937;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.publishQuoteModal .customerModalBody {
+  background: #ffffff;
+  padding: 20px 22px;
+}
+
+.publishQuoteModal .customerModalGrid {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.publishQuoteModal .fieldLabel {
+  display: grid;
+  gap: 5px;
+  color: var(--admin-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.publishQuoteModal .fieldInput,
+.publishQuoteModal textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #cfc6b8 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: var(--admin-text) !important;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.45;
+  box-shadow: inset 0 0 0 1px rgba(207, 198, 184, 0.35);
+  appearance: none;
+}
+
+.publishQuoteModal .fieldInput:disabled {
+  border-color: #d8d0c3 !important;
+  background: #f8faf6 !important;
+  color: var(--admin-text) !important;
+  opacity: 1;
+}
+
+.publishQuoteModal .fieldInput:focus,
+.publishQuoteModal textarea:focus {
+  border-color: var(--admin-accent);
+  outline: 3px solid rgba(107, 158, 97, 0.16);
+}
+
+.publishQuoteModal .quoteEmailTextarea {
+  min-height: 250px;
+  resize: vertical;
+  display: block;
+  white-space: pre-wrap;
+}
+
+.publishQuoteModal .customerModalFooter {
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.publishQuoteModal .primaryButton,
+.publishQuoteModal .secondaryButton {
+  min-height: 42px;
+  border-radius: var(--pcd-radius-xs);
+  padding: 0 18px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.publishQuoteModal .primaryButton {
+  border-color: #17321f !important;
+  background: #17321f !important;
+  color: #ffffff !important;
+  opacity: 1;
+  box-shadow: 0 10px 22px rgba(23, 50, 31, 0.18);
+}
+
+.publishQuoteModal .primaryButton:hover:not(:disabled) {
+  border-color: #244c30 !important;
+  background: #244c30 !important;
+}
+
+.publishQuoteModal .primaryButton:disabled {
+  border-color: #d8d0c3 !important;
+  background: #efe9df !important;
+  color: #9c907f !important;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.publishQuoteModal .secondaryButton {
+  border-color: var(--admin-line);
+  background: var(--admin-surface);
+  color: var(--admin-dark);
 }

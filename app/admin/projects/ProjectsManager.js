@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatMoney } from "../../../lib/pcd-quote-utils";
 import styles from "../admin-shell.module.css";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
+import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -55,6 +56,7 @@ export default function ProjectsManager() {
       { active: 0, lineItems: 0, lineItemsComplete: 0 }
     );
   }, [projects]);
+  const projectPagination = useAdminTablePagination(projects);
 
   async function loadProjects() {
     setIsLoading(true);
@@ -117,7 +119,7 @@ export default function ProjectsManager() {
             </tr>
           </thead>
           <tbody>
-            {projects.map((project) => {
+            {projectPagination.pageItems.map((project) => {
               const progress = getProgress(project);
 
               return (
@@ -182,6 +184,13 @@ export default function ProjectsManager() {
           </tbody>
         </table>
       </div>
+      <AdminTablePagination
+        label="projects"
+        page={projectPagination.page}
+        pageCount={projectPagination.pageCount}
+        totalItems={projectPagination.totalItems}
+        onPageChange={projectPagination.setPage}
+      />
     </section>
   );
 }

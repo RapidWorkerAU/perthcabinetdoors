@@ -1,4 +1,5 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
+import { describeChanges, logOrderActivity } from "../../../../../../../lib/pcd-activity-log";
 
 const PAYMENT_TYPES = new Set(["deposit", "progress", "final", "other"]);
 
@@ -77,6 +78,13 @@ export async function PATCH(request, { params }) {
       return Response.json({ ok: false, error: "No payment updates supplied." }, { status: 400 });
     }
 
+    const { data: beforePayment } = await context.supabase
+      .from("pcd_order_payments")
+      .select("*, pcd_orders(quote_id)")
+      .eq("id", paymentId)
+      .eq("order_id", orderId)
+      .maybeSingle();
+
     const { data, error } = await context.supabase
       .from("pcd_order_payments")
       .update(updates)
@@ -87,6 +95,26 @@ export async function PATCH(request, { params }) {
 
     if (error || !data) throw error || new Error("Payment not found.");
     await syncDepositFields(context.supabase, orderId);
+
+    const changes = describeChanges(beforePayment || {}, updates, {
+      payment_type: "Payment type",
+      is_paid: "Paid",
+      paid_at: "Date paid",
+    });
+    if (changes.length) {
+      await logOrderActivity(context.supabase, {
+        order_id: orderId,
+        quote_id: beforePayment?.pcd_orders?.quote_id || null,
+        actor_type: "admin",
+        action_type: "payment_updated",
+        title: "Payment line updated",
+        description: changes.join("; "),
+        metadata: {
+          payment_id: paymentId,
+          changes,
+        },
+      });
+    }
 
     return Response.json({ ok: true, payment: data });
   } catch (error) {
@@ -100,6 +128,13 @@ export async function DELETE(_request, { params }) {
 
   try {
     const { orderId, paymentId } = await idsFromParams(params);
+    const { data: beforePayment } = await context.supabase
+      .from("pcd_order_payments")
+      .select("*, pcd_orders(quote_id)")
+      .eq("id", paymentId)
+      .eq("order_id", orderId)
+      .maybeSingle();
+
     const { error } = await context.supabase
       .from("pcd_order_payments")
       .delete()
@@ -108,6 +143,20 @@ export async function DELETE(_request, { params }) {
 
     if (error) throw error;
     await syncDepositFields(context.supabase, orderId);
+
+    await logOrderActivity(context.supabase, {
+      order_id: orderId,
+      quote_id: beforePayment?.pcd_orders?.quote_id || null,
+      actor_type: "admin",
+      action_type: "payment_deleted",
+      title: "Payment line deleted",
+      description: beforePayment
+        ? `${beforePayment.payment_type || "payment"} - $${Number(beforePayment.amount || 0).toFixed(2)}`
+        : null,
+      metadata: {
+        payment_id: paymentId,
+      },
+    });
 
     return Response.json({ ok: true });
   } catch (error) {

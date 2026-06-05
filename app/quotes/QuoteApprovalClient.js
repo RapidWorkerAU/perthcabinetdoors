@@ -38,6 +38,20 @@ function colourSrcForLine(line) {
   return line.colour_src || "";
 }
 
+async function readJsonResponse(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      ok: false,
+      error: response.redirected
+        ? "This quote action was redirected before it could be recorded. Please refresh the page and try again."
+        : "We could not read the server response. Please refresh the page and try again.",
+    };
+  }
+}
+
 function edgeOptionSrc(label) {
   return label ? `/images/edges/${assetSlug(label)}.png` : "";
 }
@@ -110,7 +124,7 @@ export default function QuoteApprovalClient() {
 
       try {
         const response = await fetch(`/api/quote-workflow/get?code=${encodeURIComponent(code)}`, { cache: "no-store" });
-        const payload = await response.json();
+        const payload = await readJsonResponse(response);
         if (!response.ok || !payload.ok) {
           setMessage(payload.error || "We could not load this quote.");
           return;
@@ -144,7 +158,7 @@ export default function QuoteApprovalClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, action, client_name: clientName.trim(), note: note.trim() || null }),
       });
-      const payload = await response.json();
+      const payload = await readJsonResponse(response);
       if (!response.ok || !payload.ok) {
         setMessage(payload.error || "We could not record your response.");
         return;
@@ -196,7 +210,7 @@ export default function QuoteApprovalClient() {
       <section className={styles.panel}>
         <div className={styles.panelHeader}>Quote Items</div>
         <div className={styles.panelBody}>
-          <div className={styles.tableWrap}>
+          <div className={`${styles.tableWrap} ${styles.quoteItemsDesktopTable}`}>
             <table className={`${styles.table} ${styles.quoteItemsPublicTable}`}>
               <thead>
                 <tr>
@@ -244,6 +258,63 @@ export default function QuoteApprovalClient() {
                 })}
               </tbody>
             </table>
+          </div>
+          <div className={styles.quoteItemsMobileList}>
+            {lines.map((line, index) => {
+              const showProfiles = line.material === "Thermolaminate" && line.product_type !== "Panel" && line.product_type !== "Table top";
+              const hingesApplicable = line.product_type === "Door";
+              const colourSrc = colourSrcForLine(line);
+              const edgeSrc = edgeOptionSrc(line.edge_mould);
+              const profileSrc = showProfiles ? profileOptionSrc(line.profile_type, line.profile) : "";
+              return (
+                <article className={styles.quoteItemMobileCard} key={line.id || index}>
+                  <div className={styles.quoteItemMobileHeader}>
+                    <span className={styles.quoteItemNumber}>{index + 1}</span>
+                    <div>
+                      <p>{lineValue(line.product_type || line.product_name, "Quote item")}</p>
+                      <strong>{formatMoney(line.line_total_ex_gst, quote.currency)}</strong>
+                    </div>
+                  </div>
+                  <div className={styles.quoteItemMobileSpecs}>
+                    <div><span>Material</span><strong>{lineValue(line.material)}</strong></div>
+                    <div><span>Size</span><strong>{lineValue(quoteLineSizeText(line))}</strong></div>
+                    <div><span>Qty</span><strong>{line.qty || "1"}</strong></div>
+                    <div><span>Unit cost</span><strong>{formatMoney(line.unit_price_ex_gst, quote.currency)}</strong></div>
+                  </div>
+                  <div className={styles.quoteItemMobileSelections}>
+                    <div>
+                      <span>Colour</span>
+                      <SelectionTile src={colourSrc} label={line.colour} onPreview={setPreviewImage} />
+                    </div>
+                    <div>
+                      <span>Edge profile</span>
+                      <SelectionTile src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} />
+                    </div>
+                    {showProfiles ? (
+                      <>
+                        <div>
+                          <span>Profile type</span>
+                          <strong>{lineValue(line.profile_type)}</strong>
+                        </div>
+                        <div>
+                          <span>Profile name</span>
+                          <SelectionTile src={profileSrc} label={line.profile} onPreview={setPreviewImage} />
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                  <div className={styles.quoteItemMobileHinges}>
+                    <span className={hingesApplicable && line.hinge_holes ? styles.quoteItemYes : styles.quoteItemNo}>
+                      {hingesApplicable && line.hinge_holes ? "Yes" : hingesApplicable ? "No" : "N/A"} drill holes
+                    </span>
+                    <span className={hingesApplicable && line.hinge_supply ? styles.quoteItemYes : styles.quoteItemNo}>
+                      {hingesApplicable && line.hinge_supply ? "Yes" : hingesApplicable ? "No" : "N/A"} supply hinges
+                    </span>
+                    <span>Hinge qty: {hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</span>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </div>
       </section>

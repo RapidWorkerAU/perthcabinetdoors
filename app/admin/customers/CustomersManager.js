@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import styles from "../admin-shell.module.css";
+import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 const emptyForm = {
   id: "",
@@ -58,6 +59,7 @@ export default function CustomersManager() {
         .some((value) => String(value).toLowerCase().includes(needle))
     );
   }, [customers, search]);
+  const customerPagination = useAdminTablePagination(filteredCustomers, search);
 
   async function loadCustomers() {
     setIsLoading(true);
@@ -187,7 +189,7 @@ export default function CustomersManager() {
               </tr>
             </thead>
             <tbody>
-              {filteredCustomers.map((customer) => (
+              {customerPagination.pageItems.map((customer) => (
                 <tr key={customer.id}>
                   <td className={styles.productNameCell}>{customer.name || "-"}</td>
                   <td>{customer.company_name || "-"}</td>
@@ -234,6 +236,13 @@ export default function CustomersManager() {
             </tbody>
           </table>
         </div>
+        <AdminTablePagination
+          label="customers"
+          page={customerPagination.page}
+          pageCount={customerPagination.pageCount}
+          totalItems={customerPagination.totalItems}
+          onPageChange={customerPagination.setPage}
+        />
       </section>
 
       {isCustomerModalOpen ? (

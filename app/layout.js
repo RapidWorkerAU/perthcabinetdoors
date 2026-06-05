@@ -7,6 +7,11 @@ export const metadata = {
   description: "Custom cabinet doors made in Perth",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">

@@ -1,4 +1,5 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
+import { describeChanges, logOrderActivity } from "../../../../../../../lib/pcd-activity-log";
 import { ORDER_LINE_STATUSES, ORDER_PRODUCTION_STAGES } from "../../../../../../../lib/pcd-quote-utils";
 
 async function idsFromParams(params) {
@@ -56,6 +57,13 @@ export async function PATCH(request, { params }) {
       return Response.json({ ok: false, error: "No item updates supplied." }, { status: 400 });
     }
 
+    const { data: beforeItem } = await context.supabase
+      .from("pcd_order_line_items")
+      .select("*, pcd_orders(quote_id)")
+      .eq("id", itemId)
+      .eq("order_id", id)
+      .maybeSingle();
+
     const { data, error } = await context.supabase
       .from("pcd_order_line_items")
       .update(updates)
@@ -65,6 +73,34 @@ export async function PATCH(request, { params }) {
       .maybeSingle();
 
     if (error || !data) throw error || new Error("Order item not found.");
+
+    const changes = describeChanges(beforeItem || {}, updates, {
+      production_stage: "Production stage",
+      fulfilment_method: "Fulfilment",
+      supplier_name: "Supplier",
+      supplier_order_ref: "Supplier ref",
+      supplier_ordered_at: "Supplier ordered",
+      supplier_eta: "Supplier ETA",
+      board_required: "Board required",
+      board_ordered: "Board ordered",
+      board_available: "Board available",
+      production_notes: "Production notes",
+    });
+    if (changes.length) {
+      await logOrderActivity(context.supabase, {
+        order_id: id,
+        quote_id: beforeItem?.pcd_orders?.quote_id || null,
+        actor_type: "admin",
+        action_type: "order_item_updated",
+        title: `Order item updated: ${data.title || data.product_type || "Cabinetry item"}`,
+        description: changes.join("; "),
+        metadata: {
+          item_id: itemId,
+          changes,
+        },
+      });
+    }
+
     return Response.json({ ok: true, item: data });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not update order item." }, { status: 500 });

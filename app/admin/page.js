@@ -8,7 +8,6 @@ import styles from "./admin-auth.module.css";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState("");
@@ -41,19 +40,14 @@ export default function AdminLoginPage() {
     event.preventDefault();
     setStatus("");
 
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) {
-      setStatus("Enter your admin email and password.");
+    const normalizedEmail = allowedAdminEmail;
+    if (!password) {
+      setStatus("Enter your admin password.");
       return;
     }
 
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       setStatus("Admin login is not configured. Supabase environment variables are missing.");
-      return;
-    }
-
-    if (normalizedEmail !== allowedAdminEmail) {
-      setStatus("This account is not authorized for admin access.");
       return;
     }
 
@@ -90,20 +84,10 @@ export default function AdminLoginPage() {
   async function handleForgotPassword() {
     setStatus("");
 
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!normalizedEmail) {
-      setStatus("Enter your email first, then click Forgot password.");
-      return;
-    }
+    const normalizedEmail = allowedAdminEmail;
 
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       setStatus("Password reset is not configured. Supabase environment variables are missing.");
-      return;
-    }
-
-    if (normalizedEmail !== allowedAdminEmail) {
-      setStatus("This account is not authorized for admin access.");
       return;
     }
 
@@ -131,30 +115,19 @@ export default function AdminLoginPage() {
     <main className={styles.page}>
       <section className={styles.authShell}>
         <div className={styles.authPanel}>
-          <a href="/" className={styles.homeLink}>Back to website</a>
+          <a href="/" className={styles.homeLink}>
+            <img src="/images/icons/back.svg" alt="" aria-hidden="true" />
+            <span>Back to website</span>
+          </a>
           <img
             src="/images/horizontal-pcd-logo.png"
             alt="Perth Cabinet Doors"
             className={styles.logo}
           />
-          <p className={styles.eyebrow}>Admin Portal</p>
           <h1 className={styles.title}>Secure access for the PCD team.</h1>
           <p className={styles.intro}>Sign in to manage products, quote requests, enquiries, quotes and orders.</p>
 
           <form onSubmit={handleLogin} className={styles.form} noValidate>
-            <label className={styles.label} htmlFor="email">
-              Email
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                className={styles.input}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </label>
-
             <label className={styles.label} htmlFor="password">
               Password
             </label>

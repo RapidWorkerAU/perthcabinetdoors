@@ -1,4 +1,4 @@
-create extension if not exists "pgcrypto";
+﻿create extension if not exists "pgcrypto";
 
 create or replace function public.set_updated_at_timestamp()
 returns trigger
@@ -32,10 +32,26 @@ alter table public.pcd_quote_line_items
   add column if not exists hinge_supply boolean not null default false,
   add column if not exists hinge_qty text,
   add column if not exists hinge_drilling_cost_ex_gst numeric(12,2) not null default 0,
-  add column if not exists hinge_supply_cost_ex_gst numeric(12,2) not null default 0;
+  add column if not exists hinge_supply_cost_ex_gst numeric(12,2) not null default 0,
+  add column if not exists hinge_drilling_qty numeric(12,2) not null default 0,
+  add column if not exists hinge_supply_qty numeric(12,2) not null default 0;
 
 alter table public.pcd_quote_line_items
   alter column markup_percent set default 40;
+
+update public.pcd_quote_line_items
+set
+  hinge_drilling_qty = case
+    when hinge_holes and hinge_qty ~ '^[0-9]+(\.[0-9]+)?$' then hinge_qty::numeric * qty
+    else 0
+  end,
+  hinge_supply_qty = case
+    when hinge_supply and hinge_qty ~ '^[0-9]+(\.[0-9]+)?$' then hinge_qty::numeric * qty
+    else 0
+  end
+where coalesce(hinge_drilling_qty, 0) = 0
+  and coalesce(hinge_supply_qty, 0) = 0
+  and (hinge_holes or hinge_supply);
 
 alter table public.pcd_orders
   add column if not exists deposit_required boolean not null default false,
@@ -45,6 +61,44 @@ alter table public.pcd_orders
   add column if not exists target_completion_date date,
   add column if not exists customer_comms text,
   add column if not exists internal_notes text;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'pcd_orders'
+      and column_name = 'admin_viewed_at'
+  ) then
+    alter table public.pcd_orders
+      add column admin_viewed_at timestamptz;
+
+    update public.pcd_orders
+    set admin_viewed_at = coalesce(created_at, timezone('utc', now()));
+  end if;
+end $$;
+
+alter table public.pcd_orders
+  alter column quote_id drop not null;
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'pcd_orders_quote_id_fkey'
+      and conrelid = 'public.pcd_orders'::regclass
+  ) then
+    alter table public.pcd_orders
+      drop constraint pcd_orders_quote_id_fkey;
+  end if;
+
+  alter table public.pcd_orders
+    add constraint pcd_orders_quote_id_fkey
+    foreign key (quote_id) references public.pcd_quotes(id) on delete set null;
+end;
+$$;
 
 alter table public.pcd_quote_request_line_items
   add column if not exists thickness text;
@@ -76,6 +130,146 @@ drop trigger if exists trg_pcd_order_payments_updated_at on public.pcd_order_pay
 create trigger trg_pcd_order_payments_updated_at
 before update on public.pcd_order_payments
 for each row execute function public.set_updated_at_timestamp();
+
+create table if not exists public.pcd_order_activity (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid references public.pcd_orders(id) on delete cascade,
+  quote_id uuid references public.pcd_quotes(id) on delete set null,
+  quote_request_id uuid references public.pcd_quote_requests(id) on delete set null,
+  actor_type text not null default 'system' check (
+    actor_type in ('system', 'admin', 'customer')
+  ),
+  action_type text not null,
+  title text not null,
+  description text,
+  metadata jsonb not null default '{}'::jsonb,
+  event_key text unique,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists idx_pcd_order_activity_order on public.pcd_order_activity(order_id);
+create index if not exists idx_pcd_order_activity_quote on public.pcd_order_activity(quote_id);
+create index if not exists idx_pcd_order_activity_quote_request on public.pcd_order_activity(quote_request_id);
+create index if not exists idx_pcd_order_activity_created on public.pcd_order_activity(created_at);
+
+alter table public.pcd_order_activity enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'pcd_order_activity'
+      and policyname = 'Authenticated users can manage order activity'
+  ) then
+    create policy "Authenticated users can manage order activity"
+      on public.pcd_order_activity
+      for all
+      to authenticated
+      using (true)
+      with check (true);
+  end if;
+end;
+$$;
+
+insert into public.pcd_order_activity (
+  quote_request_id,
+  actor_type,
+  action_type,
+  title,
+  description,
+  metadata,
+  event_key,
+  created_at
+)
+select
+  request.id,
+  'customer',
+  'quote_request_submitted',
+  'Quote request submitted',
+  concat_ws(' - ', nullif(request.customer_name, ''), nullif(request.delivery_suburb, ''), nullif(request.source, '')),
+  jsonb_build_object('source', request.source, 'line_items', line_counts.line_count),
+  'quote_request:' || request.id || ':submitted',
+  request.created_at
+from public.pcd_quote_requests request
+left join (
+  select quote_request_id, count(*)::integer as line_count
+  from public.pcd_quote_request_line_items
+  group by quote_request_id
+) line_counts on line_counts.quote_request_id = request.id
+on conflict (event_key) do nothing;
+
+insert into public.pcd_order_activity (
+  quote_id,
+  actor_type,
+  action_type,
+  title,
+  description,
+  metadata,
+  event_key,
+  created_at
+)
+select
+  quote.id,
+  'admin',
+  'quote_created',
+  'Quote created',
+  concat_ws(' - ', quote.quote_number, nullif(quote.customer_name, '')),
+  jsonb_build_object('status', quote.status, 'total_inc_gst', quote.total_inc_gst),
+  'quote:' || quote.id || ':created',
+  quote.created_at
+from public.pcd_quotes quote
+on conflict (event_key) do nothing;
+
+insert into public.pcd_order_activity (
+  quote_id,
+  quote_request_id,
+  actor_type,
+  action_type,
+  title,
+  description,
+  metadata,
+  event_key,
+  created_at
+)
+select
+  request.converted_quote_id,
+  request.id,
+  'admin',
+  'quote_request_converted',
+  'Quote request converted to quote',
+  concat_ws(' - ', quote.quote_number, nullif(request.customer_name, '')),
+  jsonb_build_object('quote_number', quote.quote_number),
+  'quote_request:' || request.id || ':converted',
+  coalesce(quote.created_at, request.updated_at, request.created_at)
+from public.pcd_quote_requests request
+join public.pcd_quotes quote on quote.id = request.converted_quote_id
+where request.converted_quote_id is not null
+on conflict (event_key) do nothing;
+
+insert into public.pcd_order_activity (
+  order_id,
+  quote_id,
+  actor_type,
+  action_type,
+  title,
+  description,
+  metadata,
+  event_key,
+  created_at
+)
+select
+  orders.id,
+  orders.quote_id,
+  'customer',
+  'quote_approved_order_created',
+  'Quote accepted and order created',
+  concat_ws(' - ', orders.order_number, nullif(orders.customer_name, '')),
+  jsonb_build_object('order_number', orders.order_number, 'total_inc_gst', orders.total_inc_gst),
+  'order:' || orders.id || ':created',
+  coalesce(orders.accepted_at, orders.created_at)
+from public.pcd_orders orders
+on conflict (event_key) do nothing;
 
 create table if not exists public.pcd_colour_library (
   id uuid primary key default gen_random_uuid(),

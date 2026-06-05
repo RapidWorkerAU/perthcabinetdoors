@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import styles from "../../admin-shell.module.css";
+import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 function prettyCategory(category) {
   if (!category) return "-";
@@ -42,6 +43,7 @@ export default function ProductsTable({ initialProducts }) {
     () => [...products].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
     [products]
   );
+  const productPagination = useAdminTablePagination(sorted);
 
   async function handleDeleteConfirmed() {
     if (!target) return;
@@ -88,7 +90,7 @@ export default function ProductsTable({ initialProducts }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((product) => {
+            {productPagination.pageItems.map((product) => {
               const active = product.is_active;
               const thumbnailSrc = resolveImageSrc(product.primary_image_url);
               return (
@@ -174,6 +176,13 @@ export default function ProductsTable({ initialProducts }) {
           </tbody>
         </table>
       </div>
+      <AdminTablePagination
+        label="products"
+        page={productPagination.page}
+        pageCount={productPagination.pageCount}
+        totalItems={productPagination.totalItems}
+        onPageChange={productPagination.setPage}
+      />
 
       {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
 

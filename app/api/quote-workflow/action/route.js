@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 
 const allowedActions = new Set(["approved", "rejected"]);
@@ -41,6 +42,12 @@ async function createOrderFromQuote(supabase, quote) {
 
   if (orderError) throw orderError;
 
+  const { data: quoteRequest } = await supabase
+    .from("pcd_quote_requests")
+    .select("id")
+    .eq("converted_quote_id", quote.id)
+    .maybeSingle();
+
   const { data: lines, error: linesError } = await supabase
     .from("pcd_quote_line_items")
     .select("*")
@@ -75,6 +82,24 @@ async function createOrderFromQuote(supabase, quote) {
   }
 
   await supabase.from("pcd_quotes").update({ order_id: order.id }).eq("id", quote.id);
+
+  await logOrderActivity(supabase, {
+    order_id: order.id,
+    quote_id: quote.id,
+    quote_request_id: quoteRequest?.id || null,
+    actor_type: "customer",
+    action_type: "quote_approved_order_created",
+    title: "Quote accepted and order created",
+    description: [order.order_number, quote.quote_number, quote.customer_name].filter(Boolean).join(" - "),
+    metadata: {
+      order_number: order.order_number,
+      quote_number: quote.quote_number,
+      total_inc_gst: order.total_inc_gst,
+    },
+    event_key: `order:${order.id}:created`,
+    created_at: order.accepted_at || order.created_at,
+  });
+
   return order.id;
 }
 
@@ -133,6 +158,19 @@ export async function POST(request) {
       client_name: String(payload.client_name || "").trim(),
       note: payload.note || null,
     });
+
+    if (action === "rejected") {
+      await logOrderActivity(supabase, {
+        quote_id: quote.id,
+        actor_type: "customer",
+        action_type: "quote_rejected",
+        title: "Quote rejected by customer",
+        description: payload.note || null,
+        metadata: {
+          client_name: String(payload.client_name || "").trim(),
+        },
+      });
+    }
 
     return Response.json({ ok: true, orderId });
   } catch (error) {

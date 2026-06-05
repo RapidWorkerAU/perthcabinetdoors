@@ -1,4 +1,5 @@
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
+import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 
 const PAYMENT_TYPES = new Set(["deposit", "progress", "final", "other"]);
 
@@ -70,6 +71,27 @@ export async function POST(request, { params }) {
 
     if (error) throw error;
     await syncDepositFields(context.supabase, orderId);
+
+    const { data: order } = await context.supabase
+      .from("pcd_orders")
+      .select("quote_id")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    await logOrderActivity(context.supabase, {
+      order_id: orderId,
+      quote_id: order?.quote_id || null,
+      actor_type: "admin",
+      action_type: "payment_added",
+      title: "Payment line added",
+      description: `${paymentType} - $${amount.toFixed(2)}${data.is_paid ? " - paid" : " - pending"}`,
+      metadata: {
+        payment_id: data.id,
+        payment_type: paymentType,
+        amount,
+        is_paid: data.is_paid,
+      },
+    });
 
     return Response.json({ ok: true, payment: data });
   } catch (error) {

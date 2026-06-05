@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatMoney } from "../../../lib/pcd-quote-utils";
 import styles from "../admin-shell.module.css";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
+import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -13,6 +14,17 @@ function formatDate(value) {
 
 function sortedItems(order) {
   return [...(order?.pcd_order_line_items || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+}
+
+function getOrderStatusClass(status) {
+  if (status === "active") return styles.statusPillActive;
+  if (status === "complete") return styles.statusPillActive;
+  if (status === "cancelled" || status === "on_hold") return styles.statusPillIssue;
+  return styles.statusPillDraft;
+}
+
+function isNewOrder(order) {
+  return Object.prototype.hasOwnProperty.call(order || {}, "admin_viewed_at") && !order.admin_viewed_at;
 }
 
 export default function OrdersManager() {
@@ -35,6 +47,7 @@ export default function OrdersManager() {
       { active: 0, lineItems: 0, complete: 0 }
     );
   }, [orders]);
+  const orderPagination = useAdminTablePagination(orders);
 
   async function loadOrders() {
     setIsLoading(true);
@@ -82,15 +95,24 @@ export default function OrdersManager() {
             </tr>
           </thead>
           <tbody>
-            {orders.map((order) => {
+            {orderPagination.pageItems.map((order) => {
               const items = sortedItems(order);
               return (
                 <tr key={order.id} className={styles.rowClickable} onClick={() => router.push(`/admin/orders/${order.id}`)}>
-                  <td className={styles.productNameCell}>{order.order_number}</td>
+                  <td className={styles.productNameCell}>
+                    <span className={styles.orderNameWithUnread}>
+                      {isNewOrder(order) ? <span className={styles.orderUnreadDot} title="New order" aria-label="New order" /> : null}
+                      <span>{order.order_number}</span>
+                    </span>
+                  </td>
                   <td>{order.customer_name || "-"}</td>
                   <td>{order.name || "-"}</td>
                   <td>{items.length}</td>
-                  <td><span className={styles.statusPill}>{formatAdminLabel(order.status || "active")}</span></td>
+                  <td>
+                    <span className={`${styles.statusPill} ${getOrderStatusClass(order.status || "active")}`}>
+                      {formatAdminLabel(order.status || "active")}
+                    </span>
+                  </td>
                   <td>{formatMoney(order.total_inc_gst, "AUD")}</td>
                   <td>{formatDate(order.accepted_at || order.created_at)}</td>
                 </tr>
@@ -101,6 +123,13 @@ export default function OrdersManager() {
           </tbody>
         </table>
       </div>
+      <AdminTablePagination
+        label="orders"
+        page={orderPagination.page}
+        pageCount={orderPagination.pageCount}
+        totalItems={orderPagination.totalItems}
+        onPageChange={orderPagination.setPage}
+      />
     </section>
   );
 }

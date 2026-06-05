@@ -23,10 +23,11 @@ export default function ContactFormClient() {
 
   async function submitContact(event) {
     event.preventDefault();
+    const form = event.currentTarget;
     setSubmitting(true);
     setStatus(null);
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(form);
     const firstName = value(formData, "firstName");
     const lastName = value(formData, "lastName");
     const name = [firstName, lastName].filter(Boolean).join(" ");
@@ -51,7 +52,7 @@ export default function ContactFormClient() {
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Could not send message.");
-      event.currentTarget.reset();
+      form.reset();
       setStatus({ type: "success", message: "Thanks. Your message has been sent and we will come back to you within one business day." });
     } catch (error) {
       setStatus({ type: "error", message: error.message || "Could not send message." });

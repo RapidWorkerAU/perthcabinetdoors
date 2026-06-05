@@ -4,8 +4,10 @@ import {
   SALES_EMAIL,
   businessQuoteRequestHtml,
   customerQuoteRequestHtml,
+  quoteLineItemsText,
   uniqueRecipients,
 } from "../../../lib/pcd-email-templates";
+import { logOrderActivity } from "../../../lib/pcd-activity-log";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 
 const lineSchema = z.object({
@@ -91,6 +93,21 @@ export async function POST(request) {
       if (linesError) throw linesError;
     }
 
+    await logOrderActivity(supabase, {
+      quote_request_id: requestRow.id,
+      actor_type: "customer",
+      action_type: "quote_request_submitted",
+      title: "Quote request submitted",
+      description: [payload.customerName, payload.deliverySuburb, payload.source].filter(Boolean).join(" - "),
+      metadata: {
+        source: payload.source,
+        product_name: payload.productName || null,
+        line_items: payload.lines.length,
+      },
+      event_key: `quote_request:${requestRow.id}:submitted`,
+      created_at: requestRow.created_at,
+    });
+
     if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const businessRecipients = uniqueRecipients(SALES_EMAIL, process.env.QUOTE_TO_EMAIL);
@@ -112,6 +129,7 @@ export async function POST(request) {
           `Cabinet brand: ${payload.cabinetBrand || ""}`,
           "",
           `Line items: ${payload.lines.length}`,
+          ...quoteLineItemsText(payload.lines),
           "",
           payload.notes || "",
         ].join("\n"),
@@ -131,6 +149,8 @@ export async function POST(request) {
             `Hi ${payload.customerName || "there"},`,
             "",
             "Thanks for sending your quote request to Perth Cabinet Doors. We have received it and you should expect a response within 1-3 business days.",
+            "",
+            ...quoteLineItemsText(payload.lines),
             "",
             `Perth Cabinet Doors`,
             SALES_EMAIL,

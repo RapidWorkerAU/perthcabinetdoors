@@ -66,10 +66,11 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
 
   async function submitProductEnquiry(event) {
     event.preventDefault();
+    const form = event.currentTarget;
     setIsSendingEnquiry(true);
     setEnquiryStatus("");
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(form);
     const width = Number(formData.get("width") || 0) || undefined;
     const height = Number(formData.get("height") || 0) || undefined;
     const qty = Number(formData.get("qty") || 1) || 1;
@@ -104,7 +105,7 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not send enquiry.");
-      event.currentTarget.reset();
+      form.reset();
       setEnquiryStatus("Thanks. Your quote request has been sent.");
     } catch (error) {
       setEnquiryStatus(error?.message || "Could not send enquiry.");

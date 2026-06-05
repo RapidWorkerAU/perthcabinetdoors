@@ -1,4 +1,5 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
+import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
 import { ORDER_STATUSES } from "../../../../../lib/pcd-quote-utils";
 
 async function orderIdFromParams(params) {
@@ -30,6 +31,35 @@ async function loadOrder(supabase, id) {
     data.pcd_order_payments = payments || [];
   }
 
+  const { data: quoteRequests } = data.quote_id
+    ? await supabase
+        .from("pcd_quote_requests")
+        .select("id")
+        .eq("converted_quote_id", data.quote_id)
+    : { data: [] };
+
+  const quoteRequestIds = (quoteRequests || []).map((request) => request.id);
+  const activityQueries = [
+    supabase.from("pcd_order_activity").select("*").eq("order_id", id),
+  ];
+
+  if (data.quote_id) {
+    activityQueries.push(supabase.from("pcd_order_activity").select("*").eq("quote_id", data.quote_id));
+  }
+
+  if (quoteRequestIds.length) {
+    activityQueries.push(supabase.from("pcd_order_activity").select("*").in("quote_request_id", quoteRequestIds));
+  }
+
+  const activityResults = await Promise.all(activityQueries);
+  const activityMap = new Map();
+  activityResults.forEach((result) => {
+    (result.data || []).forEach((activity) => activityMap.set(activity.id, activity));
+  });
+  data.pcd_order_activity = Array.from(activityMap.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
   return data;
 }
 
@@ -39,6 +69,12 @@ export async function GET(_request, { params }) {
 
   try {
     const id = await orderIdFromParams(params);
+    await context.supabase
+      .from("pcd_orders")
+      .update({ admin_viewed_at: new Date().toISOString() })
+      .eq("id", id)
+      .is("admin_viewed_at", null);
+
     const order = await loadOrder(context.supabase, id);
     return Response.json({ ok: true, order });
   } catch (error) {
@@ -85,6 +121,12 @@ export async function PATCH(request, { params }) {
       return Response.json({ ok: false, error: "No order updates supplied." }, { status: 400 });
     }
 
+    const { data: beforeOrder } = await context.supabase
+      .from("pcd_orders")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
     const { data, error } = await context.supabase
       .from("pcd_orders")
       .update(updates)
@@ -93,6 +135,31 @@ export async function PATCH(request, { params }) {
       .maybeSingle();
 
     if (error || !data) throw error || new Error("Order not found.");
+
+    const changes = describeChanges(beforeOrder || {}, updates, {
+      customer_name: "Customer",
+      customer_email: "Email",
+      customer_phone: "Phone",
+      site_address: "Site address",
+      deposit_required: "Deposit required",
+      deposit_amount: "Deposit amount",
+      deposit_paid: "Deposit paid",
+      deposit_paid_at: "Deposit paid at",
+      target_completion_date: "Target completion",
+      internal_notes: "Internal notes",
+    });
+    if (changes.length) {
+      await logOrderActivity(context.supabase, {
+        order_id: id,
+        quote_id: beforeOrder?.quote_id || null,
+        actor_type: "admin",
+        action_type: "order_updated",
+        title: "Order updated",
+        description: changes.join("; "),
+        metadata: { changes },
+      });
+    }
+
     const order = await loadOrder(context.supabase, id);
     return Response.json({ ok: true, order });
   } catch (error) {

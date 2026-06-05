@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMoney } from "../../../lib/pcd-quote-utils";
 import styles from "../admin-shell.module.css";
+import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -28,6 +29,7 @@ export default function QuotesTable() {
   const [isCreating, setIsCreating] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [setupRequired, setSetupRequired] = useState(false);
+  const quotePagination = useAdminTablePagination(quotes);
 
   async function loadQuotes() {
     setIsLoading(true);
@@ -121,7 +123,7 @@ export default function QuotesTable() {
             </tr>
           </thead>
           <tbody>
-            {quotes.map((quote) => (
+            {quotePagination.pageItems.map((quote) => (
               <tr
                 key={quote.id}
                 className={styles.rowClickable}
@@ -186,6 +188,13 @@ export default function QuotesTable() {
           </tbody>
         </table>
       </div>
+      <AdminTablePagination
+        label="quotes"
+        page={quotePagination.page}
+        pageCount={quotePagination.pageCount}
+        totalItems={quotePagination.totalItems}
+        onPageChange={quotePagination.setPage}
+      />
     </section>
   );
 }

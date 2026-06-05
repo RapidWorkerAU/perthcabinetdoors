@@ -330,6 +330,10 @@
   table-layout: fixed;
 }
 
+.quoteItemsMobileList {
+  display: none;
+}
+
 .quoteViewCard .quoteItemsPublicTable th {
   border-top: 1px solid #d8cbb8;
   border-bottom: 1px solid #d8cbb8;
@@ -1116,6 +1120,120 @@
     padding-left: 18px;
     padding-right: 18px;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .quoteViewCard .quoteItemsDesktopTable {
+    display: none;
+  }
+
+  .quoteItemsMobileList {
+    display: grid;
+    gap: 14px;
+  }
+
+  .quoteItemMobileCard {
+    display: grid;
+    gap: 14px;
+    border: 1px solid #dfd2bf;
+    border-radius: 8px;
+    background: #fffaf3;
+    padding: 16px;
+    box-shadow: 0 12px 28px rgba(44, 35, 26, 0.08);
+  }
+
+  .quoteItemMobileHeader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #eadfce;
+    padding-bottom: 12px;
+  }
+
+  .quoteItemMobileHeader div {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .quoteItemMobileHeader p {
+    margin: 0;
+    color: #001f36;
+    font-family: var(--pcd-font-display);
+    font-size: 1.18rem;
+    line-height: 1.1;
+  }
+
+  .quoteItemMobileHeader strong {
+    color: #6f4918;
+    font-size: 0.96rem;
+  }
+
+  .quoteItemMobileSpecs,
+  .quoteItemMobileSelections {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .quoteItemMobileSpecs div,
+  .quoteItemMobileSelections div {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+  }
+
+  .quoteItemMobileSpecs span,
+  .quoteItemMobileSelections > div > span {
+    color: #7c725f;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .quoteItemMobileSpecs strong,
+  .quoteItemMobileSelections strong {
+    color: #001f36;
+    font-size: 0.9rem;
+    line-height: 1.25;
+  }
+
+  .quoteItemMobileSelections .publicSelectionTile {
+    min-height: 40px;
+    border: 1px solid #eadfce;
+    border-radius: 6px;
+    background: #ffffff;
+    padding: 5px 7px;
+  }
+
+  .quoteItemMobileHinges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-top: 1px solid #eadfce;
+    padding-top: 12px;
+  }
+
+  .quoteItemMobileHinges span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    border-radius: 999px;
+    background: #f4f0e8;
+    color: #5d5548;
+    padding: 0 10px;
+    font-size: 0.76rem;
+    font-weight: 800;
+  }
+
+  .quoteItemMobileHinges .quoteItemYes {
+    background: #eaf5e8;
+    color: #2f6b3b;
+  }
+
+  .quoteItemMobileHinges .quoteItemNo {
+    background: #f5eee8;
+    color: #7a674f;
   }
 
   .table,

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
 import { COLOUR_MATERIALS, COLOUR_ORDER_TYPES, materialLabelForType, normaliseOrderTypes, orderTypesLabel, thicknessOptionsForMaterial } from "../../../lib/pcd-colour-library";
 import styles from "../admin-shell.module.css";
+import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 const emptyDraft = {
   id: null,
@@ -36,6 +37,10 @@ function imageSourceLabel(row) {
   if (String(row.image_url || "").startsWith("/images/")) return "Website image";
   if (row.image_url) return "External URL";
   return "-";
+}
+
+function statusClassForRow(row) {
+  return row.is_active ? styles.statusPillActive : styles.statusPillDraft;
 }
 
 function rowFromDraft(draft, image) {
@@ -139,6 +144,8 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
       );
     });
   }, [columnFilters, searchQuery, sortedRows]);
+  const filterKey = useMemo(() => `${searchQuery}|${JSON.stringify(columnFilters)}`, [columnFilters, searchQuery]);
+  const colourPagination = useAdminTablePagination(filteredRows, filterKey);
 
   function updateDraft(field, value) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -558,7 +565,7 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((row) => (
+              {colourPagination.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>
                     <span className={styles.colourLibraryTableTile}>
@@ -575,7 +582,11 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
                   <td>${Number(row.cost_per_sqm_ex_gst || 0).toFixed(2)}</td>
                   <td>{imageSourceLabel(row)}</td>
                   <td>{row.sort_order || 0}</td>
-                  <td>{row.is_active ? "Active" : "Hidden"}</td>
+                  <td>
+                    <span className={`${styles.statusPill} ${statusClassForRow(row)}`}>
+                      {row.is_active ? "Active" : "Hidden"}
+                    </span>
+                  </td>
                   <td className={styles.rowActions}>
                     <button
                       type="button"
@@ -610,6 +621,13 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
             </tbody>
           </table>
         </div>
+        <AdminTablePagination
+          label="colour lines"
+          page={colourPagination.page}
+          pageCount={colourPagination.pageCount}
+          totalItems={colourPagination.totalItems}
+          onPageChange={colourPagination.setPage}
+        />
       </section>
       {modal}
       {deleteModal}

@@ -6,8 +6,14 @@ function isBypassedPath(pathname) {
   return (
     pathname.startsWith("/admin") ||
     pathname.startsWith("/api/admin") ||
+    pathname === "/api/colour-library" ||
+    pathname === "/api/quote" ||
+    pathname === "/api/quote-config" ||
+    pathname === "/api/quote-requests" ||
+    pathname.startsWith("/api/quote-workflow") ||
     pathname === "/api/launch-access" ||
     pathname === "/api/enquiries" ||
+    pathname.startsWith("/quotes") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/images") ||
     pathname.startsWith("/css") ||

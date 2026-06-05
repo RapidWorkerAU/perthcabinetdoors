@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatMoney, PROJECT_LINE_STATUSES, PROJECT_STATUSES } from "../../../../lib/pcd-quote-utils";
 import styles from "../../admin-shell.module.css";
+import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -72,6 +73,7 @@ export default function ProjectDetail({ projectId }) {
   const [feedback, setFeedback] = useState("");
 
   const items = useMemo(() => sortedItems(project), [project]);
+  const itemPagination = useAdminTablePagination(items);
   const progress = useMemo(() => {
     const completeCount = items.filter((item) => item.status === "Complete").length;
     const issueCount = items.filter((item) => item.status === "Issue Follow-Up").length;
@@ -288,7 +290,7 @@ export default function ProjectDetail({ projectId }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {itemPagination.pageItems.map((item) => (
                 <tr key={item.id}>
                   <td>
                     <div className={styles.productNameCell}>{item.title || "Cabinetry item"}</div>
@@ -342,6 +344,13 @@ export default function ProjectDetail({ projectId }) {
               ) : null}
             </tbody>
           </table>
+          <AdminTablePagination
+            label="quote products"
+            page={itemPagination.page}
+            pageCount={itemPagination.pageCount}
+            totalItems={itemPagination.totalItems}
+            onPageChange={itemPagination.setPage}
+          />
         </div>
       </section>
 

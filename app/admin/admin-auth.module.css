@@ -35,12 +35,21 @@
 }
 
 .homeLink {
+  align-items: center;
   color: var(--pcd-muted);
+  display: inline-flex;
   font-size: 13px;
   font-weight: 700;
+  gap: 8px;
   margin-bottom: 42px;
   text-decoration: none;
   width: fit-content;
+}
+
+.homeLink img {
+  display: block;
+  height: 16px;
+  width: 16px;
 }
 
 .logo {

@@ -1,4 +1,5 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
+import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals, GST_RATE } from "../../../../../lib/pcd-quote-utils";
 
@@ -72,11 +73,38 @@ export async function PUT(request, { params }) {
     const payload = await request.json();
     const normalized = await normalizeQuotePayload(context.supabase, payload);
 
+    const { data: beforeQuote } = await context.supabase
+      .from("pcd_quotes")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
     const { error: quoteError } = await context.supabase
       .from("pcd_quotes")
       .update(normalized.quote)
       .eq("id", id);
     if (quoteError) throw quoteError;
+
+    const quoteChanges = describeChanges(beforeQuote || {}, normalized.quote, {
+      customer_name: "Customer",
+      customer_email: "Email",
+      customer_phone: "Phone",
+      site_address: "Site address",
+      project_name: "Project",
+      total_inc_gst: "Total inc GST",
+    });
+    await logOrderActivity(context.supabase, {
+      order_id: beforeQuote?.order_id || null,
+      quote_id: id,
+      actor_type: "admin",
+      action_type: "quote_updated",
+      title: "Quote updated",
+      description: quoteChanges.length ? quoteChanges.slice(0, 8).join("; ") : "Quote line items or pricing updated",
+      metadata: {
+        changes: quoteChanges,
+        line_items: normalized.lines.length,
+      },
+    });
 
     const { error: deleteError } = await context.supabase
       .from("pcd_quote_line_items")

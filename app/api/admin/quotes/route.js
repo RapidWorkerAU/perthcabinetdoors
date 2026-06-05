@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../lib/admin-api";
+import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals, GST_RATE } from "../../../../lib/pcd-quote-utils";
 
@@ -94,6 +95,21 @@ export async function POST(request) {
       .single();
 
     if (quoteError) throw quoteError;
+
+    await logOrderActivity(context.supabase, {
+      quote_id: quote.id,
+      actor_type: "admin",
+      action_type: "quote_created",
+      title: "Quote created in admin",
+      description: [quote.quote_number, quote.customer_name].filter(Boolean).join(" - "),
+      metadata: {
+        quote_number: quote.quote_number,
+        status: quote.status,
+        total_inc_gst: quote.total_inc_gst,
+      },
+      event_key: `quote:${quote.id}:created`,
+      created_at: quote.created_at,
+    });
 
     if (normalized.lines.length) {
       const rows = normalized.lines.map((line, index) => ({
