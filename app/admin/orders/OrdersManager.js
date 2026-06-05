@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMoney } from "../../../lib/pcd-quote-utils";
 import styles from "../admin-shell.module.css";
+import { formatAdminLabel } from "../_utils/formatAdminLabel";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -89,7 +90,7 @@ export default function OrdersManager() {
                   <td>{order.customer_name || "-"}</td>
                   <td>{order.name || "-"}</td>
                   <td>{items.length}</td>
-                  <td><span className={styles.statusPill}>{(order.status || "active").replace(/_/g, " ")}</span></td>
+                  <td><span className={styles.statusPill}>{formatAdminLabel(order.status || "active")}</span></td>
                   <td>{formatMoney(order.total_inc_gst, "AUD")}</td>
                   <td>{formatDate(order.accepted_at || order.created_at)}</td>
                 </tr>

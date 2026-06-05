@@ -1,8 +1,8 @@
 .page {
   min-height: 100vh;
-  background: #f5f1e8;
-  color: #10140f;
-  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  background: var(--pcd-bg-warm);
+  color: var(--pcd-ink);
+  font-family: var(--pcd-font-ui);
 }
 
 .authShell {
@@ -13,7 +13,7 @@
 
 .authPanel,
 .card {
-  background: #f8f4ea;
+  background: var(--pcd-surface-soft);
   box-sizing: border-box;
 }
 
@@ -35,7 +35,7 @@
 }
 
 .homeLink {
-  color: #57624f;
+  color: var(--pcd-muted);
   font-size: 13px;
   font-weight: 700;
   margin-bottom: 42px;
@@ -58,7 +58,7 @@
 .eyebrow,
 .visualEyebrow {
   margin: 0 0 18px;
-  color: #1f2e1d;
+  color: var(--pcd-green-mid);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.18em;
@@ -67,11 +67,11 @@
 
 .title {
   margin: 0;
-  color: #080b08;
-  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
-  font-size: clamp(16px, 1.5vw, 20px);
-  font-weight: 600;
-  line-height: 1.2;
+  color: var(--pcd-ink);
+  font-family: var(--pcd-font-display);
+  font-size: clamp(24px, 2.6vw, 36px);
+  font-weight: 400;
+  line-height: 1.12;
   letter-spacing: 0;
 }
 
@@ -82,7 +82,7 @@
 
 .intro {
   margin: 14px 0 22px;
-  color: #4e5949;
+  color: var(--pcd-muted);
   font-size: 15px;
   line-height: 1.55;
   max-width: 620px;
@@ -97,18 +97,20 @@
 .label {
   display: grid;
   gap: 8px;
-  color: #263023;
-  font-size: 13px;
+  color: var(--pcd-green);
+  font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .input {
   width: 100%;
   min-height: 52px;
-  border: 1px solid #d5cdbf;
-  border-radius: 0;
-  background: #ffffff;
-  color: #111811;
+  border: 1px solid var(--pcd-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--pcd-surface);
+  color: var(--pcd-ink);
   padding: 0 16px;
   font: inherit;
   font-size: 15px;
@@ -117,8 +119,8 @@
 }
 
 .input:focus {
-  border-color: #446a3a;
-  box-shadow: 0 0 0 3px rgba(68, 106, 58, 0.16);
+  border-color: var(--pcd-green-mid);
+  box-shadow: 0 0 0 3px rgba(107, 158, 97, 0.16);
   outline: none;
 }
 
@@ -131,11 +133,11 @@
 
 .toggleButton {
   min-width: 74px;
-  border: 1px solid #d5cdbf;
+  border: 1px solid var(--pcd-line);
   border-left: 0;
-  border-radius: 0;
-  background: #ffffff;
-  color: #2d352c;
+  border-radius: 0 var(--pcd-radius-xs) var(--pcd-radius-xs) 0;
+  background: var(--pcd-surface);
+  color: var(--pcd-green);
   font: inherit;
   font-size: 13px;
   font-weight: 800;
@@ -148,22 +150,22 @@
   gap: 12px;
   align-items: center;
   margin-top: 4px;
-  color: #5c6558;
+  color: var(--pcd-muted);
   font-size: 13px;
   line-height: 1.35;
 }
 
 .submitButton {
   min-height: 54px;
-  border: 1px solid #111611;
-  border-radius: 0;
-  background: #111611;
-  color: #ffffff;
+  border: 1px solid var(--pcd-green);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--pcd-green);
+  color: var(--pcd-cream);
   font: inherit;
   font-size: 15px;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 16px 30px rgba(17, 22, 17, 0.18);
+  box-shadow: 0 16px 30px rgba(28, 43, 30, 0.18);
 }
 
 .submitButton:disabled,
@@ -176,7 +178,7 @@
 .linkButton {
   border: none;
   background: none;
-  color: #446a3a;
+  color: var(--pcd-green-mid);
   font: inherit;
   font-size: 13px;
   font-weight: 800;
@@ -188,7 +190,7 @@
 
 .status {
   margin: 16px 0 0;
-  border: 1px solid #dcbf55;
+  border: 1px solid var(--pcd-warning);
   background: #fff8df;
   color: #5c4200;
   padding: 12px 14px;
@@ -206,7 +208,7 @@
   background:
     linear-gradient(120deg, rgba(12, 17, 11, 0.93), rgba(36, 46, 28, 0.9)),
     url("/images/kitchen-detail-landscape.jpg") center / cover;
-  color: #f8f4ea;
+  color: var(--pcd-cream);
 }
 
 .visualPanel::before,
@@ -262,8 +264,8 @@
     padding: 42px 24px;
   }
 
-  .visualMark {
-    width: min(360px, 72vw);
+.visualMark {
+  width: min(360px, 72vw);
   }
 }
 
@@ -279,7 +281,28 @@
 
   .toggleButton {
     min-height: 44px;
-    border-left: 1px solid #d5cdbf;
+    border-left: 1px solid var(--pcd-line);
     border-top: 0;
+    border-radius: 0 0 var(--pcd-radius-xs) var(--pcd-radius-xs);
   }
+}
+
+.homeLink,
+.eyebrow,
+.visualEyebrow,
+.label,
+.toggleButton,
+.submitButton,
+.linkButton {
+  font-weight: 600;
+}
+
+.label,
+.eyebrow,
+.visualEyebrow {
+  letter-spacing: 0.04em;
+}
+
+.label {
+  text-transform: none;
 }

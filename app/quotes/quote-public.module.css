@@ -1059,3 +1059,67 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 520px) {
+  .page,
+  .quoteViewPage,
+  .quoteApprovalPage {
+    overflow-x: hidden;
+  }
+
+  .quoteViewShell,
+  .quoteApprovalShell,
+  .quotePublicShell {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .heroTitle,
+  .quoteViewTitle,
+  .quoteApprovalTitle {
+    font-size: 34px;
+    line-height: 1.08;
+  }
+
+  .quoteViewCard,
+  .approvalCard,
+  .totalsCard {
+    min-width: 0;
+    padding: 18px;
+  }
+
+  .quoteViewHeader,
+  .quoteActions,
+  .approvalActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .quoteActions a,
+  .quoteActions button,
+  .approvalActions button {
+    width: 100%;
+  }
+
+  .summaryGrid,
+  .approvalGrid,
+  .totalsGrid,
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .tableWrap,
+  .quoteViewCard .tableWrap {
+    margin-left: -18px;
+    margin-right: -18px;
+    overflow-x: auto;
+    padding-left: 18px;
+    padding-right: 18px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table,
+  .quoteViewCard .table {
+    min-width: 720px;
+  }
+}

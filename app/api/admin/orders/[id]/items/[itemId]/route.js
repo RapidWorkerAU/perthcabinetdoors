@@ -32,6 +32,7 @@ export async function PATCH(request, { params }) {
 
     [
       "fulfilment_method",
+      "thickness",
       "supplier_name",
       "supplier_order_ref",
       "supplier_ordered_at",

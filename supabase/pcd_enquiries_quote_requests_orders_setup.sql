@@ -55,6 +55,7 @@ create table if not exists public.pcd_quote_request_line_items (
   product_type text,
   product_name text,
   material text,
+  thickness text,
   width_mm numeric(12,2),
   height_mm numeric(12,2),
   finish text,
@@ -99,6 +100,8 @@ create table if not exists public.pcd_order_line_items (
   sort_order integer not null default 0,
   title text,
   description text,
+  material text,
+  thickness text,
   width_mm numeric(12,2),
   height_mm numeric(12,2),
   finish text,
@@ -189,4 +192,3 @@ drop trigger if exists trg_pcd_order_line_items_updated_at on public.pcd_order_l
 create trigger trg_pcd_order_line_items_updated_at
 before update on public.pcd_order_line_items
 for each row execute function public.set_updated_at_timestamp();
-

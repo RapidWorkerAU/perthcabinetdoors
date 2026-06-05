@@ -458,3 +458,47 @@
     padding: 24px;
   }
 }
+
+@media (max-width: 520px) {
+  .page {
+    overflow-x: hidden;
+  }
+
+  .pageHeader,
+  .catalogue {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .pageHeader h1 {
+    font-size: 34px;
+    line-height: 1.08;
+  }
+
+  .filterOptions {
+    gap: 8px;
+  }
+
+  .filterOption {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: center;
+    min-height: 38px;
+    text-align: center;
+  }
+
+  .toolbar {
+    align-items: stretch;
+  }
+
+  .productTile,
+  .tileMedia,
+  .tileBody {
+    min-width: 0;
+  }
+
+  .siteFooter {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 22px 16px;
+  }
+}

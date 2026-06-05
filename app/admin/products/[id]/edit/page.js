@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import AdminShell from "../../../_components/AdminShell";
 import { requireAdminSession } from "../../../../../lib/admin-guard";
 import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
+import { getDatabaseColourRows } from "../../../../../lib/pcd-colour-library";
 import ProductEditorForm from "../../_components/ProductEditorForm";
 
 export default async function EditProductPage({ params }) {
@@ -40,9 +41,7 @@ export default async function EditProductPage({ params }) {
 
   let quoteConfig = null;
   let optionSets = [];
-  let colourFinishes = [];
-  let colourTiles = [];
-  let colourMaterialLinks = [];
+  let colourRows = [];
 
   try {
     const { data } = await supabase
@@ -68,28 +67,9 @@ export default async function EditProductPage({ params }) {
   }
 
   try {
-    const [finishResult, tileResult, materialResult] = await Promise.all([
-      supabase
-        .from("pcd_colour_finishes")
-        .select("*")
-        .eq("is_active", true)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true }),
-      supabase
-        .from("pcd_colour_tiles")
-        .select("*")
-        .eq("is_active", true)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true }),
-      supabase.from("pcd_colour_tile_materials").select("*"),
-    ]);
-    colourFinishes = finishResult.data || [];
-    colourTiles = tileResult.data || [];
-    colourMaterialLinks = materialResult.data || [];
+    colourRows = await getDatabaseColourRows(supabase, { activeOnly: true });
   } catch (error) {
-    colourFinishes = [];
-    colourTiles = [];
-    colourMaterialLinks = [];
+    colourRows = [];
   }
 
   return (
@@ -100,9 +80,7 @@ export default async function EditProductPage({ params }) {
         initialImages={images || []}
         initialQuoteConfig={quoteConfig}
         initialOptionSets={optionSets}
-        initialColourFinishes={colourFinishes}
-        initialColourTiles={colourTiles}
-        initialColourMaterialLinks={colourMaterialLinks}
+        initialColourRows={colourRows}
       />
     </AdminShell>
   );

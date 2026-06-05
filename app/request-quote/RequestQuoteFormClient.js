@@ -6,11 +6,13 @@ import styles from "../contact/contact.module.css";
 import {
   CABINET_BRANDS,
   EDGE_PROFILES,
+  MATERIAL_OPTIONS,
   MATERIALS_BY_TYPE,
   PRODUCT_TYPES,
-  PROFILE_NAMES_BY_TYPE,
-  PROFILE_TYPES,
-  colourOptionsForMaterial,
+  isProfileSelectionAvailable,
+  profileNamesForSelection,
+  profileTypesForSelection,
+  thicknessOptionsForMaterial,
 } from "./quote-form-data";
 
 function emptyItem(id) {
@@ -18,6 +20,7 @@ function emptyItem(id) {
     id,
     type: "",
     material: "",
+    thickness: "",
     width: "",
     height: "",
     qty: "1",
@@ -44,7 +47,7 @@ function numberOrUndefined(raw) {
 }
 
 function hasLineValue(item) {
-  return Boolean(item.type || item.material || item.width || item.height || item.colour || item.edgeMould || item.profile);
+  return Boolean(item.type || item.material || item.thickness || item.width || item.height || item.colour || item.edgeMould || item.profile);
 }
 
 function sizeText(item) {
@@ -58,8 +61,7 @@ function ColourCombobox({ item, onChange }) {
   const [menuStyle, setMenuStyle] = useState({});
   const [databaseOptions, setDatabaseOptions] = useState(null);
   const wrapRef = useRef(null);
-  const fallbackOptions = useMemo(() => colourOptionsForMaterial(item.material), [item.material]);
-  const options = databaseOptions?.length ? databaseOptions : fallbackOptions;
+  const options = databaseOptions || [];
   const cleanedQuery = query.trim().toLowerCase();
   const visibleOptions =
     cleanedQuery.length >= 3
@@ -68,23 +70,23 @@ function ColourCombobox({ item, onChange }) {
 
   useEffect(() => {
     setQuery(item.colour || "");
-  }, [item.colour, item.material]);
+  }, [item.colour, item.material, item.thickness]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadDatabaseColours() {
       setDatabaseOptions(null);
-      if (!item.material) return;
+      if (!item.material || !item.thickness) return;
 
       try {
-        const response = await fetch(`/api/colour-library?material=${encodeURIComponent(item.material)}`);
+        const response = await fetch(`/api/colour-library?material=${encodeURIComponent(item.material)}&thickness=${encodeURIComponent(item.thickness)}`);
         const payload = await response.json();
-        if (!cancelled && payload?.colourFamily?.groups?.length) {
-          setDatabaseOptions(optionsFromColourFamily(payload.colourFamily));
+        if (!cancelled) {
+          setDatabaseOptions(payload?.colourFamily?.groups?.length ? optionsFromColourFamily(payload.colourFamily) : []);
         }
       } catch (error) {
-        if (!cancelled) setDatabaseOptions(null);
+        if (!cancelled) setDatabaseOptions([]);
       }
     }
 
@@ -92,7 +94,7 @@ function ColourCombobox({ item, onChange }) {
     return () => {
       cancelled = true;
     };
-  }, [item.material]);
+  }, [item.material, item.thickness]);
 
   useEffect(() => {
     if (!open || !wrapRef.current) return;
@@ -129,8 +131,8 @@ function ColourCombobox({ item, onChange }) {
   return (
     <div className={styles.colourCombo} ref={wrapRef}>
       <input
-        disabled={!item.material}
-        placeholder={item.material ? "Colour" : "Select material first"}
+        disabled={!item.material || !item.thickness}
+        placeholder={item.material && item.thickness ? "Colour" : "Select material and thickness first"}
         type="text"
         value={query}
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
@@ -140,19 +142,19 @@ function ColourCombobox({ item, onChange }) {
           setOpen(true);
           onChange({ colour: nextQuery, finish: "", colourSrc: "" });
         }}
-        onFocus={() => item.material && setOpen(true)}
+        onFocus={() => item.material && item.thickness && setOpen(true)}
       />
       <button
         aria-label="Open colour options"
         className={styles.colourComboButton}
-        disabled={!item.material}
+        disabled={!item.material || !item.thickness}
         type="button"
         onMouseDown={(event) => {
           event.preventDefault();
-          if (item.material) setOpen((current) => !current);
+          if (item.material && item.thickness) setOpen((current) => !current);
         }}
       />
-      {open && item.material ? (
+      {open && item.material && item.thickness ? (
         <div className={styles.colourMenu} style={menuStyle}>
           {visibleOptions.length ? (
             visibleOptions.map((option) => (
@@ -189,12 +191,6 @@ export default function RequestQuoteFormClient() {
         const next = { ...item, ...patch };
 
         if (Object.prototype.hasOwnProperty.call(patch, "type")) {
-          next.material = "";
-          next.finish = "";
-          next.colour = "";
-          next.colourSrc = "";
-          next.profileType = "";
-          next.profile = "";
           if (patch.type !== "Door") {
             next.preDrill = false;
             next.hinges = false;
@@ -203,6 +199,7 @@ export default function RequestQuoteFormClient() {
         }
 
         if (Object.prototype.hasOwnProperty.call(patch, "material")) {
+          next.thickness = "";
           next.finish = "";
           next.colour = "";
           next.colourSrc = "";
@@ -213,6 +210,15 @@ export default function RequestQuoteFormClient() {
         }
 
         if (Object.prototype.hasOwnProperty.call(patch, "profileType")) {
+          next.profile = "";
+        }
+
+        if (
+          (Object.prototype.hasOwnProperty.call(patch, "thickness") ||
+            Object.prototype.hasOwnProperty.call(patch, "material")) &&
+          !isProfileSelectionAvailable(next.profileType, next.profile, next.material, next.thickness)
+        ) {
+          next.profileType = "";
           next.profile = "";
         }
 
@@ -277,6 +283,7 @@ export default function RequestQuoteFormClient() {
       productType: item.type,
       productName: item.type || "Cabinetry item",
       material: item.material,
+      thickness: item.thickness,
       finish: item.finish || item.material,
       colour: item.finish && item.colour ? `${item.finish} - ${item.colour}` : item.colour,
       profileType: item.profileType,
@@ -375,13 +382,15 @@ export default function RequestQuoteFormClient() {
         </div>
         <div className={styles.productTableScroller}>
           <div className={`${styles.productGrid} ${styles.productTableHead}`}>
-            <div>#</div><div>Type</div><div>Material</div><div>W x H (mm)</div><div>Colour</div><div>Qty</div><div>Edge profile</div><div>Profile type</div><div>Profile name</div><div>Drill holes?</div><div>Hinge supply?</div><div>Hinge qty</div><div>Actions</div>
+            <div>#</div><div>Type</div><div>Material</div><div>Thickness</div><div>W x H (mm)</div><div>Colour</div><div>Qty</div><div>Edge profile</div><div>Profile type</div><div>Profile name</div><div>Drill holes?</div><div>Hinge supply?</div><div>Hinge qty</div><div>Actions</div>
           </div>
           {items.map((item, index) => {
             const editing = editingId === item.id;
-            const materialOptions = MATERIALS_BY_TYPE[item.type] || [];
-            const showProfiles = item.material === "Thermolaminate" && item.type !== "Panel" && item.type !== "Table top";
-            const profileNames = PROFILE_NAMES_BY_TYPE[item.profileType] || [];
+            const materialOptions = MATERIALS_BY_TYPE[item.type] || MATERIAL_OPTIONS;
+            const thicknessOptions = thicknessOptionsForMaterial(item.material);
+            const showProfiles = item.material === "Thermolaminate";
+            const profileTypes = profileTypesForSelection(item.material, item.thickness);
+            const profileNames = profileNamesForSelection(item.profileType, item.material, item.thickness);
             const hingesApplicable = item.type === "Door";
 
             return (
@@ -396,9 +405,15 @@ export default function RequestQuoteFormClient() {
                       </select>
                     </div>
                     <div className={styles.inlineField}>
-                      <select disabled={!item.type} value={item.material} onChange={(event) => updateItem(item.id, { material: event.target.value })}>
-                        <option value="" disabled>{item.type ? "Material" : "Select type first"}</option>
+                      <select value={item.material} onChange={(event) => updateItem(item.id, { material: event.target.value })}>
+                        <option value="" disabled>Material</option>
                         {materialOptions.map((material) => <option key={material}>{material}</option>)}
+                      </select>
+                    </div>
+                    <div className={styles.inlineField}>
+                      <select disabled={!item.material} value={item.thickness} onChange={(event) => updateItem(item.id, { thickness: event.target.value })}>
+                        <option value="" disabled>{item.material ? "Thickness" : "Select material first"}</option>
+                        {thicknessOptions.map((thickness) => <option key={thickness}>{thickness}</option>)}
                       </select>
                     </div>
                     <div className={styles.inlineSize}>
@@ -419,7 +434,7 @@ export default function RequestQuoteFormClient() {
                       {showProfiles ? (
                         <select value={item.profileType} onChange={(event) => updateItem(item.id, { profileType: event.target.value })}>
                           <option value="">Profile type</option>
-                          {PROFILE_TYPES.map((type) => <option key={type}>{type}</option>)}
+                          {profileTypes.map((type) => <option key={type}>{type}</option>)}
                         </select>
                       ) : <span className={styles.notApplicable}>N/A</span>}
                     </div>
@@ -458,6 +473,7 @@ export default function RequestQuoteFormClient() {
                   <>
                     <div>{item.type || <span className={styles.tableEmpty}>-</span>}</div>
                     <div className={styles.tableMuted}>{item.material || "-"}</div>
+                    <div className={styles.tableMuted}>{item.thickness || "-"}</div>
                     <div className={styles.tableMuted}>{sizeText(item) || "-"}</div>
                     <div className={styles.colourRead}>{item.colourSrc ? <img alt="" src={item.colourSrc} /> : null}<span>{item.colour || "-"}</span></div>
                     <div>{item.qty || "1"}</div>

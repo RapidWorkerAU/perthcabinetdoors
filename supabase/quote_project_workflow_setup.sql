@@ -124,6 +124,8 @@ create table if not exists public.pcd_project_line_items (
   sort_order integer not null default 0,
   title text,
   description text,
+  material text,
+  thickness text,
   width_mm numeric(12,2),
   height_mm numeric(12,2),
   finish text,

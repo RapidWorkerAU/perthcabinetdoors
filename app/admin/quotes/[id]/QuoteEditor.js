@@ -8,11 +8,13 @@ import { optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { calculateQuoteLine, calculateQuoteTotals, formatMoney, GST_RATE } from "../../../../lib/pcd-quote-utils";
 import {
   EDGE_PROFILES,
+  MATERIAL_OPTIONS,
   MATERIALS_BY_TYPE,
   PRODUCT_TYPES,
-  PROFILE_NAMES_BY_TYPE,
-  PROFILE_TYPES,
-  colourOptionsForMaterial,
+  isProfileSelectionAvailable,
+  profileNamesForSelection,
+  profileTypesForSelection,
+  thicknessOptionsForMaterial,
 } from "../../../request-quote/quote-form-data";
 import styles from "../../admin-shell.module.css";
 
@@ -29,6 +31,7 @@ const emptyLine = {
   product_type: "",
   product_name: "",
   material: "",
+  thickness: "",
   width_mm: "",
   height_mm: "",
   finish: "",
@@ -94,6 +97,7 @@ function linesFromQuote(quote) {
       ...line,
       product_type: line.product_type ?? "",
       material: line.material ?? "",
+      thickness: line.thickness ?? "",
       width_mm: line.width_mm ?? "",
       height_mm: line.height_mm ?? "",
       profile_type: line.profile_type ?? "",
@@ -157,8 +161,7 @@ function lineValue(value, fallback = "-") {
 }
 
 function colourSrcForLine(line) {
-  const options = colourOptionsForMaterial(line.material);
-  return options.find((option) => option.name === line.colour || option.label === line.colour)?.src || "";
+  return line.colour_src || "";
 }
 
 function formatFileSize(bytes) {
@@ -286,24 +289,23 @@ function QuoteImageCombobox({ disabled = false, placeholder, value, options, onC
 
 function QuoteColourCombobox({ disabled = false, line, onChange }) {
   const [databaseOptions, setDatabaseOptions] = useState(null);
-  const fallbackOptions = useMemo(() => colourOptionsForMaterial(line.material), [line.material]);
-  const options = databaseOptions?.length ? databaseOptions : fallbackOptions;
+  const options = databaseOptions || [];
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadDatabaseColours() {
       setDatabaseOptions(null);
-      if (!line.material) return;
+      if (!line.material || !line.thickness) return;
 
       try {
-        const response = await fetch(`/api/colour-library?material=${encodeURIComponent(line.material)}`);
+        const response = await fetch(`/api/colour-library?material=${encodeURIComponent(line.material)}&thickness=${encodeURIComponent(line.thickness)}`);
         const payload = await response.json();
-        if (!cancelled && payload?.colourFamily?.groups?.length) {
-          setDatabaseOptions(optionsFromColourFamily(payload.colourFamily));
+        if (!cancelled) {
+          setDatabaseOptions(payload?.colourFamily?.groups?.length ? optionsFromColourFamily(payload.colourFamily) : []);
         }
       } catch (error) {
-        if (!cancelled) setDatabaseOptions(null);
+        if (!cancelled) setDatabaseOptions([]);
       }
     }
 
@@ -311,12 +313,12 @@ function QuoteColourCombobox({ disabled = false, line, onChange }) {
     return () => {
       cancelled = true;
     };
-  }, [line.material]);
+  }, [line.material, line.thickness]);
 
   return (
     <QuoteImageCombobox
-      disabled={disabled || !line.material}
-      placeholder={line.material ? "Colour" : "Select material first"}
+      disabled={disabled || !line.material || !line.thickness}
+      placeholder={line.material && line.thickness ? "Colour" : "Select material and thickness first"}
       value={line.colour}
       options={options}
       onChange={(option) => onChange({ colour: option.name || option.label, finish: option.finish || "" })}
@@ -444,12 +446,6 @@ export default function QuoteEditor({ quoteId }) {
 
         if (Object.prototype.hasOwnProperty.call(patch, "product_type")) {
           next.product_name = patch.product_type || "";
-          next.material = "";
-          next.finish = "";
-          next.colour = "";
-          next.profile_type = "";
-          next.profile = "";
-          next.edge_mould = "";
           if (patch.product_type !== "Door") {
             next.hinge_holes = false;
             next.hinge_supply = false;
@@ -458,6 +454,7 @@ export default function QuoteEditor({ quoteId }) {
         }
 
         if (Object.prototype.hasOwnProperty.call(patch, "material")) {
+          next.thickness = "";
           next.finish = "";
           next.colour = "";
           if (patch.material !== "Thermolaminate") {
@@ -467,6 +464,15 @@ export default function QuoteEditor({ quoteId }) {
         }
 
         if (Object.prototype.hasOwnProperty.call(patch, "profile_type")) {
+          next.profile = "";
+        }
+
+        if (
+          (Object.prototype.hasOwnProperty.call(patch, "thickness") ||
+            Object.prototype.hasOwnProperty.call(patch, "material")) &&
+          !isProfileSelectionAvailable(next.profile_type, next.profile, next.material, next.thickness)
+        ) {
+          next.profile_type = "";
           next.profile = "";
         }
 
@@ -740,6 +746,7 @@ export default function QuoteEditor({ quoteId }) {
             <div>#</div>
             <div>Type</div>
             <div>Material</div>
+            <div>Thickness</div>
             <div>W x H (mm)</div>
             <div>Colour</div>
             <div>Qty</div>
@@ -758,9 +765,11 @@ export default function QuoteEditor({ quoteId }) {
           {form.lines.map((line, index) => {
             const isEditable = editableLineIndex === index;
             const calculated = calculateQuoteLine(line);
-            const materialOptions = MATERIALS_BY_TYPE[line.product_type] || [];
-            const showProfiles = line.material === "Thermolaminate" && line.product_type !== "Panel" && line.product_type !== "Table top";
-            const profileNames = PROFILE_NAMES_BY_TYPE[line.profile_type] || [];
+            const materialOptions = MATERIALS_BY_TYPE[line.product_type] || MATERIAL_OPTIONS;
+            const thicknessOptions = thicknessOptionsForMaterial(line.material);
+            const showProfiles = line.material === "Thermolaminate";
+            const profileTypes = profileTypesForSelection(line.material, line.thickness);
+            const profileNames = profileNamesForSelection(line.profile_type, line.material, line.thickness);
             const edgeOptions = EDGE_PROFILES.map((edge) => ({
               name: edge,
               label: edge,
@@ -787,9 +796,15 @@ export default function QuoteEditor({ quoteId }) {
                       </select>
                     </div>
                     <div className={styles.quoteItemField}>
-                      <select disabled={!line.product_type} value={line.material} onChange={(event) => updateProductLine(index, { material: event.target.value })}>
-                        <option value="" disabled>{line.product_type ? "Material" : "Select type first"}</option>
+                      <select value={line.material} onChange={(event) => updateProductLine(index, { material: event.target.value })}>
+                        <option value="" disabled>Material</option>
                         {materialOptions.map((material) => <option key={material}>{material}</option>)}
+                      </select>
+                    </div>
+                    <div className={styles.quoteItemField}>
+                      <select disabled={!line.material} value={line.thickness} onChange={(event) => updateProductLine(index, { thickness: event.target.value })}>
+                        <option value="" disabled>{line.material ? "Thickness" : "Select material first"}</option>
+                        {thicknessOptions.map((thickness) => <option key={thickness}>{thickness}</option>)}
                       </select>
                     </div>
                     <div className={styles.quoteItemSize}>
@@ -814,7 +829,7 @@ export default function QuoteEditor({ quoteId }) {
                       {showProfiles ? (
                         <select value={line.profile_type} onChange={(event) => updateProductLine(index, { profile_type: event.target.value })}>
                           <option value="">Profile type</option>
-                          {PROFILE_TYPES.map((type) => <option key={type}>{type}</option>)}
+                          {profileTypes.map((type) => <option key={type}>{type}</option>)}
                         </select>
                       ) : <span className={styles.notApplicable}>N/A</span>}
                     </div>
@@ -863,13 +878,23 @@ export default function QuoteEditor({ quoteId }) {
                       <button type="button" className={styles.rowEditButton} onClick={saveLine} disabled={isSaving}>
                         {isSaving ? "Saving..." : "Save"}
                       </button>
-                      <button type="button" className={styles.rowDeleteButton} onClick={() => removeLine(index)} disabled={isSaving}>Delete</button>
+                      <button
+                        type="button"
+                        className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
+                        onClick={() => removeLine(index)}
+                        disabled={isSaving}
+                        aria-label={`Delete quote line ${index + 1}`}
+                        title="Delete"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </>
                 ) : (
                   <>
                     <div className={styles.quoteReadCell}>{lineValue(line.product_type)}</div>
                     <div className={styles.quoteReadCell}>{lineValue(line.material)}</div>
+                    <div className={styles.quoteReadCell}>{lineValue(line.thickness)}</div>
                     <div className={styles.quoteReadCell}>{lineValue(quoteLineSizeText(line))}</div>
                     <div className={styles.quoteColourRead}>{colourSrc ? <img alt="" src={colourSrc} /> : null}<span>{lineValue(line.colour)}</span></div>
                     <div className={styles.quoteReadCell}>{line.qty || "1"}</div>
@@ -884,8 +909,26 @@ export default function QuoteEditor({ quoteId }) {
                     <div className={styles.quoteItemTotal}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</div>
                     <div className={styles.quoteItemTotal}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</div>
                     <div className={styles.quoteItemActions}>
-                      <button type="button" className={styles.rowEditButton} onClick={() => editLine(index)} disabled={isSaving}>Edit</button>
-                      <button type="button" className={styles.rowDeleteButton} onClick={() => removeLine(index)} disabled={isSaving}>Delete</button>
+                      <button
+                        type="button"
+                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
+                        onClick={() => editLine(index)}
+                        disabled={isSaving}
+                        aria-label={`Edit quote line ${index + 1}`}
+                        title="Edit"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
+                        onClick={() => removeLine(index)}
+                        disabled={isSaving}
+                        aria-label={`Delete quote line ${index + 1}`}
+                        title="Delete"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </>
                 )}
@@ -1018,7 +1061,15 @@ export default function QuoteEditor({ quoteId }) {
                 <td>{attachment.created_at ? new Date(attachment.created_at).toLocaleString("en-AU") : "-"}</td>
                 <td className={styles.rowActions}>
                   <a className={styles.rowEditButton} href={attachment.file_url} target="_blank" rel="noreferrer">View</a>
-                  <button type="button" className={styles.rowDeleteButton} onClick={() => deleteAttachment(attachment)}>Delete</button>
+                  <button
+                    type="button"
+                    className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
+                    onClick={() => deleteAttachment(attachment)}
+                    aria-label={`Delete ${attachment.file_name}`}
+                    title="Delete"
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}

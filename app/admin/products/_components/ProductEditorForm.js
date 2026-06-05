@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
-import { colourGroupsForMaterial } from "../../../products/product-data";
-import { EDGE_PROFILES, PROFILE_NAMES_BY_TYPE, PROFILE_TYPES } from "../../../request-quote/quote-form-data";
-import { buildColourFamilyFromRows, COLOUR_MATERIALS } from "../../../../lib/pcd-colour-library";
+import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../request-quote/quote-form-data";
+import { buildColourFamilyFromLibraryRows, COLOUR_MATERIALS, inferThicknessFromMaterial } from "../../../../lib/pcd-colour-library";
 import styles from "../../admin-shell.module.css";
 
 function normalizeSlug(value) {
@@ -264,9 +263,7 @@ export default function ProductEditorForm({
   initialImages,
   initialQuoteConfig = null,
   initialOptionSets = [],
-  initialColourFinishes = [],
-  initialColourTiles = [],
-  initialColourMaterialLinks = [],
+  initialColourRows = [],
 }) {
   const router = useRouter();
   const fileInputRef = useRef(null);
@@ -337,7 +334,7 @@ export default function ProductEditorForm({
   const [previewMode, setPreviewMode] = useState("page");
   const [activeEditSection, setActiveEditSection] = useState("");
   const [adminOptionViewerMode, setAdminOptionViewerMode] = useState("colours");
-  const [activeAdminProfileType, setActiveAdminProfileType] = useState(PROFILE_TYPES[0] || "");
+  const [activeAdminProfileType, setActiveAdminProfileType] = useState("");
   const [activeAdminProfile, setActiveAdminProfile] = useState(0);
   const [activeAdminEdge, setActiveAdminEdge] = useState(0);
 
@@ -722,16 +719,17 @@ export default function ProductEditorForm({
   const uploadPercent = uploadTotalCount ? Math.round((uploadDoneCount / uploadTotalCount) * 100) : 0;
   const customInfoCards = normalizeInfoCards(infoCards).filter((card) => card.title || card.body || card.text);
   const visibleInfoCards = customInfoCards.length ? customInfoCards : defaultInfoCardsForType(type);
-  const databaseColourFamily = buildColourFamilyFromRows({
-    finishes: initialColourFinishes,
-    tiles: initialColourTiles,
-    materialRows: initialColourMaterialLinks,
-    material,
-  });
-  const colourFamily = databaseColourFamily?.groups?.length ? databaseColourFamily : colourGroupsForMaterial(material);
+  const colourFamily = buildColourFamilyFromLibraryRows({ rows: initialColourRows, material }) || {
+    label: "Colour library",
+    note: "",
+    groups: [],
+  };
   const selectedFinish = colourFamily.groups[0] || { label: "Finish", colours: [] };
   const selectedColour = selectedFinish.colours[0] || { name: "Colour", src: "" };
-  const adminProfileOptions = PROFILE_NAMES_BY_TYPE[activeAdminProfileType] || [];
+  const productThickness = inferThicknessFromMaterial(materialLabel || material);
+  const adminProfileTypes = profileTypesForSelection(material === "thermolaminate" ? "Thermolaminate" : "", productThickness);
+  const resolvedAdminProfileType = adminProfileTypes.includes(activeAdminProfileType) ? activeAdminProfileType : adminProfileTypes[0] || "";
+  const adminProfileOptions = profileNamesForSelection(resolvedAdminProfileType, "Thermolaminate", productThickness);
   const selectedAdminProfile = adminProfileOptions[activeAdminProfile] || adminProfileOptions[0];
   const selectedAdminEdge = EDGE_PROFILES[activeAdminEdge] || EDGE_PROFILES[0];
 
@@ -877,15 +875,15 @@ export default function ProductEditorForm({
             </div>
             {colourFamily.groups.length ? (
               <div className={styles.productColourLibraryGroups}>
-                {colourFamily.groups.map((finish) => (
-                  <div className={styles.productColourLibraryGroup} key={finish.label}>
+                {colourFamily.groups.map((finish, finishIndex) => (
+                  <div className={styles.productColourLibraryGroup} key={`${finish.label}-${finishIndex}`}>
                     <div>
                       <strong>{finish.label}</strong>
                       <span>{finish.colours.length} colour{finish.colours.length === 1 ? "" : "s"}</span>
                     </div>
                     <div className={styles.productColourLibrarySwatches}>
-                      {finish.colours.slice(0, 14).map((colour) => (
-                        <span key={`${finish.label}-${colour.name}`} title={colour.name}>
+                      {finish.colours.slice(0, 14).map((colour, colourIndex) => (
+                        <span key={colour.id || `${finish.label}-${colour.name}-${colourIndex}`} title={colour.name}>
                           <img src={colour.src} alt="" />
                         </span>
                       ))}
@@ -909,9 +907,9 @@ export default function ProductEditorForm({
               </div>
             </div>
             <div className={styles.productOptionViewerTabs}>
-              {PROFILE_TYPES.map((profileType) => (
+              {adminProfileTypes.map((profileType) => (
                 <button
-                  className={activeAdminProfileType === profileType ? styles.productOptionViewerTabActive : ""}
+                  className={resolvedAdminProfileType === profileType ? styles.productOptionViewerTabActive : ""}
                   key={profileType}
                   onClick={() => {
                     setActiveAdminProfileType(profileType);
@@ -927,17 +925,17 @@ export default function ProductEditorForm({
               {adminProfileOptions.map((profile, index) => (
                 <button
                   className={activeAdminProfile === index ? styles.productOptionImageTileActive : ""}
-                  key={`${activeAdminProfileType}-${profile}`}
+                  key={`${resolvedAdminProfileType}-${profile}`}
                   onClick={() => setActiveAdminProfile(index)}
                   title={profile}
                   type="button"
                 >
-                  <img src={profileOptionSrc(activeAdminProfileType, profile)} alt="" />
+                  <img src={profileOptionSrc(resolvedAdminProfileType, profile)} alt="" />
                   <span>{profile}</span>
                 </button>
               ))}
             </div>
-            {selectedAdminProfile ? <p>{selectedAdminProfile} - {activeAdminProfileType}</p> : null}
+            {selectedAdminProfile ? <p>{selectedAdminProfile} - {resolvedAdminProfileType}</p> : null}
           </>
         ) : null}
 
@@ -1003,14 +1001,14 @@ export default function ProductEditorForm({
             </div>
             <div className={styles.productPreviewFinishTabs}>
               {colourFamily.groups.map((finish, index) => (
-                <span className={index === 0 ? styles.productPreviewFinishTabActive : ""} key={finish.label}>
+                <span className={index === 0 ? styles.productPreviewFinishTabActive : ""} key={`${finish.label}-${index}`}>
                   {finish.label}
                 </span>
               ))}
             </div>
             <div className={styles.productPreviewSwatches}>
               {selectedFinish.colours.slice(0, 12).map((colour, index) => (
-                <span className={index === 0 ? styles.productPreviewSwatchActive : ""} key={`${selectedFinish.label}-${colour.name}`}>
+                <span className={index === 0 ? styles.productPreviewSwatchActive : ""} key={colour.id || `${selectedFinish.label}-${colour.name}-${index}`}>
                   <img src={colour.src} alt="" />
                 </span>
               ))}
@@ -1031,22 +1029,22 @@ export default function ProductEditorForm({
               {renderEditButton("quote", "Edit options")}
             </div>
             <div className={styles.productPreviewFinishTabs}>
-              {PROFILE_TYPES.map((profileType) => (
-                <span className={activeAdminProfileType === profileType ? styles.productPreviewFinishTabActive : ""} key={profileType}>
+              {adminProfileTypes.map((profileType) => (
+                <span className={resolvedAdminProfileType === profileType ? styles.productPreviewFinishTabActive : ""} key={profileType}>
                   {profileType}
                 </span>
               ))}
             </div>
             <div className={styles.productPreviewProfileGrid}>
               {adminProfileOptions.slice(0, 10).map((profile, index) => (
-                <span className={activeAdminProfile === index ? styles.productPreviewOptionTileActive : ""} key={`${activeAdminProfileType}-${profile}`}>
-                  <img src={profileOptionSrc(activeAdminProfileType, profile)} alt="" />
+                <span className={activeAdminProfile === index ? styles.productPreviewOptionTileActive : ""} key={`${resolvedAdminProfileType}-${profile}`}>
+                  <img src={profileOptionSrc(resolvedAdminProfileType, profile)} alt="" />
                   <small>{profile}</small>
                 </span>
               ))}
             </div>
             {selectedAdminProfile ? (
-              <div className={styles.productPreviewColourName}>{selectedAdminProfile} <span>{activeAdminProfileType}</span></div>
+              <div className={styles.productPreviewColourName}>{selectedAdminProfile} <span>{resolvedAdminProfileType}</span></div>
             ) : null}
           </div>
         ) : null}
@@ -1254,7 +1252,15 @@ export default function ProductEditorForm({
                 <input className={styles.fieldInput} value={row.description || ""} onChange={(event) => updatePricingRow(index, "description", event.target.value)} placeholder="Description" />
                 <input className={styles.fieldInput} type="number" step="0.01" value={row.price ?? ""} onChange={(event) => updatePricingRow(index, "price", event.target.value)} placeholder="Price" />
                 <label className={styles.checkboxRow}><input type="checkbox" checked={Boolean(row.popular)} onChange={(event) => updatePricingRow(index, "popular", event.target.checked)} /> Popular</label>
-                <button type="button" className={styles.rowDeleteButton} onClick={() => removePricingRow(index)}>Remove</button>
+                <button
+                  type="button"
+                  className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
+                  onClick={() => removePricingRow(index)}
+                  aria-label={`Remove pricing row ${index + 1}`}
+                  title="Remove"
+                >
+                  Remove
+                </button>
               </div>
             ))}
             <button type="button" className={styles.secondaryButton} onClick={addPricingRow}>Add pricing row</button>

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../lib/pcd-quote-utils";
-import { colourOptionsForMaterial } from "../request-quote/quote-form-data";
 import styles from "./quote-public.module.css";
 
 function sortedLines(quote) {
@@ -36,8 +35,7 @@ function assetSlug(value) {
 }
 
 function colourSrcForLine(line) {
-  const options = colourOptionsForMaterial(line.material);
-  return options.find((option) => option.name === line.colour || option.label === line.colour)?.src || "";
+  return line.colour_src || "";
 }
 
 function edgeOptionSrc(label) {

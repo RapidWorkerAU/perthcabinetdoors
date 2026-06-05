@@ -6,23 +6,41 @@ async function orderIdFromParams(params) {
   return resolved?.id;
 }
 
+async function loadOrder(supabase, id) {
+  const { data, error } = await supabase
+    .from("pcd_orders")
+    .select("*, pcd_order_line_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error || !data) {
+    throw error || new Error("Order not found.");
+  }
+
+  const { data: payments, error: paymentsError } = await supabase
+    .from("pcd_order_payments")
+    .select("*")
+    .eq("order_id", id)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (paymentsError) {
+    data.pcd_order_payments = [];
+  } else {
+    data.pcd_order_payments = payments || [];
+  }
+
+  return data;
+}
+
 export async function GET(_request, { params }) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;
 
   try {
     const id = await orderIdFromParams(params);
-    const { data, error } = await context.supabase
-      .from("pcd_orders")
-      .select("*, pcd_order_line_items(*)")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (error || !data) {
-      return Response.json({ ok: false, error: "Order not found." }, { status: 404 });
-    }
-
-    return Response.json({ ok: true, order: data });
+    const order = await loadOrder(context.supabase, id);
+    return Response.json({ ok: true, order });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not load order." }, { status: 500 });
   }
@@ -71,11 +89,12 @@ export async function PATCH(request, { params }) {
       .from("pcd_orders")
       .update(updates)
       .eq("id", id)
-      .select("*, pcd_order_line_items(*)")
+      .select("id")
       .maybeSingle();
 
     if (error || !data) throw error || new Error("Order not found.");
-    return Response.json({ ok: true, order: data });
+    const order = await loadOrder(context.supabase, id);
+    return Response.json({ ok: true, order });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not update order." }, { status: 500 });
   }

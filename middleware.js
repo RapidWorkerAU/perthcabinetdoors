@@ -2,18 +2,6 @@ import { NextResponse } from "next/server";
 
 const PUBLIC_FILE = /\.(.*)$/;
 
-function clearLaunchAccessCookie(response) {
-  response.cookies.set("pcd_launch_access", "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    expires: new Date(0),
-    maxAge: 0,
-  });
-  return response;
-}
-
 function isBypassedPath(pathname) {
   return (
     pathname.startsWith("/admin") ||
@@ -40,7 +28,7 @@ export function middleware(request) {
   if (pathname === "/launch") {
     if (hasLaunchAccess) {
       const nextPath = request.nextUrl.searchParams.get("next") || "/";
-      return clearLaunchAccessCookie(NextResponse.redirect(new URL(nextPath, request.url)));
+      return NextResponse.redirect(new URL(nextPath, request.url));
     }
     return NextResponse.next();
   }
@@ -53,7 +41,7 @@ export function middleware(request) {
     return NextResponse.redirect(launchUrl);
   }
 
-  return clearLaunchAccessCookie(NextResponse.next());
+  return NextResponse.next();
 }
 
 export const config = {

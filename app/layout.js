@@ -1,5 +1,7 @@
 ﻿import "./globals.css";
 
+import ClearLaunchAccessCookie from "./ClearLaunchAccessCookie";
+
 export const metadata = {
   title: "Perth Cabinet Doors",
   description: "Custom cabinet doors made in Perth",
@@ -17,7 +19,10 @@ export default function RootLayout({ children }) {
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <ClearLaunchAccessCookie />
+        {children}
+      </body>
     </html>
   );
 }

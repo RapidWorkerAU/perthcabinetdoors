@@ -275,7 +275,13 @@ export default function QuotesManager() {
                 <div key={index} className={styles.quoteLine}>
                   <div className={styles.quoteLineTop}>
                     <strong>Line {index + 1}</strong>
-                    <button type="button" className={styles.rowDeleteButton} onClick={() => removeLine(index)}>
+                    <button
+                      type="button"
+                      className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
+                      onClick={() => removeLine(index)}
+                      aria-label={`Remove quote line ${index + 1}`}
+                      title="Remove"
+                    >
                       Remove
                     </button>
                   </div>

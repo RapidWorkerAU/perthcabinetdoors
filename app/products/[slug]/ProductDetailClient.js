@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { colourGroupsForMaterial } from "../product-data";
-import { EDGE_PROFILES, PROFILE_NAMES_BY_TYPE, PROFILE_TYPES } from "../../request-quote/quote-form-data";
+import { inferThicknessFromMaterial } from "../../../lib/pcd-colour-library";
+import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../request-quote/quote-form-data";
 import styles from "./product-detail.module.css";
 
 const THUMBS = ["Front view", "Side profile", "Close-up", "Installed"];
@@ -30,8 +30,7 @@ function deliveryText(product) {
 }
 
 export default function ProductDetailClient({ product, relatedProducts, colourFamily: databaseColourFamily }) {
-  const fallbackColourFamily = colourGroupsForMaterial(product.material);
-  const colourFamily = databaseColourFamily?.groups?.length ? databaseColourFamily : fallbackColourFamily;
+  const colourFamily = databaseColourFamily?.groups?.length ? databaseColourFamily : { label: "Colour library", note: "", groups: [] };
   const galleryImages = product.galleryImages || [];
   const thumbs = galleryImages.length
     ? galleryImages.map((_, index) => `Image ${index + 1}`)
@@ -40,14 +39,17 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
   const [activeFinish, setActiveFinish] = useState(0);
   const [activeColour, setActiveColour] = useState(0);
   const [viewerMode, setViewerMode] = useState("colours");
-  const [activeProfileType, setActiveProfileType] = useState(PROFILE_TYPES[0] || "");
+  const [activeProfileType, setActiveProfileType] = useState("");
   const [activeProfile, setActiveProfile] = useState(0);
   const [activeEdge, setActiveEdge] = useState(0);
   const [enquiryStatus, setEnquiryStatus] = useState("");
   const [isSendingEnquiry, setIsSendingEnquiry] = useState(false);
-  const selectedFinish = colourFamily.groups[activeFinish] || colourFamily.groups[0];
-  const selectedColour = selectedFinish.colours[activeColour] || selectedFinish.colours[0];
-  const profileOptions = PROFILE_NAMES_BY_TYPE[activeProfileType] || [];
+  const selectedFinish = colourFamily.groups[activeFinish] || colourFamily.groups[0] || { label: "Finish", colours: [] };
+  const selectedColour = selectedFinish.colours[activeColour] || selectedFinish.colours[0] || { name: "Colour", src: "" };
+  const productThickness = inferThicknessFromMaterial(product.materialLabel || product.material);
+  const availableProfileTypes = profileTypesForSelection(product.material === "thermolaminate" ? "Thermolaminate" : "", productThickness);
+  const resolvedProfileType = availableProfileTypes.includes(activeProfileType) ? activeProfileType : availableProfileTypes[0] || "";
+  const profileOptions = profileNamesForSelection(resolvedProfileType, "Thermolaminate", productThickness);
   const selectedProfile = profileOptions[activeProfile] || profileOptions[0];
   const selectedEdge = EDGE_PROFILES[activeEdge] || EDGE_PROFILES[0];
   const showThermolaminateProfiles = product.material === "thermolaminate";
@@ -90,6 +92,7 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
               productType: product.typeLabel,
               productName: product.name,
               material: product.materialLabel,
+              thickness: inferThicknessFromMaterial(product.materialLabel || product.material),
               width,
               height,
               qty,
@@ -199,7 +202,7 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
                     {colourFamily.groups.map((finish, index) => (
                       <button
                         className={`${styles.finishTab} ${activeFinish === index ? styles.active : ""}`}
-                        key={finish.label}
+                        key={`${finish.label}-${index}`}
                         onClick={() => selectFinish(index)}
                         type="button"
                       >
@@ -212,7 +215,7 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
                       <button
                         aria-label={colour.name}
                         className={`${styles.swatch} ${activeColour === index ? styles.active : ""}`}
-                        key={`${selectedFinish.label}-${colour.name}`}
+                        key={colour.id || `${selectedFinish.label}-${colour.name}-${index}`}
                         onClick={() => setActiveColour(index)}
                         title={colour.name}
                         type="button"
@@ -232,9 +235,9 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
                 <div className={styles.viewerPanel}>
                   <div className={styles.sectionLabel}>Front profile type</div>
                   <div className={styles.finishTabs}>
-                    {PROFILE_TYPES.map((profileType) => (
+                    {availableProfileTypes.map((profileType) => (
                       <button
-                        className={`${styles.finishTab} ${activeProfileType === profileType ? styles.active : ""}`}
+                        className={`${styles.finishTab} ${resolvedProfileType === profileType ? styles.active : ""}`}
                         key={profileType}
                         onClick={() => selectProfileType(profileType)}
                         type="button"
@@ -248,19 +251,19 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
                       <button
                         aria-label={profile}
                         className={`${styles.profileSwatch} ${activeProfile === index ? styles.active : ""}`}
-                        key={`${activeProfileType}-${profile}`}
+                        key={`${resolvedProfileType}-${profile}`}
                         onClick={() => setActiveProfile(index)}
                         title={profile}
                         type="button"
                       >
-                        <img src={profileOptionSrc(activeProfileType, profile)} alt="" />
+                        <img src={profileOptionSrc(resolvedProfileType, profile)} alt="" />
                         <span>{profile}</span>
                       </button>
                     ))}
                   </div>
                   {selectedProfile ? (
                     <div className={styles.colourName}>
-                      {selectedProfile} <span>{activeProfileType}</span>
+                      {selectedProfile} <span>{resolvedProfileType}</span>
                     </div>
                   ) : null}
                 </div>

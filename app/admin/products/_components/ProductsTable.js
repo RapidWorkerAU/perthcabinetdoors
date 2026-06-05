@@ -133,8 +133,10 @@ export default function ProductsTable({ initialProducts }) {
                     <div className={styles.rowActions}>
                       <Link
                         href={`/admin/products/${product.id}/edit`}
-                        className={styles.rowEditButton}
+                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
                         onClick={(event) => event.stopPropagation()}
+                        aria-label={`Edit ${product.name}`}
+                        title="Edit"
                       >
                         Edit
                       </Link>
@@ -147,11 +149,13 @@ export default function ProductsTable({ initialProducts }) {
                       </Link>
                       <button
                         type="button"
-                        className={styles.rowDeleteButton}
+                        className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           setTarget(product);
                         }}
+                        aria-label={`Delete ${product.name}`}
+                        title="Delete"
                       >
                         Delete
                       </button>

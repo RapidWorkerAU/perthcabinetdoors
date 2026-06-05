@@ -3,58 +3,73 @@
 import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
-import { COLOUR_MATERIALS } from "../../../lib/pcd-colour-library";
-import { colourGroupsForMaterial } from "../../products/product-data";
+import { COLOUR_MATERIALS, COLOUR_ORDER_TYPES, materialLabelForType, normaliseOrderTypes, orderTypesLabel, thicknessOptionsForMaterial } from "../../../lib/pcd-colour-library";
 import styles from "../admin-shell.module.css";
 
-const MATERIAL_KEYS = COLOUR_MATERIALS.map((material) => material.key);
-
-function emptyTileDraft(finishes = []) {
-  return {
-    id: null,
-    finish_id: finishes[0]?.id || "",
-    new_finish_name: "",
-    supplier: "Polytec",
-    name: "",
-    image_url: "",
-    original_image_url: "",
-    image_path: null,
-    sort_order: 0,
-    material_key: "",
-    original_material_key: "",
-    cost_per_sqm_ex_gst: "",
-    is_active: true,
-  };
-}
+const emptyDraft = {
+  id: null,
+  name: "",
+  image_url: "",
+  original_image_url: "",
+  image_path: "",
+  supplier_name: "Polytec",
+  material_type: "decorative board",
+  thickness: "18mm",
+  finish_type: "",
+  order_type: "supply board",
+  order_types: ["supply board"],
+  cost_per_board_ex_gst: "",
+  cost_per_sqm_ex_gst: "",
+  sort_order: 0,
+  is_active: true,
+};
 
 function cleanFileName(name) {
-  return String(name || "colour-tile")
+  return String(name || "colour-library")
     .toLowerCase()
     .replace(/[^a-z0-9._-]/g, "-")
     .replace(/-+/g, "-");
 }
 
-function materialLabel(key) {
-  return COLOUR_MATERIALS.find((material) => material.key === key)?.label || key || "-";
+function imageSourceLabel(row) {
+  if (row.image_path) return "Uploaded";
+  if (String(row.image_url || "").startsWith("/images/")) return "Website image";
+  if (row.image_url) return "External URL";
+  return "-";
 }
 
-function imageSourceLabel(tile) {
-  if (tile.image_path) return "Uploaded";
-  if (String(tile.image_url || "").startsWith("/images/")) return "Website image";
-  return "External URL";
+function rowFromDraft(draft, image) {
+  return {
+    name: draft.name.trim(),
+    image_url: image.imageUrl,
+    image_path: image.imagePath || draft.image_path || null,
+    supplier_name: draft.supplier_name.trim() || "Polytec",
+    material_type: draft.material_type,
+    thickness: draft.thickness,
+    finish_type: draft.finish_type.trim(),
+    order_type: draft.order_types[0] || "supply board",
+    order_types: draft.order_types.length ? draft.order_types : ["supply board"],
+    cost_per_board_ex_gst:
+      draft.cost_per_board_ex_gst === "" || draft.cost_per_board_ex_gst == null
+        ? 0
+        : Number(draft.cost_per_board_ex_gst),
+    cost_per_sqm_ex_gst:
+      draft.cost_per_sqm_ex_gst === "" || draft.cost_per_sqm_ex_gst == null
+        ? 0
+        : Number(draft.cost_per_sqm_ex_gst),
+    sort_order: Number(draft.sort_order || 0),
+    is_active: !!draft.is_active,
+  };
 }
 
-export default function ColourLibraryManager({ initialFinishes, initialTiles, initialMaterialLinks }) {
+export default function ColourLibraryManager({ initialRows = [], initialError = "" }) {
   const fileInputRef = useRef(null);
-  const [finishes, setFinishes] = useState(initialFinishes || []);
-  const [tiles, setTiles] = useState(initialTiles || []);
-  const [materialLinks, setMaterialLinks] = useState(initialMaterialLinks || []);
-  const [tileDraft, setTileDraft] = useState(() => emptyTileDraft(initialFinishes || []));
-  const [feedback, setFeedback] = useState("");
+  const [rows, setRows] = useState(initialRows);
+  const [draft, setDraft] = useState(emptyDraft);
+  const [feedback, setFeedback] = useState(initialError);
   const [isSaving, setIsSaving] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [tileToDelete, setTileToDelete] = useState(null);
+  const [rowToDelete, setRowToDelete] = useState(null);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [openFilter, setOpenFilter] = useState(null);
@@ -62,46 +77,24 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
     supplier: [],
     finish: [],
     material: [],
+    thickness: [],
+    orderType: [],
   });
 
-  const finishMap = useMemo(
-    () => Object.fromEntries(finishes.map((finish) => [finish.id, finish])),
-    [finishes]
-  );
-
-  const tableRows = useMemo(
+  const sortedRows = useMemo(
     () =>
-      tiles
-        .flatMap((tile) => {
-          const links = materialLinks.filter((link) => link.colour_tile_id === tile.id);
-          if (!links.length) {
-            return [
-              {
-                ...tile,
-                finish: finishMap[tile.finish_id],
-                material_key: "",
-                cost_per_sqm_ex_gst: null,
-              },
-            ];
-          }
-
-          return links.map((link) => ({
-            ...tile,
-            finish: finishMap[tile.finish_id],
-            material_key: link.material_key,
-            cost_per_sqm_ex_gst: link.cost_per_sqm_ex_gst ?? 0,
-          }));
-        })
-        .sort((a, b) => {
-          const finishSort = (a.finish?.sort_order || 0) - (b.finish?.sort_order || 0);
-          if (finishSort) return finishSort;
-          const finishNameSort = String(a.finish?.name || "").localeCompare(String(b.finish?.name || ""));
-          if (finishNameSort) return finishNameSort;
-          const nameSort = String(a.name).localeCompare(String(b.name));
-          if (nameSort) return nameSort;
-          return String(a.material_key || "").localeCompare(String(b.material_key || ""));
-        }),
-    [finishMap, materialLinks, tiles]
+      [...rows].sort((a, b) => {
+        const materialSort = String(a.material_type || "").localeCompare(String(b.material_type || ""));
+        if (materialSort) return materialSort;
+        const thicknessSort = String(a.thickness || "").localeCompare(String(b.thickness || ""));
+        if (thicknessSort) return thicknessSort;
+        const finishSort = String(a.finish_type || "").localeCompare(String(b.finish_type || ""));
+        if (finishSort) return finishSort;
+        const orderSort = Number(a.sort_order || 0) - Number(b.sort_order || 0);
+        if (orderSort) return orderSort;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      }),
+    [rows]
   );
 
   const filterOptions = useMemo(() => {
@@ -111,34 +104,98 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
       );
 
     return {
-      supplier: uniqueValues(tableRows.map((tile) => tile.supplier || "Polytec")),
-      finish: uniqueValues(tableRows.map((tile) => tile.finish?.name || "-")),
-      material: uniqueValues(tableRows.map((tile) => materialLabel(tile.material_key))),
+      supplier: uniqueValues(sortedRows.map((row) => row.supplier_name || "Polytec")),
+      finish: uniqueValues(sortedRows.map((row) => row.finish_type || "-")),
+      material: uniqueValues(sortedRows.map((row) => row.material_type || "-")),
+      thickness: uniqueValues(sortedRows.map((row) => row.thickness || "-")),
+      orderType: uniqueValues(sortedRows.flatMap((row) => normaliseOrderTypes(row))),
     };
-  }, [tableRows]);
+  }, [sortedRows]);
 
   const activeFilterCount = Object.values(columnFilters).reduce((count, values) => count + values.length, 0);
 
-  const filteredTableRows = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    return tableRows.filter((tile) =>
-      (!query ||
-        [
-        tile.name,
-        tile.supplier,
-        tile.finish?.name,
-        materialLabel(tile.material_key),
-        imageSourceLabel(tile),
-        tile.is_active ? "Active" : "Hidden",
-      ]
-        .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(query))) &&
-      (!columnFilters.supplier.length || columnFilters.supplier.includes(tile.supplier || "Polytec")) &&
-      (!columnFilters.finish.length || columnFilters.finish.includes(tile.finish?.name || "-")) &&
-      (!columnFilters.material.length || columnFilters.material.includes(materialLabel(tile.material_key)))
-    );
-  }, [columnFilters, searchQuery, tableRows]);
+    return sortedRows.filter((row) => {
+      const searchable = [
+        row.name,
+        row.supplier_name,
+        row.material_type,
+        row.thickness,
+        row.finish_type,
+        orderTypesLabel(row),
+        imageSourceLabel(row),
+        row.is_active ? "Active" : "Hidden",
+      ];
+
+      return (
+        (!query || searchable.filter(Boolean).some((value) => String(value).toLowerCase().includes(query))) &&
+        (!columnFilters.supplier.length || columnFilters.supplier.includes(row.supplier_name || "Polytec")) &&
+        (!columnFilters.finish.length || columnFilters.finish.includes(row.finish_type || "-")) &&
+        (!columnFilters.material.length || columnFilters.material.includes(row.material_type || "-")) &&
+        (!columnFilters.thickness.length || columnFilters.thickness.includes(row.thickness || "-")) &&
+        (!columnFilters.orderType.length || normaliseOrderTypes(row).some((type) => columnFilters.orderType.includes(type)))
+      );
+    });
+  }, [columnFilters, searchQuery, sortedRows]);
+
+  function updateDraft(field, value) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateMaterialType(value) {
+    const options = thicknessOptionsForMaterial(value);
+    setDraft((current) => ({
+      ...current,
+      material_type: value,
+      thickness: options.includes(current.thickness) ? current.thickness : options[0] || "",
+    }));
+  }
+
+  function toggleOrderType(value) {
+    setDraft((current) => {
+      const selected = current.order_types || [];
+      const nextSelected = selected.includes(value)
+        ? selected.filter((item) => item !== value)
+        : [...selected, value];
+      return {
+        ...current,
+        order_types: nextSelected.length ? nextSelected : [value],
+        order_type: nextSelected[0] || value,
+      };
+    });
+  }
+
+  function openAddModal() {
+    setDraft(emptyDraft);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setSelectedFileName("");
+    setFeedback("");
+    setIsModalOpen(true);
+  }
+
+  function openEditModal(row) {
+    setDraft({
+      ...emptyDraft,
+      ...row,
+      original_image_url: row.image_url || "",
+      image_path: row.image_path || "",
+      cost_per_board_ex_gst: row.cost_per_board_ex_gst ?? "",
+      cost_per_sqm_ex_gst: row.cost_per_sqm_ex_gst ?? "",
+      order_types: normaliseOrderTypes(row),
+      is_active: row.is_active ?? true,
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setSelectedFileName("");
+    setFeedback("");
+    setIsModalOpen(true);
+  }
+
+  function closeModal() {
+    if (isSaving) return;
+    setIsModalOpen(false);
+  }
 
   function toggleColumnFilter(column, value) {
     setColumnFilters((current) => {
@@ -155,7 +212,7 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
   }
 
   function clearAllFilters() {
-    setColumnFilters({ supplier: [], finish: [], material: [] });
+    setColumnFilters({ supplier: [], finish: [], material: [], thickness: [], orderType: [] });
     setOpenFilter(null);
   }
 
@@ -207,88 +264,31 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
     );
   }
 
-  function openAddModal() {
-    setTileDraft(emptyTileDraft(finishes));
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    setSelectedFileName("");
-    setFeedback("");
-    setIsModalOpen(true);
-  }
-
-  function openEditModal(row) {
-    setTileDraft({
-      id: row.id,
-      finish_id: row.finish_id || "",
-      new_finish_name: "",
-      supplier: row.supplier || "Polytec",
-      name: row.name || "",
-      image_url: row.image_url || "",
-      original_image_url: row.image_url || "",
-      image_path: row.image_path || null,
-      sort_order: row.sort_order || 0,
-      material_key: row.material_key || "",
-      original_material_key: row.material_key || "",
-      cost_per_sqm_ex_gst: row.cost_per_sqm_ex_gst ?? "",
-      is_active: row.is_active ?? true,
-    });
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    setSelectedFileName("");
-    setFeedback("");
-    setIsModalOpen(true);
-  }
-
-  function closeModal() {
-    if (isSaving) return;
-    setIsModalOpen(false);
-  }
-
-  function updateTileDraft(field, value) {
-    setTileDraft((current) => ({ ...current, [field]: value }));
-  }
-
   async function refreshLibrary() {
     const supabase = createSupabaseBrowserClient();
-    const [finishResult, tileResult, materialResult] = await Promise.all([
-      supabase
-        .from("pcd_colour_finishes")
-        .select("*")
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true }),
-      supabase
-        .from("pcd_colour_tiles")
-        .select("*")
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true }),
-      supabase.from("pcd_colour_tile_materials").select("*"),
-    ]);
-    setFinishes(finishResult.data || []);
-    setTiles(tileResult.data || []);
-    setMaterialLinks(materialResult.data || []);
-    return finishResult.data || [];
-  }
-
-  async function saveFinish(name, cache) {
-    const cleanName = String(name || "").trim();
-    if (!cleanName) return null;
-    const cached = cache.get(cleanName);
-    if (cached) return cached;
-
-    const supabase = createSupabaseBrowserClient();
     const { data, error } = await supabase
-      .from("pcd_colour_finishes")
-      .upsert({ name: cleanName, sort_order: finishes.length + cache.size + 1, is_active: true }, { onConflict: "name" })
+      .from("pcd_colour_library")
       .select("*")
-      .single();
+      .order("material_type", { ascending: true })
+      .order("finish_type", { ascending: true })
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
     if (error) throw error;
-    cache.set(cleanName, data);
-    return data;
+    setRows(data || []);
   }
 
-  async function uploadTileImage(file) {
-    if (!file) return { imageUrl: tileDraft.image_url.trim(), imagePath: null };
+  async function uploadImage(file) {
+    const imageUrl = draft.image_url.trim();
+    if (!file) {
+      return {
+        imageUrl,
+        imagePath: imageUrl === draft.original_image_url ? draft.image_path || null : null,
+      };
+    }
 
     const supabase = createSupabaseBrowserClient();
-    const path = `tiles/${Date.now()}-${cleanFileName(file.name)}`;
+    const path = `library/${Date.now()}-${cleanFileName(file.name)}`;
     const { error } = await supabase.storage.from("colour-tiles").upload(path, file, {
       contentType: file.type || undefined,
       upsert: false,
@@ -302,121 +302,61 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
     return { imageUrl: publicUrl, imagePath: path };
   }
 
-  async function saveTile(event) {
+  async function saveRow(event) {
     event.preventDefault();
-    const name = tileDraft.name.trim();
-    const newFinishName = tileDraft.new_finish_name.trim();
-
-    if (!tileDraft.finish_id && !newFinishName) {
-      setFeedback("Choose a finish or enter a new finish name.");
-      return;
-    }
-    if (!name) {
+    if (!draft.name.trim()) {
       setFeedback("Enter a colour name.");
       return;
     }
-    if (!tileDraft.material_key) {
-      setFeedback("Choose a material type for this colour line.");
+    if (!draft.finish_type.trim()) {
+      setFeedback("Enter a finish type.");
       return;
     }
-
-    const file = fileInputRef.current?.files?.[0] || null;
-    if (!file && !tileDraft.image_url.trim()) {
-      setFeedback("Upload an image tile or enter an image URL.");
+    if (!draft.material_type) {
+      setFeedback("Choose a material type.");
       return;
     }
-
     setIsSaving(true);
     setFeedback("");
     try {
-      const finishCache = new Map(finishes.map((finish) => [finish.name, finish]));
-      const finish = newFinishName ? await saveFinish(newFinishName, finishCache) : finishMap[tileDraft.finish_id];
-      if (!finish?.id) throw new Error("Could not resolve the selected finish.");
-
       const supabase = createSupabaseBrowserClient();
-      const { imageUrl, imagePath } = await uploadTileImage(file);
-      const tilePayload = {
-          finish_id: finish.id,
-          supplier: tileDraft.supplier.trim() || "Polytec",
-          name,
-          image_url: imageUrl,
-          image_path: imagePath || (imageUrl === tileDraft.original_image_url ? tileDraft.image_path : null),
-          sort_order: Number(tileDraft.sort_order || 0),
-          is_active: tileDraft.is_active,
-        };
-      const tileQuery = tileDraft.id
-        ? supabase.from("pcd_colour_tiles").update(tilePayload).eq("id", tileDraft.id)
-        : supabase.from("pcd_colour_tiles").upsert(tilePayload, { onConflict: "finish_id,name,image_url" });
-      const { data: tile, error: tileError } = await tileQuery.select("*").single();
-      if (tileError) throw tileError;
+      const image = await uploadImage(fileInputRef.current?.files?.[0] || null);
+      const payload = rowFromDraft(draft, image);
+      const query = draft.id
+        ? supabase.from("pcd_colour_library").update(payload).eq("id", draft.id)
+        : supabase.from("pcd_colour_library").insert(payload);
+      const { data, error } = await query.select("*").single();
+      if (error) throw error;
 
-      if (tileDraft.id && tileDraft.original_material_key && tileDraft.original_material_key !== tileDraft.material_key) {
-        const { error: deleteLinksError } = await supabase
-          .from("pcd_colour_tile_materials")
-          .delete()
-          .eq("colour_tile_id", tileDraft.id)
-          .eq("material_key", tileDraft.original_material_key);
-        if (deleteLinksError) throw deleteLinksError;
-      }
-
-      const link = {
-        colour_tile_id: tile.id,
-        material_key: tileDraft.material_key,
-        cost_per_sqm_ex_gst:
-          tileDraft.cost_per_sqm_ex_gst === "" || tileDraft.cost_per_sqm_ex_gst == null
-            ? 0
-            : Number(tileDraft.cost_per_sqm_ex_gst),
-      };
-      const { error: linksError } = await supabase
-        .from("pcd_colour_tile_materials")
-        .upsert(link, { onConflict: "colour_tile_id,material_key" });
-      if (linksError) throw linksError;
-
-      const refreshedFinishes = await refreshLibrary();
-      setTileDraft(emptyTileDraft(refreshedFinishes));
+      setRows((current) => {
+        if (draft.id) {
+          return current.map((row) => (row.id === data.id ? data : row));
+        }
+        return [data, ...current];
+      });
+      setDraft(emptyDraft);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setSelectedFileName("");
       setIsModalOpen(false);
-      setFeedback(tileDraft.id ? "Colour line updated." : "Colour line saved.");
+      setFeedback(draft.id ? "Colour line updated." : "Colour line saved.");
     } catch (error) {
-      setFeedback(error?.message || "Could not save colour tile.");
+      setFeedback(error?.message || "Could not save colour line.");
     } finally {
       setIsSaving(false);
     }
   }
 
-  async function deleteTile(row) {
+  async function deleteRow(row) {
     setIsSaving(true);
     setFeedback("");
     try {
       const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.from("pcd_colour_library").delete().eq("id", row.id);
+      if (error) throw error;
 
-      if (row.material_key) {
-        const { error: linkDeleteError } = await supabase
-          .from("pcd_colour_tile_materials")
-          .delete()
-          .eq("colour_tile_id", row.id)
-          .eq("material_key", row.material_key);
-        if (linkDeleteError) throw linkDeleteError;
-      }
-
-      const { data: remainingLinks, error: remainingLinksError } = await supabase
-        .from("pcd_colour_tile_materials")
-        .select("material_key")
-        .eq("colour_tile_id", row.id);
-      if (remainingLinksError) throw remainingLinksError;
-
-      if (!remainingLinks?.length) {
-        const { error: tileDeleteError } = await supabase.from("pcd_colour_tiles").delete().eq("id", row.id);
-        if (tileDeleteError) throw tileDeleteError;
-        if (row.image_path) {
-          await supabase.storage.from("colour-tiles").remove([row.image_path]);
-        }
-      }
-
-      await refreshLibrary();
-      setTileToDelete(null);
-      setFeedback("Colour line deleted.");
+      setRows((current) => current.filter((item) => item.id !== row.id));
+      setRowToDelete(null);
+      setFeedback("Colour line deleted. Image storage was left untouched.");
     } catch (error) {
       setFeedback(error?.message || "Could not delete colour line.");
     } finally {
@@ -424,211 +364,148 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
     }
   }
 
-  async function ensureFinish(name, sortOrder, cache) {
-    const cached = cache.get(name);
-    if (cached) return cached;
-
-    const supabase = createSupabaseBrowserClient();
-    const { data, error } = await supabase
-      .from("pcd_colour_finishes")
-      .upsert({ name, sort_order: sortOrder, is_active: true }, { onConflict: "name" })
-      .select("*")
-      .single();
-    if (error) throw error;
-    cache.set(name, data);
-    return data;
-  }
-
-  async function importWebsiteColours() {
-    setIsImporting(true);
-    setFeedback("");
-    try {
-      const supabase = createSupabaseBrowserClient();
-      const finishCache = new Map(finishes.map((finish) => [finish.name, finish]));
-      const tileCache = new Map(tiles.map((tile) => [`${tile.finish_id}|${tile.name}|${tile.image_url}`, tile]));
-      let imported = 0;
-
-      for (const materialKey of MATERIAL_KEYS) {
-        const family = colourGroupsForMaterial(materialKey);
-        for (const [finishIndex, group] of family.groups.entries()) {
-          const finish = await ensureFinish(group.label, finishIndex + 1, finishCache);
-          for (const [colourIndex, colour] of group.colours.entries()) {
-            const tileKey = `${finish.id}|${colour.name}|${colour.src}`;
-            let tile = tileCache.get(tileKey);
-            if (!tile) {
-              const { data, error } = await supabase
-                .from("pcd_colour_tiles")
-                .upsert(
-                  {
-                    finish_id: finish.id,
-                    supplier: "Polytec",
-                    name: colour.name,
-                    image_url: colour.src,
-                    sort_order: colourIndex + 1,
-                    is_active: true,
-                  },
-                  { onConflict: "finish_id,name,image_url" }
-                )
-                .select("*")
-                .single();
-              if (error) throw error;
-              tile = data;
-              tileCache.set(tileKey, tile);
-              imported += 1;
-            }
-            if (tile?.id) {
-              await supabase
-                .from("pcd_colour_tile_materials")
-                .upsert(
-                  { colour_tile_id: tile.id, material_key: materialKey, cost_per_sqm_ex_gst: 0 },
-                  { onConflict: "colour_tile_id,material_key" }
-                );
-            }
-          }
-        }
-      }
-
-      await refreshLibrary();
-      setFeedback(imported ? `Imported ${imported} website colour tiles.` : "Website colours are already imported.");
-    } catch (error) {
-      setFeedback(error?.message || "Could not import website colour tiles.");
-    } finally {
-      setIsImporting(false);
-    }
-  }
-
-  const modal = isModalOpen && typeof document !== "undefined"
-    ? createPortal(
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="colour-tile-modal-title" onMouseDown={closeModal}>
-          <form className={styles.colourLibraryModal} onSubmit={saveTile} onMouseDown={(event) => event.stopPropagation()}>
-            <div className={styles.customerModalHeader}>
-              <span className={styles.customerModalIcon}>PCD</span>
-              <div>
-                <p className={styles.tableMeta}>Colour line</p>
-                <h2 id="colour-tile-modal-title">{tileDraft.id ? "Edit colour line" : "Add new colour line"}</h2>
-              </div>
-            </div>
-            <div className={styles.customerModalBody}>
-              <div className={styles.colourLibraryModalGrid}>
-                <label className={styles.fieldLabel}>
-                  Existing finish
-                  <select className={styles.fieldInput} value={tileDraft.finish_id} onChange={(event) => updateTileDraft("finish_id", event.target.value)}>
-                    <option value="">Select finish</option>
-                    {finishes.map((finish) => (
-                      <option key={finish.id} value={finish.id}>{finish.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.fieldLabel}>
-                  Or new finish
-                  <input className={styles.fieldInput} placeholder="e.g. Woodmatt" value={tileDraft.new_finish_name} onChange={(event) => updateTileDraft("new_finish_name", event.target.value)} />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Colour name
-                  <input className={styles.fieldInput} value={tileDraft.name} onChange={(event) => updateTileDraft("name", event.target.value)} />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Supplier
-                  <input className={styles.fieldInput} placeholder="e.g. Polytec" value={tileDraft.supplier} onChange={(event) => updateTileDraft("supplier", event.target.value)} />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Sort order
-                  <input className={styles.fieldInput} type="number" value={tileDraft.sort_order} onChange={(event) => updateTileDraft("sort_order", event.target.value)} />
-                </label>
-                <div className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-                  <span>Upload tile image</span>
-                  <div className={styles.colourLibraryFileControl}>
-                    <button type="button" className={styles.secondaryButton} onClick={() => fileInputRef.current?.click()}>
-                      Choose file
-                    </button>
-                    <span className={styles.colourLibraryFileName}>
-                      {selectedFileName || (tileDraft.image_path ? "Current uploaded image retained" : "No file selected")}
-                    </span>
-                    <input
-                      ref={fileInputRef}
-                      className={styles.colourLibraryFileInput}
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => setSelectedFileName(event.target.files?.[0]?.name || "")}
-                    />
-                  </div>
+  const modal =
+    isModalOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="colour-line-modal-title" onMouseDown={closeModal}>
+            <form className={styles.colourLibraryModal} onSubmit={saveRow} onMouseDown={(event) => event.stopPropagation()}>
+              <div className={styles.customerModalHeader}>
+                <span className={styles.customerModalIcon}>PCD</span>
+                <div>
+                  <p className={styles.tableMeta}>Colour library</p>
+                  <h2 id="colour-line-modal-title">{draft.id ? "Edit colour line" : "Add colour line"}</h2>
                 </div>
-                <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-                  Or image URL
-                  <input className={styles.fieldInput} value={tileDraft.image_url} onChange={(event) => updateTileDraft("image_url", event.target.value)} />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Material
-                  <select className={styles.fieldInput} value={tileDraft.material_key} onChange={(event) => updateTileDraft("material_key", event.target.value)}>
-                    <option value="">Select material</option>
-                    {COLOUR_MATERIALS.map((material) => (
-                      <option key={material.key} value={material.key}>{material.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.fieldLabel}>
-                  Cost / sqm ex GST
-                  <input
-                    className={styles.fieldInput}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    inputMode="decimal"
-                    value={tileDraft.cost_per_sqm_ex_gst}
-                    onChange={(event) => updateTileDraft("cost_per_sqm_ex_gst", event.target.value)}
-                    placeholder="0.00"
-                  />
-                </label>
-                <label className={`${styles.checkboxRow} ${styles.fieldWide}`}>
-                  <input type="checkbox" checked={tileDraft.is_active} onChange={(event) => updateTileDraft("is_active", event.target.checked)} />
-                  Active
-                </label>
               </div>
-              {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
-            </div>
-            <div className={styles.customerModalFooter}>
-              <button type="button" className={styles.secondaryButton} onClick={closeModal}>
-                Cancel
-              </button>
-              <button type="submit" className={styles.primaryButton} disabled={isSaving}>
-                {isSaving ? "Saving..." : tileDraft.id ? "Update colour line" : "Save colour line"}
-              </button>
-            </div>
-          </form>
-        </div>,
-        document.body
-      )
-    : null;
+              <div className={styles.customerModalBody}>
+                <div className={styles.colourLibraryModalGrid}>
+                  <label className={styles.fieldLabel}>
+                    Colour name
+                    <input className={styles.fieldInput} value={draft.name} onChange={(event) => updateDraft("name", event.target.value)} />
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Supplier
+                    <input className={styles.fieldInput} value={draft.supplier_name} onChange={(event) => updateDraft("supplier_name", event.target.value)} />
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Material type
+                    <select className={styles.fieldInput} value={draft.material_type} onChange={(event) => updateMaterialType(event.target.value)}>
+                      {COLOUR_MATERIALS.map((material) => (
+                        <option key={material.key} value={material.value}>{material.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Thickness
+                    <select className={styles.fieldInput} value={draft.thickness} onChange={(event) => updateDraft("thickness", event.target.value)}>
+                      {thicknessOptionsForMaterial(draft.material_type).map((thickness) => (
+                        <option key={thickness} value={thickness}>{thickness}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Finish type
+                    <input className={styles.fieldInput} placeholder="e.g. Woodmatt" value={draft.finish_type} onChange={(event) => updateDraft("finish_type", event.target.value)} />
+                  </label>
+                  <div className={styles.fieldLabel}>
+                    <span>Order type</span>
+                    <div className={styles.colourLibraryCheckboxGroup}>
+                      {COLOUR_ORDER_TYPES.map((type) => (
+                        <label key={type.value} className={styles.checkboxRow}>
+                          <input
+                            type="checkbox"
+                            checked={(draft.order_types || []).includes(type.value)}
+                            onChange={() => toggleOrderType(type.value)}
+                          />
+                          {type.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <label className={styles.fieldLabel}>
+                    Sort order
+                    <input className={styles.fieldInput} type="number" value={draft.sort_order} onChange={(event) => updateDraft("sort_order", event.target.value)} />
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Cost / board ex GST
+                    <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.cost_per_board_ex_gst} onChange={(event) => updateDraft("cost_per_board_ex_gst", event.target.value)} />
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Cost / sqm ex GST
+                    <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.cost_per_sqm_ex_gst} onChange={(event) => updateDraft("cost_per_sqm_ex_gst", event.target.value)} />
+                  </label>
+                  <div className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+                    <span>Upload tile image</span>
+                    <div className={styles.colourLibraryFileControl}>
+                      <button type="button" className={styles.secondaryButton} onClick={() => fileInputRef.current?.click()}>
+                        Choose file
+                      </button>
+                      <span className={styles.colourLibraryFileName}>
+                        {selectedFileName || (draft.image_path ? "Current uploaded image retained" : "No file selected")}
+                      </span>
+                      <input
+                        ref={fileInputRef}
+                        className={styles.colourLibraryFileInput}
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => setSelectedFileName(event.target.files?.[0]?.name || "")}
+                      />
+                    </div>
+                  </div>
+                  <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+                    Or image URL
+                    <input className={styles.fieldInput} value={draft.image_url} onChange={(event) => updateDraft("image_url", event.target.value)} />
+                  </label>
+                  <label className={`${styles.checkboxRow} ${styles.fieldWide}`}>
+                    <input type="checkbox" checked={draft.is_active} onChange={(event) => updateDraft("is_active", event.target.checked)} />
+                    Active
+                  </label>
+                </div>
+                {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
+              </div>
+              <div className={styles.customerModalFooter}>
+                <button type="button" className={styles.secondaryButton} onClick={closeModal}>
+                  Cancel
+                </button>
+                <button type="submit" className={styles.primaryButton} disabled={isSaving}>
+                  {isSaving ? "Saving..." : draft.id ? "Update colour line" : "Save colour line"}
+                </button>
+              </div>
+            </form>
+          </div>,
+          document.body
+        )
+      : null;
 
-  const deleteModal = tileToDelete && typeof document !== "undefined"
-    ? createPortal(
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="delete-colour-title" onMouseDown={() => !isSaving && setTileToDelete(null)}>
-          <div className={styles.confirmModal} onMouseDown={(event) => event.stopPropagation()}>
-            <div className={styles.customerModalHeader}>
-              <span className={styles.customerModalIcon}>PCD</span>
-              <div>
-                <p className={styles.tableMeta}>Delete colour line</p>
-                <h2 id="delete-colour-title">Delete {tileToDelete.name} / {materialLabel(tileToDelete.material_key)}?</h2>
+  const deleteModal =
+    rowToDelete && typeof document !== "undefined"
+      ? createPortal(
+          <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="delete-colour-title" onMouseDown={() => !isSaving && setRowToDelete(null)}>
+            <div className={styles.confirmModal} onMouseDown={(event) => event.stopPropagation()}>
+              <div className={styles.customerModalHeader}>
+                <span className={styles.customerModalIcon}>PCD</span>
+                <div>
+                  <p className={styles.tableMeta}>Delete colour line</p>
+                  <h2 id="delete-colour-title">Delete {rowToDelete.name}?</h2>
+                </div>
+              </div>
+              <div className={styles.customerModalBody}>
+                <p className={styles.sectionText}>
+                  This removes the colour library database row only. Uploaded images are left in Supabase Storage so you can match them to new entries.
+                </p>
+              </div>
+              <div className={styles.customerModalFooter}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setRowToDelete(null)} disabled={isSaving}>
+                  Cancel
+                </button>
+                <button type="button" className={styles.rowDeleteButton} onClick={() => deleteRow(rowToDelete)} disabled={isSaving}>
+                  {isSaving ? "Deleting..." : "Delete row"}
+                </button>
               </div>
             </div>
-            <div className={styles.customerModalBody}>
-              <p className={styles.sectionText}>
-                This removes this colour/material combination from material-based dropdowns. If this is the last material for the colour, the colour tile is removed too.
-              </p>
-            </div>
-            <div className={styles.customerModalFooter}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setTileToDelete(null)} disabled={isSaving}>
-                Cancel
-              </button>
-              <button type="button" className={styles.rowDeleteButton} onClick={() => deleteTile(tileToDelete)} disabled={isSaving}>
-                {isSaving ? "Deleting..." : "Delete line"}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )
-    : null;
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
     <>
@@ -639,7 +516,7 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
             <input
               className={styles.fieldInput}
               type="search"
-              placeholder="Search by colour, finish, supplier or material"
+              placeholder="Search by colour, finish, supplier, material or order type"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
@@ -650,8 +527,8 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
             </button>
           ) : null}
           <div className={styles.inlineButtonRow}>
-            <button type="button" className={styles.secondaryButton} onClick={importWebsiteColours} disabled={isImporting}>
-              {isImporting ? "Importing..." : "Import current website colours"}
+            <button type="button" className={styles.secondaryButton} onClick={refreshLibrary} disabled={isSaving}>
+              Refresh
             </button>
             <button type="button" className={styles.primaryButton} onClick={openAddModal}>
               Add colour line
@@ -668,8 +545,11 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
                 <th>Tile</th>
                 <th>Colour</th>
                 <th>{renderColumnFilter("supplier", "Supplier")}</th>
-                <th>{renderColumnFilter("finish", "Finish")}</th>
                 <th>{renderColumnFilter("material", "Material")}</th>
+                <th>{renderColumnFilter("thickness", "Thickness")}</th>
+                <th>{renderColumnFilter("finish", "Finish")}</th>
+                <th>{renderColumnFilter("orderType", "Order type")}</th>
+                <th>Cost / board</th>
                 <th>Cost / sqm</th>
                 <th>Source</th>
                 <th>Sort</th>
@@ -678,39 +558,52 @@ export default function ColourLibraryManager({ initialFinishes, initialTiles, in
               </tr>
             </thead>
             <tbody>
-              {filteredTableRows.map((tile) => (
-                <tr key={`${tile.id}-${tile.material_key || "unassigned"}`}>
+              {filteredRows.map((row) => (
+                <tr key={row.id}>
                   <td>
                     <span className={styles.colourLibraryTableTile}>
-                      <img src={tile.image_url} alt="" />
+                      {row.image_url ? <img src={row.image_url} alt="" /> : null}
                     </span>
                   </td>
-                  <td>{tile.name}</td>
-                  <td>{tile.supplier || "Polytec"}</td>
-                  <td>{tile.finish?.name || "-"}</td>
-                  <td>{materialLabel(tile.material_key)}</td>
-                  <td>
-                    {tile.cost_per_sqm_ex_gst == null ? "-" : `$${Number(tile.cost_per_sqm_ex_gst || 0).toFixed(2)}`}
-                  </td>
-                  <td>{imageSourceLabel(tile)}</td>
-                  <td>{tile.sort_order || 0}</td>
-                  <td>{tile.is_active ? "Active" : "Hidden"}</td>
+                  <td>{row.name}</td>
+                  <td>{row.supplier_name || "Polytec"}</td>
+                  <td>{materialLabelForType(row.material_type)}</td>
+                  <td>{row.thickness || "-"}</td>
+                  <td>{row.finish_type || "-"}</td>
+                  <td>{orderTypesLabel(row) || "-"}</td>
+                  <td>${Number(row.cost_per_board_ex_gst || 0).toFixed(2)}</td>
+                  <td>${Number(row.cost_per_sqm_ex_gst || 0).toFixed(2)}</td>
+                  <td>{imageSourceLabel(row)}</td>
+                  <td>{row.sort_order || 0}</td>
+                  <td>{row.is_active ? "Active" : "Hidden"}</td>
                   <td className={styles.rowActions}>
-                    <button type="button" className={styles.rowEditButton} onClick={() => openEditModal(tile)} disabled={isSaving}>
+                    <button
+                      type="button"
+                      className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
+                      onClick={() => openEditModal(row)}
+                      disabled={isSaving}
+                      aria-label={`Edit ${row.name}`}
+                      title="Edit"
+                    >
                       Edit
                     </button>
-                    <button type="button" className={styles.rowDeleteButton} onClick={() => setTileToDelete(tile)} disabled={isSaving}>
+                    <button
+                      type="button"
+                      className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
+                      onClick={() => setRowToDelete(row)}
+                      disabled={isSaving}
+                      aria-label={`Delete ${row.name}`}
+                      title="Delete"
+                    >
                       Delete
                     </button>
                   </td>
                 </tr>
               ))}
-              {!filteredTableRows.length ? (
+              {!filteredRows.length ? (
                 <tr>
-                  <td className={styles.emptyCell} colSpan="10">
-                    {tableRows.length
-                      ? "No colour lines match your search."
-                      : "No colour lines yet. Import the current website colours or add a new colour line."}
+                  <td className={styles.emptyCell} colSpan="13">
+                    {sortedRows.length ? "No colour lines match your search." : "No colour lines yet. Add your first board colour entry."}
                   </td>
                 </tr>
               ) : null}

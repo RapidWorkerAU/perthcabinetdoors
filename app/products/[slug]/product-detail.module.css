@@ -839,3 +839,75 @@
     padding: 24px;
   }
 }
+
+@media (max-width: 520px) {
+  .page {
+    overflow-x: hidden;
+  }
+
+  .breadcrumbBar,
+  .productPage,
+  .siteFooter {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .productPage {
+    gap: 24px;
+  }
+
+  .productName {
+    font-size: 34px;
+    line-height: 1.08;
+  }
+
+  .detailBadges,
+  .viewerToggle,
+  .finishTabs {
+    align-items: stretch;
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .viewerToggleButton,
+  .finishTab {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: center;
+    text-align: center;
+  }
+
+  .colourSwatches {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .profileSwatches,
+  .edgeProfileList,
+  .featureGrid,
+  .infoGrid,
+  .relatedGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .galleryMain {
+    min-height: 280px;
+  }
+
+  .galleryThumbs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .viewerPanel,
+  .enquiryCard {
+    padding: 18px;
+  }
+
+  .formActions,
+  .siteFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .formActions button {
+    width: 100%;
+  }
+}

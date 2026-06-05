@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../admin-shell.module.css";
+import { formatAdminLabel } from "../_utils/formatAdminLabel";
 
 const STATUSES = ["new", "reviewing", "waiting_on_customer", "converted_to_quote", "closed"];
 
@@ -90,7 +91,11 @@ export default function QuoteRequestsManager() {
                 <td>{request.pcd_quote_request_line_items?.length || 0}</td>
                 <td>
                   <select className={styles.statusSelect} value={request.status} onChange={(event) => updateStatus(request.id, event.target.value)}>
-                    {STATUSES.map((status) => <option key={status}>{status}</option>)}
+                    {STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {formatAdminLabel(status)}
+                      </option>
+                    ))}
                   </select>
                 </td>
                 <td>{formatDate(request.created_at)}</td>
@@ -110,4 +115,3 @@ export default function QuoteRequestsManager() {
     </section>
   );
 }
-

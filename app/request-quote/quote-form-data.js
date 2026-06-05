@@ -1,12 +1,22 @@
-import { colourGroupsForMaterial } from "../products/product-data";
-
 export const PRODUCT_TYPES = ["Door", "Drawer front", "Panel", "Table top"];
 
+export const MATERIAL_OPTIONS = [
+  "Decorative Board",
+  "Thermolaminate",
+  "Compact Laminate",
+];
+
+export const THICKNESS_BY_MATERIAL = {
+  "Decorative Board": ["16mm", "18mm"],
+  Thermolaminate: ["18mm", "21mm"],
+  "Compact Laminate": ["13mm", "5mm", "18mm"],
+};
+
 export const MATERIALS_BY_TYPE = {
-  Door: ["Thermolaminate", "16mm Decorative Board", "18mm Decorative Board", "Compact Laminate"],
-  "Drawer front": ["Thermolaminate", "16mm Decorative Board", "18mm Decorative Board", "Compact Laminate"],
-  Panel: ["16mm Decorative Board", "18mm Decorative Board", "Compact Laminate"],
-  "Table top": ["Compact Laminate", "18mm Decorative Board"],
+  Door: MATERIAL_OPTIONS,
+  "Drawer front": MATERIAL_OPTIONS,
+  Panel: MATERIAL_OPTIONS,
+  "Table top": MATERIAL_OPTIONS,
 };
 
 export const CABINET_BRANDS = [
@@ -138,31 +148,75 @@ export const PROFILE_NAMES_BY_TYPE = {
     "Tamworth",
     "Valla",
     "Woongarrah",
+    "Allandale",
+    "Branxton",
+    "Briar",
+    "Chiswick 12",
+    "Chiswick 6",
+    "Hampshire",
+    "Keimbah",
+    "Malabar",
+    "Pokolbin",
+    "Rothbury",
+  ],
+  Fluted: [
+    "Cove 25",
+    "Cove 50",
+    "Peak",
   ],
 };
 
 export const PROFILE_TYPES = Object.keys(PROFILE_NAMES_BY_TYPE);
 
+export const PROFILE_21MM_ONLY_BY_TYPE = {
+  Detailed: [
+    "Allandale",
+    "Branxton",
+    "Briar",
+    "Chiswick 12",
+    "Chiswick 6",
+    "Hampshire",
+    "Keimbah",
+    "Malabar",
+    "Pokolbin",
+    "Rothbury",
+  ],
+  Fluted: [
+    "Cove 25",
+    "Cove 50",
+    "Peak",
+  ],
+};
+
 export function materialKey(material) {
   if (material === "Thermolaminate") return "thermolaminate";
-  if (material === "Compact Laminate") return "compact";
-  if (material === "16mm Decorative Board") return "16mm";
-  if (material === "18mm Decorative Board") return "18mm";
+  if (material === "Compact Laminate") return "compact_laminate";
+  if (material === "Decorative Board") return "decorative_board";
   return "";
 }
 
-export function colourOptionsForMaterial(material) {
-  const key = materialKey(material);
-  if (!key) return [];
-
-  const family = colourGroupsForMaterial(key);
-  return family.groups.flatMap((group) =>
-    group.colours.map((colour) => ({
-      finish: group.label,
-      name: colour.name,
-      src: colour.src,
-      label: `${group.label} - ${colour.name}`,
-    }))
-  );
+export function thicknessOptionsForMaterial(material) {
+  return THICKNESS_BY_MATERIAL[material] || [];
 }
 
+export function profileTypesForSelection(material, thickness) {
+  if (material !== "Thermolaminate") return [];
+  if (thickness === "21mm") return PROFILE_TYPES;
+  return PROFILE_TYPES.filter((profileType) => profileType !== "Fluted");
+}
+
+export function profileNamesForSelection(profileType, material, thickness) {
+  const names = PROFILE_NAMES_BY_TYPE[profileType] || [];
+  if (material !== "Thermolaminate") return [];
+  if (thickness === "21mm") return names;
+  const restrictedNames = new Set(PROFILE_21MM_ONLY_BY_TYPE[profileType] || []);
+  return names.filter((name) => !restrictedNames.has(name));
+}
+
+export function isProfileSelectionAvailable(profileType, profile, material, thickness) {
+  if (!profileType) return true;
+  const profileTypes = profileTypesForSelection(material, thickness);
+  if (!profileTypes.includes(profileType)) return false;
+  if (!profile) return true;
+  return profileNamesForSelection(profileType, material, thickness).includes(profile);
+}

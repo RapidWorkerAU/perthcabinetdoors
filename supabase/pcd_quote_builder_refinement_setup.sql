@@ -1,5 +1,15 @@
 create extension if not exists "pgcrypto";
 
+create or replace function public.set_updated_at_timestamp()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = timezone('utc', now());
+  return new;
+end;
+$$;
+
 alter table public.pcd_quotes
   add column if not exists client_notes text,
   add column if not exists assumptions text,
@@ -16,6 +26,7 @@ alter table public.pcd_quotes
 alter table public.pcd_quote_line_items
   add column if not exists product_type text,
   add column if not exists material text,
+  add column if not exists thickness text,
   add column if not exists profile_type text,
   add column if not exists hinge_holes boolean not null default false,
   add column if not exists hinge_supply boolean not null default false,
@@ -27,7 +38,7 @@ alter table public.pcd_quote_line_items
   alter column markup_percent set default 40;
 
 alter table public.pcd_orders
-  add column if not exists deposit_required boolean not null default true,
+  add column if not exists deposit_required boolean not null default false,
   add column if not exists deposit_amount numeric(12,2) not null default 0,
   add column if not exists deposit_paid boolean not null default false,
   add column if not exists deposit_paid_at timestamptz,
@@ -35,9 +46,112 @@ alter table public.pcd_orders
   add column if not exists customer_comms text,
   add column if not exists internal_notes text;
 
+alter table public.pcd_quote_request_line_items
+  add column if not exists thickness text;
+
+alter table public.pcd_order_line_items
+  add column if not exists thickness text;
+
+alter table public.pcd_orders
+  alter column deposit_required set default false;
+
+create table if not exists public.pcd_order_payments (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references public.pcd_orders(id) on delete cascade,
+  payment_type text not null default 'progress' check (
+    payment_type in ('deposit', 'progress', 'final', 'other')
+  ),
+  amount numeric(12,2) not null default 0,
+  is_paid boolean not null default false,
+  paid_at date,
+  notes text,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists idx_pcd_order_payments_order on public.pcd_order_payments(order_id);
+
+drop trigger if exists trg_pcd_order_payments_updated_at on public.pcd_order_payments;
+create trigger trg_pcd_order_payments_updated_at
+before update on public.pcd_order_payments
+for each row execute function public.set_updated_at_timestamp();
+
+create table if not exists public.pcd_colour_library (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  image_url text,
+  image_path text,
+  is_active boolean not null default true,
+  supplier_name text not null default 'Polytec',
+  material_type text not null check (
+    material_type in (
+      'decorative board',
+      'compact laminate',
+      'thermolaminate'
+    )
+  ),
+  thickness text,
+  finish_type text not null,
+  order_type text not null default 'supply board' check (
+    order_type in ('supply board', 'made to order MTO')
+  ),
+  cost_per_board_ex_gst numeric(12,2) not null default 0,
+  cost_per_sqm_ex_gst numeric(12,2) not null default 0,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+alter table public.pcd_colour_library
+  add column if not exists thickness text;
+
+alter table public.pcd_colour_library
+  add column if not exists order_types text[] not null default array['supply board'];
+
+alter table public.pcd_colour_library
+  drop constraint if exists pcd_colour_library_material_type_check;
+
+alter table public.pcd_colour_library
+  add constraint pcd_colour_library_material_type_check
+  check (material_type in ('decorative board', 'thermolaminate', 'compact laminate'));
+
+update public.pcd_colour_library
+set order_types = array[order_type]
+where (order_types is null or cardinality(order_types) = 0)
+  and order_type is not null;
+
+alter table public.pcd_colour_library
+  drop constraint if exists pcd_colour_library_order_types_check;
+
+alter table public.pcd_colour_library
+  add constraint pcd_colour_library_order_types_check
+  check (
+    order_types <@ array['supply board', 'made to order MTO']
+    and cardinality(order_types) > 0
+  );
+
+create index if not exists idx_pcd_colour_library_material
+  on public.pcd_colour_library(material_type);
+
+create index if not exists idx_pcd_colour_library_material_thickness
+  on public.pcd_colour_library(material_type, thickness);
+
+create index if not exists idx_pcd_colour_library_finish
+  on public.pcd_colour_library(finish_type);
+
+create index if not exists idx_pcd_colour_library_active
+  on public.pcd_colour_library(is_active);
+
+drop trigger if exists trg_pcd_colour_library_updated_at on public.pcd_colour_library;
+create trigger trg_pcd_colour_library_updated_at
+before update on public.pcd_colour_library
+for each row execute function public.set_updated_at_timestamp();
+
 alter table public.pcd_order_line_items
   add column if not exists product_type text,
   add column if not exists material text,
+  add column if not exists thickness text,
   add column if not exists profile_type text,
   add column if not exists fulfilment_method text not null default 'in_house' check (
     fulfilment_method in ('in_house', 'supplier_ready_made')

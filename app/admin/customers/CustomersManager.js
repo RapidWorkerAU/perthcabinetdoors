@@ -46,6 +46,7 @@ export default function CustomersManager() {
   const [feedback, setFeedback] = useState("");
   const [setupRequired, setSetupRequired] = useState(false);
   const [search, setSearch] = useState("");
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   const filteredCustomers = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -86,9 +87,22 @@ export default function CustomersManager() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function resetForm() {
+  function openNewCustomerModal() {
     setForm(emptyForm);
     setFeedback("");
+    setIsCustomerModalOpen(true);
+  }
+
+  function openEditCustomerModal(customer) {
+    setForm(formFromCustomer(customer));
+    setFeedback("");
+    setIsCustomerModalOpen(true);
+  }
+
+  function closeCustomerModal() {
+    if (isSaving) return;
+    setIsCustomerModalOpen(false);
+    setForm(emptyForm);
   }
 
   async function saveCustomer(event) {
@@ -113,8 +127,15 @@ export default function CustomersManager() {
       }
 
       const message = form.id ? "Customer updated." : "Customer added.";
-      setForm(formFromCustomer(payload.customer));
-      await loadCustomers();
+      setCustomers((current) => {
+        if (form.id) {
+          return current.map((customer) => (customer.id === payload.customer.id ? payload.customer : customer));
+        }
+
+        return [payload.customer, ...current];
+      });
+      setForm(emptyForm);
+      setIsCustomerModalOpen(false);
       setFeedback(message);
     } catch (error) {
       setFeedback(error?.message || "Could not save customer.");
@@ -125,96 +146,12 @@ export default function CustomersManager() {
 
   return (
     <div className={styles.quoteBuilderShell}>
-      <form className={styles.productsSection} onSubmit={saveCustomer}>
-        <div className={styles.productsHeaderBar}>
-          <div>
-            <p className={styles.tableMeta}>{form.id ? "Edit customer" : "New customer"}</p>
-          </div>
-          <div className={styles.rowActions}>
-            {form.id ? (
-              <button type="button" className={styles.secondaryButton} onClick={resetForm}>
-                New customer
-              </button>
-            ) : null}
-            <button type="submit" className={styles.primaryButton} disabled={isSaving}>
-              {isSaving ? "Saving..." : form.id ? "Save customer" : "Add customer"}
-            </button>
-          </div>
-        </div>
-
-        <div className={styles.customerFormBody}>
-          <div className={styles.customerFormGrid}>
-            <label className={styles.fieldLabel}>
-              Contact name
-              <input
-                className={styles.fieldInput}
-                value={form.name}
-                onChange={(event) => updateForm("name", event.target.value)}
-                required
-              />
-            </label>
-            <label className={styles.fieldLabel}>
-              Company
-              <input
-                className={styles.fieldInput}
-                value={form.company_name}
-                onChange={(event) => updateForm("company_name", event.target.value)}
-              />
-            </label>
-            <label className={styles.fieldLabel}>
-              Email
-              <input
-                className={styles.fieldInput}
-                type="email"
-                value={form.email}
-                onChange={(event) => updateForm("email", event.target.value)}
-              />
-            </label>
-            <label className={styles.fieldLabel}>
-              Phone
-              <input
-                className={styles.fieldInput}
-                value={form.phone}
-                onChange={(event) => updateForm("phone", event.target.value)}
-              />
-            </label>
-            <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-              Site / delivery address
-              <input
-                className={styles.fieldInput}
-                value={form.site_address}
-                onChange={(event) => updateForm("site_address", event.target.value)}
-              />
-            </label>
-            <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-              Notes
-              <textarea
-                className={styles.textareaInput}
-                rows={3}
-                value={form.notes}
-                onChange={(event) => updateForm("notes", event.target.value)}
-              />
-            </label>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={form.is_active}
-                onChange={(event) => updateForm("is_active", event.target.checked)}
-              />
-              Active customer
-            </label>
-          </div>
-        </div>
-      </form>
-
       <section className={styles.productsSection}>
-        <div className={styles.productsHeaderBar}>
-          <div>
-            <p className={styles.tableMeta}>
+        <div className={`${styles.productsHeaderBar} ${styles.customerToolbar}`}>
+          <p className={styles.tableMeta}>
               {isLoading ? "Loading customers" : `${filteredCustomers.length} of ${customers.length} customers`}
-            </p>
-          </div>
-          <div className={styles.rowActions}>
+          </p>
+          <div className={styles.customerToolbarActions}>
             <input
               className={styles.customerSearchInput}
               placeholder="Search customers"
@@ -223,6 +160,9 @@ export default function CustomersManager() {
             />
             <button type="button" className={styles.secondaryButton} onClick={loadCustomers} disabled={isLoading}>
               Refresh
+            </button>
+            <button type="button" className={styles.primaryButton} onClick={openNewCustomerModal}>
+              Add customer
             </button>
           </div>
         </div>
@@ -262,7 +202,13 @@ export default function CustomersManager() {
                   <td>{formatDate(customer.updated_at || customer.created_at)}</td>
                   <td>
                     <div className={styles.rowActions}>
-                      <button type="button" className={styles.rowEditButton} onClick={() => setForm(formFromCustomer(customer))}>
+                      <button
+                        type="button"
+                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
+                        onClick={() => openEditCustomerModal(customer)}
+                        aria-label={`Edit ${customer.name || "customer"}`}
+                        title="Edit"
+                      >
                         Edit
                       </button>
                     </div>
@@ -289,6 +235,93 @@ export default function CustomersManager() {
           </table>
         </div>
       </section>
+
+      {isCustomerModalOpen ? (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-label={form.id ? "Edit customer" : "Add customer"}>
+          <form className={`${styles.customerModal} ${styles.customerRecordModal}`} onSubmit={saveCustomer}>
+            <header className={styles.customerModalHeader}>
+              <div className={styles.customerModalIcon}>{form.id ? "ED" : "AD"}</div>
+              <div>
+                <p className={styles.tableMeta}>{form.id ? "Edit customer" : "New customer"}</p>
+                <h2>{form.id ? "Edit Customer" : "Add Customer"}</h2>
+              </div>
+            </header>
+
+            <div className={styles.customerModalBody}>
+              <div className={styles.customerModalGrid}>
+                <label className={styles.fieldLabel}>
+                  Contact name
+                  <input
+                    className={styles.fieldInput}
+                    value={form.name}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                    required
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Company
+                  <input
+                    className={styles.fieldInput}
+                    value={form.company_name}
+                    onChange={(event) => updateForm("company_name", event.target.value)}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Email
+                  <input
+                    className={styles.fieldInput}
+                    type="email"
+                    value={form.email}
+                    onChange={(event) => updateForm("email", event.target.value)}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Phone
+                  <input
+                    className={styles.fieldInput}
+                    value={form.phone}
+                    onChange={(event) => updateForm("phone", event.target.value)}
+                  />
+                </label>
+                <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+                  Site / delivery address
+                  <input
+                    className={styles.fieldInput}
+                    value={form.site_address}
+                    onChange={(event) => updateForm("site_address", event.target.value)}
+                  />
+                </label>
+                <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+                  Notes
+                  <textarea
+                    className={styles.textareaInput}
+                    rows={4}
+                    value={form.notes}
+                    onChange={(event) => updateForm("notes", event.target.value)}
+                  />
+                </label>
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={form.is_active}
+                    onChange={(event) => updateForm("is_active", event.target.checked)}
+                  />
+                  Active customer
+                </label>
+              </div>
+            </div>
+
+            <footer className={styles.customerModalFooter}>
+              <button type="button" className={styles.secondaryButton} onClick={closeCustomerModal} disabled={isSaving}>
+                Cancel
+              </button>
+              <button type="submit" className={styles.primaryButton} disabled={isSaving}>
+                {isSaving ? "Saving..." : form.id ? "Save customer" : "Add customer"}
+              </button>
+            </footer>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }

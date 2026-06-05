@@ -172,6 +172,7 @@ export default function AdminShell({ children }) {
   const [sidebarPreferenceLoaded, setSidebarPreferenceLoaded] = useState(false);
   const [openSections, setOpenSections] = useState([]);
   const [logoutConfirmArmed, setLogoutConfirmArmed] = useState(false);
+  const [notifications, setNotifications] = useState({});
 
   const meta = useMemo(() => getPageMeta(pathname), [pathname]);
 
@@ -180,6 +181,32 @@ export default function AdminShell({ children }) {
     supabase.auth.getUser().then(({ data }) => {
       setAdminEmail(data?.user?.email || "Admin");
     });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadNotifications() {
+      try {
+        const response = await fetch("/api/admin/notifications", { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled && response.ok && payload.ok) {
+          setNotifications(payload.notifications || {});
+        }
+      } catch {
+        if (!cancelled) {
+          setNotifications({});
+        }
+      }
+    }
+
+    loadNotifications();
+    window.addEventListener("focus", loadNotifications);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadNotifications);
+    };
   }, []);
 
   useEffect(() => {
@@ -239,12 +266,35 @@ export default function AdminShell({ children }) {
     setOpenSections((current) => (current.includes(key) ? [] : [key]));
   }
 
+  function notificationCountForHref(href) {
+    return Number(notifications[href] || 0);
+  }
+
+  function notificationCountForItem(item) {
+    if (item.children?.length) {
+      return item.children.reduce((total, child) => total + notificationCountForHref(child.href), 0);
+    }
+
+    return notificationCountForHref(item.href);
+  }
+
+  function renderCountBadge(count, className = "") {
+    if (!count) return null;
+    return <span className={`${styles.navNotificationBadge} ${className}`}>{count > 99 ? "99+" : count}</span>;
+  }
+
+  function renderNotificationDot(count, className = "") {
+    if (!count) return null;
+    return <span className={`${styles.navNotificationDot} ${className}`} aria-hidden="true" />;
+  }
+
   function renderNavItem(item, options = {}) {
     const isMobile = options.mobile;
     const isActive =
       isPathActive(pathname, item.href) ||
       item.children?.some((child) => isPathActive(pathname, child.href));
     const isOpen = openSections.includes(item.key);
+    const itemNotificationCount = notificationCountForItem(item);
 
     if (item.children?.length && (isMobile || !sidebarCollapsed)) {
       if (isMobile) {
@@ -261,7 +311,10 @@ export default function AdminShell({ children }) {
               aria-expanded={isOpen}
               onClick={() => toggleSection(item.key)}
             >
-              <span>{item.label}</span>
+              <span className={styles.mobileMenuItemLabel}>
+                <span>{item.label}</span>
+                {renderNotificationDot(itemNotificationCount)}
+              </span>
               <span className={styles.mobileMenuGroupChevron} aria-hidden="true" />
             </button>
             <div
@@ -275,7 +328,8 @@ export default function AdminShell({ children }) {
                   className={styles.mobileMenuSublink}
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {child.label}
+                  <span>{child.label}</span>
+                  {renderCountBadge(notificationCountForHref(child.href))}
                 </Link>
               ))}
             </div>
@@ -299,6 +353,7 @@ export default function AdminShell({ children }) {
                   {renderSidebarIcon(item)}
                 </span>
                 <span className={styles.sidebarLinkLabel}>{item.label}</span>
+                {renderNotificationDot(itemNotificationCount)}
               </span>
             <span className={styles.sidebarToggleChevron} aria-hidden="true" />
           </button>
@@ -315,6 +370,7 @@ export default function AdminShell({ children }) {
                 }`}
               >
                 <span className={styles.sidebarSublinkLabel}>{child.label}</span>
+                {renderCountBadge(notificationCountForHref(child.href))}
               </Link>
             ))}
           </div>
@@ -326,7 +382,8 @@ export default function AdminShell({ children }) {
       return (
         <div key={item.key} className={styles.mobileMenuItem}>
           <Link href={item.href} onClick={() => setMobileMenuOpen(false)}>
-            {item.label}
+            <span>{item.label}</span>
+            {renderCountBadge(itemNotificationCount)}
           </Link>
         </div>
       );
@@ -344,6 +401,7 @@ export default function AdminShell({ children }) {
             {renderSidebarIcon(item)}
           </span>
           <span className={styles.sidebarLinkLabel}>{item.label}</span>
+          {item.children?.length ? renderNotificationDot(itemNotificationCount) : renderCountBadge(itemNotificationCount)}
         </Link>
       </div>
     );

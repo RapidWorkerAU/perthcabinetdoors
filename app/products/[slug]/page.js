@@ -10,7 +10,7 @@ import {
   PRODUCTS,
 } from "../product-data";
 import ProductDetailClient from "./ProductDetailClient";
-import { getDatabaseColourFamily } from "../../../lib/pcd-colour-library";
+import { getDatabaseColourFamilyForSelection, inferThicknessFromMaterial } from "../../../lib/pcd-colour-library";
 
 export const dynamic = "force-dynamic";
 
@@ -82,7 +82,10 @@ export default async function ProductDetailPage({ params }) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const colourFamily = await getDatabaseColourFamily(supabase, product.material);
+  const colourFamily = await getDatabaseColourFamilyForSelection(supabase, {
+    material: product.material,
+    thickness: inferThicknessFromMaterial(product.materialLabel || product.material),
+  });
 
   return (
     <>

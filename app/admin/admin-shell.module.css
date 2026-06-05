@@ -1,15 +1,18 @@
 .viewport {
-  --admin-bg: #f4efe7;
-  --admin-surface: #ffffff;
-  --admin-canvas: #fcfaf7;
-  --admin-text: #181d27;
-  --admin-muted: #697383;
-  --admin-line: rgba(24, 29, 39, 0.08);
-  --admin-shadow: 0 20px 34px rgba(29, 36, 46, 0.08);
+  --admin-bg: var(--pcd-bg-warm);
+  --admin-surface: var(--pcd-surface);
+  --admin-canvas: var(--pcd-bg);
+  --admin-text: var(--pcd-ink);
+  --admin-muted: var(--pcd-muted);
+  --admin-line: var(--pcd-line);
+  --admin-accent: var(--pcd-green-mid);
+  --admin-accent-soft: var(--pcd-green-soft);
+  --admin-dark: var(--pcd-green);
+  --admin-shadow: var(--pcd-shadow-soft);
   min-height: 100dvh;
   background: var(--admin-bg);
   color: var(--admin-text);
-  font-family: "Source Sans 3", Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-family: "Source Sans 3", var(--pcd-font-ui);
   overflow: hidden;
 }
 
@@ -38,7 +41,7 @@
   gap: 14px;
   background: rgba(255, 255, 255, 0.96);
   border-right: 1px solid var(--admin-line);
-  box-shadow: 10px 0 28px rgba(24, 29, 39, 0.06);
+  box-shadow: 10px 0 28px rgba(28, 43, 30, 0.06);
   overflow: hidden;
   box-sizing: border-box;
 }
@@ -83,8 +86,8 @@
 }
 
 .brandText {
-  color: #1d2430;
-  font-family: Montserrat, Arial, sans-serif;
+  color: var(--admin-text);
+  font-family: var(--pcd-font-ui);
   font-size: 0.86rem;
   font-weight: 700;
   line-height: 1.15;
@@ -97,10 +100,10 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  border: 1px solid rgba(24, 29, 39, 0.12);
-  border-radius: 14px;
-  background: rgba(243, 245, 248, 0.96);
-  color: #566171;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-sm);
+  background: var(--pcd-surface-soft);
+  color: var(--admin-muted);
   cursor: pointer;
 }
 
@@ -188,15 +191,16 @@
 
 .sidebarLink,
 .sidebarGroupTrigger {
+  position: relative;
   min-height: 48px;
   width: 100%;
-  border-radius: 16px;
+  border-radius: var(--pcd-radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   gap: 10px;
   padding: 0 14px;
-  color: #5d6877;
+  color: var(--admin-muted);
   background: transparent;
   border: 1px solid transparent;
   text-decoration: none;
@@ -213,14 +217,14 @@
 
 .sidebarLink:hover,
 .sidebarGroupTrigger:hover {
-  background: #f8f4ef;
+  background: var(--pcd-surface-soft);
 }
 
 .sidebarLinkActive {
-  background: #f3efe9;
-  color: #1f2530;
-  border-color: rgba(24, 29, 39, 0.06);
-  box-shadow: 0 8px 18px rgba(24, 29, 39, 0.08);
+  background: var(--pcd-green-panel);
+  color: var(--admin-dark);
+  border-color: rgba(107, 158, 97, 0.24);
+  box-shadow: 0 8px 18px rgba(28, 43, 30, 0.08);
 }
 
 .sidebarTriggerMain {
@@ -239,7 +243,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #4b5565;
+  color: var(--admin-muted);
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0;
@@ -247,7 +251,7 @@
 
 .sidebarLinkActive .sidebarIconFrame,
 .sidebarGroupTrigger.sidebarLinkActive .sidebarIconFrame {
-  color: #1f2530;
+  color: var(--admin-dark);
 }
 
 .sidebarIconImage {
@@ -307,6 +311,8 @@
   padding: 0 14px 0 18px;
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   border-radius: 14px;
   color: #697383;
   text-decoration: none;
@@ -319,9 +325,39 @@
 }
 
 .sidebarSublinkLabel {
+  min-width: 0;
   font-size: 0.78rem;
   font-weight: 600;
   line-height: 1.2;
+}
+
+.navNotificationBadge {
+  min-width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #ef1d26;
+  color: #ffffff;
+  padding: 0 5px;
+  font-family: var(--pcd-font-ui);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 5px 12px rgba(239, 29, 38, 0.2);
+}
+
+.navNotificationDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  display: inline-block;
+  border-radius: 999px;
+  background: #ef1d26;
+  box-shadow: 0 0 0 3px rgba(239, 29, 38, 0.12);
 }
 
 .sidebarSublinkActive {
@@ -360,6 +396,21 @@
   display: none;
 }
 
+.sidebarCollapsed .navNotificationBadge,
+.sidebarCollapsed .navNotificationDot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 2;
+}
+
+.sidebarCollapsed .navNotificationBadge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 0.62rem;
+}
+
 .logoutButton {
   font: inherit;
 }
@@ -394,7 +445,7 @@
   align-items: flex-start;
   padding: 28px 34px 22px;
   border-bottom: 1px solid var(--admin-line);
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .topbarPrimary {
@@ -411,20 +462,20 @@
 
 .eyebrow {
   margin: 0 0 6px;
-  color: #7e8794;
+  color: var(--admin-accent);
   font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .title {
   margin: 0;
   color: var(--admin-text);
-  font-family: Montserrat, Arial, sans-serif;
-  font-size: 1.95rem;
-  line-height: 1;
-  font-weight: 700;
+  font-family: var(--pcd-font-display);
+  font-size: 2rem;
+  line-height: 1.08;
+  font-weight: 400;
   letter-spacing: 0;
 }
 
@@ -527,15 +578,15 @@
   gap: 8px;
   align-content: start;
   padding: 18px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-  border: 1px solid rgba(24, 29, 39, 0.08);
-  box-shadow: 0 16px 28px rgba(24, 29, 39, 0.08);
+  border-radius: var(--pcd-radius-sm);
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-line);
+  box-shadow: var(--admin-shadow);
 }
 
 .statLabel {
   margin: 0;
-  color: #6f7b8e;
+  color: var(--admin-accent);
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -545,10 +596,10 @@
 .statValue {
   margin: 0;
   color: var(--admin-text);
-  font-family: Montserrat, Arial, sans-serif;
+  font-family: var(--pcd-font-display);
   font-size: 2rem;
   line-height: 1;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .statMeta {
@@ -561,9 +612,9 @@
 .portalPanel {
   padding: 0;
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: var(--pcd-radius-sm);
   background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(24, 29, 39, 0.05);
+  border: 1px solid var(--admin-line);
   box-shadow: var(--admin-shadow);
 }
 
@@ -573,15 +624,15 @@
   justify-content: space-between;
   gap: 12px;
   padding: 16px 18px;
-  background: linear-gradient(180deg, #3d4142 0%, #222222 100%);
+  background: var(--admin-dark);
 }
 
 .portalPanelHeader h2 {
   margin: 0;
-  color: #f8f4ef;
-  font-family: Montserrat, Arial, sans-serif;
+  color: var(--pcd-cream);
+  font-family: var(--pcd-font-display);
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .portalPanelHeader p {
@@ -606,7 +657,7 @@
 
 .portalPanelBody {
   padding: 18px;
-  background: #fbfbfc;
+  background: var(--pcd-bg);
 }
 
 .portalTiles {
@@ -622,18 +673,18 @@
   gap: 10px;
   padding: 18px 18px 0;
   text-decoration: none;
-  border-radius: 24px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-  border: 1px solid rgba(24, 29, 39, 0.08);
-  box-shadow: 0 16px 28px rgba(24, 29, 39, 0.08);
+  border-radius: var(--pcd-radius-sm);
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-line);
+  box-shadow: var(--admin-shadow);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
   overflow: hidden;
 }
 
 .portalTile:hover {
   transform: translateY(-2px);
-  box-shadow: 0 20px 32px rgba(24, 29, 39, 0.12);
-  border-color: rgba(24, 29, 39, 0.16);
+  box-shadow: 0 20px 32px rgba(28, 43, 30, 0.12);
+  border-color: rgba(107, 158, 97, 0.3);
 }
 
 .portalTileTop {
@@ -674,9 +725,9 @@
   justify-content: center;
   min-height: 30px;
   padding: 0 12px;
-  border-radius: 999px;
-  background: #edf7ef;
-  color: #2f6b3b;
+  border-radius: var(--pcd-radius-xs);
+  background: var(--pcd-green-panel);
+  color: #4a7a42;
   font-size: 0.74rem;
   font-weight: 700;
   white-space: nowrap;
@@ -686,10 +737,10 @@
 .portalTile h3 {
   margin: 0;
   color: var(--admin-text);
-  font-family: Montserrat, Arial, sans-serif;
+  font-family: var(--pcd-font-display);
   font-size: 1.14rem;
   line-height: 1.25;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .portalTileMeta {
@@ -717,10 +768,10 @@
   margin-top: auto;
   padding: 12px 18px 14px;
   border-top: 1px solid rgba(24, 29, 39, 0.08);
-  color: #315c53;
+  color: var(--admin-dark);
   font-size: 0.82rem;
   font-weight: 800;
-  background: #edf7ef;
+  background: var(--pcd-green-panel);
 }
 
 .portalTileCta::after {
@@ -744,9 +795,9 @@
 .editorWrap {
   position: relative;
   background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(24, 29, 39, 0.08);
-  border-radius: 20px;
-  box-shadow: 0 16px 28px rgba(24, 29, 39, 0.07);
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-sm);
+  box-shadow: var(--admin-shadow);
 }
 
 .placeholderCard,
@@ -792,9 +843,9 @@
 .overlayTitle {
   margin: 0;
   color: var(--admin-text);
-  font-family: Montserrat, Arial, sans-serif;
+  font-family: var(--pcd-font-display);
   line-height: 1.1;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0;
 }
 
@@ -1066,21 +1117,24 @@
 .fieldLabel,
 .checkboxRow,
 .dimensionLabel {
-  color: #2f3744;
-  font-size: 0.9rem;
-  font-weight: 700;
+  color: var(--admin-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .fieldInput,
 .textareaInput {
   width: 100%;
-  border: 1px solid #d7dee8;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #1f2937;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+  color: var(--admin-text);
   padding: 10px 12px;
   font: inherit;
   font-size: 0.95rem;
+  font-weight: 400;
   box-sizing: border-box;
 }
 
@@ -1095,8 +1149,8 @@
 
 .fieldInput:focus,
 .textareaInput:focus {
-  outline: 2px solid rgba(31, 122, 56, 0.2);
-  border-color: rgba(31, 122, 56, 0.42);
+  outline: 3px solid rgba(107, 158, 97, 0.16);
+  border-color: var(--admin-accent);
 }
 
 .passwordInline {
@@ -1113,16 +1167,18 @@
 .rowDeleteButton,
 .overlayCancelButton,
 .overlayDeleteButton {
-  min-height: 40px;
+  min-height: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 12px;
-  padding: 0 14px;
+  border-radius: var(--pcd-radius-xs);
+  padding: 0 18px;
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   text-decoration: none;
   cursor: pointer;
   box-sizing: border-box;
@@ -1130,28 +1186,28 @@
 
 .primaryButton,
 .addProductButton {
-  border: 1px solid #181d27;
-  background: #181d27;
-  color: #ffffff;
+  border: 1px solid var(--admin-dark);
+  background: var(--admin-dark);
+  color: var(--pcd-cream);
 }
 
 .secondaryButton,
 .rowEditButton,
 .overlayCancelButton {
-  border: 1px solid #d7dee8;
-  background: #ffffff;
-  color: #243041;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-surface);
+  color: var(--admin-dark);
 }
 
 .rowDeleteButton,
 .overlayDeleteButton {
   border: 1px solid rgba(180, 35, 24, 0.26);
   background: #fff8f7;
-  color: #b42318;
+  color: var(--pcd-danger);
 }
 
 .overlayDeleteButton {
-  background: #b42318;
+  background: var(--pcd-danger);
   color: #ffffff;
 }
 
@@ -2814,14 +2870,64 @@
   justify-content: space-between;
   gap: 12px;
   padding: 16px 18px;
-  border-bottom: 1px solid rgba(24, 29, 39, 0.08);
-  background: rgba(255, 255, 255, 0.76);
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--pcd-surface-soft);
+}
+
+.statusFilterBar {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.statusFilterButton {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+  color: var(--admin-muted);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.statusFilterButton small {
+  min-width: 22px;
+  min-height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--pcd-radius-xs);
+  background: var(--pcd-surface-soft);
+  color: var(--admin-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.statusFilterButtonActive {
+  border-color: rgba(107, 158, 97, 0.34);
+  background: var(--pcd-green-panel);
+  color: var(--admin-dark);
+}
+
+.statusFilterButtonActive small {
+  background: var(--admin-surface);
+  color: var(--admin-dark);
 }
 
 .tableMeta {
   color: var(--admin-muted);
-  font-size: 0.86rem;
+  font-size: 0.76rem;
   font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .productsTitle {
@@ -2836,15 +2942,15 @@
 .productsTable {
   width: 100%;
   border-collapse: collapse;
-  background: #ffffff;
+  background: var(--admin-surface);
 }
 
 .productsTable th,
 .productsTable td {
   padding: 14px 12px;
-  border-bottom: 1px solid rgba(24, 29, 39, 0.08);
+  border-bottom: 1px solid var(--pcd-line-soft);
   text-align: left;
-  color: #2f3744;
+  color: var(--admin-text);
   font-size: 0.9rem;
 }
 
@@ -2852,12 +2958,12 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  color: #687386;
+  color: var(--admin-dark);
   font-size: 0.78rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: #f8f4ef;
+  background: var(--pcd-surface-soft);
 }
 
 .productNameCell {
@@ -2869,10 +2975,10 @@
   display: inline-flex;
   align-items: center;
   min-height: 28px;
-  border: 1px solid #d8e1ed;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #0b3550;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--pcd-green-panel);
+  color: var(--admin-dark);
   padding: 0 9px;
   font-family: "Courier New", monospace;
   font-size: 0.82rem;
@@ -3439,7 +3545,7 @@
 }
 
 .customerSearchInput {
-  width: min(280px, 100%);
+  width: min(320px, 100%);
   min-height: 40px;
   border: 1px solid #d7dee8;
   border-radius: 12px;
@@ -3449,6 +3555,31 @@
   font: inherit;
   font-size: 0.9rem;
   box-sizing: border-box;
+}
+
+.customerToolbar {
+  align-items: center;
+  gap: 14px;
+}
+
+.customerToolbar .tableMeta {
+  margin: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.customerToolbarActions {
+  min-width: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1 1 auto;
+}
+
+.customerRecordModal {
+  width: min(720px, calc(100vw - 48px));
 }
 
 .helperText {
@@ -3792,6 +3923,7 @@
     32px
     minmax(0, 0.8fr)
     minmax(0, 0.95fr)
+    minmax(0, 0.55fr)
     minmax(0, 0.75fr)
     minmax(0, 1.35fr)
     minmax(0, 0.42fr)
@@ -3805,7 +3937,7 @@
     minmax(0, 0.5fr)
     minmax(0, 0.7fr)
     minmax(0, 0.82fr)
-    minmax(0, 0.78fr);
+    76px;
   width: 100%;
   min-width: 0;
   padding: 0 10px;
@@ -4724,6 +4856,126 @@
   font-size: 0.96rem;
 }
 
+.paymentLedger {
+  display: grid;
+  gap: 18px;
+}
+
+.paymentSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.paymentSummaryCard {
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  align-content: center;
+  border: 1px solid var(--pcd-line-soft);
+  border-radius: var(--pcd-radius-sm);
+  background: var(--pcd-green-panel);
+  padding: 14px 16px;
+}
+
+.paymentSummaryCard span {
+  color: var(--admin-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.paymentSummaryCard strong {
+  color: var(--admin-dark);
+  font-family: var(--pcd-font-ui);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.paymentToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--pcd-line-soft);
+  border-radius: var(--pcd-radius-sm);
+  background: var(--admin-surface);
+}
+
+.depositToggleGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.depositToggleGroup > span {
+  margin-right: 4px;
+  color: var(--admin-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.radioPill {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--pcd-line-soft);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--admin-text);
+  padding: 0 12px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.radioPill:has(input:checked) {
+  border-color: rgba(107, 158, 97, 0.38);
+  background: var(--pcd-green-panel);
+  color: var(--admin-dark);
+}
+
+.radioPill:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.radioPill input {
+  accent-color: var(--pcd-green);
+}
+
+.paymentTable th,
+.paymentTable td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.paymentTable th:first-child,
+.paymentTable td:first-child,
+.paymentTable th:nth-child(5),
+.paymentTable td:nth-child(5) {
+  text-align: left;
+}
+
+.paymentTable th:last-child,
+.paymentTable td:last-child {
+  width: 72px;
+}
+
+.paymentTable .fieldInput {
+  min-width: 0;
+}
+
+.paymentModal {
+  width: min(640px, calc(100vw - 48px));
+}
+
 .projectListMetric {
   min-height: 34px;
   display: inline-flex;
@@ -4865,6 +5117,11 @@
   min-width: 0;
 }
 
+.orderWorkflowTable th,
+.orderWorkflowTable td {
+  vertical-align: top;
+}
+
 .orderWorkflowTable th:nth-child(1),
 .orderWorkflowTable td:nth-child(1) {
   width: 29%;
@@ -4910,6 +5167,7 @@
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-top: 2px;
 }
 
 .orderPurchasingTable th:nth-child(1),
@@ -5541,6 +5799,22 @@
   white-space: nowrap;
 }
 
+.colourLibraryCheckboxGroup {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  border: 1px solid var(--pcd-line-soft);
+  border-radius: var(--pcd-radius-xs);
+  background: #ffffff;
+  padding: 8px 10px;
+}
+
+.colourLibraryCheckboxGroup .checkboxRow {
+  min-height: 24px;
+}
+
 .confirmModal {
   width: min(520px, calc(100vw - 32px));
   overflow: hidden;
@@ -5891,6 +6165,9 @@
 
   .mobileMenuNav a,
   .mobileMenuNav button {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     color: #161b22;
     text-decoration: none;
     font-family: Montserrat, Arial, sans-serif;
@@ -5915,6 +6192,13 @@
     justify-content: space-between;
     gap: 12px;
     text-align: left;
+  }
+
+  .mobileMenuItemLabel {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
   }
 
   .mobileMenuGroupChevron {
@@ -5951,6 +6235,10 @@
   }
 
   .mobileMenuSublink {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     font-size: clamp(1.08rem, 5.2vw, 1.45rem) !important;
     line-height: 1.12 !important;
     font-weight: 600 !important;
@@ -5987,6 +6275,31 @@
 }
 
 @media (max-width: 640px) {
+  .customerToolbar {
+    align-items: stretch;
+  }
+
+  .customerToolbar .tableMeta {
+    white-space: normal;
+  }
+
+  .customerToolbarActions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .customerToolbarActions .customerSearchInput {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .customerToolbarActions .primaryButton,
+  .customerToolbarActions .secondaryButton {
+    flex: 1 1 0;
+  }
+
   .portalTiles,
   .dashboardGrid,
   .settingsGrid,
@@ -6173,5 +6486,750 @@
 
   .passwordInline {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Backend typography: keep UI text lighter than the public marketing page. */
+.sidebarLinkLabel,
+.sidebarSublinkLabel,
+.accountSummaryValue,
+.accessPill,
+.portalPanelBadge,
+.portalTileStatus,
+.fieldLabel,
+.checkboxRow,
+.dimensionLabel,
+.tableMeta,
+.productsTable th,
+.productNameCell,
+.accessCodeCell,
+.primaryButton,
+.secondaryButton,
+.addProductButton,
+.rowEditButton,
+.rowDeleteButton,
+.overlayCancelButton,
+.overlayDeleteButton,
+.statusSelect,
+.settingsSubnavItem strong,
+.profileSummaryCard h3,
+.profileInfoCard h3,
+.profileSettingsForm h4,
+.customerModalHeader h2,
+.colourLibraryModal .fieldLabel,
+.colourLibraryModal .primaryButton,
+.colourLibraryModal .secondaryButton,
+.confirmModal .secondaryButton,
+.confirmModal .rowDeleteButton {
+  font-weight: 600;
+}
+
+.fieldLabel,
+.checkboxRow,
+.dimensionLabel,
+.tableMeta,
+.productsTable th,
+.colourLibraryModal .fieldLabel {
+  letter-spacing: 0.04em;
+}
+
+.fieldLabel,
+.checkboxRow,
+.dimensionLabel {
+  text-transform: none;
+}
+
+.productsTable td {
+  font-weight: 400;
+}
+
+.productNameCell {
+  color: var(--admin-text);
+  font-weight: 500;
+}
+
+.primaryButton,
+.secondaryButton,
+.addProductButton,
+.rowEditButton,
+.rowDeleteButton,
+.overlayCancelButton,
+.overlayDeleteButton {
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.viewport button,
+.viewport label,
+.viewport th,
+.viewport strong,
+.viewport b {
+  font-weight: 600;
+}
+
+.viewport td,
+.viewport input,
+.viewport select,
+.viewport textarea {
+  font-weight: 400;
+}
+
+.viewport .statusFilterButton,
+.viewport .statusFilterButton small {
+  font-weight: 500;
+}
+
+/* Quote editor normalization: keep quote pages aligned with the admin design system. */
+.quoteBuilderFrame,
+.quoteItemsScroller,
+.quoteTotalsPanel,
+.quoteTotalGroup,
+.quoteGrandTotalPanel,
+.quoteItemsTable,
+.customerModal {
+  border-color: var(--admin-line);
+  border-radius: var(--pcd-radius-sm);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+}
+
+.quoteBuilderSidebar {
+  border-color: var(--admin-line);
+  background: var(--pcd-surface-soft);
+}
+
+.quoteBuilderSidebar h2,
+.quoteBuilderPanelHeader h1,
+.customerModalHeader h2 {
+  color: var(--admin-text);
+  font-family: var(--pcd-font-display);
+  font-weight: 400;
+}
+
+.quoteBuilderSideButton,
+.quoteBuilderTab,
+.quoteBuilderPanelBody .fieldLabel,
+.quoteItemHead,
+.quoteItemsTable th,
+.quoteTotalGroup summary,
+.quoteTotalsPanel span,
+.quoteTotalsPanel strong,
+.quoteTotalGroup summary strong,
+.quoteGrandTotalPanel strong,
+.quoteBuilderPanelBody .primaryButton,
+.quoteBuilderPanelBody .secondaryButton,
+.quoteBuilderPanelBody .productsTable .rowEditButton,
+.quoteBuilderPanelBody .productsTable .rowDeleteButton,
+.quoteItemActions .rowEditButton,
+.quoteItemActions .rowDeleteButton,
+.customerModalIcon {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.quoteBuilderSideButton {
+  border-color: var(--admin-line);
+  background: var(--admin-surface);
+  color: var(--admin-dark);
+  box-shadow: none;
+}
+
+.quoteBuilderSideButtonActive {
+  border-color: rgba(107, 158, 97, 0.34);
+  background: var(--pcd-green-panel);
+  color: var(--admin-dark);
+  box-shadow: inset 3px 0 0 var(--admin-accent);
+}
+
+.quoteBuilderTab {
+  border-color: var(--admin-line);
+  background: var(--pcd-surface-soft);
+  color: var(--admin-muted);
+}
+
+.quoteBuilderTab:last-child {
+  border-right-color: var(--admin-line);
+}
+
+.quoteBuilderTabActive {
+  border-color: var(--admin-line);
+  border-bottom-color: var(--admin-surface);
+  background: var(--admin-surface);
+  color: var(--admin-dark);
+  box-shadow: inset 0 3px 0 var(--admin-accent);
+}
+
+.quoteBuilderPanelHeader {
+  border-color: var(--admin-line);
+}
+
+.quoteBuilderPanelBody .fieldLabel,
+.quoteBuilderGrid .fieldLabel,
+.quoteBuilderStack .fieldLabel {
+  color: var(--admin-dark);
+}
+
+.quoteBuilderPanelBody .fieldInput,
+.quoteBuilderPanelBody .textareaInput,
+.quoteItemField input,
+.quoteItemField select,
+.quoteColourCombo input,
+.quoteItemSize input,
+.quoteItemStack input,
+.quoteItemField textarea,
+.compactInput,
+.compactTextarea {
+  border-color: var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-weight: 400;
+}
+
+.quoteBuilderPanelBody .fieldInput:focus,
+.quoteBuilderPanelBody .textareaInput:focus,
+.quoteItemField input:focus,
+.quoteItemField select:focus,
+.quoteColourCombo input:focus,
+.quoteItemSize input:focus,
+.quoteItemStack input:focus,
+.quoteItemField textarea:focus,
+.compactInput:focus,
+.compactTextarea:focus {
+  border-color: var(--admin-accent);
+  outline: 3px solid rgba(107, 158, 97, 0.16);
+}
+
+.quoteBuilderPanelBody .primaryButton {
+  border-color: var(--admin-dark);
+  background: var(--admin-dark);
+  color: var(--pcd-cream);
+}
+
+.quoteBuilderPanelBody .secondaryButton {
+  border-color: var(--admin-line);
+  background: var(--admin-surface);
+  color: var(--admin-dark);
+}
+
+.quoteItemHead,
+.quoteItemsTable th {
+  border-color: var(--admin-line);
+  background: var(--pcd-surface-soft);
+  color: var(--admin-dark);
+}
+
+.quoteItemRow,
+.quoteItemsTable th,
+.quoteItemsTable td {
+  border-color: var(--pcd-line-soft);
+  color: var(--admin-text);
+  font-weight: 400;
+}
+
+.quoteItemRowEditing {
+  background: #fffdf8;
+}
+
+.quoteItemRowNum,
+.customerModalIcon {
+  background: var(--admin-dark);
+  color: var(--pcd-cream);
+  font-weight: 500;
+}
+
+.quoteItemCheck input {
+  accent-color: var(--admin-accent);
+}
+
+.quoteItemTotal,
+.quoteTotalsPanel div,
+.quoteTotalGroup summary,
+.quoteTotalGroup summary span strong,
+.quoteTotalGroupBody div,
+.quoteGrandTotalPanel div,
+.quoteGrandTotalPanel div:last-child {
+  color: var(--admin-text);
+}
+
+.quoteTotalsPanel span,
+.quoteTotalsPanel strong,
+.quoteTotalGroup summary strong,
+.quoteGrandTotalPanel strong {
+  font-weight: 600;
+}
+
+.quoteTotalGroup summary::before {
+  border-right-color: var(--admin-accent);
+  border-bottom-color: var(--admin-accent);
+}
+
+.customerModalHeader {
+  border-color: var(--admin-line);
+  background: var(--pcd-green-panel);
+}
+
+.quoteColourMenu {
+  border-color: var(--admin-line);
+  border-radius: var(--pcd-radius-sm);
+}
+
+.quoteColourOption {
+  border-color: var(--pcd-line-soft);
+  color: var(--admin-text);
+}
+
+.quoteColourOption:hover {
+  background: var(--pcd-surface-soft);
+}
+
+.quoteColourOption strong {
+  font-weight: 500;
+}
+
+.quoteMoneyInput span,
+.quoteMarkupInput span,
+.quoteColourOption small,
+.quoteColourEmpty,
+.notApplicable {
+  color: var(--admin-muted);
+}
+
+.quoteItemTotal {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  min-height: 100%;
+  margin: 0;
+  padding: 0 8px;
+  background: var(--pcd-green-panel);
+  color: var(--admin-text);
+  font-size: 0.8rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* Final backend consistency pass across specialist admin screens. */
+.viewport .statusPill,
+.viewport .projectListMetric,
+.viewport .quoteBuilderSummaryLine strong,
+.viewport .quoteBuilderPanelBody button,
+.viewport .quoteBuilderPanelBody label,
+.viewport .quoteBuilderPanelBody th,
+.viewport .quoteBuilderPanelBody strong,
+.viewport .quoteBuilderTopbar button,
+.viewport .quoteBuilderGrid label,
+.viewport .quoteBuilderStack label,
+.viewport .quoteTotalsLayout strong,
+.viewport .workflowTotals strong,
+.viewport .workflowCard strong,
+.viewport .orderWorkflowTable th,
+.viewport .colourLibraryTable th,
+.viewport .colourLibraryModal label,
+.viewport .columnFilterMenuHeader,
+.viewport .columnFilterMenuHeader button,
+.viewport .settingsSubnavItem strong,
+.viewport .profileSummaryCard strong,
+.viewport .profileInfoCard strong {
+  font-weight: 600;
+}
+
+.viewport .quoteBuilderPanelBody input,
+.viewport .quoteBuilderPanelBody select,
+.viewport .quoteBuilderPanelBody textarea,
+.viewport .quoteBuilderPanelBody td,
+.viewport .orderWorkflowTable td,
+.viewport .colourLibraryTable td,
+.viewport .colourLibraryModal input,
+.viewport .colourLibraryModal select,
+.viewport .colourLibraryModal textarea {
+  font-weight: 400;
+}
+
+.viewport .quoteBuilderPanelBody button,
+.viewport .quoteBuilderTopbar button,
+.viewport .quoteBuilderPanelBody label,
+.viewport .quoteBuilderGrid label,
+.viewport .quoteBuilderStack label,
+.viewport .orderWorkflowTable th,
+.viewport .colourLibraryTable th,
+.viewport .colourLibraryModal label {
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.settingsSubnavItemActive,
+.profileAvatar,
+.columnFilterIconButtonActive,
+.columnFilterCount {
+  border-color: rgba(107, 158, 97, 0.34);
+  background: var(--pcd-green-panel);
+  color: var(--admin-dark);
+}
+
+.columnFilterMenuHeader button,
+.colourLibrarySearch,
+.colourLibraryModal .fieldLabel {
+  color: var(--admin-dark);
+}
+
+.columnFilterMenuHeader button:disabled {
+  color: var(--admin-muted);
+}
+
+.columnFilterIconButton:hover {
+  background: var(--pcd-green-panel);
+  color: var(--admin-dark);
+}
+
+.colourLibraryModal .fieldInput,
+.colourLibrarySearch .fieldInput,
+.colourLibraryCostField input,
+.colourLibraryModal select,
+.colourLibraryModal textarea,
+.orderWorkflowTable .textareaInput {
+  border-color: var(--admin-line);
+  border-radius: var(--pcd-radius-xs);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-weight: 400;
+}
+
+.colourLibraryModal .fieldInput:focus,
+.colourLibrarySearch .fieldInput:focus,
+.colourLibraryCostField input:focus,
+.colourLibraryModal select:focus,
+.colourLibraryModal textarea:focus,
+.orderWorkflowTable .textareaInput:focus {
+  border-color: var(--admin-accent);
+  outline: 3px solid rgba(107, 158, 97, 0.16);
+}
+
+.colourLibraryTable th,
+.orderWorkflowTable th {
+  background: var(--pcd-surface-soft);
+  color: var(--admin-dark);
+}
+
+.colourLibraryTable td,
+.orderWorkflowTable td {
+  color: var(--admin-text);
+}
+
+.colourLibraryModal .primaryButton,
+.quoteAttachmentsSection .attachmentUploadRow .primaryButton {
+  border-color: var(--admin-dark);
+  background: var(--admin-dark);
+  color: var(--pcd-cream);
+}
+
+.colourLibraryModal .secondaryButton,
+.confirmModal .secondaryButton,
+.colourLibraryFileControl .secondaryButton {
+  border-color: var(--admin-line);
+  background: var(--admin-surface);
+  color: var(--admin-dark);
+}
+
+.rowIconButton {
+  --row-icon-color: currentColor;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  color: transparent !important;
+  font-size: 0 !important;
+  line-height: 0;
+  position: relative;
+  text-indent: -9999px;
+  white-space: nowrap;
+}
+
+.rowIconButton::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  display: block;
+  background: var(--row-icon-color);
+  text-indent: 0;
+  transform: translate(-50%, -50%);
+}
+
+.rowEditIconButton {
+  --row-icon-color: var(--admin-dark);
+}
+
+.rowDeleteIconButton {
+  --row-icon-color: var(--pcd-danger);
+}
+
+.rowEditIconButton::before {
+  -webkit-mask: url("/images/icons/edit.svg") center / contain no-repeat;
+  mask: url("/images/icons/edit.svg") center / contain no-repeat;
+}
+
+.rowDeleteIconButton::before {
+  -webkit-mask: url("/images/icons/delete.svg") center / contain no-repeat;
+  mask: url("/images/icons/delete.svg") center / contain no-repeat;
+}
+
+.quoteItemActions {
+  justify-content: center;
+  padding-right: 0;
+}
+
+.quoteItemActions .rowIconButton {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+
+.quoteItemGrid > :nth-child(n + 13) {
+  justify-self: stretch;
+  text-align: center;
+}
+
+.quoteItemHead > :nth-child(n + 13),
+.quoteItemRow > :nth-child(n + 13) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quoteItemRow > :nth-child(n + 12) input,
+.quoteItemRow > :nth-child(n + 12) select,
+.quoteItemRow > :nth-child(n + 12) textarea {
+  text-align: center;
+}
+
+.quoteItemRow > :nth-child(n + 12) .notApplicable {
+  width: 100%;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .body,
+  .content {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .settingsCard,
+  .productsSection,
+  .editorCard,
+  .editorWrap,
+  .portalPanel,
+  .statCard,
+  .placeholderCard {
+    border-radius: 14px;
+  }
+
+  .sectionHeaderRow,
+  .productsHeaderBar,
+  .customerToolbar,
+  .colourLibraryActionBar,
+  .quoteSectionActions,
+  .orderDetailHeader,
+  .orderTabHeader,
+  .paymentLedgerToolbar,
+  .projectProgressHeader,
+  .quoteBuilderTopbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .inlineButtonRow,
+  .customerToolbarActions,
+  .topbarActions,
+  .quoteSectionActions,
+  .paymentLedgerToolbarActions {
+    width: 100%;
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .inlineButtonRow > *,
+  .customerToolbarActions > *,
+  .quoteSectionActions > *,
+  .paymentLedgerToolbarActions > * {
+    flex: 1 1 auto;
+  }
+
+  .primaryButton,
+  .secondaryButton {
+    min-height: 42px;
+  }
+
+  .fieldInput,
+  .textareaInput,
+  .moneyInputWrap,
+  .fieldLabel input,
+  .fieldLabel select,
+  .fieldLabel textarea {
+    max-width: 100%;
+  }
+
+  .productsTableWrap,
+  .quoteItemsScroller,
+  .quoteBuilderPanelBody,
+  .colourLibraryTableWrap,
+  .orderWorkflowTableWrap,
+  .paymentsTableWrap {
+    margin-left: -14px;
+    margin-right: -14px;
+    overflow-x: auto;
+    padding-left: 14px;
+    padding-right: 14px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .productsTable,
+  .colourLibraryTable,
+  .orderWorkflowTable {
+    min-width: 760px;
+  }
+
+  .quoteItemGrid {
+    min-width: 1280px;
+  }
+
+  .customerSearchInput,
+  .colourLibrarySearch,
+  .colourLibrarySearch .fieldInput {
+    width: 100%;
+  }
+
+  .customerModal,
+  .colourLibraryModal,
+  .confirmModal,
+  .productEditModalPanel,
+  .mediaModalPanel {
+    max-height: calc(100dvh - 28px);
+    overflow: auto;
+    width: calc(100vw - 28px);
+  }
+
+  .customerModalFooter,
+  .mediaModalFooter,
+  .overlayActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .customerModalFooter button,
+  .mediaModalFooter button,
+  .overlayActions button {
+    width: 100%;
+  }
+
+  .quoteBuilderPanelBody .productsTable {
+    min-width: 900px;
+  }
+
+  .orderWorkflowRow,
+  .paymentSummaryGrid,
+  .paymentLedgerGrid,
+  .quoteTotalsGrid,
+  .quoteCostsGrid,
+  .quoteNotesGrid,
+  .colourLibraryModalGrid,
+  .customerModalGrid,
+  .formGrid,
+  .settingsGrid,
+  .settingsGridWide,
+  .configGrid,
+  .profileInfoGrid,
+  .profileFormsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .mobileHeader {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .body,
+  .content {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .title,
+  .productsTitle {
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+
+  .subtitle,
+  .tableMeta,
+  .sectionText {
+    font-size: 0.82rem;
+  }
+
+  .settingsCard,
+  .productsSection,
+  .editorCard,
+  .editorWrap,
+  .portalPanel,
+  .statCard,
+  .placeholderCard {
+    padding: 16px;
+  }
+
+  .productsTableWrap,
+  .quoteItemsScroller,
+  .quoteBuilderPanelBody,
+  .colourLibraryTableWrap,
+  .orderWorkflowTableWrap,
+  .paymentsTableWrap {
+    margin-left: -10px;
+    margin-right: -10px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .portalTiles,
+  .dashboardGrid,
+  .productOptionLinkGrid,
+  .productColourLibraryGroups,
+  .productPreviewFinishTabs,
+  .productPreviewSwatches,
+  .productPreviewProfileGrid,
+  .productPreviewEdgeGrid,
+  .mediaAssetGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .colourLibraryTableTile {
+    width: 42px;
+    height: 42px;
+  }
+
+  .rowActions,
+  .quoteItemActions {
+    gap: 6px;
+  }
+
+  .rowIconButton {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .fieldLabel {
+    min-width: 0;
   }
 }

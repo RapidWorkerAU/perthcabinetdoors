@@ -1,24 +1,30 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
-import { getDatabaseColourFamily, normaliseColourMaterialKey } from "../../../lib/pcd-colour-library";
-import { colourGroupsForMaterial } from "../../products/product-data";
+import { getDatabaseColourFamilyForSelection, getDatabaseColourSuppliers, normaliseColourMaterialKey } from "../../../lib/pcd-colour-library";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
+  const supabase = await createSupabaseServerClient();
+
+  if (searchParams.get("suppliers") === "1") {
+    const suppliers = await getDatabaseColourSuppliers(supabase);
+    return NextResponse.json({ ok: true, suppliers });
+  }
+
   const material = normaliseColourMaterialKey(searchParams.get("material"));
+  const thickness = searchParams.get("thickness") || "";
 
   if (!material) {
     return NextResponse.json({ ok: true, colourFamily: null });
   }
 
-  const supabase = await createSupabaseServerClient();
-  const databaseFamily = await getDatabaseColourFamily(supabase, material);
-  const colourFamily = databaseFamily || colourGroupsForMaterial(material);
+  const colourFamily = await getDatabaseColourFamilyForSelection(supabase, { material, thickness });
 
   return NextResponse.json({
     ok: true,
-    source: databaseFamily ? "database" : "fallback",
+    source: "database",
     material,
-    colourFamily,
+    thickness,
+    colourFamily: colourFamily || null,
   });
 }

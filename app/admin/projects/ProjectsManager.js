@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMoney } from "../../../lib/pcd-quote-utils";
 import styles from "../admin-shell.module.css";
+import { formatAdminLabel } from "../_utils/formatAdminLabel";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -140,7 +141,7 @@ export default function ProjectsManager() {
                   </td>
                   <td>
                     <span className={`${styles.statusPill} ${getProjectStatusClass(project.status)}`}>
-                      {(project.status || "active").replace(/_/g, " ").replace(/^./, (char) => char.toUpperCase())}
+                      {formatAdminLabel(project.status || "active")}
                     </span>
                   </td>
                   <td>{formatMoney(project.total_inc_gst, "AUD")}</td>

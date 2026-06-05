@@ -87,6 +87,7 @@ export async function POST(request) {
         product_name: line.product_name || line.product_type || quoteRequest.product_name,
         description: line.notes,
         material: line.material,
+        thickness: line.thickness,
         width_mm: line.width_mm,
         height_mm: line.height_mm,
         finish: line.finish,
