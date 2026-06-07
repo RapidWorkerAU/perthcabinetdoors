@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { calculateQuoteLine, calculateQuoteTotals, formatMoney, GST_RATE } from "../../../../lib/pcd-quote-utils";
+import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
 import {
   EDGE_PROFILES,
   MATERIAL_OPTIONS,
@@ -22,10 +23,17 @@ import { AdminTablePagination, useAdminTablePagination } from "../../_components
 const sections = [
   { key: "details", label: "Information & Contacts" },
   { key: "items", label: "Quote Items" },
+  { key: "cabinets", label: "Base Cabinets" },
   { key: "costs", label: "Costs & Markup" },
   { key: "totals", label: "Quote Totals" },
   { key: "notes", label: "Notes" },
   { key: "attachments", label: "Attachments" },
+];
+
+const BASE_CABINET_TYPE = "base_cabinet";
+const quoteProductTypes = [
+  ...PRODUCT_TYPES.map((type) => ({ value: type, label: type })),
+  { value: BASE_CABINET_TYPE, label: "Base cabinet" },
 ];
 
 const emptyLine = {
@@ -96,7 +104,12 @@ function linesFromQuote(quote) {
     .map((line) => ({
       ...emptyLine,
       ...line,
+      cabinet_config: Array.isArray(line.pcd_cabinet_configs)
+        ? line.pcd_cabinet_configs[0] || null
+        : line.pcd_cabinet_configs || line.cabinet_config || null,
       product_type: line.product_type ?? "",
+      product_name: line.product_name ?? "",
+      description: line.description ?? "",
       material: line.material ?? "",
       thickness: line.thickness ?? "",
       width_mm: line.width_mm ?? "",
@@ -159,6 +172,14 @@ function quoteLineSizeText(line) {
 
 function lineValue(value, fallback = "-") {
   return value || fallback;
+}
+
+function isBaseCabinetLine(line) {
+  return line?.product_type === BASE_CABINET_TYPE;
+}
+
+function displayProductType(value) {
+  return value === BASE_CABINET_TYPE ? "Base cabinet" : value;
 }
 
 function defaultQuoteEmailSubject(form) {
@@ -229,10 +250,23 @@ function QuoteImageCombobox({ disabled = false, placeholder, value, options, onC
 
     function positionMenu() {
       const rect = wrapRef.current.getBoundingClientRect();
+      const viewportPadding = 12;
+      const preferredWidth = Math.max(rect.width, 320);
+      const width = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2);
+      const left = Math.min(
+        Math.max(rect.left, viewportPadding),
+        window.innerWidth - width - viewportPadding
+      );
+      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+      const spaceAbove = rect.top - viewportPadding;
+      const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
+      const availableHeight = openAbove ? spaceAbove : spaceBelow;
+      const maxHeight = Math.max(160, Math.min(360, availableHeight - 4));
       setMenuStyle({
-        left: `${rect.left}px`,
-        top: `${rect.bottom + 4}px`,
-        width: `${Math.max(rect.width, 320)}px`,
+        left: `${left}px`,
+        maxHeight: `${maxHeight}px`,
+        top: `${openAbove ? rect.top - maxHeight - 4 : rect.bottom + 4}px`,
+        width: `${width}px`,
       });
     }
 
@@ -358,10 +392,12 @@ export default function QuoteEditor({ quoteId }) {
   const [customers, setCustomers] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [editableLineIndex, setEditableLineIndex] = useState(null);
+  const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isGeneratingCabinetPdf, setIsGeneratingCabinetPdf] = useState(false);
   const [publishEmail, setPublishEmail] = useState(null);
   const [feedback, setFeedback] = useState("");
 
@@ -390,11 +426,12 @@ export default function QuoteEditor({ quoteId }) {
       const response = await fetch(`/api/admin/quotes/${quoteId}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not load quote.");
+      setFeedback(payload.error || "Could not load quote.");
         return;
       }
       setForm(formFromQuote(payload.quote));
       setEditableLineIndex(null);
+      setActiveCabinetLineIndex(null);
     } catch (error) {
       setFeedback(error?.message || "Could not load quote.");
     } finally {
@@ -471,10 +508,27 @@ export default function QuoteEditor({ quoteId }) {
 
         if (Object.prototype.hasOwnProperty.call(patch, "product_type")) {
           next.product_name = patch.product_type || "";
+          if (patch.product_type === BASE_CABINET_TYPE) {
+            next.product_name = "Base cabinet";
+            next.qty = next.qty || 1;
+            next.width_mm = "";
+            next.height_mm = "";
+            next.edge_mould = "";
+            next.profile_type = "";
+            next.profile = "";
+            next.hinge_holes = false;
+            next.hinge_supply = false;
+            next.hinge_qty = "";
+            next.product_unit_cost_ex_gst = "";
+            next.markup_percent = next.markup_percent ?? 40;
+          }
           if (patch.product_type !== "Door") {
             next.hinge_holes = false;
             next.hinge_supply = false;
             next.hinge_qty = "";
+          }
+          if (patch.product_type !== BASE_CABINET_TYPE) {
+            next.cabinet_config = null;
           }
         }
 
@@ -482,6 +536,9 @@ export default function QuoteEditor({ quoteId }) {
           next.thickness = "";
           next.finish = "";
           next.colour = "";
+          if (next.product_type === BASE_CABINET_TYPE) {
+            next.thickness = thicknessOptionsForMaterial(patch.material)[0] || "";
+          }
           if (patch.material !== "Thermolaminate") {
             next.profile_type = "";
             next.profile = "";
@@ -526,7 +583,10 @@ export default function QuoteEditor({ quoteId }) {
 
   async function saveLine() {
     const saved = await saveQuote();
-    if (saved) setEditableLineIndex(null);
+    if (saved) {
+      setEditableLineIndex(null);
+      setActiveCabinetLineIndex(null);
+    }
   }
 
   async function addLine() {
@@ -554,17 +614,25 @@ export default function QuoteEditor({ quoteId }) {
       if (current === index) return null;
       return current > index ? current - 1 : current;
     });
+    setActiveCabinetLineIndex((current) => {
+      if (current === null) return null;
+      if (current === index) return null;
+      return current > index ? current - 1 : current;
+    });
   }
 
-  async function saveQuote(event) {
-    event?.preventDefault();
+  async function saveQuote(eventOrForm) {
+    const nextForm = eventOrForm && typeof eventOrForm.preventDefault === "function" ? form : eventOrForm || form;
+    if (eventOrForm && typeof eventOrForm.preventDefault === "function") {
+      eventOrForm.preventDefault();
+    }
     setIsSaving(true);
     setFeedback("");
     try {
       const response = await fetch(`/api/admin/quotes/${quoteId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(nextForm),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -580,6 +648,29 @@ export default function QuoteEditor({ quoteId }) {
       return false;
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function saveCabinetLine(index, cabinetPayload) {
+    const nextForm = {
+      ...form,
+      lines: form.lines.map((line, lineIndex) => {
+        if (lineIndex !== index) return line;
+        return {
+          ...line,
+          ...cabinetPayload.line_item_patch,
+          cabinet_config: cabinetPayload,
+          qty: line.qty || 1,
+          markup_percent: line.markup_percent ?? 40,
+        };
+      }),
+    };
+
+    setForm(nextForm);
+    const saved = await saveQuote(nextForm);
+    if (saved) {
+      setEditableLineIndex(null);
+      setActiveCabinetLineIndex(null);
     }
   }
 
@@ -745,6 +836,25 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+  async function generateCabinetDrawingsAttachment() {
+    setIsGeneratingCabinetPdf(true);
+    setFeedback("");
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/cabinet-drawings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not generate cabinet drawings PDF.");
+      await loadQuote();
+      setFeedback("Cabinet drawings PDF generated and attached.");
+    } catch (error) {
+      setFeedback(error?.message || "Could not generate cabinet drawings PDF.");
+    } finally {
+      setIsGeneratingCabinetPdf(false);
+    }
+  }
+
   function renderDetails() {
     return (
       <div className={styles.quoteInfoSection}>
@@ -801,6 +911,81 @@ export default function QuoteEditor({ quoteId }) {
     );
   }
 
+  function baseCabinetLines() {
+    return form.lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => isBaseCabinetLine(line));
+  }
+
+  function renderCabinets() {
+    const cabinets = baseCabinetLines();
+
+    return (
+      <div className={styles.cabinetConfigList}>
+        <div className={styles.quoteSectionActions}>
+          <button type="button" className={styles.secondaryButton} onClick={() => setActiveSection("items")}>
+            Back to quote items
+          </button>
+        </div>
+        {cabinets.length ? (
+          <div className={styles.productsTableWrap}>
+            <table className={`${styles.productsTable} ${styles.cabinetConfigTable}`}>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Cabinet</th>
+                  <th>Material</th>
+                  <th>Colour</th>
+                  <th>Qty</th>
+                  <th>Configuration</th>
+                  <th>Total ex GST</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cabinets.map(({ line, index }) => {
+                  const config = line.cabinet_config;
+                  const isConfigured = Boolean(config?.calculated_cut_list?.length);
+                  return (
+                    <tr key={line.id || index}>
+                      <td><span className={styles.quoteItemRowNum}>{index + 1}</span></td>
+                      <td>
+                        <strong>{config?.label || line.product_name || "Base cabinet"}</strong>
+                        <small>{line.description || "Configure cabinet dimensions, cut list, pricing and schematic."}</small>
+                      </td>
+                      <td>{lineValue(line.material)}</td>
+                      <td>{lineValue(line.colour)}</td>
+                      <td>{line.qty || 1}</td>
+                      <td>
+                        <span className={`${styles.statusPill} ${isConfigured ? styles.statusPillActive : styles.statusPillDraft}`}>
+                          {isConfigured ? "Configured" : "Needs configuration"}
+                        </span>
+                      </td>
+                      <td>{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.rowEditButton}
+                          onClick={() => setActiveCabinetLineIndex(index)}
+                        >
+                          Configure
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className={styles.placeholderText}>
+            No base cabinets yet. Add a line item with type Base cabinet first.
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderItems() {
     return (
       <div className={styles.quoteItemsAdminWrap}>
@@ -850,15 +1035,18 @@ export default function QuoteEditor({ quoteId }) {
             }));
             const hingesApplicable = line.product_type === "Door";
             const colourSrc = colourSrcForLine(line);
+            const isBaseCabinet = isBaseCabinetLine(line);
+            const isBaseCabinetEditable = isEditable && isBaseCabinet;
             return (
-              <div className={`${styles.quoteItemGrid} ${styles.quoteItemRow} ${isEditable ? styles.quoteItemRowEditing : styles.quoteItemRowLocked}`} key={index}>
+              <div className={styles.quoteItemBlock} key={line.id || index}>
+              <div className={`${styles.quoteItemGrid} ${styles.quoteItemRow} ${isEditable ? styles.quoteItemRowEditing : styles.quoteItemRowLocked}`}>
                 <div><span className={styles.quoteItemRowNum}>{index + 1}</span></div>
                 {isEditable ? (
                   <>
                     <div className={styles.quoteItemField}>
                       <select value={line.product_type} onChange={(event) => updateProductLine(index, { product_type: event.target.value })}>
                         <option value="" disabled>Type</option>
-                        {PRODUCT_TYPES.map((type) => <option key={type}>{type}</option>)}
+                        {quoteProductTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
                       </select>
                     </div>
                     <div className={styles.quoteItemField}>
@@ -868,14 +1056,14 @@ export default function QuoteEditor({ quoteId }) {
                       </select>
                     </div>
                     <div className={styles.quoteItemField}>
-                      <select disabled={!line.material} value={line.thickness} onChange={(event) => updateProductLine(index, { thickness: event.target.value })}>
+                      <select disabled={!line.material || isBaseCabinetEditable} value={line.thickness} onChange={(event) => updateProductLine(index, { thickness: event.target.value })}>
                         <option value="" disabled>{line.material ? "Thickness" : "Select material first"}</option>
                         {thicknessOptions.map((thickness) => <option key={thickness}>{thickness}</option>)}
                       </select>
                     </div>
                     <div className={styles.quoteItemSize}>
-                      <input min="1" type="number" placeholder="W" value={line.width_mm} onChange={(event) => updateLine(index, "width_mm", event.target.value)} />
-                      <input min="1" type="number" placeholder="H" value={line.height_mm} onChange={(event) => updateLine(index, "height_mm", event.target.value)} />
+                      <input disabled={isBaseCabinetEditable} min="1" type="number" placeholder="W" value={line.width_mm} onChange={(event) => updateLine(index, "width_mm", event.target.value)} />
+                      <input disabled={isBaseCabinetEditable} min="1" type="number" placeholder="H" value={line.height_mm} onChange={(event) => updateLine(index, "height_mm", event.target.value)} />
                     </div>
                     <div className={styles.quoteItemField}>
                       <QuoteColourCombobox line={line} onChange={(patch) => updateProductLine(index, patch)} />
@@ -884,15 +1072,17 @@ export default function QuoteEditor({ quoteId }) {
                       <input min="1" type="number" value={line.qty} onChange={(event) => updateLine(index, "qty", event.target.value)} />
                     </div>
                     <div className={styles.quoteItemField}>
-                      <QuoteImageCombobox
-                        placeholder="Edge"
-                        value={line.edge_mould}
-                        options={edgeOptions}
-                        onChange={(option) => updateLine(index, "edge_mould", option.name || option.label)}
-                      />
+                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>Configured in cabinet tab</span> : (
+                        <QuoteImageCombobox
+                          placeholder="Edge"
+                          value={line.edge_mould}
+                          options={edgeOptions}
+                          onChange={(option) => updateLine(index, "edge_mould", option.name || option.label)}
+                        />
+                      )}
                     </div>
                     <div className={styles.quoteItemField}>
-                      {showProfiles ? (
+                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : showProfiles ? (
                         <select value={line.profile_type} onChange={(event) => updateProductLine(index, { profile_type: event.target.value })}>
                           <option value="">Profile type</option>
                           {profileTypes.map((type) => <option key={type}>{type}</option>)}
@@ -900,7 +1090,7 @@ export default function QuoteEditor({ quoteId }) {
                       ) : <span className={styles.notApplicable}>N/A</span>}
                     </div>
                     <div className={styles.quoteItemField}>
-                      {showProfiles ? (
+                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : showProfiles ? (
                         <QuoteImageCombobox
                           disabled={!line.profile_type}
                           placeholder={line.profile_type ? "Profile name" : "Select profile type first"}
@@ -911,17 +1101,17 @@ export default function QuoteEditor({ quoteId }) {
                       ) : <span className={styles.notApplicable}>N/A</span>}
                     </div>
                     <div className={styles.quoteItemCheckCell}>
-                      {hingesApplicable ? (
+                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : hingesApplicable ? (
                         <label className={styles.quoteItemCheck}><input checked={line.hinge_holes} type="checkbox" onChange={(event) => updateProductLine(index, { hinge_holes: event.target.checked })} /> Yes</label>
                       ) : <span className={styles.notApplicable}>N/A</span>}
                     </div>
                     <div className={styles.quoteItemCheckCell}>
-                      {hingesApplicable ? (
+                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : hingesApplicable ? (
                         <label className={styles.quoteItemCheck}><input checked={line.hinge_supply} type="checkbox" onChange={(event) => updateProductLine(index, { hinge_supply: event.target.checked })} /> Yes</label>
                       ) : <span className={styles.notApplicable}>N/A</span>}
                     </div>
                     <div className={styles.quoteItemField}>
-                      {hingesApplicable && (line.hinge_supply || line.hinge_holes) ? (
+                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : hingesApplicable && (line.hinge_supply || line.hinge_holes) ? (
                         <select value={line.hinge_qty} onChange={(event) => updateLine(index, "hinge_qty", event.target.value)}>
                           <option value="">Per door</option>
                           <option>2 hinges</option>
@@ -932,7 +1122,7 @@ export default function QuoteEditor({ quoteId }) {
                     </div>
                     <div className={`${styles.quoteItemField} ${styles.quoteMoneyInput}`}>
                       <span>$</span>
-                      <input type="number" min="0" step="0.01" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={(event) => updateLine(index, "product_unit_cost_ex_gst", event.target.value)} />
+                      <input disabled={isBaseCabinetEditable} type="number" min="0" step="0.01" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={(event) => updateLine(index, "product_unit_cost_ex_gst", event.target.value)} />
                     </div>
                     <div className={`${styles.quoteItemField} ${styles.quoteMarkupInput}`}>
                       <input type="number" min="0" step="0.01" value={line.markup_percent} onChange={(event) => updateLine(index, "markup_percent", event.target.value)} />
@@ -958,7 +1148,7 @@ export default function QuoteEditor({ quoteId }) {
                   </>
                 ) : (
                   <>
-                    <div className={styles.quoteReadCell}>{lineValue(line.product_type)}</div>
+                    <div className={styles.quoteReadCell}>{lineValue(displayProductType(line.product_type))}</div>
                     <div className={styles.quoteReadCell}>{lineValue(line.material)}</div>
                     <div className={styles.quoteReadCell}>{lineValue(line.thickness)}</div>
                     <div className={styles.quoteReadCell}>{lineValue(quoteLineSizeText(line))}</div>
@@ -998,6 +1188,7 @@ export default function QuoteEditor({ quoteId }) {
                     </div>
                   </>
                 )}
+              </div>
               </div>
             );
           })}
@@ -1039,7 +1230,7 @@ export default function QuoteEditor({ quoteId }) {
           </Field>
         </div>
         <div className={styles.quoteTotalsPanel}>
-          <div><span>Product lines incl. markup</span><strong>{formatMoney(totals.material_cost_ex_gst, form.currency)}</strong></div>
+          <div><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
           <div><span>Line markups</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
           <div><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
           <div><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
@@ -1058,11 +1249,11 @@ export default function QuoteEditor({ quoteId }) {
         <div className={styles.quoteTotalsSummary}>
           <details className={styles.quoteTotalGroup}>
             <summary>
-              <span><strong>Products and hardware</strong><small>Line item sell prices, per-line markup, drilling, and hinge supply.</small></span>
+              <span><strong>Products and hardware</strong><small>Product lines, per-line markup, drilling, and hinge supply.</small></span>
               <strong>{formatMoney(totals.material_cost_ex_gst, form.currency)}</strong>
             </summary>
             <div className={styles.quoteTotalGroupBody}>
-              <div><span>Product lines incl. markup</span><strong>{formatMoney(totals.material_cost_ex_gst, form.currency)}</strong></div>
+              <div><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
               <div><span>Line markups</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
               <div><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
               <div><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
@@ -1107,6 +1298,16 @@ export default function QuoteEditor({ quoteId }) {
   function renderAttachments() {
     return (
       <div className={styles.quoteAttachmentsSection}>
+        <div className={styles.quoteSectionActions}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={generateCabinetDrawingsAttachment}
+            disabled={isGeneratingCabinetPdf || isUploading}
+          >
+            {isGeneratingCabinetPdf ? "Generating cabinet PDF..." : "Generate cabinet PDF"}
+          </button>
+        </div>
         <label className={styles.fieldLabel}>
           Upload attachments
           <div className={styles.attachmentUploadRow}>
@@ -1157,6 +1358,7 @@ export default function QuoteEditor({ quoteId }) {
 
   function renderActiveSection() {
     if (activeSection === "items") return renderItems();
+    if (activeSection === "cabinets") return renderCabinets();
     if (activeSection === "costs") return renderCosts();
     if (activeSection === "notes") return renderNotes();
     if (activeSection === "totals") return renderTotals();
@@ -1165,6 +1367,7 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   const activeLabel = sections.find((section) => section.key === activeSection)?.label || "Information & Contacts";
+  const activeCabinetLine = activeCabinetLineIndex !== null ? form.lines[activeCabinetLineIndex] : null;
 
   return (
     <>
@@ -1285,6 +1488,36 @@ export default function QuoteEditor({ quoteId }) {
                   <button type="button" className={styles.primaryButton} onClick={saveCustomerFromDetails} disabled={isSavingCustomer || !customerForm.name.trim()}>
                     {isSavingCustomer ? "Saving..." : "Save customer"}
                   </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+      {activeCabinetLine && isBaseCabinetLine(activeCabinetLine) && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cabinet-configurator-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className={styles.cabinetOverlayModal} onMouseDown={(event) => event.stopPropagation()}>
+                <div className={styles.cabinetOverlayBody} onMouseDown={(event) => event.stopPropagation()}>
+                  <CabinetConfigurator
+                    lineItemId={activeCabinetLine.id}
+                    quoteId={form.id || quoteId}
+                    quoteLine={activeCabinetLine}
+                    existingConfig={{
+                      ...(activeCabinetLine.cabinet_config || {}),
+                      carcass_material: activeCabinetLine.cabinet_config?.carcass_material || activeCabinetLine.material || "",
+                      shelf_material: activeCabinetLine.cabinet_config?.shelf_material || activeCabinetLine.material || "",
+                      label: activeCabinetLine.cabinet_config?.label || activeCabinetLine.product_name || `Base cabinet ${activeCabinetLineIndex + 1}`,
+                    }}
+                    onCancel={() => setActiveCabinetLineIndex(null)}
+                    onSave={(cabinetPayload) => saveCabinetLine(activeCabinetLineIndex, cabinetPayload)}
+                  />
                 </div>
               </div>
             </div>,

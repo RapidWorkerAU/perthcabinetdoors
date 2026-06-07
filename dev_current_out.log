@@ -1,0 +1,12 @@
+
+> perth-cabinet-doors@1.0.0 dev
+> node --use-system-ca node_modules/next/dist/bin/next dev --port 3000
+
+   ▲ Next.js 15.5.12
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.68.50:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.4s
+[?25h

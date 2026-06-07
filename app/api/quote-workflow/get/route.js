@@ -30,7 +30,22 @@ export async function GET(request) {
       await supabase.from("pcd_quote_actions").insert({ quote_id: quote.id, action: "viewed" });
     }
 
-    return Response.json({ ok: true, quote });
+    const { data: cabinetConfigs } = await supabase
+      .from("pcd_cabinet_configs")
+      .select("*")
+      .eq("quote_id", quote.id);
+    const configsByLineId = new Map((cabinetConfigs || []).map((config) => [config.line_item_id, config]));
+
+    return Response.json({
+      ok: true,
+      quote: {
+        ...quote,
+        pcd_quote_line_items: (quote.pcd_quote_line_items || []).map((line) => ({
+          ...line,
+          cabinet_config: configsByLineId.get(line.id) || null,
+        })),
+      },
+    });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not load quote." }, { status: 500 });
   }

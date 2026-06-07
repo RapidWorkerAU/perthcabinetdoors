@@ -7,6 +7,18 @@ async function idsFromParams(params) {
   return { id: resolved?.id, itemId: resolved?.itemId };
 }
 
+function isThermolaminatedItem(item) {
+  return [
+    item?.material,
+    item?.title,
+    item?.product_type,
+    item?.description,
+    item?.profile_type,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes("thermolaminate"));
+}
+
 export async function PATCH(request, { params }) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;
@@ -41,6 +53,7 @@ export async function PATCH(request, { params }) {
       "board_required",
       "board_ordered",
       "board_available",
+      "panel_planning",
       "notes",
       "production_notes",
     ].forEach((field) => {
@@ -63,6 +76,28 @@ export async function PATCH(request, { params }) {
       .eq("id", itemId)
       .eq("order_id", id)
       .maybeSingle();
+
+    if (!beforeItem) {
+      return Response.json({ ok: false, error: "Order item not found." }, { status: 404 });
+    }
+
+    if (isThermolaminatedItem(beforeItem)) {
+      updates.fulfilment_method = "supplier_ready_made";
+      if (updates.panel_planning && typeof updates.panel_planning === "object" && !Array.isArray(updates.panel_planning)) {
+        updates.panel_planning = Object.fromEntries(
+          Object.entries(updates.panel_planning).map(([key, value]) => [
+            key,
+            {
+              ...(value && typeof value === "object" && !Array.isArray(value) ? value : {}),
+              fulfilment_method: "supplier_ready_made",
+            },
+          ])
+        );
+      }
+      if (updates.production_stage) {
+        delete updates.production_stage;
+      }
+    }
 
     const { data, error } = await context.supabase
       .from("pcd_order_line_items")

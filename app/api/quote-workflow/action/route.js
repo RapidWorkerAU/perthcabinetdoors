@@ -8,6 +8,18 @@ function makeOrderNumber() {
   return `PCD-O-${new Date().getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
+function isThermolaminatedLine(line) {
+  return [
+    line?.material,
+    line?.product_name,
+    line?.product_type,
+    line?.description,
+    line?.profile_type,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes("thermolaminate"));
+}
+
 async function createOrderFromQuote(supabase, quote) {
   const { data: existingOrder } = await supabase
     .from("pcd_orders")
@@ -32,6 +44,7 @@ async function createOrderFromQuote(supabase, quote) {
       site_address: quote.site_address,
       status: "active",
       accepted_at: new Date().toISOString(),
+      admin_viewed_at: null,
       deposit_required: false,
       subtotal_ex_gst: quote.subtotal_ex_gst,
       gst_amount: quote.gst_amount,
@@ -74,6 +87,7 @@ async function createOrderFromQuote(supabase, quote) {
       height_mm: line.height_mm,
       qty: line.qty,
       line_total_ex_gst: line.line_total_ex_gst,
+      fulfilment_method: isThermolaminatedLine(line) ? "supplier_ready_made" : "in_house",
       status: "Not Ordered",
       notes: line.notes,
     }));

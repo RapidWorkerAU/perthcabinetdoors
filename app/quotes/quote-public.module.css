@@ -361,7 +361,7 @@
 
 .quoteItemsPublicTable th:nth-child(2),
 .quoteItemsPublicTable td:nth-child(2) {
-  width: 6%;
+  width: 18%;
 }
 
 .quoteItemsPublicTable th:nth-child(3),
@@ -371,56 +371,52 @@
 
 .quoteItemsPublicTable th:nth-child(4),
 .quoteItemsPublicTable td:nth-child(4) {
-  width: 6%;
+  width: 5%;
 }
 
 .quoteItemsPublicTable th:nth-child(5),
 .quoteItemsPublicTable td:nth-child(5) {
-  width: 11%;
+  width: 14%;
 }
 
 .quoteItemsPublicTable th:nth-child(6),
 .quoteItemsPublicTable td:nth-child(6) {
-  width: 4%;
+  width: 14%;
 }
 
 .quoteItemsPublicTable th:nth-child(7),
 .quoteItemsPublicTable td:nth-child(7) {
-  width: 11%;
+  width: 14%;
 }
 
 .quoteItemsPublicTable th:nth-child(8),
 .quoteItemsPublicTable td:nth-child(8) {
-  width: 7%;
+  width: 10%;
+  text-align: right;
 }
 
 .quoteItemsPublicTable th:nth-child(9),
 .quoteItemsPublicTable td:nth-child(9) {
-  width: 10%;
-}
-
-.quoteItemsPublicTable th:nth-child(10),
-.quoteItemsPublicTable td:nth-child(10),
-.quoteItemsPublicTable th:nth-child(11),
-.quoteItemsPublicTable td:nth-child(11) {
-  width: 6%;
-}
-
-.quoteItemsPublicTable th:nth-child(12),
-.quoteItemsPublicTable td:nth-child(12) {
-  width: 7%;
-}
-
-.quoteItemsPublicTable th:nth-child(13),
-.quoteItemsPublicTable td:nth-child(13) {
-  width: 7%;
+  width: 14%;
   text-align: right;
 }
 
-.quoteItemsPublicTable th:nth-child(14),
-.quoteItemsPublicTable td:nth-child(14) {
-  width: 8%;
-  text-align: right;
+.quoteItemDetailStack {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.quoteItemDetailStack strong {
+  color: #001f36;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.quoteItemDetailStack span {
+  color: #253041;
+  font-size: 0.72rem;
+  line-height: 1.2;
 }
 
 .quoteItemNumber {
@@ -476,6 +472,29 @@
   text-underline-offset: 2px;
 }
 
+.quotePreviewName {
+  display: inline;
+  min-width: 0;
+}
+
+.quotePreviewTextButton {
+  border: 0;
+  background: transparent;
+  color: #6f4918;
+  padding: 0;
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.quotePreviewTextButton:hover {
+  color: #8a571a;
+}
+
 .imagePreviewOverlay {
   position: fixed;
   inset: 0;
@@ -483,24 +502,27 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(24, 29, 39, 0.48);
+  background: rgba(24, 29, 39, 0.78);
 }
 
 .imagePreviewModal {
-  width: min(520px, 100%);
+  width: min(920px, 100%);
+  min-height: min(680px, calc(100dvh - 48px));
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 14px;
   justify-items: center;
   border: 1px solid #d7c7b4;
-  border-radius: 14px;
+  border-radius: 8px;
   background: #ffffff;
   padding: 18px;
   box-shadow: 0 24px 60px rgba(34, 25, 16, 0.26);
 }
 
 .imagePreviewModal img {
-  width: min(420px, 100%);
-  max-height: 58vh;
+  width: 100%;
+  height: 100%;
+  max-height: calc(100dvh - 190px);
   display: block;
   object-fit: contain;
 }
@@ -1133,26 +1155,72 @@
 
   .quoteItemMobileCard {
     display: grid;
-    gap: 14px;
+    gap: 0;
     border: 1px solid #dfd2bf;
     border-radius: 8px;
     background: #fffaf3;
-    padding: 16px;
+    padding: 0;
+    overflow: hidden;
     box-shadow: 0 12px 28px rgba(44, 35, 26, 0.08);
   }
 
+  .quoteItemMobileCardOpen {
+    gap: 14px;
+  }
+
   .quoteItemMobileHeader {
+    width: 100%;
     display: flex;
     align-items: center;
     gap: 12px;
-    border-bottom: 1px solid #eadfce;
-    padding-bottom: 12px;
+    border: 0;
+    background: transparent;
+    padding: 16px;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
   }
 
   .quoteItemMobileHeader div {
+    flex: 1 1 auto;
     min-width: 0;
     display: grid;
     gap: 3px;
+  }
+
+  .quoteItemMobileCardOpen .quoteItemMobileHeader {
+    border-bottom: 1px solid #eadfce;
+  }
+
+  .quoteItemMobileToggle {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid #dfd2bf;
+    border-radius: 999px;
+    background: #ffffff;
+  }
+
+  .quoteItemMobileToggle::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #6f4918;
+    border-bottom: 2px solid #6f4918;
+    transform: rotate(45deg) translate(-1px, -1px);
+  }
+
+  .quoteItemMobileCardOpen .quoteItemMobileToggle::before {
+    transform: rotate(225deg) translate(-1px, -1px);
+  }
+
+  .quoteItemMobileContent {
+    display: grid;
+    gap: 14px;
+    padding: 0 16px 16px;
   }
 
   .quoteItemMobileHeader p {
@@ -1172,7 +1240,14 @@
   .quoteItemMobileSelections {
     display: grid;
     gap: 10px;
+  }
+
+  .quoteItemMobileSpecs {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .quoteItemMobileSelections {
+    grid-template-columns: 1fr;
   }
 
   .quoteItemMobileSpecs div,
@@ -1199,6 +1274,7 @@
   }
 
   .quoteItemMobileSelections .publicSelectionTile {
+    grid-template-columns: 34px minmax(0, 1fr);
     min-height: 40px;
     border: 1px solid #eadfce;
     border-radius: 6px;
@@ -1206,17 +1282,40 @@
     padding: 5px 7px;
   }
 
+  .quoteItemMobileSelections .publicSelectionTile:not(.publicSelectionTileButton) {
+    grid-template-columns: 1fr;
+  }
+
+  .quoteItemMobileSelections .publicSelectionTile span {
+    width: 100%;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .quoteItemMobileSelections .publicSelectionTile img[style*="display: none"] {
+    display: none !important;
+  }
+
+  .quoteItemMobileSelections .publicSelectionTile:has(img[style*="display: none"]) {
+    grid-template-columns: 1fr;
+  }
+
+  .quoteItemMobileSelections .publicSelectionTile img {
+    width: 34px;
+    height: 34px;
+  }
+
   .quoteItemMobileHinges {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
     gap: 8px;
     border-top: 1px solid #eadfce;
     padding-top: 12px;
   }
 
   .quoteItemMobileHinges span {
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    justify-content: flex-start;
     min-height: 26px;
     border-radius: 999px;
     background: #f4f0e8;

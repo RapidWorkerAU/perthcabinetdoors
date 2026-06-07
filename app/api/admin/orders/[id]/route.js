@@ -18,6 +18,38 @@ async function loadOrder(supabase, id) {
     throw error || new Error("Order not found.");
   }
 
+  const quoteLineIds = (data.pcd_order_line_items || [])
+    .map((item) => item.quote_line_item_id)
+    .filter(Boolean);
+  let configsByLineId = new Map();
+
+  if (quoteLineIds.length) {
+    const { data: cabinetConfigs } = await supabase
+      .from("pcd_cabinet_configs")
+      .select("*")
+      .in("line_item_id", quoteLineIds);
+    configsByLineId = new Map((cabinetConfigs || []).map((config) => [config.line_item_id, config]));
+    data.pcd_order_line_items = (data.pcd_order_line_items || []).map((item) => ({
+      ...item,
+      cabinet_config: configsByLineId.get(item.quote_line_item_id) || null,
+    }));
+  }
+
+  if (data.quote_id) {
+    const { data: quote } = await supabase
+      .from("pcd_quotes")
+      .select("*, pcd_quote_line_items(*)")
+      .eq("id", data.quote_id)
+      .maybeSingle();
+    if (quote?.pcd_quote_line_items?.length) {
+      quote.pcd_quote_line_items = quote.pcd_quote_line_items.map((line) => ({
+        ...line,
+        cabinet_config: configsByLineId.get(line.id) || null,
+      }));
+    }
+    data.pcd_quote = quote || null;
+  }
+
   const { data: payments, error: paymentsError } = await supabase
     .from("pcd_order_payments")
     .select("*")

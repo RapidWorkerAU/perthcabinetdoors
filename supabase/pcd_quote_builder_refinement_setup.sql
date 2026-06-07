@@ -357,6 +357,7 @@ alter table public.pcd_order_line_items
   add column if not exists board_required boolean not null default false,
   add column if not exists board_ordered boolean not null default false,
   add column if not exists board_available boolean not null default false,
+  add column if not exists panel_planning jsonb not null default '{}'::jsonb,
   add column if not exists production_stage text not null default 'Not Started' check (
     production_stage in (
       'Not Started',

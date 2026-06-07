@@ -3876,13 +3876,13 @@
 }
 
 .quoteBuilderFrame {
-  height: min(760px, calc(100dvh - 150px));
-  min-height: 620px;
+  display: grid;
+  min-height: 760px;
   border: 1px solid rgba(24, 29, 39, 0.1);
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 16px 28px rgba(24, 29, 39, 0.06);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .quoteBuilderSidebar {
@@ -3932,6 +3932,7 @@
 .quoteBuilderPanel {
   min-width: 0;
   min-height: 0;
+  overflow: visible;
   display: grid;
   grid-template-rows: auto 1fr;
 }
@@ -4023,7 +4024,41 @@
   min-width: 0;
   min-height: 0;
   padding: 28px 34px 34px;
-  overflow: auto;
+  overflow: visible;
+}
+
+.orderDetailFrame {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.orderDetailFrame .quoteBuilderPanel {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.orderDetailFrame .quoteBuilderPanelBody {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.orderDetailFrame .quoteItemsAdminWrap,
+.orderDetailFrame .paymentLedger,
+.orderDetailFrame .quoteBuilderStack {
+  min-width: 0;
+  overflow: visible;
+}
+
+.orderDetailFrame .quoteItemsScroller {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .quoteBuilderPanelBody .fieldLabel {
@@ -4197,10 +4232,19 @@
     minmax(0, 0.5fr)
     minmax(0, 0.7fr)
     minmax(0, 0.82fr)
-    76px;
+    112px;
   width: 100%;
   min-width: 0;
   padding: 0 10px;
+}
+
+.quoteItemBlock {
+  display: grid;
+  border-bottom: 1px solid #edeae0;
+}
+
+.quoteItemBlock:last-child {
+  border-bottom: 0;
 }
 
 .quoteItemHead {
@@ -4217,7 +4261,6 @@
 
 .quoteItemRow {
   min-height: 58px;
-  border-bottom: 1px solid #edeae0;
   color: #1a1a18;
   font-size: 0.82rem;
 }
@@ -4228,10 +4271,6 @@
 
 .quoteItemRowLocked {
   background: #ffffff;
-}
-
-.quoteItemRow:last-child {
-  border-bottom: 0;
 }
 
 .quoteItemRowNum {
@@ -4254,6 +4293,74 @@
 .quoteItemActions {
   min-width: 0;
   padding-right: 8px;
+}
+
+.quoteItemActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.quoteItemActions .rowEditButton,
+.quoteItemActions .rowDeleteButton {
+  min-width: 0;
+}
+
+.cabinetInlinePanel {
+  border-top: 1px solid #edeae0;
+  background: #f7faf4;
+  padding: 16px;
+}
+
+.cabinetSavedPanel {
+  border-top: 1px solid #edeae0;
+  background: #fbfaf7;
+}
+
+.cabinetSavedPanel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 16px;
+}
+
+.cabinetSavedPanel summary::-webkit-details-marker {
+  display: none;
+}
+
+.cabinetSavedPanel summary > span {
+  display: grid;
+  gap: 3px;
+}
+
+.cabinetSavedPanel summary strong {
+  color: var(--admin-dark);
+  font-family: var(--pcd-font-ui);
+  font-size: 0.88rem;
+}
+
+.cabinetSavedPanel summary small {
+  color: var(--admin-muted);
+  font-size: 0.78rem;
+}
+
+.cabinetSavedPanelBody {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid #edeae0;
+  padding: 16px;
+}
+
+.cabinetSavedPanelBody > div:last-child {
+  overflow-x: auto;
+}
+
+.cabinetSavedPanelBody > div:last-child > div {
+  min-width: 760px;
 }
 
 .quoteItemField input,
@@ -4427,6 +4534,10 @@
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 18px 28px rgba(24, 29, 39, 0.14);
+}
+
+.cabinetColourMenu {
+  z-index: 1210;
 }
 
 .quoteColourOption {
@@ -4970,6 +5081,14 @@
   font-size: 1.06rem;
 }
 
+.cutListSummaryText {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 .quoteSubnav {
   display: flex;
   align-items: center;
@@ -5060,6 +5179,707 @@
 .quoteLines {
   display: grid;
   gap: 14px;
+}
+
+.cabinetConfigurator {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+  padding: 0;
+}
+
+.cabinetFeedbackNotice {
+  position: absolute;
+  z-index: 8;
+  top: 104px;
+  left: 18px;
+  right: 18px;
+  min-height: 38px;
+  margin: 0;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+}
+
+.cabinetConfiguratorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--pcd-green-panel);
+  padding: 20px 22px;
+}
+
+.cabinetHeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.cabinetModalIcon {
+  background: #17321f !important;
+  color: #ffffff !important;
+}
+
+.cabinetConfiguratorHeader h2 {
+  margin: 4px 0 0;
+  color: #1f2937;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.cabinetConfiguratorHeader .tableMeta {
+  color: var(--admin-accent);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cabinetHeaderTotals {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 160px;
+  min-height: 42px;
+  gap: 8px;
+  border: 1px solid var(--pcd-line-soft);
+  background: var(--pcd-green-panel);
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+.cabinetHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cabinetHeaderActions .primaryButton,
+.cabinetHeaderActions .secondaryButton {
+  min-height: 42px;
+  border-radius: 2px;
+  padding: 0 18px;
+  font-family: var(--pcd-font-ui);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.cabinetHeaderActions .primaryButton {
+  border-color: #17321f;
+  background: #17321f;
+  color: #ffffff;
+}
+
+.cabinetHeaderActions .secondaryButton {
+  border-color: #d8d2c5;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+.cabinetHeaderTotals span,
+.cabinetTotalsStrip span {
+  color: var(--admin-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cabinetHeaderTotals span {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cabinetTotalsStrip span {
+  font-weight: 800;
+}
+
+.cabinetHeaderTotals strong {
+  color: var(--admin-dark);
+  font-family: var(--pcd-font-ui);
+  font-size: 1rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.cabinetTotalsStrip strong {
+  color: var(--admin-dark);
+  font-family: var(--pcd-font-ui);
+  font-size: 1rem;
+}
+
+.cabinetWorkbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  align-items: start;
+  overflow: auto;
+  padding: 28px 34px 34px;
+}
+
+.cabinetConfiguratorTabs {
+  max-width: 100%;
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+  align-self: end;
+  overflow: visible;
+  padding-top: 0;
+  margin-bottom: -1px;
+  border-bottom: 0;
+  background: #ffffff;
+  padding: 22px 34px 0;
+}
+
+.cabinetConfiguratorTab,
+.cabinetConfiguratorTabActive {
+  min-height: 46px;
+  flex: 1 1 142px;
+  border: 1px solid #d7dee8;
+  border-right: 0;
+  border-radius: 0;
+  background: #f8fafc;
+  color: #334155;
+  padding: 0 22px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+}
+
+.cabinetConfiguratorTab:first-child,
+.cabinetConfiguratorTabActive:first-child {
+  border-top-left-radius: 6px;
+}
+
+.cabinetConfiguratorTab:last-child,
+.cabinetConfiguratorTabActive:last-child {
+  border-right: 1px solid var(--admin-line);
+  border-top-right-radius: 6px;
+}
+
+.cabinetConfiguratorTabActive {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #94a3b8;
+  border-bottom-color: #ffffff;
+  font-weight: 800;
+  box-shadow: inset 0 3px 0 #0d3550;
+  z-index: 2;
+}
+
+.cabinetConfiguratorTabActive::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: #ffffff;
+}
+
+.cabinetConfiguratorTab:hover {
+  background: #ffffff;
+  color: var(--admin-dark);
+}
+
+.cabinetControlsColumn {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cabinetSummaryColumn {
+  display: grid;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+}
+
+.cabinetConfiguratorSection {
+  display: grid;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.cabinetConfiguratorSection h4 {
+  margin: 0;
+  color: #000000;
+  font-family: Montserrat, Arial, sans-serif;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.cabinetCompactGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.cabinetConfigurator .fieldLabel {
+  gap: 4px;
+  color: #303a35;
+  font-family: Montserrat, Arial, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.cabinetConfigurator .fieldInput,
+.cabinetConfigurator .textareaInput {
+  min-height: 44px;
+  border: 1px solid #d8d2c5;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111827;
+  font-family: Montserrat, Arial, sans-serif;
+  font-size: 0.84rem;
+  font-weight: 400;
+  box-shadow: none;
+}
+
+.cabinetConfigurator .fieldInput {
+  padding: 8px 10px;
+}
+
+.cabinetConfigurator .textareaInput {
+  min-height: 70px;
+  padding: 10px;
+}
+
+.cabinetConfigurator .fieldInput:hover,
+.cabinetConfigurator .textareaInput:hover {
+  border-color: #8fa481;
+  background: #fffefa;
+}
+
+.cabinetConfigurator .fieldInput:focus,
+.cabinetConfigurator .textareaInput:focus {
+  outline: 2px solid rgba(81, 118, 78, 0.18);
+  border-color: var(--admin-green);
+  background: #ffffff;
+}
+
+.cabinetLookupField {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.cabinetColourCombo {
+  position: relative;
+  min-width: 0;
+}
+
+.cabinetColourCombo input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.cabinetColourComboButton {
+  width: 34px;
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  border: 0;
+  border-left: 1px solid #d8d2c5;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cabinetColourComboButton::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #51764e;
+  border-bottom: 2px solid #51764e;
+  transform: translate(-50%, -65%) rotate(45deg);
+}
+
+.cabinetLookupField .secondaryButton {
+  min-width: 92px;
+  min-height: 44px;
+  border: 1px solid #51764e;
+  border-radius: 2px;
+  background: #eef5eb;
+  color: #244329;
+  padding-inline: 10px;
+  font-family: var(--pcd-font-ui);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.cabinetLookupField .secondaryButton:hover {
+  border-color: #17321f;
+  background: #244329;
+  color: #ffffff;
+}
+
+.cabinetToggleGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cabinetToggle,
+.cabinetToggleActive {
+  min-height: 44px;
+  border: 1px solid #d8d2c5;
+  border-radius: 2px;
+  background: #f2f1ec;
+  color: #6b7280;
+  padding: 0 12px;
+  font-family: var(--pcd-font-ui);
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.78;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.cabinetToggle span,
+.cabinetToggleActive span {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #bfc9b7;
+  border-radius: 2px;
+  background: #ffffff;
+  color: var(--admin-dark);
+  font-size: 0;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cabinetToggleActive {
+  border-color: var(--admin-dark);
+  background: #ffffff;
+  color: var(--admin-dark);
+  opacity: 1;
+}
+
+.cabinetToggleActive span {
+  border-color: #0075ff;
+  background: #0075ff;
+  color: #ffffff;
+}
+
+.cabinetToggleActive span::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border-left: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.cabinetToggle:hover {
+  border-color: var(--admin-green);
+  background: #ffffff;
+  opacity: 1;
+}
+
+.cabinetInlineControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cabinetCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 1px solid #d8d2c5;
+  border-radius: 2px;
+  background: #ffffff;
+  color: var(--admin-dark);
+  font-family: var(--pcd-font-ui);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 8px 10px;
+}
+
+.cabinetCheck input {
+  width: 14px;
+  height: 14px;
+  accent-color: #0075ff;
+}
+
+.cabinetShelfHeightGrid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.cabinetCostPrompt {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(120px, 180px);
+  align-items: end;
+  gap: 8px;
+  border: 1px solid rgba(81, 118, 78, 0.22);
+  background: var(--pcd-green-panel);
+  padding: 10px;
+}
+
+.cabinetCostPrompt div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.cabinetCostPrompt strong {
+  color: var(--admin-dark);
+  font-family: var(--pcd-font-ui);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.cabinetCostPrompt span {
+  color: var(--admin-muted);
+  font-size: 0.78rem;
+}
+
+.cabinetPromptActions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cabinetPromptButton,
+.cabinetPromptPrimaryButton {
+  min-height: 42px;
+  border: 1px solid #d8d2c5;
+  border-radius: 2px;
+  background: #ffffff;
+  color: var(--admin-dark);
+  padding: 0 18px;
+  font-family: var(--pcd-font-ui);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.cabinetPromptPrimaryButton {
+  border-color: #17321f;
+  background: #17321f;
+  color: #ffffff;
+}
+
+.cabinetPromptButton:hover,
+.cabinetPromptPrimaryButton:hover {
+  border-color: var(--admin-green);
+}
+
+.cabinetSectionTitleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cabinetTotalsStrip {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cabinetTotalsStrip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  border: 1px solid var(--pcd-line-soft);
+  background: #ffffff;
+  color: var(--admin-text);
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 0 8px;
+}
+
+.cabinetTotalsStrip span:last-child {
+  background: var(--pcd-green-panel);
+}
+
+.cabinetTotalsStrip b {
+  font-weight: 700;
+}
+
+.cabinetCutListWrap {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.cabinetCutListTable {
+  width: 100%;
+  min-width: 920px;
+  table-layout: fixed;
+  margin: 0;
+}
+
+.cabinetCutListTable th,
+.cabinetCutListTable td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  font-size: 0.76rem;
+  font-weight: 400;
+}
+
+.cabinetCutListTable th {
+  font-weight: 600;
+}
+
+.cabinetCutListTable th,
+.cabinetCutListTable td {
+  text-align: left;
+}
+
+.cabinetCutListTable th:nth-child(2),
+.cabinetCutListTable td:nth-child(2) {
+  width: 70px;
+  text-align: center;
+}
+
+.cabinetCutListTable th:nth-child(5),
+.cabinetCutListTable td:nth-child(5),
+.cabinetCutListTable th:nth-child(6),
+.cabinetCutListTable td:nth-child(6),
+.cabinetCutListTable th:nth-child(7),
+.cabinetCutListTable td:nth-child(7),
+.cabinetCutListTable th:nth-child(8),
+.cabinetCutListTable td:nth-child(8) {
+  text-align: right;
+}
+
+.cabinetConfiguratorFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--pcd-line-soft);
+  padding-top: 10px;
+}
+
+.cabinetDrawingSection {
+  padding: 0;
+  margin: 0;
+}
+
+.cabinetDrawingSection > div {
+  grid-template-columns: repeat(3, minmax(180px, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.cabinetConfigList {
+  display: grid;
+  gap: 14px;
+}
+
+.cabinetConfigTable {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.cabinetConfigTable th:nth-child(1),
+.cabinetConfigTable td:nth-child(1) {
+  width: 58px;
+  text-align: center;
+}
+
+.cabinetConfigTable th:nth-child(5),
+.cabinetConfigTable td:nth-child(5) {
+  width: 72px;
+  text-align: center;
+}
+
+.cabinetConfigTable th:nth-child(6),
+.cabinetConfigTable td:nth-child(6) {
+  width: 150px;
+}
+
+.cabinetConfigTable th:nth-child(7),
+.cabinetConfigTable td:nth-child(7),
+.cabinetConfigTable th:nth-child(8),
+.cabinetConfigTable td:nth-child(8) {
+  width: 130px;
+  text-align: right;
+}
+
+.cabinetConfigTable td strong {
+  display: block;
+  color: var(--admin-dark);
+  font-family: var(--pcd-font-ui);
+  font-size: 0.86rem;
+  margin-bottom: 4px;
+}
+
+.cabinetConfigTable td small {
+  display: block;
+  color: var(--admin-muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.cabinetOverlayModal {
+  width: min(1680px, calc(100vw - 32px));
+  height: calc(100vh - 32px);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+}
+
+.cabinetOverlayBody {
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+  background: #ffffff;
 }
 
 .quoteLine {
@@ -5546,6 +6366,204 @@
   table-layout: fixed;
 }
 
+.orderQuoteSummaryItems .quoteItemGrid {
+  grid-template-columns:
+    32px
+    minmax(0, 0.8fr)
+    minmax(0, 0.95fr)
+    minmax(0, 0.55fr)
+    minmax(0, 0.75fr)
+    minmax(0, 1.35fr)
+    minmax(0, 0.42fr)
+    minmax(0, 0.85fr)
+    minmax(0, 0.75fr)
+    minmax(0, 0.7fr)
+    minmax(0, 0.55fr)
+    minmax(0, 0.62fr)
+    minmax(0, 0.7fr)
+    minmax(0, 0.72fr)
+    minmax(0, 0.5fr)
+    minmax(0, 0.7fr)
+    minmax(0, 0.82fr);
+}
+
+.orderQuoteSummaryTotals {
+  width: min(30%, 460px);
+  min-width: 320px;
+  justify-self: end;
+  align-self: start;
+  margin: 12px 12px 12px auto;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroup {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroup header {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #edf1f6;
+  background: #f5f3ee;
+  color: #001f36;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroupBody {
+  border-top: 0;
+  padding: 10px 12px;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroupBody div {
+  font-size: 0.8rem;
+  padding: 9px 0;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroupBody div:last-child {
+  font-weight: 800;
+}
+
+.orderPlanningItems .quoteItemGrid {
+  grid-template-columns:
+    minmax(190px, 1.15fr)
+    minmax(130px, 0.8fr)
+    minmax(150px, 1fr)
+    minmax(58px, 0.32fr)
+    minmax(110px, 0.68fr)
+    minmax(210px, 1.2fr)
+    minmax(170px, 0.9fr);
+}
+
+.orderSupplierItems .quoteItemGrid {
+  grid-template-columns:
+    minmax(260px, 1.45fr)
+    minmax(160px, 0.9fr)
+    minmax(160px, 0.9fr)
+    minmax(150px, 0.85fr)
+    minmax(140px, 0.78fr)
+    minmax(140px, 0.78fr)
+    minmax(120px, 0.62fr);
+}
+
+.orderInHouseItems .quoteItemGrid {
+  grid-template-columns:
+    minmax(260px, 1.45fr)
+    minmax(130px, 0.72fr)
+    minmax(160px, 0.9fr)
+    minmax(150px, 0.85fr)
+    minmax(140px, 0.78fr)
+    minmax(140px, 0.78fr)
+    minmax(190px, 1.08fr)
+    minmax(120px, 0.62fr);
+}
+
+.orderCutListItems .quoteItemGrid {
+  grid-template-columns:
+    42px
+    minmax(210px, 1.1fr)
+    minmax(130px, 0.72fr)
+    minmax(150px, 0.82fr)
+    minmax(58px, 0.32fr)
+    minmax(120px, 0.68fr)
+    minmax(90px, 0.5fr)
+    minmax(210px, 1.18fr)
+    minmax(150px, 0.84fr)
+    minmax(150px, 0.84fr);
+}
+
+.orderPaymentItems .quoteItemGrid {
+  grid-template-columns:
+    minmax(160px, 0.9fr)
+    minmax(140px, 0.78fr)
+    minmax(140px, 0.78fr)
+    minmax(140px, 0.78fr)
+    minmax(240px, 1.35fr)
+    minmax(120px, 0.68fr);
+}
+
+.orderPlanningItems .quoteItemHead,
+.orderSupplierItems .quoteItemHead,
+.orderInHouseItems .quoteItemHead,
+.orderCutListItems .quoteItemHead,
+.orderPaymentItems .quoteItemHead,
+.orderQuoteSummaryItems .quoteItemHead {
+  min-height: 38px;
+  font-size: 0.58rem;
+}
+
+.orderPlanningItems .quoteItemRow,
+.orderSupplierItems .quoteItemRow,
+.orderInHouseItems .quoteItemRow,
+.orderCutListItems .quoteItemRow,
+.orderPaymentItems .quoteItemRow,
+.orderQuoteSummaryItems .quoteItemRow {
+  min-height: 68px;
+  align-items: center;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-size: 0.76rem;
+}
+
+.orderPlanningItems .quoteReadCell,
+.orderSupplierItems .quoteReadCell,
+.orderInHouseItems .quoteReadCell,
+.orderCutListItems .quoteReadCell,
+.orderPaymentItems .quoteReadCell,
+.orderQuoteSummaryItems .quoteReadCell {
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.orderPlanningItems .orderItemIdentity,
+.orderSupplierItems .orderItemIdentity,
+.orderInHouseItems .orderItemIdentity,
+.orderCutListItems .orderItemIdentity,
+.orderPaymentItems .orderItemIdentity {
+  gap: 5px;
+}
+
+.orderPlanningItems .orderItemIdentity strong,
+.orderSupplierItems .orderItemIdentity strong,
+.orderInHouseItems .orderItemIdentity strong,
+.orderCutListItems .orderItemIdentity strong,
+.orderPaymentItems .orderItemIdentity strong {
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.orderPlanningItems .orderItemIdentity span,
+.orderSupplierItems .orderItemIdentity span,
+.orderInHouseItems .orderItemIdentity span,
+.orderCutListItems .orderItemIdentity span,
+.orderPaymentItems .orderItemIdentity span {
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.orderPlanningItems .quoteItemField input,
+.orderPlanningItems .quoteItemField select,
+.orderSupplierItems .quoteItemField input,
+.orderSupplierItems .quoteItemField select,
+.orderInHouseItems .quoteItemField input,
+.orderInHouseItems .quoteItemField select,
+.orderPaymentItems .quoteItemField input,
+.orderPaymentItems .quoteItemField select {
+  min-height: 32px;
+  font-size: 0.74rem;
+}
+
+.orderPlanningItems .quoteItemField,
+.orderSupplierItems .quoteItemField,
+.orderInHouseItems .quoteItemField,
+.orderPaymentItems .quoteItemField {
+  min-width: 0;
+}
+
 .orderWorkflowTable {
   table-layout: fixed;
   min-width: 0;
@@ -5626,6 +6644,65 @@
 .orderPurchasingTable th:nth-child(n + 6),
 .orderPurchasingTable td:nth-child(n + 6) {
   width: 8%;
+}
+
+.orderCutListTable {
+  min-width: 1180px;
+}
+
+.orderCutListTable th,
+.orderCutListTable td {
+  vertical-align: top;
+}
+
+.orderCutListTable th:nth-child(1),
+.orderCutListTable td:nth-child(1) {
+  width: 4%;
+}
+
+.orderCutListTable th:nth-child(2),
+.orderCutListTable td:nth-child(2) {
+  width: 16%;
+}
+
+.orderCutListTable th:nth-child(3),
+.orderCutListTable td:nth-child(3) {
+  width: 11%;
+}
+
+.orderCutListTable th:nth-child(4),
+.orderCutListTable td:nth-child(4) {
+  width: 12%;
+}
+
+.orderCutListTable th:nth-child(5),
+.orderCutListTable td:nth-child(5) {
+  width: 5%;
+}
+
+.orderCutListTable th:nth-child(6),
+.orderCutListTable td:nth-child(6) {
+  width: 11%;
+}
+
+.orderCutListTable th:nth-child(7),
+.orderCutListTable td:nth-child(7) {
+  width: 8%;
+}
+
+.orderCutListTable th:nth-child(8),
+.orderCutListTable td:nth-child(8) {
+  width: 17%;
+}
+
+.orderCutListTable th:nth-child(9),
+.orderCutListTable td:nth-child(9) {
+  width: 10%;
+}
+
+.orderCutListTable th:nth-child(10),
+.orderCutListTable td:nth-child(10) {
+  width: 10%;
 }
 
 .orderItemIdentity {
@@ -8125,4 +9202,205 @@
   border-color: var(--admin-line);
   background: var(--admin-surface);
   color: var(--admin-dark);
+}
+
+/* Cabinet configurator final scope: keep the overlay aligned with quote tabs and modal typography. */
+.viewport .cabinetConfiguratorTabs {
+  gap: 0;
+  background: #ffffff;
+  padding: 22px 34px 0;
+  border-bottom: 0;
+}
+
+.viewport .cabinetConfiguratorTab,
+.viewport .cabinetConfiguratorTabActive {
+  min-height: 46px;
+  flex: 1 1 142px;
+  border: 1px solid #d7dee8;
+  border-right: 0;
+  border-radius: 0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.viewport .cabinetConfiguratorTab:first-child,
+.viewport .cabinetConfiguratorTabActive:first-child {
+  border-top-left-radius: 6px;
+}
+
+.viewport .cabinetConfiguratorTab:last-child,
+.viewport .cabinetConfiguratorTabActive:last-child {
+  border-right: 1px solid var(--admin-line);
+  border-top-right-radius: 6px;
+}
+
+.viewport .cabinetConfiguratorTabActive {
+  border-color: #94a3b8;
+  border-bottom-color: #ffffff;
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 800;
+  box-shadow: inset 0 3px 0 #0d3550;
+}
+
+.viewport .cabinetConfiguratorSection h4,
+.viewport .cabinetConfigurator .fieldLabel,
+.viewport .cabinetCutListTable th,
+.viewport .cabinetTotalsStrip b {
+  font-weight: 700;
+}
+
+.viewport .cabinetConfigurator .fieldInput,
+.viewport .cabinetConfigurator .textareaInput,
+.viewport .cabinetCutListTable td,
+.viewport .cabinetTotalsStrip span {
+  font-weight: 400;
+}
+
+.viewport .cabinetLookupField .secondaryButton {
+  border-color: #51764e;
+  background: #eef5eb;
+  color: #244329;
+  font-weight: 700;
+}
+
+.viewport .cabinetLookupField .secondaryButton:hover {
+  border-color: var(--admin-accent);
+  background: #244329;
+  color: #ffffff;
+}
+
+.viewport .cabinetToggleActive span {
+  border-color: #0075ff;
+  background: #0075ff;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.viewport .cabinetSummaryColumn,
+.viewport .cabinetDrawingSection {
+  margin-top: 0;
+}
+
+.orderDetailFrame,
+.orderDetailPanel,
+.orderDetailPanelBody {
+  position: static !important;
+  height: auto !important;
+  min-height: max-content !important;
+  overflow: visible !important;
+}
+
+.orderDetailFrame {
+  display: block !important;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  contain: none !important;
+  box-sizing: border-box;
+}
+
+.orderDetailPage {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  padding-bottom: 20px;
+  box-sizing: border-box;
+}
+
+.body:has(.orderDetailPage),
+.content:has(.orderDetailPage) {
+  padding-bottom: 48px;
+}
+
+.orderDetailBottomSpacer {
+  display: block;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+}
+
+.orderDetailPanel {
+  display: block !important;
+  width: 100%;
+  box-sizing: border-box;
+  contain: none !important;
+}
+
+.orderDetailPanelHeader {
+  display: block !important;
+  height: auto !important;
+  min-height: 0 !important;
+  box-sizing: border-box;
+  overflow: visible !important;
+}
+
+.orderDetailPanelBody {
+  display: flow-root !important;
+  width: 100%;
+  min-height: max-content !important;
+  box-sizing: border-box;
+  padding-bottom: 34px !important;
+  overflow: visible !important;
+}
+
+.orderDetailPanelBody::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.orderDetailFrame .quoteItemsAdminWrap {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  height: auto !important;
+  overflow: hidden;
+  border: 1px solid #dbd8cc;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 16px 28px rgba(24, 29, 39, 0.06);
+}
+
+.orderDetailFrame .quoteItemsScroller {
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.orderDetailFrame .quoteBuilderSummaryLine {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid #edeae0;
+  background: #ffffff;
+}
+
+.orderDetailFrame .quoteBuilderSummaryLine .secondaryButton {
+  min-height: 34px;
+  padding-inline: 14px;
+  white-space: nowrap;
+}
+
+.orderDetailFrame .tablePagination {
+  margin: 0;
+  border-top: 1px solid #edeae0;
+  background: #ffffff;
+}
+
+.orderDetailFrame .activityLogShell,
+.orderDetailFrame .activityLogList {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.orderDetailFrame .activityLogTableHead {
+  position: static;
 }

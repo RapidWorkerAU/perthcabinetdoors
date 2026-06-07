@@ -202,12 +202,14 @@ export default function AdminShell({ children }) {
 
     loadNotifications();
     window.addEventListener("focus", loadNotifications);
+    const intervalId = window.setInterval(loadNotifications, 30000);
 
     return () => {
       cancelled = true;
       window.removeEventListener("focus", loadNotifications);
+      window.clearInterval(intervalId);
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     const storedValue = localStorage.getItem("pcd_admin_sidebar_collapsed");

@@ -19,7 +19,27 @@ function lineValue(value) {
   return value || "N/A";
 }
 
+function isBaseCabinetLine(line) {
+  return line?.product_type === "base_cabinet";
+}
+
+function productDisplayName(line) {
+  if (isBaseCabinetLine(line)) return "Base Cabinet";
+  return line.product_type || line.product_name;
+}
+
+function cabinetDimensionText(line) {
+  const config = line.cabinet_config;
+  if (config?.width_mm || config?.height_mm || config?.depth_mm) {
+    return `${config.width_mm || "-"} x ${config.height_mm || "-"} x ${config.depth_mm || "-"}`;
+  }
+
+  const match = String(line.description || "").match(/(\d+(?:\.\d+)?)mm wide x (\d+(?:\.\d+)?)mm high x (\d+(?:\.\d+)?)mm deep/i);
+  return match ? `${match[1]} x ${match[2]} x ${match[3]}` : "";
+}
+
 function quoteLineSizeText(line) {
+  if (isBaseCabinetLine(line)) return cabinetDimensionText(line);
   const width = line.width_mm ? `${line.width_mm}` : "";
   const height = line.height_mm ? `${line.height_mm}` : "";
   return width || height ? `${width || "-"} x ${height || "-"}` : "";
@@ -81,6 +101,37 @@ function SelectionTile({ src, label, onPreview }) {
   );
 }
 
+function DetailStack({ line }) {
+  return (
+    <div className={styles.quoteItemDetailStack}>
+      <strong>{lineValue(productDisplayName(line))}</strong>
+      <span>{lineValue(line.material)}</span>
+      <span>{lineValue(line.finish)}</span>
+      <span>{lineValue(line.colour)}</span>
+    </div>
+  );
+}
+
+function PreviewName({ src, label, onPreview }) {
+  const displayLabel = lineValue(label);
+  if (!src || displayLabel === "N/A") {
+    return <span>{displayLabel}</span>;
+  }
+
+  return (
+    <span className={styles.quotePreviewName}>
+      <button
+        type="button"
+        className={styles.quotePreviewTextButton}
+        aria-label={`View ${displayLabel} image`}
+        onClick={() => onPreview({ src, label: displayLabel })}
+      >
+        {displayLabel}
+      </button>
+    </span>
+  );
+}
+
 export default function QuoteApprovalClient() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code") || "";
@@ -91,6 +142,7 @@ export default function QuoteApprovalClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(false);
+  const [expandedMobileLineId, setExpandedMobileLineId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
 
   const lines = useMemo(() => sortedLines(quote), [quote]);
@@ -215,17 +267,12 @@ export default function QuoteApprovalClient() {
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Type</th>
-                  <th>Material</th>
-                  <th>W x H (mm)</th>
-                  <th>Colour</th>
+                  <th>Item details</th>
+                  <th>W x H x D (mm)</th>
                   <th>Qty</th>
                   <th>Edge profile</th>
-                  <th>Profile type</th>
-                  <th>Profile name</th>
-                  <th>Drill holes?</th>
-                  <th>Hinge supply?</th>
-                  <th>Hinge qty</th>
+                  <th>Profile</th>
+                  <th>Hinges</th>
                   <th>Unit cost</th>
                   <th>Total ex GST</th>
                 </tr>
@@ -240,17 +287,23 @@ export default function QuoteApprovalClient() {
                   return (
                     <tr key={line.id}>
                       <td><span className={styles.quoteItemNumber}>{index + 1}</span></td>
-                      <td>{lineValue(line.product_type || line.product_name)}</td>
-                      <td>{lineValue(line.material)}</td>
+                      <td><DetailStack line={line} /></td>
                       <td>{lineValue(quoteLineSizeText(line))}</td>
-                      <td><SelectionTile src={colourSrc} label={line.colour} onPreview={setPreviewImage} /></td>
                       <td>{line.qty || "1"}</td>
-                      <td><SelectionTile src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} /></td>
-                      <td>{showProfiles ? lineValue(line.profile_type) : "N/A"}</td>
-                      <td>{showProfiles ? <SelectionTile src={profileSrc} label={line.profile} onPreview={setPreviewImage} /> : "N/A"}</td>
-                      <td>{hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</td>
-                      <td>{hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</td>
-                      <td>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</td>
+                      <td><PreviewName src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} /></td>
+                      <td>
+                        <div className={styles.quoteItemDetailStack}>
+                          <span>{showProfiles ? lineValue(line.profile_type) : "N/A"}</span>
+                          {showProfiles ? <PreviewName src={profileSrc} label={line.profile} onPreview={setPreviewImage} /> : <span>N/A</span>}
+                        </div>
+                      </td>
+                      <td>
+                        <div className={styles.quoteItemDetailStack}>
+                          <span>Drill: {hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</span>
+                          <span>Supply: {hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</span>
+                          <span>Qty: {hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</span>
+                        </div>
+                      </td>
                       <td>{formatMoney(line.unit_price_ex_gst, quote.currency)}</td>
                       <td>{formatMoney(line.line_total_ex_gst, quote.currency)}</td>
                     </tr>
@@ -266,52 +319,64 @@ export default function QuoteApprovalClient() {
               const colourSrc = colourSrcForLine(line);
               const edgeSrc = edgeOptionSrc(line.edge_mould);
               const profileSrc = showProfiles ? profileOptionSrc(line.profile_type, line.profile) : "";
+              const lineKey = line.id || `line-${index}`;
+              const isExpanded = expandedMobileLineId === lineKey;
               return (
-                <article className={styles.quoteItemMobileCard} key={line.id || index}>
-                  <div className={styles.quoteItemMobileHeader}>
+                <article className={`${styles.quoteItemMobileCard} ${isExpanded ? styles.quoteItemMobileCardOpen : ""}`} key={lineKey}>
+                  <button
+                    type="button"
+                    className={styles.quoteItemMobileHeader}
+                    aria-expanded={isExpanded}
+                    onClick={() => setExpandedMobileLineId((current) => (current === lineKey ? null : lineKey))}
+                  >
                     <span className={styles.quoteItemNumber}>{index + 1}</span>
                     <div>
-                      <p>{lineValue(line.product_type || line.product_name, "Quote item")}</p>
+                      <p>{lineValue(productDisplayName(line), "Quote item")}</p>
                       <strong>{formatMoney(line.line_total_ex_gst, quote.currency)}</strong>
                     </div>
-                  </div>
-                  <div className={styles.quoteItemMobileSpecs}>
-                    <div><span>Material</span><strong>{lineValue(line.material)}</strong></div>
-                    <div><span>Size</span><strong>{lineValue(quoteLineSizeText(line))}</strong></div>
-                    <div><span>Qty</span><strong>{line.qty || "1"}</strong></div>
-                    <div><span>Unit cost</span><strong>{formatMoney(line.unit_price_ex_gst, quote.currency)}</strong></div>
-                  </div>
-                  <div className={styles.quoteItemMobileSelections}>
-                    <div>
-                      <span>Colour</span>
-                      <SelectionTile src={colourSrc} label={line.colour} onPreview={setPreviewImage} />
-                    </div>
-                    <div>
-                      <span>Edge profile</span>
-                      <SelectionTile src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} />
-                    </div>
-                    {showProfiles ? (
-                      <>
+                    <span className={styles.quoteItemMobileToggle} aria-hidden="true" />
+                  </button>
+                  {isExpanded ? (
+                    <div className={styles.quoteItemMobileContent}>
+                      <div className={styles.quoteItemMobileSpecs}>
+                        <div><span>Material</span><strong>{lineValue(line.material)}</strong></div>
+                        <div><span>Size</span><strong>{lineValue(quoteLineSizeText(line))}</strong></div>
+                        <div><span>Qty</span><strong>{line.qty || "1"}</strong></div>
+                        <div><span>Unit cost</span><strong>{formatMoney(line.unit_price_ex_gst, quote.currency)}</strong></div>
+                      </div>
+                      <div className={styles.quoteItemMobileSelections}>
                         <div>
-                          <span>Profile type</span>
-                          <strong>{lineValue(line.profile_type)}</strong>
+                          <span>Colour</span>
+                          <SelectionTile src={colourSrc} label={line.colour} onPreview={setPreviewImage} />
                         </div>
                         <div>
-                          <span>Profile name</span>
-                          <SelectionTile src={profileSrc} label={line.profile} onPreview={setPreviewImage} />
+                          <span>Edge profile</span>
+                          <SelectionTile src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} />
                         </div>
-                      </>
-                    ) : null}
-                  </div>
-                  <div className={styles.quoteItemMobileHinges}>
-                    <span className={hingesApplicable && line.hinge_holes ? styles.quoteItemYes : styles.quoteItemNo}>
-                      {hingesApplicable && line.hinge_holes ? "Yes" : hingesApplicable ? "No" : "N/A"} drill holes
-                    </span>
-                    <span className={hingesApplicable && line.hinge_supply ? styles.quoteItemYes : styles.quoteItemNo}>
-                      {hingesApplicable && line.hinge_supply ? "Yes" : hingesApplicable ? "No" : "N/A"} supply hinges
-                    </span>
-                    <span>Hinge qty: {hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</span>
-                  </div>
+                        {showProfiles ? (
+                          <>
+                            <div>
+                              <span>Profile type</span>
+                              <strong>{lineValue(line.profile_type)}</strong>
+                            </div>
+                            <div>
+                              <span>Profile name</span>
+                              <SelectionTile src={profileSrc} label={line.profile} onPreview={setPreviewImage} />
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
+                      <div className={styles.quoteItemMobileHinges}>
+                        <span className={hingesApplicable && line.hinge_holes ? styles.quoteItemYes : styles.quoteItemNo}>
+                          {hingesApplicable && line.hinge_holes ? "Yes" : hingesApplicable ? "No" : "N/A"} drill holes
+                        </span>
+                        <span className={hingesApplicable && line.hinge_supply ? styles.quoteItemYes : styles.quoteItemNo}>
+                          {hingesApplicable && line.hinge_supply ? "Yes" : hingesApplicable ? "No" : "N/A"} supply hinges
+                        </span>
+                        <span>Hinge qty: {hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</span>
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
