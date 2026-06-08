@@ -877,6 +877,7 @@
 
 .settingsWorkspace {
   min-height: calc(100dvh - 154px);
+  max-height: calc(100dvh - 154px);
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   overflow: hidden;
@@ -970,6 +971,7 @@
 
 .settingsDetail {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto 1fr;
   background: #ffffff;
@@ -1000,6 +1002,7 @@
 
 .settingsDetailBody {
   min-width: 0;
+  min-height: 0;
   display: grid;
   align-content: start;
   gap: 16px;
@@ -1181,6 +1184,19 @@
   accent-color: var(--admin-dark);
 }
 
+.launchSettingsForm {
+  display: grid;
+  gap: 16px;
+}
+
+.launchHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .launchSettingsGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 0.82fr);
@@ -1207,14 +1223,6 @@
 
 .launchTextGrid textarea {
   min-height: 92px;
-}
-
-.launchSettingsActions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding-top: 4px;
 }
 
 .launchPreviewPanel {
@@ -1251,6 +1259,17 @@
 }
 
 @media (max-width: 760px) {
+  .profileCardHeader,
+  .launchHeaderActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .launchHeaderActions button,
+  .launchToggle {
+    width: 100%;
+  }
+
   .launchTextGrid {
     grid-template-columns: 1fr;
   }

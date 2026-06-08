@@ -341,23 +341,31 @@ export default function AccountSettingsForm({ currentEmail }) {
             </>
           ) : (
             <section className={styles.profileInfoCard}>
-              <div className={styles.profileCardHeader}>
+              <form className={styles.launchSettingsForm} onSubmit={handleLaunchSettingsSave}>
+                <div className={styles.profileCardHeader}>
                 <div>
                   <h3>Password Protected Website Overlay</h3>
                   <p>Toggle the main website gate, edit overlay text, and preview the countdown state.</p>
                 </div>
-                <label className={styles.launchToggle}>
-                  <input
-                    type="checkbox"
-                    checked={launchSettings.isActive}
-                    onChange={(event) => updateLaunchField("isActive", event.target.checked)}
-                  />
-                  <span>{launchSettings.isActive ? "Active" : "Inactive"}</span>
-                </label>
-              </div>
+                  <div className={styles.launchHeaderActions}>
+                    <label className={styles.launchToggle}>
+                      <input
+                        type="checkbox"
+                        checked={launchSettings.isActive}
+                        onChange={(event) => updateLaunchField("isActive", event.target.checked)}
+                      />
+                      <span>{launchSettings.isActive ? "Active" : "Inactive"}</span>
+                    </label>
+                    <button type="submit" className={styles.primaryButton} disabled={launchBusy}>
+                      {launchBusy ? "Saving..." : "Save overlay settings"}
+                    </button>
+                  </div>
+                </div>
 
-              <form className={styles.launchSettingsGrid} onSubmit={handleLaunchSettingsSave}>
-                <div className={styles.launchSettingsFields}>
+                {launchStatus ? <p className={styles.feedback}>{launchStatus}</p> : null}
+
+                <div className={styles.launchSettingsGrid}>
+                  <div className={styles.launchSettingsFields}>
                   <label className={styles.fieldLabel} htmlFor="launchLiveAt">
                     Live date and time
                   </label>
@@ -393,12 +401,6 @@ export default function AccountSettingsForm({ currentEmail }) {
                     ))}
                   </div>
 
-                  <div className={styles.launchSettingsActions}>
-                    <button type="submit" className={styles.primaryButton} disabled={launchBusy}>
-                      {launchBusy ? "Saving..." : "Save overlay settings"}
-                    </button>
-                    {launchStatus ? <p className={styles.feedback}>{launchStatus}</p> : null}
-                  </div>
                 </div>
 
                 <aside className={styles.launchPreviewPanel} aria-label="Launch overlay preview">
@@ -454,6 +456,7 @@ export default function AccountSettingsForm({ currentEmail }) {
                     </main>
                   </div>
                 </aside>
+                </div>
               </form>
             </section>
           )}
