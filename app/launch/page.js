@@ -2,11 +2,12 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { DEFAULT_LAUNCH_SETTINGS } from "../../lib/launch-settings";
+import { getAllowedAdminEmailClient } from "../../lib/admin-access";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 import styles from "./launch.module.css";
 
-const LAUNCH_EMAIL = "sales@perthcabinetdoors.com.au";
-const LAUNCH_DATE = new Date("2026-06-08T12:00:00+08:00");
+const LAUNCH_EMAIL = getAllowedAdminEmailClient();
 const TOPICS = [
   "General enquiry",
   "Cabinet doors",
@@ -17,8 +18,9 @@ const TOPICS = [
   "Something else",
 ];
 
-function getCountdown() {
-  const remaining = Math.max(0, LAUNCH_DATE.getTime() - Date.now());
+function getCountdown(liveAt) {
+  const liveAtDate = liveAt ? new Date(liveAt) : new Date(DEFAULT_LAUNCH_SETTINGS.liveAt);
+  const remaining = Math.max(0, liveAtDate.getTime() - Date.now());
   const totalSeconds = Math.floor(remaining / 1000);
 
   return {
@@ -44,6 +46,7 @@ export default function LaunchPage() {
 function LaunchGate() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [settings, setSettings] = useState(DEFAULT_LAUNCH_SETTINGS);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [countdown, setCountdown] = useState(null);
@@ -59,22 +62,33 @@ function LaunchGate() {
   }, [searchParams]);
 
   useEffect(() => {
-    setCountdown(getCountdown());
-    const timer = window.setInterval(() => setCountdown(getCountdown()), 1000);
-    return () => window.clearInterval(timer);
+    fetch("/api/launch-settings")
+      .then((response) => response.json())
+      .then((result) => {
+        if (result?.settings) {
+          setSettings({ ...DEFAULT_LAUNCH_SETTINGS, ...result.settings });
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setCountdown(getCountdown(settings.liveAt));
+    const timer = window.setInterval(() => setCountdown(getCountdown(settings.liveAt)), 1000);
+    return () => window.clearInterval(timer);
+  }, [settings.liveAt]);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setStatus("");
 
     if (!password) {
-      setStatus("Enter the launch access password.");
+      setStatus(settings.emptyPasswordMessage);
       return;
     }
 
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      setStatus("Launch access is not configured. Supabase environment variables are missing.");
+      setStatus(settings.configMissingMessage);
       return;
     }
 
@@ -93,7 +107,7 @@ function LaunchGate() {
 
       const response = await fetch("/api/launch-access", { method: "POST" });
       if (!response.ok) {
-        setStatus("Password accepted, but access could not be saved. Please try again.");
+        setStatus(settings.acceptedButUnsavedMessage);
         return;
       }
 
@@ -137,7 +151,7 @@ function LaunchGate() {
       form.reset();
       setEnquiryStatus({
         type: "success",
-        message: "Thanks. Your enquiry has been received and we will respond within 1-3 business days.",
+        message: settings.enquirySuccessMessage,
       });
     } catch (error) {
       setEnquiryStatus({ type: "error", message: error?.message || "Could not send enquiry." });
@@ -151,16 +165,16 @@ function LaunchGate() {
       <section className={styles.panel}>
         <div className={styles.brandRow}>
           <img src="/images/light-pcd-logo-horizontal.png" alt="Perth Cabinet Doors" className={styles.logo} />
-          <span className={styles.statusPill}>Private preview</span>
+          <span className={styles.statusPill}>{settings.statusPill}</span>
         </div>
 
         <div className={styles.content}>
-          <p className={styles.eyebrow}>New website loading</p>
+          <p className={styles.eyebrow}>{settings.eyebrow}</p>
           <h1>
-            Launching 8 June <em>at 12pm.</em>
+            {settings.headline} <em>{settings.headlineAccent}</em>
           </h1>
           <p className={styles.copy}>
-            We are putting the final pieces in place. Team access is available below.
+            {settings.copy}
           </p>
 
           <div className={styles.countdown} aria-label="Countdown to launch">
@@ -184,7 +198,7 @@ function LaunchGate() {
 
           <form className={styles.form} onSubmit={handleSubmit} noValidate>
             <label className={styles.label} htmlFor="launch-password">
-              Password
+              {settings.passwordLabel}
             </label>
             <div className={styles.passwordRow}>
               <input
@@ -202,12 +216,12 @@ function LaunchGate() {
                 onClick={() => setShowPassword((current) => !current)}
                 aria-pressed={showPassword}
               >
-                {showPassword ? "Hide" : "Show"}
+                {showPassword ? settings.hidePasswordText : settings.showPasswordText}
               </button>
             </div>
 
             <button type="submit" className={styles.submitButton} disabled={isBusy}>
-              {isBusy ? "Checking..." : "Enter website"}
+              {isBusy ? settings.busyButtonText : settings.submitButtonText}
             </button>
           </form>
 
@@ -218,9 +232,9 @@ function LaunchGate() {
           ) : null}
 
           <div className={styles.enquiryPrompt}>
-            <span>Need to contact us before launch?</span>
+            <span>{settings.enquiryPromptText}</span>
             <button type="button" onClick={() => setIsEnquiryOpen(true)}>
-              Send an enquiry
+              {settings.enquiryButtonText}
             </button>
           </div>
         </div>
@@ -231,11 +245,11 @@ function LaunchGate() {
           <section className={styles.enquiryModal} onMouseDown={(event) => event.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div>
-                <p className={styles.eyebrow}>Website enquiry</p>
-                <h2 id="launch-enquiry-title">Send us a message</h2>
+                <p className={styles.eyebrow}>{settings.enquiryEyebrow}</p>
+                <h2 id="launch-enquiry-title">{settings.enquiryTitle}</h2>
               </div>
               <button type="button" className={styles.closeButton} onClick={() => setIsEnquiryOpen(false)} aria-label="Close enquiry form">
-                Close
+                {settings.closeButtonText}
               </button>
             </div>
 
@@ -277,10 +291,10 @@ function LaunchGate() {
 
               <div className={styles.modalFooter}>
                 <button type="button" className={styles.secondaryButton} onClick={() => setIsEnquiryOpen(false)}>
-                  Cancel
+                  {settings.cancelButtonText}
                 </button>
                 <button type="submit" className={styles.submitButton} disabled={isSubmittingEnquiry}>
-                  {isSubmittingEnquiry ? "Sending..." : "Send enquiry"}
+                  {isSubmittingEnquiry ? settings.sendingButtonText : settings.sendButtonText}
                 </button>
               </div>
 
