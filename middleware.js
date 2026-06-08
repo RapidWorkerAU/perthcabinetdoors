@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 const PUBLIC_FILE = /\.(.*)$/;
+const LAUNCH_GATE_ACTIVE = false;
 
 function isBypassedPath(pathname) {
   return (
@@ -24,6 +25,10 @@ function isBypassedPath(pathname) {
 
 export function middleware(request) {
   const { pathname, search } = request.nextUrl;
+
+  if (!LAUNCH_GATE_ACTIVE) {
+    return NextResponse.next();
+  }
 
   if (isBypassedPath(pathname)) {
     return NextResponse.next();
