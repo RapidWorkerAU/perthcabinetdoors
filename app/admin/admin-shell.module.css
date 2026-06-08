@@ -9525,3 +9525,240 @@
 .orderDetailFrame .activityLogTableHead {
   position: static;
 }
+
+/* Global backend modal baseline. Keep this last so every admin dialog gets an opaque panel and visible controls. */
+.viewport .modalOverlay,
+.viewport .fullscreenOverlay,
+.viewport .mediaModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: blur(2px);
+  box-sizing: border-box;
+}
+
+.viewport .customerModal,
+.viewport .colourLibraryModal,
+.viewport .confirmModal,
+.viewport .publishQuoteModal,
+.viewport .paymentModal,
+.viewport .productEditModalPanel,
+.viewport .mediaModalPanel,
+.viewport .overlayCard {
+  width: min(760px, calc(100vw - 48px));
+  max-height: min(680px, calc(100dvh - 48px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--admin-text);
+  box-shadow: 0 30px 70px rgba(15, 23, 42, 0.26);
+  box-sizing: border-box;
+}
+
+.viewport .quoteEmailModal,
+.viewport .publishQuoteModal,
+.viewport .productEditModalPanel,
+.viewport .mediaModalPanel {
+  width: min(860px, calc(100vw - 48px));
+}
+
+.viewport .customerModalHeader,
+.viewport .mediaModalHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px;
+  border-bottom: 1px solid #d7dee8;
+  background: var(--pcd-green-panel);
+  box-sizing: border-box;
+}
+
+.viewport .customerModalHeader h2,
+.viewport .mediaModalTitle {
+  margin: 4px 0 0;
+  color: var(--admin-text);
+  font-family: var(--pcd-font-display);
+  font-size: 1.05rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.viewport .customerModalIcon {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 42px;
+  background: var(--admin-dark);
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.viewport .customerModalBody,
+.viewport .productEditModalBody,
+.viewport .mediaModalBody {
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 22px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.viewport .customerModalFooter,
+.viewport .mediaModalFooter,
+.viewport .overlayActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.viewport .customerModalGrid,
+.viewport .colourLibraryModalGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.viewport .customerModal .fieldLabel,
+.viewport .colourLibraryModal .fieldLabel,
+.viewport .publishQuoteModal .fieldLabel,
+.viewport .productEditModalBody .fieldLabel,
+.viewport .mediaModalPanel .fieldLabel {
+  display: grid;
+  gap: 5px;
+  color: var(--admin-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.viewport .customerModal .fieldInput,
+.viewport .customerModal .textareaInput,
+.viewport .customerModal input,
+.viewport .customerModal select,
+.viewport .customerModal textarea,
+.viewport .colourLibraryModal .fieldInput,
+.viewport .colourLibraryModal input,
+.viewport .colourLibraryModal select,
+.viewport .colourLibraryModal textarea,
+.viewport .publishQuoteModal .fieldInput,
+.viewport .publishQuoteModal textarea,
+.viewport .productEditModalBody .fieldInput,
+.viewport .productEditModalBody .textareaInput,
+.viewport .productEditModalBody input,
+.viewport .productEditModalBody select,
+.viewport .productEditModalBody textarea,
+.viewport .mediaModalPanel .fieldInput,
+.viewport .mediaModalPanel input,
+.viewport .mediaModalPanel select,
+.viewport .mediaModalPanel textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #cfc6b8;
+  border-radius: 0;
+  background: #ffffff;
+  color: var(--admin-text);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.45;
+  box-shadow: inset 0 0 0 1px rgba(207, 198, 184, 0.28);
+  box-sizing: border-box;
+  appearance: none;
+}
+
+.viewport .customerModal textarea,
+.viewport .colourLibraryModal textarea,
+.viewport .publishQuoteModal textarea,
+.viewport .productEditModalBody textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.viewport .customerModal input:disabled,
+.viewport .customerModal select:disabled,
+.viewport .customerModal textarea:disabled,
+.viewport .publishQuoteModal .fieldInput:disabled {
+  border-color: #d8d0c3;
+  background: #f8faf6;
+  color: var(--admin-text);
+  opacity: 1;
+}
+
+.viewport .customerModal .fieldInput:focus,
+.viewport .customerModal .textareaInput:focus,
+.viewport .customerModal input:focus,
+.viewport .customerModal select:focus,
+.viewport .customerModal textarea:focus,
+.viewport .colourLibraryModal .fieldInput:focus,
+.viewport .colourLibraryModal input:focus,
+.viewport .colourLibraryModal select:focus,
+.viewport .colourLibraryModal textarea:focus,
+.viewport .publishQuoteModal .fieldInput:focus,
+.viewport .publishQuoteModal textarea:focus,
+.viewport .productEditModalBody .fieldInput:focus,
+.viewport .productEditModalBody .textareaInput:focus,
+.viewport .productEditModalBody input:focus,
+.viewport .productEditModalBody select:focus,
+.viewport .productEditModalBody textarea:focus,
+.viewport .mediaModalPanel input:focus,
+.viewport .mediaModalPanel select:focus,
+.viewport .mediaModalPanel textarea:focus {
+  border-color: var(--admin-accent);
+  outline: 3px solid rgba(107, 158, 97, 0.16);
+}
+
+.viewport .colourLibraryCheckboxGroup,
+.viewport .colourLibraryFileControl {
+  min-height: 44px;
+  border: 1px solid #cfc6b8;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(207, 198, 184, 0.28);
+}
+
+@media (max-width: 760px) {
+  .viewport .customerModal,
+  .viewport .colourLibraryModal,
+  .viewport .confirmModal,
+  .viewport .publishQuoteModal,
+  .viewport .paymentModal,
+  .viewport .productEditModalPanel,
+  .viewport .mediaModalPanel,
+  .viewport .overlayCard {
+    width: calc(100vw - 28px);
+    max-height: calc(100dvh - 28px);
+  }
+
+  .viewport .customerModalGrid,
+  .viewport .colourLibraryModalGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .viewport .customerModalFooter,
+  .viewport .mediaModalFooter,
+  .viewport .overlayActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+}
