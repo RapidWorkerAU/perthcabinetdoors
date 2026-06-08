@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
+import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals, GST_RATE } from "../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable } from "../../../request-quote/quote-form-data";
@@ -14,7 +15,11 @@ function makeAccessCode() {
 }
 
 async function normalizeQuotePayload(supabase, payload = {}) {
-  const totals = calculateQuoteTotals(payload.lines || [], payload.gst_rate ?? GST_RATE, payload);
+  const businessDefaults = await getBusinessDefaults(supabase);
+  const totals = calculateQuoteTotals(payload.lines || [], payload.gst_rate ?? GST_RATE, {
+    ...payload,
+    business_defaults: businessDefaults,
+  });
   const customerId = await resolveQuoteCustomer(supabase, payload);
 
   return {
@@ -59,7 +64,7 @@ export async function GET() {
   try {
     const { data, error } = await context.supabase
       .from("pcd_quotes")
-      .select("*, pcd_quote_line_items(*), pcd_quote_attachments(*)")
+      .select("*, pcd_quote_line_items(*), pcd_quote_attachments(*), pcd_customers(site_address)")
       .order("created_at", { ascending: false });
 
     if (error) throw error;

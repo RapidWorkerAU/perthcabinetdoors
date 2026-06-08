@@ -42,6 +42,7 @@ const primaryItems = [
       { href: "/admin/customers", label: "Customers" },
       { href: "/admin/options", label: "Colour library" },
       { href: "/admin/products", label: "Products" },
+      { href: "/admin/defaults", label: "Defaults" },
     ],
   },
 ];
@@ -109,6 +110,12 @@ const pageMeta = [
     eyebrow: "Catalogue",
     title: "Colour Library",
     subtitle: "Manage colour tile images, finishes, and material assignments used across products and quote forms.",
+  },
+  {
+    match: "/admin/defaults",
+    eyebrow: "Business Admin",
+    title: "Defaults",
+    subtitle: "Set global calculation defaults for quotes, labour, markup, and hardware costs.",
   },
   {
     match: "/admin/settings",

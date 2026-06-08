@@ -22,11 +22,23 @@ function getStatusClass(status) {
   return styles.statusPillDraft;
 }
 
+function suburbFromAddress(value) {
+  const text = String(value || "").trim();
+  if (!text) return "-";
+  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  return parts[parts.length - 1] || text;
+}
+
+function quoteCustomerSuburb(quote) {
+  return suburbFromAddress(quote?.pcd_customers?.site_address || quote?.site_address);
+}
+
 export default function QuotesTable() {
   const router = useRouter();
   const [quotes, setQuotes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [duplicatingQuoteId, setDuplicatingQuoteId] = useState("");
   const [feedback, setFeedback] = useState("");
   const [setupRequired, setSetupRequired] = useState(false);
   const quotePagination = useAdminTablePagination(quotes);
@@ -87,6 +99,27 @@ export default function QuotesTable() {
     }
   }
 
+  async function duplicateQuote(quoteId) {
+    setDuplicatingQuoteId(quoteId);
+    setFeedback("");
+
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/duplicate`, { method: "POST" });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok || !payload.quote?.id) {
+        setFeedback(payload.error || "Could not duplicate quote.");
+        return;
+      }
+
+      router.push(`/admin/quotes/${payload.quote.id}`);
+    } catch (error) {
+      setFeedback(error?.message || "Could not duplicate quote.");
+    } finally {
+      setDuplicatingQuoteId("");
+    }
+  }
+
   return (
     <section className={styles.productsSection}>
       <div className={styles.productsHeaderBar}>
@@ -115,7 +148,7 @@ export default function QuotesTable() {
               <th>Quote</th>
               <th>Access code</th>
               <th>Customer</th>
-              <th>Project</th>
+              <th>Suburb</th>
               <th>Status</th>
               <th>Total</th>
               <th>Updated</th>
@@ -134,7 +167,7 @@ export default function QuotesTable() {
                   <code className={styles.accessCodeCell}>{quote.access_code || "-"}</code>
                 </td>
                 <td>{quote.customer_name || "-"}</td>
-                <td>{quote.project_name || "-"}</td>
+                <td>{quoteCustomerSuburb(quote)}</td>
                 <td>
                   <span className={`${styles.statusPill} ${getStatusClass(quote.status)}`}>
                     {(quote.status || "draft").replace(/^./, (char) => char.toUpperCase())}
@@ -165,6 +198,17 @@ export default function QuotesTable() {
                         View
                       </a>
                     ) : null}
+                    <button
+                      type="button"
+                      className={styles.rowEditButton}
+                      disabled={duplicatingQuoteId === quote.id}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        duplicateQuote(quote.id);
+                      }}
+                    >
+                      {duplicatingQuoteId === quote.id ? "Duplicating..." : "Duplicate"}
+                    </button>
                   </div>
                 </td>
               </tr>

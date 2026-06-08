@@ -1,5 +1,6 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
+import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals, GST_RATE } from "../../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable } from "../../../../request-quote/quote-form-data";
@@ -62,7 +63,11 @@ async function loadQuoteWithRelations(supabase, id) {
 
 async function normalizeQuotePayload(supabase, payload = {}) {
   const sourceLines = payload.lines || [];
-  const totals = calculateQuoteTotals(payload.lines || [], payload.gst_rate ?? GST_RATE, payload);
+  const businessDefaults = await getBusinessDefaults(supabase);
+  const totals = calculateQuoteTotals(payload.lines || [], payload.gst_rate ?? GST_RATE, {
+    ...payload,
+    business_defaults: businessDefaults,
+  });
   const customerId = await resolveQuoteCustomer(supabase, payload);
   return {
     quote: {

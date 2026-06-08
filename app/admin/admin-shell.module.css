@@ -977,6 +977,17 @@
   background: #ffffff;
 }
 
+.defaultsPanel {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid rgba(24, 29, 39, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 14px 28px rgba(24, 29, 39, 0.06);
+}
+
 .settingsDetailHeader {
   min-height: 102px;
   display: grid;
@@ -998,6 +1009,12 @@
   margin: 0;
   color: #667085;
   font-size: 0.85rem;
+}
+
+.settingsDetailHeader .tableMeta {
+  margin: 0;
+  color: #4d654e;
+  font-size: 0.72rem;
 }
 
 .settingsDetailBody {
@@ -4335,12 +4352,16 @@
 
 .quoteItemsAdminWrap {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
+  min-height: 0;
+  max-height: calc(100vh - 420px);
 }
 
 .quoteItemsScroller {
-  overflow: visible;
+  min-height: 0;
+  overflow: auto;
   border: 1px solid #dbd8cc;
   border-radius: 6px;
   background: #ffffff;
@@ -4384,6 +4405,9 @@
 }
 
 .quoteItemHead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   min-height: 38px;
   background: #f5f3ee;
   border-bottom: 2px solid #dbd8cc;
@@ -4544,6 +4568,19 @@
 .quoteMoneyInput input {
   padding-left: 17px;
   padding-right: 6px;
+}
+
+.inlineInputWithSuffix {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.inlineInputWithSuffix span {
+  color: #4b5563;
+  font-size: 0.84rem;
+  font-weight: 800;
 }
 
 .quoteMarkupInput {
@@ -6132,6 +6169,10 @@
   background: var(--admin-surface);
 }
 
+.paymentToolbar > div {
+  min-width: 0;
+}
+
 .depositToggleGroup {
   display: flex;
   align-items: center;
@@ -6617,12 +6658,26 @@
 
 .orderPaymentItems .quoteItemGrid {
   grid-template-columns:
-    minmax(160px, 0.9fr)
-    minmax(140px, 0.78fr)
-    minmax(140px, 0.78fr)
-    minmax(140px, 0.78fr)
-    minmax(240px, 1.35fr)
-    minmax(120px, 0.68fr);
+    minmax(120px, 0.9fr)
+    minmax(130px, 1fr)
+    minmax(140px, 1.05fr)
+    minmax(130px, 0.95fr)
+    minmax(220px, 1.8fr)
+    minmax(180px, 1.25fr);
+  width: 100%;
+}
+
+.orderPaymentItems .quoteItemsScroller {
+  overflow-x: hidden;
+}
+
+.orderPaymentItems .quoteItemActions {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.orderPaymentItems .rowEditButton {
+  white-space: nowrap;
 }
 
 .orderPlanningItems .quoteItemHead,
@@ -10166,6 +10221,7 @@
 /* Quote line grid: keep compact columns compact and give width/height usable room. */
 .quoteBuilderPanelBody .quoteItemsScroller {
   overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .quoteBuilderPanelBody .quoteItemGrid {

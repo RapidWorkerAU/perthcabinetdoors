@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  DEFAULT_BUSINESS_DEFAULTS,
   formatMoney,
   ORDER_LINE_STATUSES,
   ORDER_PRODUCTION_STAGES,
@@ -295,7 +296,6 @@ export default function OrderDetail({ orderId }) {
   const cutListPagination = useAdminTablePagination(cutListRows);
   const paymentPagination = useAdminTablePagination(payments);
   const activityPagination = useAdminTablePagination(activity);
-  const depositPayment = payments.find((payment) => payment.payment_type === "deposit");
   const paymentTotals = useMemo(() => {
     const orderTotal = Number(order?.total_inc_gst || 0);
     const pending = payments.reduce((total, payment) => total + (!payment.is_paid ? Number(payment.amount || 0) : 0), 0);
@@ -330,6 +330,22 @@ export default function OrderDetail({ orderId }) {
     loadOrder();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
+
+  useEffect(() => {
+    if (activeSection !== "payments") return undefined;
+
+    function refreshOrderPayments() {
+      if (document.visibilityState === "visible") loadOrder();
+    }
+
+    window.addEventListener("focus", refreshOrderPayments);
+    document.addEventListener("visibilitychange", refreshOrderPayments);
+    return () => {
+      window.removeEventListener("focus", refreshOrderPayments);
+      document.removeEventListener("visibilitychange", refreshOrderPayments);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, orderId]);
 
   useEffect(() => {
     if (!items.length) {
@@ -784,7 +800,7 @@ export default function OrderDetail({ orderId }) {
                     <div className={styles.quoteReadCell}>{hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</div>
                     <div className={styles.quoteReadCell}>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</div>
                     <div className={styles.quoteReadCell}>{formatMoney(line.product_unit_cost_ex_gst || 0, quote.currency || "AUD")}</div>
-                    <div className={styles.quoteReadCell}>{line.markup_percent ?? 40}%</div>
+                    <div className={styles.quoteReadCell}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</div>
                     <div className={styles.quoteItemTotal}>{formatMoney(line.unit_price_ex_gst || 0, quote.currency || "AUD")}</div>
                     <div className={styles.quoteItemTotal}>{formatMoney(line.line_total_ex_gst || 0, quote.currency || "AUD")}</div>
                   </div>
@@ -1054,36 +1070,9 @@ export default function OrderDetail({ orderId }) {
         </div>
 
         <div className={styles.paymentToolbar}>
-          <div className={styles.depositToggleGroup} aria-label="Deposit required">
-            <span>Deposit Required</span>
-            <label className={styles.radioPill}>
-              <input
-                type="radio"
-                name="depositRequired"
-                checked={!!depositPayment}
-                disabled={!!depositPayment}
-                onChange={() =>
-                  setPaymentModal({
-                    payment_type: "deposit",
-                    amount: order.deposit_amount || "",
-                    is_paid: false,
-                    paid_at: "",
-                    notes: "",
-                  })
-                }
-              />
-              Yes
-            </label>
-            <label className={styles.radioPill}>
-              <input
-                type="radio"
-                name="depositRequired"
-                checked={!depositPayment}
-                disabled={!!depositPayment}
-                onChange={() => saveOrder({ deposit_required: false, deposit_amount: 0, deposit_paid: false, deposit_paid_at: null })}
-              />
-              No
-            </label>
+          <div>
+            <p className={styles.tableMeta}>Payment lines</p>
+            <p className={styles.helperText}>Add deposits, progress payments, final payments, and manual paid records.</p>
           </div>
           <button
             type="button"
@@ -1171,7 +1160,7 @@ export default function OrderDetail({ orderId }) {
                       disabled={savingPaymentId === payment.id || payment.is_paid || Number(payment.amount || 0) <= 0}
                       onClick={() => requestPayment(payment)}
                     >
-                      Request
+                      {payment.is_paid ? "Paid" : "Request payment"}
                     </button>
                     <button
                       type="button"

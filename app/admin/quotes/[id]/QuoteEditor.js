@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
-import { calculateQuoteLine, calculateQuoteTotals, formatMoney, GST_RATE } from "../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, GST_RATE } from "../../../../lib/pcd-quote-utils";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
 import {
   edgeProfilesForMaterial,
@@ -54,9 +54,16 @@ const emptyLine = {
   hinge_supply: false,
   hinge_qty: "",
   product_unit_cost_ex_gst: "",
-  markup_percent: 40,
+  markup_percent: DEFAULT_BUSINESS_DEFAULTS.markup_percent,
   notes: "",
 };
+
+function emptyLineWithDefaults(defaults = DEFAULT_BUSINESS_DEFAULTS) {
+  return {
+    ...emptyLine,
+    markup_percent: defaults.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent,
+  };
+}
 
 const emptyForm = {
   id: "",
@@ -74,7 +81,7 @@ const emptyForm = {
   currency: "AUD",
   gst_rate: GST_RATE,
   labour_hours: "",
-  worker_hourly_rate: 85,
+  worker_hourly_rate: DEFAULT_BUSINESS_DEFAULTS.worker_hourly_rate,
   travel_cost_ex_gst: "",
   delivery_cost_ex_gst: "",
   installation_cost_ex_gst: "",
@@ -88,7 +95,7 @@ const emptyForm = {
   assumptions: "",
   exclusions: "",
   terms: "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.",
-  lines: [{ ...emptyLine }],
+  lines: [emptyLineWithDefaults()],
   attachments: [],
 };
 
@@ -122,7 +129,7 @@ function linesFromQuote(quote) {
       hinge_supply: Boolean(line.hinge_supply),
       hinge_qty: line.hinge_qty ?? "",
       product_unit_cost_ex_gst: line.product_unit_cost_ex_gst ?? "",
-      markup_percent: line.markup_percent ?? 40,
+      markup_percent: line.markup_percent ?? "",
       notes: line.notes ?? "",
     }));
 }
@@ -140,7 +147,7 @@ function formFromQuote(quote) {
     site_address: quote.site_address || "",
     project_name: quote.project_name || "",
     labour_hours: quote.labour_hours ?? "",
-    worker_hourly_rate: quote.worker_hourly_rate ?? 85,
+    worker_hourly_rate: quote.worker_hourly_rate ?? "",
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
     installation_cost_ex_gst: quote.installation_cost_ex_gst ?? "",
@@ -437,9 +444,10 @@ export default function QuoteEditor({ quoteId }) {
   const [isGeneratingCabinetPdf, setIsGeneratingCabinetPdf] = useState(false);
   const [publishEmail, setPublishEmail] = useState(null);
   const [feedback, setFeedback] = useState("");
+  const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
 
   const totals = useMemo(
-    () => calculateQuoteTotals(form.lines, form.gst_rate, form),
+    () => calculateQuoteTotals(form.lines, form.gst_rate, { ...form, business_defaults: businessDefaults }),
     [
       form.lines,
       form.gst_rate,
@@ -448,6 +456,7 @@ export default function QuoteEditor({ quoteId }) {
       form.travel_cost_ex_gst,
       form.delivery_cost_ex_gst,
       form.installation_cost_ex_gst,
+      businessDefaults,
     ]
   );
   const publicUrl =
@@ -489,8 +498,35 @@ export default function QuoteEditor({ quoteId }) {
   useEffect(() => {
     loadQuote();
     loadCustomers();
+    loadBusinessDefaults();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteId]);
+
+  async function loadBusinessDefaults() {
+    try {
+      const response = await fetch("/api/admin/business-defaults", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) return;
+      const nextDefaults = { ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults };
+      setBusinessDefaults(nextDefaults);
+      setForm((current) => ({
+        ...current,
+        worker_hourly_rate:
+          current.worker_hourly_rate === "" || current.worker_hourly_rate === null || current.worker_hourly_rate === undefined
+            ? nextDefaults.worker_hourly_rate
+            : current.worker_hourly_rate,
+        lines: (current.lines || []).map((line) => ({
+          ...line,
+          markup_percent:
+            line.markup_percent === "" || line.markup_percent === null || line.markup_percent === undefined
+              ? nextDefaults.markup_percent
+              : line.markup_percent,
+        })),
+      }));
+    } catch {
+      // Business defaults are optional; built-in defaults remain available.
+    }
+  }
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -636,7 +672,7 @@ export default function QuoteEditor({ quoteId }) {
             next.hinge_supply = false;
             next.hinge_qty = "";
             next.product_unit_cost_ex_gst = "";
-            next.markup_percent = next.markup_percent ?? 40;
+            next.markup_percent = next.markup_percent ?? businessDefaults.markup_percent;
           }
           if (patch.product_type !== "Door") {
             next.hinge_holes = false;
@@ -714,7 +750,7 @@ export default function QuoteEditor({ quoteId }) {
       if (!saved) return;
     }
     const nextIndex = form.lines.length;
-    setForm((current) => ({ ...current, lines: [...current.lines, { ...emptyLine }] }));
+    setForm((current) => ({ ...current, lines: [...current.lines, emptyLineWithDefaults(businessDefaults)] }));
     setEditableLineIndex(nextIndex);
     setActiveSection("items");
   }
@@ -780,7 +816,7 @@ export default function QuoteEditor({ quoteId }) {
           ...cabinetPayload.line_item_patch,
           cabinet_config: cabinetPayload,
           qty: line.qty || 1,
-          markup_percent: line.markup_percent ?? 40,
+          markup_percent: line.markup_percent ?? businessDefaults.markup_percent,
         };
       }),
     };
@@ -1135,7 +1171,7 @@ export default function QuoteEditor({ quoteId }) {
           </div>
           {form.lines.map((line, index) => {
             const isEditable = editableLineIndex === index;
-            const calculated = calculateQuoteLine(line);
+            const calculated = calculateQuoteLine(line, businessDefaults);
             const materialOptions = MATERIALS_BY_TYPE[line.product_type] || MATERIAL_OPTIONS;
             const thicknessOptions = thicknessOptionsForMaterial(line.material);
             const edgeProfiles = edgeProfilesForMaterial(line.material);
@@ -1354,7 +1390,7 @@ export default function QuoteEditor({ quoteId }) {
                       )}
                     </div>
                     <div className={styles.quoteReadCell}>{formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}</div>
-                    <div className={styles.quoteReadCell}>{line.markup_percent ?? 40}%</div>
+                    <div className={styles.quoteReadCell}>{line.markup_percent ?? businessDefaults.markup_percent}%</div>
                     <div className={styles.quoteItemTotal}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</div>
                     <div className={styles.quoteItemTotal}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</div>
                     <div className={styles.quoteItemActions}>

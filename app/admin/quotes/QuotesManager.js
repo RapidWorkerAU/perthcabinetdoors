@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { calculateQuoteLine, calculateQuoteTotals, formatMoney, GST_RATE } from "../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, GST_RATE } from "../../../lib/pcd-quote-utils";
 import styles from "../admin-shell.module.css";
 
 const emptyLine = {
@@ -16,12 +16,12 @@ const emptyLine = {
   qty: 1,
   product_unit_cost_ex_gst: "",
   labour_hours: "",
-  worker_hourly_rate: 85,
+  worker_hourly_rate: DEFAULT_BUSINESS_DEFAULTS.worker_hourly_rate,
   travel_cost_ex_gst: "",
   delivery_cost_ex_gst: "",
   installation_cost_ex_gst: "",
   other_cost_ex_gst: "",
-  markup_percent: 25,
+  markup_percent: DEFAULT_BUSINESS_DEFAULTS.markup_percent,
   notes: "",
 };
 
@@ -43,7 +43,15 @@ const emptyForm = {
   lines: [{ ...emptyLine }],
 };
 
-function linesFromQuote(quote) {
+function emptyLineWithDefaults(defaults = DEFAULT_BUSINESS_DEFAULTS) {
+  return {
+    ...emptyLine,
+    worker_hourly_rate: defaults.worker_hourly_rate ?? DEFAULT_BUSINESS_DEFAULTS.worker_hourly_rate,
+    markup_percent: defaults.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent,
+  };
+}
+
+function linesFromQuote(quote, defaults = DEFAULT_BUSINESS_DEFAULTS) {
   return [...(quote?.pcd_quote_line_items || [])]
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
     .map((line) => ({
@@ -51,10 +59,12 @@ function linesFromQuote(quote) {
       ...line,
       width_mm: line.width_mm ?? "",
       height_mm: line.height_mm ?? "",
+      worker_hourly_rate: line.worker_hourly_rate ?? defaults.worker_hourly_rate,
+      markup_percent: line.markup_percent ?? defaults.markup_percent,
     }));
 }
 
-function formFromQuote(quote) {
+function formFromQuote(quote, defaults = DEFAULT_BUSINESS_DEFAULTS) {
   return {
     ...emptyForm,
     ...quote,
@@ -65,7 +75,7 @@ function formFromQuote(quote) {
     project_name: quote.project_name || "",
     notes: quote.notes || "",
     terms: quote.terms || emptyForm.terms,
-    lines: linesFromQuote(quote).length ? linesFromQuote(quote) : [{ ...emptyLine }],
+    lines: linesFromQuote(quote, defaults).length ? linesFromQuote(quote, defaults) : [emptyLineWithDefaults(defaults)],
   };
 }
 
@@ -76,8 +86,12 @@ export default function QuotesManager() {
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [setupRequired, setSetupRequired] = useState(false);
+  const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
 
-  const totals = useMemo(() => calculateQuoteTotals(form.lines, form.gst_rate), [form.lines, form.gst_rate]);
+  const totals = useMemo(
+    () => calculateQuoteTotals(form.lines, form.gst_rate, { business_defaults: businessDefaults }),
+    [form.lines, form.gst_rate, businessDefaults]
+  );
   const selectedQuote = quotes.find((quote) => quote.id === form.id);
   const publicUrl =
     typeof window !== "undefined" && form.access_code
@@ -92,7 +106,7 @@ export default function QuotesManager() {
       setSetupRequired(!!payload.setupRequired);
       setQuotes(payload.quotes || []);
       if (!form.id && payload.quotes?.[0]) {
-        setForm(formFromQuote(payload.quotes[0]));
+        setForm(formFromQuote(payload.quotes[0], businessDefaults));
       }
       if (payload.error) {
         setFeedback(payload.error);
@@ -106,8 +120,35 @@ export default function QuotesManager() {
 
   useEffect(() => {
     loadQuotes();
+    loadBusinessDefaults();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function loadBusinessDefaults() {
+    try {
+      const response = await fetch("/api/admin/business-defaults", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) return;
+      const nextDefaults = { ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults };
+      setBusinessDefaults(nextDefaults);
+      setForm((current) => ({
+        ...current,
+        lines: current.lines.map((line) => ({
+          ...line,
+          worker_hourly_rate:
+            line.worker_hourly_rate === "" || line.worker_hourly_rate === null || line.worker_hourly_rate === undefined
+              ? nextDefaults.worker_hourly_rate
+              : line.worker_hourly_rate,
+          markup_percent:
+            line.markup_percent === "" || line.markup_percent === null || line.markup_percent === undefined
+              ? nextDefaults.markup_percent
+              : line.markup_percent,
+        })),
+      }));
+    } catch {
+      // Built-in defaults remain available if the defaults table has not been installed yet.
+    }
+  }
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -121,7 +162,7 @@ export default function QuotesManager() {
   }
 
   function addLine() {
-    setForm((current) => ({ ...current, lines: [...current.lines, { ...emptyLine }] }));
+    setForm((current) => ({ ...current, lines: [...current.lines, emptyLineWithDefaults(businessDefaults)] }));
   }
 
   function removeLine(index) {
@@ -189,7 +230,7 @@ export default function QuotesManager() {
       <aside className={styles.workflowList}>
         <div className={styles.workflowListHeader}>
           <span className={styles.tableMeta}>{isLoading ? "Loading quotes" : `${quotes.length} quotes`}</span>
-          <button type="button" className={styles.primaryButton} onClick={() => setForm({ ...emptyForm, lines: [{ ...emptyLine }] })}>
+          <button type="button" className={styles.primaryButton} onClick={() => setForm({ ...emptyForm, lines: [emptyLineWithDefaults(businessDefaults)] })}>
             New quote
           </button>
         </div>
@@ -202,7 +243,7 @@ export default function QuotesManager() {
               key={quote.id}
               type="button"
               className={`${styles.workflowListItem} ${quote.id === form.id ? styles.workflowListItemActive : ""}`}
-              onClick={() => setForm(formFromQuote(quote))}
+              onClick={() => setForm(formFromQuote(quote, businessDefaults))}
             >
               <strong>{quote.quote_number}</strong>
               <span>{quote.customer_name || "No customer"} · {quote.status}</span>
@@ -270,7 +311,7 @@ export default function QuotesManager() {
 
           <div className={styles.quoteLines}>
             {form.lines.map((line, index) => {
-              const calculated = calculateQuoteLine(line);
+              const calculated = calculateQuoteLine(line, businessDefaults);
               return (
                 <div key={index} className={styles.quoteLine}>
                   <div className={styles.quoteLineTop}>

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
+import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { GST_RATE } from "../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable } from "../../../request-quote/quote-form-data";
@@ -57,6 +58,7 @@ export async function POST(request) {
       site_address: quoteRequest.delivery_suburb,
     };
     const customerId = await resolveQuoteCustomer(context.supabase, customerPayload);
+    const businessDefaults = await getBusinessDefaults(context.supabase);
 
     const { data: quote, error: quoteError } = await context.supabase
       .from("pcd_quotes")
@@ -73,6 +75,7 @@ export async function POST(request) {
         project_name: quoteRequest.cabinet_brand,
         currency: "AUD",
         gst_rate: GST_RATE,
+        worker_hourly_rate: businessDefaults.worker_hourly_rate,
         notes: quoteRequest.notes,
         terms: "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.",
       })
@@ -115,6 +118,7 @@ export async function POST(request) {
         hinge_holes: line.hinge_holes,
         hinge_supply: line.hinge_supply,
         hinge_qty: line.hinge_qty,
+        markup_percent: businessDefaults.markup_percent,
         notes: line.notes,
       }));
       const { error: lineError } = await context.supabase.from("pcd_quote_line_items").insert(quoteLines);
