@@ -3607,7 +3607,17 @@
 .checkboxRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.checkboxRow input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  cursor: pointer;
+  accent-color: #1c2b1e;
+  appearance: auto;
 }
 
 .configGrid {
@@ -4566,7 +4576,7 @@
 }
 
 .quoteMoneyInput input {
-  padding-left: 17px;
+  padding-left: 22px !important;
   padding-right: 6px;
 }
 
@@ -4675,11 +4685,12 @@
 .quoteColourComboButton {
   position: absolute;
   top: 1px;
-  right: 8px;
+  right: 1px;
   bottom: 1px;
-  width: 24px;
+  width: 28px;
   border: 0;
-  background: transparent;
+  background: #ffffff;
+  border-radius: 0 4px 4px 0;
   cursor: pointer;
 }
 
@@ -4700,7 +4711,7 @@
 
 .quoteColourMenu {
   position: fixed;
-  z-index: 60;
+  z-index: 1300;
   top: calc(100% + 4px);
   left: 0;
   width: min(360px, 80vw);
@@ -4822,7 +4833,7 @@
 }
 
 .quoteEmailTextarea {
-  min-height: 260px;
+  min-height: 400px;
   resize: vertical;
 }
 
@@ -5103,7 +5114,7 @@
   display: flex;
   justify-content: space-between;
   gap: 14px;
-  border-bottom: 1px solid #edf1f6;
+  border-bottom: 1px solid #17321f;
   color: #001f36;
   font-size: 0.84rem;
   padding: 8px 0;
@@ -6658,17 +6669,17 @@
 
 .orderPaymentItems .quoteItemGrid {
   grid-template-columns:
-    minmax(120px, 0.9fr)
-    minmax(130px, 1fr)
-    minmax(140px, 1.05fr)
-    minmax(130px, 0.95fr)
-    minmax(220px, 1.8fr)
-    minmax(180px, 1.25fr);
+    minmax(80px, 0.7fr)
+    minmax(90px, 0.8fr)
+    minmax(90px, 0.8fr)
+    minmax(90px, 0.7fr)
+    minmax(0, 1.6fr)
+    minmax(160px, 1.2fr) !important;
   width: 100%;
 }
 
 .orderPaymentItems .quoteItemsScroller {
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 .orderPaymentItems .quoteItemActions {
@@ -9346,7 +9357,7 @@
 }
 
 .publishQuoteModal .quoteEmailTextarea {
-  min-height: 250px;
+  min-height: 290px !important;
   resize: vertical;
   display: block;
   white-space: pre-wrap;
@@ -10080,6 +10091,10 @@
   resize: vertical;
 }
 
+.modalOverlay .publishQuoteModal .quoteEmailTextarea {
+  min-height: 400px;
+}
+
 .modalOverlay :is(input, select, textarea)::placeholder,
 .fullscreenOverlay :is(input, select, textarea)::placeholder,
 .mediaModalBackdrop :is(input, select, textarea)::placeholder {
@@ -10487,13 +10502,13 @@
 }
 
 .quoteBuilderPanelBody .quoteGrandTotalPanel {
-  background: #17321f !important;
+  background: #eef5ea !important;
 }
 
 .quoteBuilderPanelBody .quoteGrandTotalPanel div,
 .quoteBuilderPanelBody .quoteGrandTotalPanel span,
 .quoteBuilderPanelBody .quoteGrandTotalPanel strong {
-  color: #ffffff !important;
+  color: #17321f !important;
 }
 
 .quoteBuilderPanelBody .quoteTotalsPanel .quoteMarkupProfitRow {

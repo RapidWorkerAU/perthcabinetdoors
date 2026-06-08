@@ -207,11 +207,11 @@ function defaultQuoteEmailMessage(form, viewUrl) {
     "Please use the secure link below to view the quote, check the line items and approve or reject it online.",
     "",
     `View quote: ${viewUrl || "Quote link will be generated when sent."}`,
-    form.access_code ? `Access code: ${form.access_code}` : "",
+    form.access_code ? `Access code: ${form.access_code}` : null,
     "",
     "Regards,",
     "Perth Cabinet Doors",
-  ].filter((line) => line !== "").join("\n");
+  ].filter((line) => line !== null).join("\n");
 }
 
 function colourSrcForLine(line) {
@@ -1856,7 +1856,7 @@ export default function QuoteEditor({ quoteId }) {
                         onChange={(event) => updateHingeModal("hinge_qty", event.target.value)}
                         disabled={!hingeModal.hinge_holes && !hingeModal.hinge_supply}
                       >
-                        <option value="">Per door</option>
+                        <option value="">Please select hinge quantity...</option>
                         <option>2 hinges</option>
                         <option>3 hinges</option>
                         <option>4 hinges</option>
