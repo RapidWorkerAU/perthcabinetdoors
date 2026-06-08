@@ -9762,3 +9762,385 @@
     flex-direction: column-reverse;
   }
 }
+
+/* Admin modals can be portaled to document.body, so these selectors must not depend on .viewport. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: blur(2px);
+  box-sizing: border-box;
+}
+
+.customerModal,
+.colourLibraryModal,
+.confirmModal,
+.publishQuoteModal,
+.paymentModal {
+  background: #ffffff !important;
+  color: var(--admin-text) !important;
+  border: 1px solid rgba(24, 29, 39, 0.72) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 30px 70px rgba(15, 23, 42, 0.26) !important;
+  overflow: hidden;
+}
+
+.customerModalHeader {
+  background: var(--pcd-green-panel) !important;
+  border-bottom: 1px solid #d7dee8 !important;
+}
+
+.customerModalBody {
+  background: #ffffff !important;
+  color: var(--admin-text) !important;
+  opacity: 1 !important;
+  isolation: isolate;
+}
+
+.customerModalFooter {
+  background: #ffffff !important;
+  border-top: 1px solid #e5e7eb !important;
+}
+
+.customerModal .fieldInput,
+.customerModal .textareaInput,
+.customerModal input,
+.customerModal select,
+.customerModal textarea,
+.colourLibraryModal .fieldInput,
+.colourLibraryModal input,
+.colourLibraryModal select,
+.colourLibraryModal textarea,
+.publishQuoteModal .fieldInput,
+.publishQuoteModal textarea {
+  border: 1px solid #cfc6b8 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: var(--admin-text) !important;
+  box-shadow: inset 0 0 0 1px rgba(207, 198, 184, 0.28) !important;
+  opacity: 1 !important;
+  appearance: none;
+}
+
+.customerModal .fieldInput::placeholder,
+.customerModal .textareaInput::placeholder,
+.customerModal input::placeholder,
+.customerModal textarea::placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+}
+
+.customerModal .fieldInput:focus,
+.customerModal .textareaInput:focus,
+.customerModal input:focus,
+.customerModal select:focus,
+.customerModal textarea:focus,
+.colourLibraryModal .fieldInput:focus,
+.colourLibraryModal input:focus,
+.colourLibraryModal select:focus,
+.colourLibraryModal textarea:focus,
+.publishQuoteModal .fieldInput:focus,
+.publishQuoteModal textarea:focus {
+  border-color: var(--admin-accent) !important;
+  outline: 3px solid rgba(107, 158, 97, 0.16) !important;
+}
+
+.colourLibraryCheckboxGroup,
+.colourLibraryFileControl {
+  border: 1px solid #cfc6b8 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  box-shadow: inset 0 0 0 1px rgba(207, 198, 184, 0.28) !important;
+}
+
+/* Final admin design-system guardrails: tables, modals, and contrast. */
+.viewport,
+.modalOverlay,
+.fullscreenOverlay,
+.mediaModalBackdrop {
+  color: #1f2933;
+}
+
+.viewport :is(p, span, label, small, strong, b, th, td, input, select, textarea),
+.modalOverlay :is(p, span, label, small, strong, b, th, td, input, select, textarea),
+.fullscreenOverlay :is(p, span, label, small, strong, b, th, td, input, select, textarea),
+.mediaModalBackdrop :is(p, span, label, small, strong, b, th, td, input, select, textarea) {
+  color: #1f2933;
+}
+
+.viewport :is(.topbar, .sidebar, .portalPanelHeader, .primaryButton, .rowDeleteButton, .customerModalIcon, .statusPill):is([class*="Dark"], [class*="Active"]),
+.viewport .primaryButton,
+.modalOverlay .primaryButton,
+.fullscreenOverlay .primaryButton,
+.mediaModalBackdrop .primaryButton {
+  color: #ffffff;
+}
+
+.modalOverlay .customerModal,
+.modalOverlay .colourLibraryModal,
+.modalOverlay .confirmModal,
+.modalOverlay .publishQuoteModal,
+.fullscreenOverlay .customerModal,
+.fullscreenOverlay .colourLibraryModal,
+.fullscreenOverlay .confirmModal,
+.fullscreenOverlay .publishQuoteModal {
+  width: min(760px, calc(100vw - 48px));
+  max-height: min(680px, calc(100dvh - 48px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: #ffffff !important;
+}
+
+.modalOverlay .customerModalHeader,
+.fullscreenOverlay .customerModalHeader,
+.mediaModalBackdrop .mediaModalHeader {
+  min-height: 100px;
+  align-items: center;
+  padding: 24px 40px 24px;
+  background: #eef7ed !important;
+  border-bottom: 1px solid #d8ded6 !important;
+}
+
+.modalOverlay .customerModalIcon,
+.fullscreenOverlay .customerModalIcon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  background: #1d3424 !important;
+  color: #ffffff !important;
+  border-radius: 9px !important;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.modalOverlay .customerModalHeader .tableMeta,
+.fullscreenOverlay .customerModalHeader .tableMeta,
+.modalOverlay .customerModalHeader p,
+.fullscreenOverlay .customerModalHeader p {
+  margin: 0 0 8px;
+  color: #667060 !important;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.modalOverlay .customerModalHeader h2,
+.fullscreenOverlay .customerModalHeader h2,
+.mediaModalBackdrop .mediaModalTitle {
+  margin: 0;
+  color: #111827 !important;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.1rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.modalOverlay .customerModalBody,
+.fullscreenOverlay .customerModalBody {
+  padding: 20px 40px 24px;
+  background: #ffffff !important;
+}
+
+.modalOverlay .customerModalFooter,
+.fullscreenOverlay .customerModalFooter,
+.mediaModalBackdrop .mediaModalFooter {
+  min-height: 78px;
+  align-items: center;
+  padding: 16px 40px;
+  background: #ffffff !important;
+  border-top: 1px solid #dfe3e8 !important;
+}
+
+.modalOverlay .customerModalGrid,
+.fullscreenOverlay .customerModalGrid,
+.modalOverlay .colourLibraryModalGrid,
+.fullscreenOverlay .colourLibraryModalGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 14px;
+}
+
+.modalOverlay .fieldWide,
+.fullscreenOverlay .fieldWide {
+  grid-column: 1 / -1;
+}
+
+.modalOverlay :is(.fieldLabel, .checkboxRow),
+.fullscreenOverlay :is(.fieldLabel, .checkboxRow),
+.mediaModalBackdrop :is(.fieldLabel, .checkboxRow) {
+  color: #1f2933 !important;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.modalOverlay :is(.fieldInput, .textareaInput, input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+.fullscreenOverlay :is(.fieldInput, .textareaInput, input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+.mediaModalBackdrop :is(.fieldInput, .textareaInput, input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  width: 100%;
+  min-height: 44px;
+  display: block;
+  border: 1px solid #cfc6b8 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.45;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  box-sizing: border-box;
+}
+
+.modalOverlay :is(.textareaInput, textarea),
+.fullscreenOverlay :is(.textareaInput, textarea),
+.mediaModalBackdrop :is(.textareaInput, textarea) {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.modalOverlay :is(input, select, textarea)::placeholder,
+.fullscreenOverlay :is(input, select, textarea)::placeholder,
+.mediaModalBackdrop :is(input, select, textarea)::placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+}
+
+.modalOverlay :is(.fieldInput, .textareaInput, input, select, textarea):focus,
+.fullscreenOverlay :is(.fieldInput, .textareaInput, input, select, textarea):focus,
+.mediaModalBackdrop :is(.fieldInput, .textareaInput, input, select, textarea):focus {
+  border-color: #587e52 !important;
+  outline: 3px solid rgba(88, 126, 82, 0.16) !important;
+}
+
+.modalOverlay .primaryButton,
+.fullscreenOverlay .primaryButton,
+.mediaModalBackdrop .primaryButton {
+  min-height: 42px;
+  border: 1px solid #1d3424 !important;
+  border-radius: 2px !important;
+  background: #1d3424 !important;
+  color: #ffffff !important;
+  padding: 0 20px;
+  font-weight: 800;
+  opacity: 1 !important;
+}
+
+.modalOverlay .secondaryButton,
+.fullscreenOverlay .secondaryButton,
+.mediaModalBackdrop .secondaryButton {
+  min-height: 42px;
+  border: 1px solid #d7d0c5 !important;
+  border-radius: 2px !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  padding: 0 20px;
+  font-weight: 700;
+  opacity: 1 !important;
+}
+
+.modalOverlay .primaryButton:disabled,
+.fullscreenOverlay .primaryButton:disabled,
+.mediaModalBackdrop .primaryButton:disabled {
+  border-color: #eee8df !important;
+  background: #eee8df !important;
+  color: #948b7f !important;
+  cursor: not-allowed;
+}
+
+.viewport .productsTableWrap,
+.viewport .colourLibraryTableWrap,
+.viewport .quoteItemsTableWrap,
+.viewport .quoteItemsScroller,
+.viewport .orderWorkflowTableWrap,
+.viewport .paymentsTableWrap,
+.productsTableWrap,
+.colourLibraryTableWrap,
+.quoteItemsTableWrap,
+.orderWorkflowTableWrap,
+.paymentsTableWrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #d7d0c5 !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  box-shadow: 0 14px 28px rgba(24, 29, 39, 0.06) !important;
+}
+
+.viewport :is(table, .productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable),
+:is(.productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  background: #ffffff !important;
+  color: #1f2933 !important;
+  table-layout: auto;
+}
+
+.viewport :is(table, .productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) thead,
+:is(.productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) thead {
+  background: #eef7ed !important;
+}
+
+.viewport :is(table, .productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) th,
+:is(.productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) th {
+  min-height: 44px;
+  padding: 12px 14px !important;
+  border-bottom: 1px solid #d7d0c5 !important;
+  background: #eef7ed !important;
+  color: #111827 !important;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.viewport :is(table, .productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) td,
+:is(.productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) td {
+  padding: 12px 14px !important;
+  border-bottom: 1px solid #eee8df !important;
+  background: #ffffff !important;
+  color: #1f2933 !important;
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.35;
+  vertical-align: middle;
+}
+
+.viewport :is(table, .productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) tbody tr:hover td,
+:is(.productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) tbody tr:hover td {
+  background: #fbfaf7 !important;
+}
+
+.viewport :is(table, .productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) :is(input, select, textarea),
+:is(.productsTable, .colourLibraryTable, .quoteItemsTable, .cabinetCutListTable, .orderWorkflowTable, .paymentLedgerTable) :is(input, select, textarea) {
+  border: 1px solid #cfc6b8 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.viewport .tableMeta,
+.tableMeta {
+  color: #667060 !important;
+}
+
+.viewport :is(.portalPanelHeader, .primaryButton, .rowDeleteButton, .overlayDeleteButton, .sidebarLinkConfirm, .quoteGrandTotalPanel) :is(p, span, small, strong, b),
+.viewport :is(.primaryButton, .rowDeleteButton, .overlayDeleteButton),
+.modalOverlay :is(.primaryButton, .rowDeleteButton, .overlayDeleteButton),
+.fullscreenOverlay :is(.primaryButton, .rowDeleteButton, .overlayDeleteButton),
+.mediaModalBackdrop :is(.primaryButton, .rowDeleteButton, .overlayDeleteButton) {
+  color: #ffffff !important;
+}
