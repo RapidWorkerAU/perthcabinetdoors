@@ -102,9 +102,16 @@ export async function POST(request, { params }) {
     const viewUrl = `${origin}/quotes/view?code=${encodeURIComponent(quote.access_code)}`;
     const emailSubject = String(payload.subject || `${quote.quote_number} - Perth Cabinet Doors quote`).trim();
     const emailMessage = String(payload.message || defaultEmailBody(quote, viewUrl)).trim();
+    const depositRequired = Boolean(payload.deposit_required);
+    const depositPercent = Math.max(0, Math.min(100, Number(payload.deposit_percent || 0)));
     const { error: updateError } = await context.supabase
       .from("pcd_quotes")
-      .update({ status: "sent", sent_at: new Date().toISOString() })
+      .update({
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        deposit_required: depositRequired,
+        deposit_percent: depositRequired ? depositPercent : 0,
+      })
       .eq("id", id);
     if (updateError) throw updateError;
 

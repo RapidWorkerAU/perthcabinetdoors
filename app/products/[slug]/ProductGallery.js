@@ -22,6 +22,7 @@ export default function ProductGallery({ title, images }) {
     () => (images || []).map((img) => ({ ...img, src: resolveImageSrc(img.image_url || img.imageSrc || "") })),
     [images]
   );
+  const visibleThumbnails = normalized.slice(0, 4);
 
   const [activeSrc, setActiveSrc] = useState(normalized[0]?.src || "");
 
@@ -35,7 +36,7 @@ export default function ProductGallery({ title, images }) {
         <img src={activeSrc} alt={title} className={styles.detailMainImage} />
       </div>
       <div className={styles.thumbRow}>
-        {normalized.map((img) => {
+        {visibleThumbnails.map((img) => {
           const active = img.src === activeSrc;
           return (
             <button

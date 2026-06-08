@@ -36,6 +36,18 @@ async function syncDepositFields(supabase, orderId) {
   if (updateError) throw updateError;
 }
 
+async function assertPaymentWithinOrderTotal(supabase, orderId, amount) {
+  const [{ data: order }, { data: payments }] = await Promise.all([
+    supabase.from("pcd_orders").select("total_inc_gst").eq("id", orderId).maybeSingle(),
+    supabase.from("pcd_order_payments").select("amount").eq("order_id", orderId),
+  ]);
+  const total = Number(order?.total_inc_gst || 0);
+  const currentTotal = (payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  if (currentTotal + Number(amount || 0) > total + 0.001) {
+    throw new Error(`Payment lines cannot exceed the order total. Remaining available amount is $${Math.max(total - currentTotal, 0).toFixed(2)}.`);
+  }
+}
+
 export async function POST(request, { params }) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;
@@ -49,6 +61,7 @@ export async function POST(request, { params }) {
     if (amount < 0) {
       return Response.json({ ok: false, error: "Payment amount cannot be negative." }, { status: 400 });
     }
+    await assertPaymentWithinOrderTotal(context.supabase, orderId, amount);
 
     const { count } = await context.supabase
       .from("pcd_order_payments")

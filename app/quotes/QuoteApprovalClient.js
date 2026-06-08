@@ -144,6 +144,7 @@ export default function QuoteApprovalClient() {
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(false);
   const [expandedMobileLineId, setExpandedMobileLineId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
+  const [paymentAcknowledged, setPaymentAcknowledged] = useState(false);
 
   const lines = useMemo(() => sortedLines(quote), [quote]);
   const attachments = useMemo(() => sortedAttachments(quote), [quote]);
@@ -165,6 +166,9 @@ export default function QuoteApprovalClient() {
     { label: "Delivery", description: "Delivery allowance for the supplied items.", amount: toNumber(quote?.delivery_cost_ex_gst) },
     { label: "Consumables", description: "Small job materials such as glue, screws, and sundries.", amount: toNumber(quote?.installation_cost_ex_gst) },
   ].filter((row) => row.always || row.amount > 0);
+  const depositPercent = Number(quote?.deposit_percent || 0);
+  const depositRequired = Boolean(quote?.deposit_required && depositPercent > 0);
+  const depositAmount = depositRequired ? Number((toNumber(quote?.total_inc_gst) * depositPercent / 100).toFixed(2)) : 0;
 
   useEffect(() => {
     async function loadQuote() {
@@ -202,6 +206,10 @@ export default function QuoteApprovalClient() {
       setMessage("Please include a rejection note.");
       return;
     }
+    if (action === "approved" && !paymentAcknowledged) {
+      setMessage("Please acknowledge the payment requirement before approving this quote.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -213,6 +221,10 @@ export default function QuoteApprovalClient() {
       const payload = await readJsonResponse(response);
       if (!response.ok || !payload.ok) {
         setMessage(payload.error || "We could not record your response.");
+        return;
+      }
+      if (payload.requiresPayment && payload.checkoutUrl) {
+        window.location.href = payload.checkoutUrl;
         return;
       }
       setQuote((current) => ({ ...current, status: action }));
@@ -428,6 +440,18 @@ export default function QuoteApprovalClient() {
                 <label className={styles.label}>
                   Note
                   <textarea className={styles.textarea} value={note} onChange={(event) => setNote(event.target.value)} />
+                </label>
+                <label className={`${styles.publicPaymentAck}`}>
+                  <input
+                    type="checkbox"
+                    checked={paymentAcknowledged}
+                    onChange={(event) => setPaymentAcknowledged(event.target.checked)}
+                  />
+                  <span>
+                    {depositRequired
+                      ? `I acknowledge that a ${depositPercent.toFixed(2)}% deposit (${formatMoney(depositAmount, quote.currency)}) is required before this quote is accepted.`
+                      : "I acknowledge that no deposit is required at acceptance for this quote."}
+                  </span>
                 </label>
                 {message ? <p className={styles.message}>{message}</p> : null}
                 <div className={styles.actions}>

@@ -81,6 +81,8 @@ const emptyForm = {
   other_cost_ex_gst: 0,
   markup_percent: 0,
   markup_amount_ex_gst: 0,
+  deposit_required: false,
+  deposit_percent: 0,
   notes: "",
   client_notes: "",
   assumptions: "",
@@ -145,6 +147,8 @@ function formFromQuote(quote) {
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
     markup_amount_ex_gst: quote.markup_amount_ex_gst ?? 0,
+    deposit_required: Boolean(quote.deposit_required),
+    deposit_percent: quote.deposit_percent ?? 0,
     notes: quote.notes || "",
     client_notes: quote.client_notes || "",
     assumptions: quote.assumptions || "",
@@ -802,6 +806,8 @@ export default function QuoteEditor({ quoteId }) {
       setPublishEmail({
         subject: defaultQuoteEmailSubject(form),
         message: defaultQuoteEmailMessage(form, nextViewUrl),
+        deposit_required: Boolean(form.deposit_required),
+        deposit_percent: form.deposit_percent || 0,
       });
       setFeedback("");
     } catch (error) {
@@ -834,6 +840,8 @@ export default function QuoteEditor({ quoteId }) {
         body: JSON.stringify({
           subject: publishEmail.subject,
           message: publishEmail.message,
+          deposit_required: publishEmail.deposit_required,
+          deposit_percent: publishEmail.deposit_percent,
         }),
       });
       const payload = await response.json();
@@ -1245,7 +1253,7 @@ export default function QuoteEditor({ quoteId }) {
                     </div>
                     <div className={`${styles.quoteItemField} ${styles.quoteMoneyInput}`}>
                       <span>$</span>
-                      <input disabled={isBaseCabinetEditable} type="number" min="0" step="0.01" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={(event) => updateLine(index, "product_unit_cost_ex_gst", event.target.value)} />
+                      <input disabled={isBaseCabinetEditable} type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={(event) => updateLine(index, "product_unit_cost_ex_gst", event.target.value)} />
                     </div>
                     <div className={`${styles.quoteItemField} ${styles.quoteMarkupInput}`}>
                       <input type="number" min="0" step="0.01" value={line.markup_percent} onChange={(event) => updateLine(index, "markup_percent", event.target.value)} />
@@ -1637,6 +1645,35 @@ export default function QuoteEditor({ quoteId }) {
                         className={`${styles.textareaInput} ${styles.quoteEmailTextarea}`}
                         value={publishEmail.message}
                         onChange={(event) => updatePublishEmail("message", event.target.value)}
+                      />
+                    </label>
+                    <label className={`${styles.checkboxRow} ${styles.fieldWide}`}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(publishEmail.deposit_required)}
+                        onChange={(event) => updatePublishEmail("deposit_required", event.target.checked)}
+                      />
+                      Require deposit before quote acceptance is completed
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Deposit %
+                      <input
+                        className={styles.fieldInput}
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={publishEmail.deposit_percent}
+                        disabled={!publishEmail.deposit_required}
+                        onChange={(event) => updatePublishEmail("deposit_percent", event.target.value)}
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Deposit amount
+                      <input
+                        className={styles.fieldInput}
+                        value={formatMoney((Number(form.total_inc_gst || totals.total_inc_gst || 0) * Number(publishEmail.deposit_percent || 0)) / 100, form.currency)}
+                        disabled
                       />
                     </label>
                   </div>

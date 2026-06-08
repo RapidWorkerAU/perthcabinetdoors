@@ -35,6 +35,7 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
   const thumbs = galleryImages.length
     ? galleryImages.map((_, index) => `Image ${index + 1}`)
     : THUMBS;
+  const visibleThumbs = thumbs.slice(0, 4);
   const [activeThumb, setActiveThumb] = useState(0);
   const [activeFinish, setActiveFinish] = useState(0);
   const [activeColour, setActiveColour] = useState(0);
@@ -137,7 +138,7 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
               <span className={styles.galleryCaption}>{product.heroCaption}</span>
             </div>
             <div className={styles.galleryThumbs}>
-              {thumbs.map((thumb, index) => (
+              {visibleThumbs.map((thumb, index) => (
                 <button
                   className={`${styles.thumb} ${activeThumb === index ? styles.active : ""}`}
                   key={thumb}

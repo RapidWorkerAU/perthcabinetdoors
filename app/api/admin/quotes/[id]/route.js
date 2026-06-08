@@ -89,6 +89,8 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       other_cost_ex_gst: totals.other_cost_ex_gst,
       markup_percent: totals.markup_percent,
       markup_amount_ex_gst: totals.markup_amount_ex_gst,
+      deposit_required: Boolean(payload.deposit_required),
+      deposit_percent: Math.max(0, Math.min(100, dbNumber(payload.deposit_percent))),
       notes: payload.notes || null,
       client_notes: payload.client_notes || null,
       assumptions: payload.assumptions || null,

@@ -45,6 +45,8 @@ create table if not exists public.pcd_quotes (
   subtotal_ex_gst numeric(12,2) not null default 0,
   gst_amount numeric(12,2) not null default 0,
   total_inc_gst numeric(12,2) not null default 0,
+  deposit_required boolean not null default false,
+  deposit_percent numeric(6,2) not null default 0 check (deposit_percent >= 0 and deposit_percent <= 100),
   notes text,
   terms text,
   sent_at timestamptz,

@@ -3782,9 +3782,20 @@
 }
 
 .mediaAssetCheckbox {
-  width: 16px;
-  height: 16px;
-  margin: 0;
+  width: 16px !important;
+  min-width: 16px !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: inline-block !important;
+  border: 1px solid #587e52 !important;
+  border-radius: 2px !important;
+  background-color: #ffffff !important;
+  box-shadow: none !important;
+  accent-color: #1d3424;
+  appearance: auto !important;
+  cursor: pointer;
 }
 
 .mediaAssetImage {
@@ -4519,17 +4530,20 @@
 
 .quoteMoneyInput span {
   position: absolute;
-  left: 8px;
+  left: 7px;
   top: 50%;
   z-index: 1;
-  color: #64748b;
-  font-size: 0.74rem;
+  color: #1f2937;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
 .quoteMoneyInput input {
-  padding-left: 18px;
+  padding-left: 17px;
+  padding-right: 6px;
 }
 
 .quoteMarkupInput {

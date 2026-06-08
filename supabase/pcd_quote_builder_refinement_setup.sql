@@ -21,7 +21,9 @@ alter table public.pcd_quotes
   add column if not exists installation_cost_ex_gst numeric(12,2) not null default 0,
   add column if not exists other_cost_ex_gst numeric(12,2) not null default 0,
   add column if not exists markup_percent numeric(8,2) not null default 0,
-  add column if not exists markup_amount_ex_gst numeric(12,2) not null default 0;
+  add column if not exists markup_amount_ex_gst numeric(12,2) not null default 0,
+  add column if not exists deposit_required boolean not null default false,
+  add column if not exists deposit_percent numeric(6,2) not null default 0;
 
 alter table public.pcd_quote_line_items
   add column if not exists product_type text,
@@ -118,6 +120,15 @@ create table if not exists public.pcd_order_payments (
   amount numeric(12,2) not null default 0,
   is_paid boolean not null default false,
   paid_at date,
+  request_status text not null default 'not_requested',
+  requested_at timestamptz,
+  request_url text,
+  stripe_checkout_session_id text,
+  stripe_payment_intent_id text,
+  stripe_payment_status text,
+  receipt_number text,
+  receipt_sent_at timestamptz,
+  receipt_pdf_url text,
   notes text,
   sort_order integer not null default 0,
   created_at timestamptz not null default timezone('utc', now()),
@@ -125,6 +136,18 @@ create table if not exists public.pcd_order_payments (
 );
 
 create index if not exists idx_pcd_order_payments_order on public.pcd_order_payments(order_id);
+create unique index if not exists idx_pcd_order_payments_stripe_session
+  on public.pcd_order_payments(stripe_checkout_session_id)
+  where stripe_checkout_session_id is not null;
+create index if not exists idx_pcd_order_payments_request_status
+  on public.pcd_order_payments(request_status);
+
+alter table public.pcd_quotes
+  drop constraint if exists pcd_quotes_deposit_percent_check;
+
+alter table public.pcd_quotes
+  add constraint pcd_quotes_deposit_percent_check
+  check (deposit_percent >= 0 and deposit_percent <= 100);
 
 drop trigger if exists trg_pcd_order_payments_updated_at on public.pcd_order_payments;
 create trigger trg_pcd_order_payments_updated_at

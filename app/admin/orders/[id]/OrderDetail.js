@@ -522,6 +522,34 @@ export default function OrderDetail({ orderId }) {
     }
   }
 
+  async function requestPayment(payment) {
+    if (!order || !payment?.id) return;
+    setSavingPaymentId(payment.id);
+    setFeedback("");
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/payments/${payment.id}/request`, { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        setFeedback(payload.error || "Could not request payment.");
+        return;
+      }
+      setOrder((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          pcd_order_payments: (current.pcd_order_payments || []).map((item) =>
+            item.id === payment.id ? payload.payment : item
+          ),
+        };
+      });
+      setFeedback(payload.emailSent ? "Payment request sent to customer." : `Payment request created. Email is not configured, use this link: ${payload.checkoutUrl}`);
+    } catch (error) {
+      setFeedback(error?.message || "Could not request payment.");
+    } finally {
+      setSavingPaymentId("");
+    }
+  }
+
   async function generateCutListPdf() {
     setIsGeneratingCutListPdf(true);
     setFeedback("");
@@ -1137,6 +1165,14 @@ export default function OrderDetail({ orderId }) {
                     />
                   </div>
                   <div className={styles.quoteItemActions}>
+                    <button
+                      type="button"
+                      className={styles.rowEditButton}
+                      disabled={savingPaymentId === payment.id || payment.is_paid || Number(payment.amount || 0) <= 0}
+                      onClick={() => requestPayment(payment)}
+                    >
+                      Request
+                    </button>
                     <button
                       type="button"
                       className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
