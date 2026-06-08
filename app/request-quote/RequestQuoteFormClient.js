@@ -63,6 +63,10 @@ function colourText(item) {
   return [item.finish, item.colour].filter(Boolean).join(" - ");
 }
 
+function colourOptionMetaLabel(finish, option) {
+  return [finish || "", option?.supplier || ""].filter(Boolean).join(" - ");
+}
+
 function itemTitle(item) {
   return [item.type || "Product", materialText(item), sizeText(item)].filter(Boolean).join(" - ");
 }
@@ -290,7 +294,7 @@ function ColourControls({ item, onChange }) {
                   {option.src ? <img alt="" src={option.src} /> : <span className={styles.colourOptionNoImage} aria-hidden="true" />}
                   <span>
                     <strong>{option.name}</strong>
-                    <small>{item.finish}</small>
+                    <small>{colourOptionMetaLabel(item.finish, option)}</small>
                   </span>
                 </button>
               ))

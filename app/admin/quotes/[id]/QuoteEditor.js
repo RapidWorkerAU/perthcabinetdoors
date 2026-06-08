@@ -256,6 +256,10 @@ function profileOptionSrc(profileType, label) {
   return `/images/profiles/${assetSlug(profileType)}/${assetSlug(label)}.jpg`;
 }
 
+function optionMetaLabel(option) {
+  return [option.finish || option.meta || "", option.supplier || ""].filter(Boolean).join(" - ");
+}
+
 function QuoteImageCombobox({ disabled = false, placeholder, value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value || "");
@@ -354,7 +358,7 @@ function QuoteImageCombobox({ disabled = false, placeholder, value, options, onC
                     </span>
                     <span>
                       <strong>{option.name || option.label}</strong>
-                      <small>{option.finish || option.meta || ""}</small>
+                      <small>{optionMetaLabel(option)}</small>
                     </span>
                   </button>
                 ))
