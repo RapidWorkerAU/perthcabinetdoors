@@ -169,9 +169,10 @@ function ColourLibraryCombobox({ disabled = false, placeholder, value, options, 
       const availableHeight = openAbove ? spaceAbove : spaceBelow;
       const maxHeight = Math.max(160, Math.min(360, availableHeight - 4));
       setMenuStyle({
+        bottom: openAbove ? `${window.innerHeight - rect.top + 4}px` : "auto",
         left: `${left}px`,
         maxHeight: `${maxHeight}px`,
-        top: `${openAbove ? rect.top - maxHeight - 4 : rect.bottom + 4}px`,
+        top: openAbove ? "auto" : `${rect.bottom + 4}px`,
         width: `${width}px`,
       });
     }

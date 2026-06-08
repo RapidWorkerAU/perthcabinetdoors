@@ -19,9 +19,12 @@ const emptyDraft = {
   finish_type: "",
   order_type: "supply board",
   order_types: ["supply board"],
+  preferred_board_width_mm: "",
+  preferred_board_height_mm: "",
   cost_per_board_ex_gst: "",
   cost_per_sqm_ex_gst: "",
-  sort_order: 0,
+  last_cost_field: null,
+  sort_order: "",
   is_active: true,
 };
 
@@ -43,7 +46,75 @@ function statusClassForRow(row) {
   return row.is_active ? styles.statusPillActive : styles.statusPillDraft;
 }
 
-function rowFromDraft(draft, image) {
+function numericDraftValue(value) {
+  if (value === "" || value == null) return 0;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function boardAreaSqm(widthMm, heightMm) {
+  const width = numericDraftValue(widthMm);
+  const height = numericDraftValue(heightMm);
+  if (width <= 0 || height <= 0) return 0;
+  return (width * height) / 1000000;
+}
+
+function calculateColourCosts(draft) {
+  const area = boardAreaSqm(draft.preferred_board_width_mm, draft.preferred_board_height_mm);
+  const boardCost = numericDraftValue(draft.cost_per_board_ex_gst);
+  const sqmCost = numericDraftValue(draft.cost_per_sqm_ex_gst);
+  const lastCostField = draft.last_cost_field;
+
+  if (area <= 0) {
+    return {
+      cost_per_board_ex_gst: boardCost,
+      cost_per_sqm_ex_gst: sqmCost,
+    };
+  }
+
+  if (lastCostField === "cost_per_sqm_ex_gst") {
+    return {
+      cost_per_board_ex_gst: Number((sqmCost * area).toFixed(2)),
+      cost_per_sqm_ex_gst: sqmCost,
+    };
+  }
+
+  if (lastCostField === "cost_per_board_ex_gst") {
+    return {
+      cost_per_board_ex_gst: boardCost,
+      cost_per_sqm_ex_gst: Number((boardCost / area).toFixed(2)),
+    };
+  }
+
+  if (sqmCost > 0 && boardCost <= 0) {
+    return {
+      cost_per_board_ex_gst: Number((sqmCost * area).toFixed(2)),
+      cost_per_sqm_ex_gst: sqmCost,
+    };
+  }
+
+  if (boardCost > 0 && sqmCost <= 0) {
+    return {
+      cost_per_board_ex_gst: boardCost,
+      cost_per_sqm_ex_gst: Number((boardCost / area).toFixed(2)),
+    };
+  }
+
+  return {
+    cost_per_board_ex_gst: boardCost,
+    cost_per_sqm_ex_gst: sqmCost,
+  };
+}
+
+function boardSizeLabel(row) {
+  const width = Number(row.preferred_board_width_mm || 0);
+  const height = Number(row.preferred_board_height_mm || 0);
+  if (!width && !height) return "-";
+  return `${width || "-"} x ${height || "-"}mm`;
+}
+
+function rowFromDraft(draft, image, sortOrder) {
+  const calculatedCosts = calculateColourCosts(draft);
   return {
     name: draft.name.trim(),
     image_url: image.imageUrl,
@@ -54,15 +125,11 @@ function rowFromDraft(draft, image) {
     finish_type: draft.finish_type.trim(),
     order_type: draft.order_types[0] || "supply board",
     order_types: draft.order_types.length ? draft.order_types : ["supply board"],
-    cost_per_board_ex_gst:
-      draft.cost_per_board_ex_gst === "" || draft.cost_per_board_ex_gst == null
-        ? 0
-        : Number(draft.cost_per_board_ex_gst),
-    cost_per_sqm_ex_gst:
-      draft.cost_per_sqm_ex_gst === "" || draft.cost_per_sqm_ex_gst == null
-        ? 0
-        : Number(draft.cost_per_sqm_ex_gst),
-    sort_order: Number(draft.sort_order || 0),
+    preferred_board_width_mm: numericDraftValue(draft.preferred_board_width_mm),
+    preferred_board_height_mm: numericDraftValue(draft.preferred_board_height_mm),
+    cost_per_board_ex_gst: calculatedCosts.cost_per_board_ex_gst,
+    cost_per_sqm_ex_gst: calculatedCosts.cost_per_sqm_ex_gst,
+    sort_order: sortOrder,
     is_active: !!draft.is_active,
   };
 }
@@ -129,6 +196,7 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
         row.material_type,
         row.thickness,
         row.finish_type,
+        boardSizeLabel(row),
         orderTypesLabel(row),
         imageSourceLabel(row),
         row.is_active ? "Active" : "Hidden",
@@ -148,7 +216,14 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
   const colourPagination = useAdminTablePagination(filteredRows, filterKey);
 
   function updateDraft(field, value) {
-    setDraft((current) => ({ ...current, [field]: value }));
+    setDraft((current) => ({
+      ...current,
+      [field]: value,
+      last_cost_field:
+        field === "cost_per_board_ex_gst" || field === "cost_per_sqm_ex_gst"
+          ? field
+          : current.last_cost_field,
+    }));
   }
 
   function updateMaterialType(value) {
@@ -188,8 +263,11 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
       ...row,
       original_image_url: row.image_url || "",
       image_path: row.image_path || "",
+      preferred_board_width_mm: row.preferred_board_width_mm ?? "",
+      preferred_board_height_mm: row.preferred_board_height_mm ?? "",
       cost_per_board_ex_gst: row.cost_per_board_ex_gst ?? "",
       cost_per_sqm_ex_gst: row.cost_per_sqm_ex_gst ?? "",
+      last_cost_field: null,
       order_types: normaliseOrderTypes(row),
       is_active: row.is_active ?? true,
     });
@@ -221,6 +299,23 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
   function clearAllFilters() {
     setColumnFilters({ supplier: [], finish: [], material: [], thickness: [], orderType: [] });
     setOpenFilter(null);
+  }
+
+  function sortOrderForDraft() {
+    const currentSortOrder = Number(draft.sort_order);
+    if (draft.id && Number.isFinite(currentSortOrder)) return currentSortOrder;
+
+    const matchingRows = rows.filter((row) =>
+      row.id !== draft.id &&
+      String(row.material_type || "") === String(draft.material_type || "") &&
+      String(row.thickness || "") === String(draft.thickness || "") &&
+      String(row.finish_type || "").trim().toLowerCase() === String(draft.finish_type || "").trim().toLowerCase()
+    );
+    const maxSortOrder = matchingRows.reduce((max, row) => {
+      const value = Number(row.sort_order || 0);
+      return Number.isFinite(value) && value > max ? value : max;
+    }, 0);
+    return maxSortOrder + 1;
   }
 
   function renderColumnFilter(column, label) {
@@ -328,7 +423,7 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
     try {
       const supabase = createSupabaseBrowserClient();
       const image = await uploadImage(fileInputRef.current?.files?.[0] || null);
-      const payload = rowFromDraft(draft, image);
+      const payload = rowFromDraft(draft, image, sortOrderForDraft());
       const query = draft.id
         ? supabase.from("pcd_colour_library").update(payload).eq("id", draft.id)
         : supabase.from("pcd_colour_library").insert(payload);
@@ -429,8 +524,12 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
                     </div>
                   </div>
                   <label className={styles.fieldLabel}>
-                    Sort order
-                    <input className={styles.fieldInput} type="number" value={draft.sort_order} onChange={(event) => updateDraft("sort_order", event.target.value)} />
+                    Preferred board width (mm)
+                    <input className={styles.fieldInput} type="number" min="0" step="1" value={draft.preferred_board_width_mm} onChange={(event) => updateDraft("preferred_board_width_mm", event.target.value)} />
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Preferred board height (mm)
+                    <input className={styles.fieldInput} type="number" min="0" step="1" value={draft.preferred_board_height_mm} onChange={(event) => updateDraft("preferred_board_height_mm", event.target.value)} />
                   </label>
                   <label className={styles.fieldLabel}>
                     Cost / board ex GST
@@ -556,6 +655,7 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
                 <th>{renderColumnFilter("thickness", "Thickness")}</th>
                 <th>{renderColumnFilter("finish", "Finish")}</th>
                 <th>{renderColumnFilter("orderType", "Order type")}</th>
+                <th>Board size</th>
                 <th>Cost / board</th>
                 <th>Cost / sqm</th>
                 <th>Source</th>
@@ -578,6 +678,7 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
                   <td>{row.thickness || "-"}</td>
                   <td>{row.finish_type || "-"}</td>
                   <td>{orderTypesLabel(row) || "-"}</td>
+                  <td>{boardSizeLabel(row)}</td>
                   <td>${Number(row.cost_per_board_ex_gst || 0).toFixed(2)}</td>
                   <td>${Number(row.cost_per_sqm_ex_gst || 0).toFixed(2)}</td>
                   <td>{imageSourceLabel(row)}</td>
@@ -613,7 +714,7 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
               ))}
               {!filteredRows.length ? (
                 <tr>
-                  <td className={styles.emptyCell} colSpan="13">
+                  <td className={styles.emptyCell} colSpan="14">
                     {sortedRows.length ? "No colour lines match your search." : "No colour lines yet. Add your first board colour entry."}
                   </td>
                 </tr>

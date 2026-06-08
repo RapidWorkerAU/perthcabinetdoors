@@ -8,7 +8,8 @@ import { optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { calculateQuoteLine, calculateQuoteTotals, formatMoney, GST_RATE } from "../../../../lib/pcd-quote-utils";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
 import {
-  EDGE_PROFILES,
+  edgeProfilesForMaterial,
+  isEdgeProfileSelectionAvailable,
   MATERIAL_OPTIONS,
   MATERIALS_BY_TYPE,
   PRODUCT_TYPES,
@@ -206,6 +207,31 @@ function colourSrcForLine(line) {
   return line.colour_src || "";
 }
 
+function hasHingeConfig(line) {
+  return Boolean(line?.hinge_holes || line?.hinge_supply);
+}
+
+function hingeConfigLines(line) {
+  if (!hasHingeConfig(line)) return [];
+  return [
+    `Drilling: ${line.hinge_holes ? "Required" : "Not required"}`,
+    `Supply: ${line.hinge_supply ? "Required" : "Not required"}`,
+    `Qty: ${line.hinge_qty || "Per door"}`,
+  ];
+}
+
+function hasProfileConfig(line) {
+  return Boolean(line?.profile_type || line?.profile);
+}
+
+function profileConfigLines(line) {
+  if (!hasProfileConfig(line)) return [];
+  return [
+    `Type: ${line.profile_type || "-"}`,
+    `Name: ${line.profile || "-"}`,
+  ];
+}
+
 function formatFileSize(bytes) {
   const size = Number(bytes || 0);
   if (!size) return "-";
@@ -263,9 +289,10 @@ function QuoteImageCombobox({ disabled = false, placeholder, value, options, onC
       const availableHeight = openAbove ? spaceAbove : spaceBelow;
       const maxHeight = Math.max(160, Math.min(360, availableHeight - 4));
       setMenuStyle({
+        bottom: openAbove ? `${window.innerHeight - rect.top + 4}px` : "auto",
         left: `${left}px`,
         maxHeight: `${maxHeight}px`,
-        top: `${openAbove ? rect.top - maxHeight - 4 : rect.bottom + 4}px`,
+        top: openAbove ? "auto" : `${rect.bottom + 4}px`,
         width: `${width}px`,
       });
     }
@@ -393,6 +420,8 @@ export default function QuoteEditor({ quoteId }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [editableLineIndex, setEditableLineIndex] = useState(null);
   const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
+  const [hingeModal, setHingeModal] = useState(null);
+  const [profileModal, setProfileModal] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
@@ -499,6 +528,85 @@ export default function QuoteEditor({ quoteId }) {
     }));
   }
 
+  function openHingeModal(index) {
+    const line = form.lines[index];
+    if (!line || line.product_type !== "Door") return;
+    setHingeModal({
+      lineIndex: index,
+      hinge_holes: Boolean(line.hinge_holes),
+      hinge_supply: Boolean(line.hinge_supply),
+      hinge_qty: line.hinge_qty || "",
+    });
+  }
+
+  function updateHingeModal(field, value) {
+    setHingeModal((current) => {
+      if (!current) return current;
+      const next = { ...current, [field]: value };
+      if ((field === "hinge_holes" || field === "hinge_supply") && !next.hinge_holes && !next.hinge_supply) {
+        next.hinge_qty = "";
+      }
+      return next;
+    });
+  }
+
+  function saveHingeModal() {
+    if (!hingeModal) return;
+    const hasRequirements = hingeModal.hinge_holes || hingeModal.hinge_supply;
+    setForm((current) => ({
+      ...current,
+      lines: current.lines.map((line, lineIndex) =>
+        lineIndex === hingeModal.lineIndex
+          ? {
+              ...line,
+              hinge_holes: Boolean(hingeModal.hinge_holes),
+              hinge_supply: Boolean(hingeModal.hinge_supply),
+              hinge_qty: hasRequirements ? hingeModal.hinge_qty : "",
+            }
+          : line
+      ),
+    }));
+    setHingeModal(null);
+  }
+
+  function openProfileModal(index) {
+    const line = form.lines[index];
+    if (!line || line.material !== "Thermolaminate" || isBaseCabinetLine(line)) return;
+    setProfileModal({
+      lineIndex: index,
+      material: line.material || "",
+      thickness: line.thickness || "",
+      profile_type: line.profile_type || "",
+      profile: line.profile || "",
+    });
+  }
+
+  function updateProfileModal(field, value) {
+    setProfileModal((current) => {
+      if (!current) return current;
+      const next = { ...current, [field]: value };
+      if (field === "profile_type") next.profile = "";
+      return next;
+    });
+  }
+
+  function saveProfileModal() {
+    if (!profileModal) return;
+    setForm((current) => ({
+      ...current,
+      lines: current.lines.map((line, lineIndex) =>
+        lineIndex === profileModal.lineIndex
+          ? {
+              ...line,
+              profile_type: profileModal.profile_type,
+              profile: profileModal.profile,
+            }
+          : line
+      ),
+    }));
+    setProfileModal(null);
+  }
+
   function updateProductLine(index, patch) {
     setForm((current) => ({
       ...current,
@@ -536,6 +644,9 @@ export default function QuoteEditor({ quoteId }) {
           next.thickness = "";
           next.finish = "";
           next.colour = "";
+          if (!isEdgeProfileSelectionAvailable(next.edge_mould, next.material)) {
+            next.edge_mould = "";
+          }
           if (next.product_type === BASE_CABINET_TYPE) {
             next.thickness = thicknessOptionsForMaterial(patch.material)[0] || "";
           }
@@ -1002,11 +1113,8 @@ export default function QuoteEditor({ quoteId }) {
             <div>Colour</div>
             <div>Qty</div>
             <div>Edge profile</div>
-            <div>Profile type</div>
-            <div>Profile name</div>
-            <div>Drill holes?</div>
-            <div>Hinge supply?</div>
-            <div>Hinge qty</div>
+            <div>Profile config</div>
+            <div>Hinge config</div>
             <div>Unit cost</div>
             <div>Markup %</div>
             <div>Unit + markup</div>
@@ -1018,20 +1126,14 @@ export default function QuoteEditor({ quoteId }) {
             const calculated = calculateQuoteLine(line);
             const materialOptions = MATERIALS_BY_TYPE[line.product_type] || MATERIAL_OPTIONS;
             const thicknessOptions = thicknessOptionsForMaterial(line.material);
+            const edgeProfiles = edgeProfilesForMaterial(line.material);
+            const showEdges = edgeProfiles.length > 0;
             const showProfiles = line.material === "Thermolaminate";
-            const profileTypes = profileTypesForSelection(line.material, line.thickness);
-            const profileNames = profileNamesForSelection(line.profile_type, line.material, line.thickness);
-            const edgeOptions = EDGE_PROFILES.map((edge) => ({
+            const edgeOptions = edgeProfiles.map((edge) => ({
               name: edge,
               label: edge,
               meta: "Edge profile",
               src: edgeOptionSrc(edge),
-            }));
-            const profileOptions = profileNames.map((profile) => ({
-              name: profile,
-              label: profile,
-              meta: line.profile_type || "Profile",
-              src: profileOptionSrc(line.profile_type, profile),
             }));
             const hingesApplicable = line.product_type === "Door";
             const colourSrc = colourSrcForLine(line);
@@ -1072,53 +1174,70 @@ export default function QuoteEditor({ quoteId }) {
                       <input min="1" type="number" value={line.qty} onChange={(event) => updateLine(index, "qty", event.target.value)} />
                     </div>
                     <div className={styles.quoteItemField}>
-                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>Configured in cabinet tab</span> : (
+                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>Configured in cabinet tab</span> : showEdges ? (
                         <QuoteImageCombobox
                           placeholder="Edge"
                           value={line.edge_mould}
                           options={edgeOptions}
                           onChange={(option) => updateLine(index, "edge_mould", option.name || option.label)}
                         />
+                      ) : <span className={styles.notApplicable}>N/A</span>}
+                    </div>
+                    <div className={styles.quoteProfileConfigCell}>
+                      {showProfiles && hasProfileConfig(line) ? (
+                        <>
+                          <span className={styles.quoteProfileSummary}>
+                            {profileConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                          </span>
+                          <button
+                            type="button"
+                            className={styles.quoteProfileBareEditButton}
+                            onClick={() => openProfileModal(index)}
+                            disabled={isBaseCabinetEditable}
+                            aria-label={`Edit profile for quote line ${index + 1}`}
+                            title="Edit profile"
+                          >
+                            Edit
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.quoteProfileEditButton}
+                          onClick={() => openProfileModal(index)}
+                          disabled={isBaseCabinetEditable || !showProfiles}
+                        >
+                          Edit Profile
+                        </button>
                       )}
                     </div>
-                    <div className={styles.quoteItemField}>
-                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : showProfiles ? (
-                        <select value={line.profile_type} onChange={(event) => updateProductLine(index, { profile_type: event.target.value })}>
-                          <option value="">Profile type</option>
-                          {profileTypes.map((type) => <option key={type}>{type}</option>)}
-                        </select>
-                      ) : <span className={styles.notApplicable}>N/A</span>}
-                    </div>
-                    <div className={styles.quoteItemField}>
-                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : showProfiles ? (
-                        <QuoteImageCombobox
-                          disabled={!line.profile_type}
-                          placeholder={line.profile_type ? "Profile name" : "Select profile type first"}
-                          value={line.profile}
-                          options={profileOptions}
-                          onChange={(option) => updateLine(index, "profile", option.name || option.label)}
-                        />
-                      ) : <span className={styles.notApplicable}>N/A</span>}
-                    </div>
-                    <div className={styles.quoteItemCheckCell}>
-                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : hingesApplicable ? (
-                        <label className={styles.quoteItemCheck}><input checked={line.hinge_holes} type="checkbox" onChange={(event) => updateProductLine(index, { hinge_holes: event.target.checked })} /> Yes</label>
-                      ) : <span className={styles.notApplicable}>N/A</span>}
-                    </div>
-                    <div className={styles.quoteItemCheckCell}>
-                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : hingesApplicable ? (
-                        <label className={styles.quoteItemCheck}><input checked={line.hinge_supply} type="checkbox" onChange={(event) => updateProductLine(index, { hinge_supply: event.target.checked })} /> Yes</label>
-                      ) : <span className={styles.notApplicable}>N/A</span>}
-                    </div>
-                    <div className={styles.quoteItemField}>
-                      {isBaseCabinetEditable ? <span className={styles.notApplicable}>N/A</span> : hingesApplicable && (line.hinge_supply || line.hinge_holes) ? (
-                        <select value={line.hinge_qty} onChange={(event) => updateLine(index, "hinge_qty", event.target.value)}>
-                          <option value="">Per door</option>
-                          <option>2 hinges</option>
-                          <option>3 hinges</option>
-                          <option>4 hinges</option>
-                        </select>
-                      ) : <span className={styles.notApplicable}>N/A</span>}
+                    <div className={styles.quoteHingeConfigCell}>
+                      {hingesApplicable && hasHingeConfig(line) ? (
+                        <>
+                          <span className={styles.quoteHingeSummary}>
+                            {hingeConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                          </span>
+                          <button
+                            type="button"
+                            className={styles.quoteHingeBareEditButton}
+                            onClick={() => openHingeModal(index)}
+                            disabled={isBaseCabinetEditable}
+                            aria-label={`Edit hinges for quote line ${index + 1}`}
+                            title="Edit hinges"
+                          >
+                            Edit
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.quoteHingeEditButton}
+                          onClick={() => openHingeModal(index)}
+                          disabled={isBaseCabinetEditable || !hingesApplicable}
+                        >
+                          Edit Hinges
+                        </button>
+                      )}
                     </div>
                     <div className={`${styles.quoteItemField} ${styles.quoteMoneyInput}`}>
                       <span>$</span>
@@ -1131,7 +1250,14 @@ export default function QuoteEditor({ quoteId }) {
                     <div className={styles.quoteItemTotal}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</div>
                     <div className={styles.quoteItemTotal}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</div>
                     <div className={styles.quoteItemActions}>
-                      <button type="button" className={styles.rowEditButton} onClick={saveLine} disabled={isSaving}>
+                      <button
+                        type="button"
+                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowSaveIconButton}`}
+                        onClick={saveLine}
+                        disabled={isSaving}
+                        aria-label={`Save quote line ${index + 1}`}
+                        title="Save"
+                      >
                         {isSaving ? "Saving..." : "Save"}
                       </button>
                       <button
@@ -1152,14 +1278,69 @@ export default function QuoteEditor({ quoteId }) {
                     <div className={styles.quoteReadCell}>{lineValue(line.material)}</div>
                     <div className={styles.quoteReadCell}>{lineValue(line.thickness)}</div>
                     <div className={styles.quoteReadCell}>{lineValue(quoteLineSizeText(line))}</div>
-                    <div className={styles.quoteColourRead}>{colourSrc ? <img alt="" src={colourSrc} /> : null}<span>{lineValue(line.colour)}</span></div>
+                    <div className={styles.quoteColourRead}>
+                      {colourSrc ? <img alt="" src={colourSrc} /> : null}
+                      <span className={styles.quoteColourReadText}>
+                        <strong>{lineValue(line.colour)}</strong>
+                        {line.finish ? <small>{line.finish}</small> : null}
+                      </span>
+                    </div>
                     <div className={styles.quoteReadCell}>{line.qty || "1"}</div>
                     <div className={styles.quoteReadCell}>{lineValue(line.edge_mould)}</div>
-                    <div className={styles.quoteReadCell}>{showProfiles ? lineValue(line.profile_type) : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{showProfiles ? lineValue(line.profile) : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</div>
+                    <div className={styles.quoteProfileConfigCell}>
+                      {showProfiles && hasProfileConfig(line) ? (
+                        <>
+                          <span className={styles.quoteProfileSummary}>
+                            {profileConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                          </span>
+                          <button
+                            type="button"
+                            className={styles.quoteProfileBareEditButton}
+                            onClick={() => openProfileModal(index)}
+                            aria-label={`Edit profile for quote line ${index + 1}`}
+                            title="Edit profile"
+                          >
+                            Edit
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.quoteProfileEditButton}
+                          onClick={() => openProfileModal(index)}
+                          disabled={!showProfiles}
+                        >
+                          Edit Profile
+                        </button>
+                      )}
+                    </div>
+                    <div className={styles.quoteHingeConfigCell}>
+                      {hingesApplicable && hasHingeConfig(line) ? (
+                        <>
+                          <span className={styles.quoteHingeSummary}>
+                            {hingeConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                          </span>
+                          <button
+                            type="button"
+                            className={styles.quoteHingeBareEditButton}
+                            onClick={() => openHingeModal(index)}
+                            aria-label={`Edit hinges for quote line ${index + 1}`}
+                            title="Edit hinges"
+                          >
+                            Edit
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.quoteHingeEditButton}
+                          onClick={() => openHingeModal(index)}
+                          disabled={!hingesApplicable}
+                        >
+                          Edit Hinges
+                        </button>
+                      )}
+                    </div>
                     <div className={styles.quoteReadCell}>{formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}</div>
                     <div className={styles.quoteReadCell}>{line.markup_percent ?? 40}%</div>
                     <div className={styles.quoteItemTotal}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</div>
@@ -1231,13 +1412,13 @@ export default function QuoteEditor({ quoteId }) {
         </div>
         <div className={styles.quoteTotalsPanel}>
           <div><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
-          <div><span>Line markups</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
           <div><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
           <div><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
           <div><span>Labour</span><strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong></div>
           <div><span>Travel</span><strong>{formatMoney(totals.travel_cost_ex_gst, form.currency)}</strong></div>
           <div><span>Delivery</span><strong>{formatMoney(totals.delivery_cost_ex_gst, form.currency)}</strong></div>
           <div><span>Consumables</span><strong>{formatMoney(totals.installation_cost_ex_gst, form.currency)}</strong></div>
+          <div className={styles.quoteMarkupProfitRow}><span>Line markups (Profit)</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
         </div>
       </div>
     );
@@ -1368,6 +1549,18 @@ export default function QuoteEditor({ quoteId }) {
 
   const activeLabel = sections.find((section) => section.key === activeSection)?.label || "Information & Contacts";
   const activeCabinetLine = activeCabinetLineIndex !== null ? form.lines[activeCabinetLineIndex] : null;
+  const profileModalTypes = profileModal
+    ? profileTypesForSelection(profileModal.material, profileModal.thickness)
+    : [];
+  const profileModalNames = profileModal
+    ? profileNamesForSelection(profileModal.profile_type, profileModal.material, profileModal.thickness)
+    : [];
+  const profileModalOptions = profileModalNames.map((profile) => ({
+    name: profile,
+    label: profile,
+    meta: profileModal?.profile_type || "Profile",
+    src: profileOptionSrc(profileModal?.profile_type, profile),
+  }));
 
   return (
     <>
@@ -1487,6 +1680,120 @@ export default function QuoteEditor({ quoteId }) {
                   </button>
                   <button type="button" className={styles.primaryButton} onClick={saveCustomerFromDetails} disabled={isSavingCustomer || !customerForm.name.trim()}>
                     {isSavingCustomer ? "Saving..." : "Save customer"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+      {profileModal && typeof document !== "undefined"
+        ? createPortal(
+            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="profile-config-title">
+              <div className={`${styles.customerModal} ${styles.profileConfigModal}`}>
+                <div className={styles.customerModalHeader}>
+                  <span className={styles.customerModalIcon}>PR</span>
+                  <div>
+                    <p className={styles.tableMeta}>Line item profile</p>
+                    <h2 id="profile-config-title">Edit Profile</h2>
+                  </div>
+                </div>
+                <div className={styles.customerModalBody}>
+                  <div className={styles.profileConfigForm}>
+                    <label className={styles.fieldLabel}>
+                      Profile type
+                      <select
+                        className={styles.fieldInput}
+                        value={profileModal.profile_type}
+                        onChange={(event) => updateProfileModal("profile_type", event.target.value)}
+                      >
+                        <option value="">Profile type</option>
+                        {profileModalTypes.map((type) => <option key={type}>{type}</option>)}
+                      </select>
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Profile name
+                      <QuoteImageCombobox
+                        disabled={!profileModal.profile_type}
+                        placeholder={profileModal.profile_type ? "Profile name" : "Select profile type first"}
+                        value={profileModal.profile}
+                        options={profileModalOptions}
+                        onChange={(option) => updateProfileModal("profile", option.name || option.label)}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div className={styles.customerModalFooter}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => setProfileModal(null)}>
+                    Cancel
+                  </button>
+                  <button type="button" className={styles.primaryButton} onClick={saveProfileModal}>
+                    Save profile
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+      {hingeModal && typeof document !== "undefined"
+        ? createPortal(
+            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="hinge-config-title">
+              <div className={`${styles.customerModal} ${styles.hingeConfigModal}`}>
+                <div className={styles.customerModalHeader}>
+                  <span className={styles.customerModalIcon}>HN</span>
+                  <div>
+                    <p className={styles.tableMeta}>Line item hinges</p>
+                    <h2 id="hinge-config-title">Edit Hinges</h2>
+                  </div>
+                </div>
+                <div className={styles.customerModalBody}>
+                  <div className={styles.hingeConfigForm}>
+                    <label className={styles.hingeConfigToggle}>
+                      <input
+                        type="checkbox"
+                        checked={hingeModal.hinge_holes}
+                        onChange={(event) => updateHingeModal("hinge_holes", event.target.checked)}
+                      />
+                      <span>
+                        <strong>Hinge drilling required</strong>
+                        <small>Add hinge hole drilling to this door line.</small>
+                      </span>
+                    </label>
+                    <label className={styles.hingeConfigToggle}>
+                      <input
+                        type="checkbox"
+                        checked={hingeModal.hinge_supply}
+                        onChange={(event) => updateHingeModal("hinge_supply", event.target.checked)}
+                      />
+                      <span>
+                        <strong>Hinge supply required</strong>
+                        <small>Add supplied hinges to this door line.</small>
+                      </span>
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Quantity
+                      <select
+                        className={styles.fieldInput}
+                        value={hingeModal.hinge_qty}
+                        onChange={(event) => updateHingeModal("hinge_qty", event.target.value)}
+                        disabled={!hingeModal.hinge_holes && !hingeModal.hinge_supply}
+                      >
+                        <option value="">Per door</option>
+                        <option>2 hinges</option>
+                        <option>3 hinges</option>
+                        <option>4 hinges</option>
+                      </select>
+                    </label>
+                    <p className={styles.tableMeta}>Leave both options unticked when no hinge items are required.</p>
+                  </div>
+                </div>
+                <div className={styles.customerModalFooter}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => setHingeModal(null)}>
+                    Cancel
+                  </button>
+                  <button type="button" className={styles.primaryButton} onClick={saveHingeModal}>
+                    Save hinges
                   </button>
                 </div>
               </div>

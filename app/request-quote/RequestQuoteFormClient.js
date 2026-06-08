@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "../contact/contact.module.css";
 import {
   CABINET_BRANDS,
-  EDGE_PROFILES,
+  edgeProfilesForMaterial,
+  isEdgeProfileSelectionAvailable,
   MATERIAL_OPTIONS,
   MATERIALS_BY_TYPE,
   PRODUCT_TYPES,
@@ -333,8 +334,10 @@ export default function RequestQuoteFormClient() {
           next.finish = "";
           next.colour = "";
           next.colourSrc = "";
-          if (patch.material !== "Thermolaminate") {
+          if (!isEdgeProfileSelectionAvailable(next.edgeMould, next.material)) {
             next.edgeMould = "";
+          }
+          if (patch.material !== "Thermolaminate") {
             next.profileType = "";
             next.profile = "";
           }
@@ -578,6 +581,8 @@ export default function RequestQuoteFormClient() {
       {editingItem ? (() => {
         const materialOptions = MATERIALS_BY_TYPE[editingItem.type] || MATERIAL_OPTIONS;
         const thicknessOptions = thicknessOptionsForMaterial(editingItem.material);
+        const edgeOptions = edgeProfilesForMaterial(editingItem.material);
+        const showEdges = edgeOptions.length > 0;
         const showProfiles = editingItem.material === "Thermolaminate";
         const profileTypes = profileTypesForSelection(editingItem.material, editingItem.thickness);
         const profileNames = profileNamesForSelection(editingItem.profileType, editingItem.material, editingItem.thickness);
@@ -634,11 +639,11 @@ export default function RequestQuoteFormClient() {
                 </div>
                 <div className={styles.field}>
                   <label>Edge profile</label>
-                  {showProfiles ? (
+                  {showEdges ? (
                     <ImageSelect
                       placeholder="Edge"
                       value={editingItem.edgeMould}
-                      options={EDGE_PROFILES.map((edge) => ({
+                      options={edgeOptions.map((edge) => ({
                         value: edge,
                         label: edge,
                         image: edgeImageSrc(edge),

@@ -2,6 +2,7 @@ import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals, GST_RATE } from "../../../../../lib/pcd-quote-utils";
+import { isEdgeProfileSelectionAvailable } from "../../../../request-quote/quote-form-data";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -117,7 +118,7 @@ function quoteLineRow(line, quoteId, sortOrder) {
     colour: dbText(line.colour),
     profile_type: dbText(line.profile_type),
     profile: dbText(line.profile),
-    edge_mould: dbText(line.edge_mould),
+    edge_mould: isEdgeProfileSelectionAvailable(line.edge_mould, line.material) ? dbText(line.edge_mould) : null,
     qty: dbNumber(line.qty, 1),
     hinge_holes: Boolean(line.hinge_holes),
     hinge_supply: Boolean(line.hinge_supply),

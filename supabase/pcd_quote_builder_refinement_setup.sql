@@ -290,6 +290,8 @@ create table if not exists public.pcd_colour_library (
   order_type text not null default 'supply board' check (
     order_type in ('supply board', 'made to order MTO')
   ),
+  preferred_board_width_mm numeric(12,2) not null default 0,
+  preferred_board_height_mm numeric(12,2) not null default 0,
   cost_per_board_ex_gst numeric(12,2) not null default 0,
   cost_per_sqm_ex_gst numeric(12,2) not null default 0,
   sort_order integer not null default 0,

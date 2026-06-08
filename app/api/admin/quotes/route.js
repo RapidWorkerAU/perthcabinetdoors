@@ -3,6 +3,7 @@ import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals, GST_RATE } from "../../../../lib/pcd-quote-utils";
+import { isEdgeProfileSelectionAvailable } from "../../../request-quote/quote-form-data";
 
 function makeQuoteNumber() {
   return `PCD-Q-${new Date().getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -114,6 +115,7 @@ export async function POST(request) {
     if (normalized.lines.length) {
       const rows = normalized.lines.map((line, index) => ({
         ...line,
+        edge_mould: isEdgeProfileSelectionAvailable(line.edge_mould, line.material) ? line.edge_mould || null : null,
         quote_id: quote.id,
         sort_order: index,
       }));

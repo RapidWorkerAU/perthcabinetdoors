@@ -9,6 +9,7 @@ import {
 } from "../../../lib/pcd-email-templates";
 import { logOrderActivity } from "../../../lib/pcd-activity-log";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
+import { isEdgeProfileSelectionAvailable } from "../../request-quote/quote-form-data";
 
 const lineSchema = z.object({
   productType: z.string().optional(),
@@ -82,7 +83,7 @@ export async function POST(request) {
         colour: line.colour || null,
         profile_type: line.profileType || null,
         profile: line.profile || null,
-        edge_mould: line.edgeMould || null,
+        edge_mould: isEdgeProfileSelectionAvailable(line.edgeMould, line.material) ? line.edgeMould || null : null,
         qty: line.qty || 1,
         hinge_holes: !!line.hingeHoles,
         hinge_supply: !!line.hingeSupply,

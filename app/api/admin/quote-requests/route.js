@@ -3,6 +3,7 @@ import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { GST_RATE } from "../../../../lib/pcd-quote-utils";
+import { isEdgeProfileSelectionAvailable } from "../../../request-quote/quote-form-data";
 
 function makeQuoteNumber() {
   return `PCD-Q-${new Date().getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -109,7 +110,7 @@ export async function POST(request) {
         colour: line.colour,
         profile_type: line.profile_type,
         profile: line.profile,
-        edge_mould: line.edge_mould,
+        edge_mould: isEdgeProfileSelectionAvailable(line.edge_mould, line.material) ? line.edge_mould : null,
         qty: line.qty || 1,
         hinge_holes: line.hinge_holes,
         hinge_supply: line.hinge_supply,

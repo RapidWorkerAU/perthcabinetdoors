@@ -29,7 +29,7 @@ export const CABINET_BRANDS = [
   "Not applicable",
 ];
 
-export const EDGE_PROFILES = [
+export const THERMOLAMINATE_EDGE_PROFILES = [
   "EM0 Square",
   "EM1 6mm Pencil Round",
   "EM12 Small Chamfer",
@@ -42,6 +42,24 @@ export const EDGE_PROFILES = [
   "EM8 Softline",
   "EM9 3mm Pencil Round",
 ];
+
+export const DECORATIVE_BOARD_EDGE_PROFILES = [
+  "1mm Square Edge",
+  "1mm Bevel Edge",
+];
+
+export const EDGE_PROFILES = THERMOLAMINATE_EDGE_PROFILES;
+
+export function edgeProfilesForMaterial(material) {
+  if (material === "Decorative Board") return DECORATIVE_BOARD_EDGE_PROFILES;
+  if (material === "Thermolaminate") return THERMOLAMINATE_EDGE_PROFILES;
+  return [];
+}
+
+export function isEdgeProfileSelectionAvailable(edgeProfile, material) {
+  if (!edgeProfile) return true;
+  return edgeProfilesForMaterial(material).includes(edgeProfile);
+}
 
 export const PROFILE_NAMES_BY_TYPE = {
   Minimal: [
