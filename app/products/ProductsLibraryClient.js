@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { DEFAULT_IKEA, DEFAULT_MATERIALS, DEFAULT_TYPES, PRODUCTS } from "./product-data";
+import { DEFAULT_TYPES, PRODUCTS } from "./product-data";
 import styles from "./products.module.css";
 
 function toggleValue(values, value) {
@@ -10,26 +10,18 @@ function toggleValue(values, value) {
 
 export default function ProductsLibraryClient({ products = PRODUCTS }) {
   const [types, setTypes] = useState(DEFAULT_TYPES);
-  const [materials, setMaterials] = useState(DEFAULT_MATERIALS);
-  const [compat, setCompat] = useState("all");
-  const [ikea, setIkea] = useState(DEFAULT_IKEA);
+  const [materials, setMaterials] = useState(["thermolaminate", "decorative", "compact"]);
   const [sort, setSort] = useState("default");
 
   const visibleProducts = useMemo(() => {
     const filtered = products.filter((product) => {
       const matchType = types.includes(product.type);
-      const matchMaterial = materials.includes(product.material);
+      const matchMaterial = materials.some((m) => {
+        if (m === "decorative") return product.material === "16mm" || product.material === "18mm";
+        return product.material === m;
+      });
 
-      let matchCompat = true;
-      if (compat === "ikea") {
-        const tileIsIkea = product.compat === "ikea";
-        const subMatch = ikea.length === 0 || ikea.includes(product.ikea);
-        matchCompat = tileIsIkea && subMatch;
-      } else if (compat === "kaboodle") {
-        matchCompat = product.compat === "kaboodle";
-      }
-
-      return matchType && matchMaterial && matchCompat;
+      return matchType && matchMaterial;
     });
 
     if (sort === "price-asc") {
@@ -39,13 +31,11 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
       return [...filtered].sort((a, b) => b.price - a.price);
     }
     return filtered;
-  }, [compat, ikea, materials, products, sort, types]);
+  }, [materials, products, sort, types]);
 
   function resetFilters() {
     setTypes(DEFAULT_TYPES);
-    setMaterials(DEFAULT_MATERIALS);
-    setIkea(DEFAULT_IKEA);
-    setCompat("all");
+    setMaterials(["thermolaminate", "decorative", "compact"]);
     setSort("default");
   }
 
@@ -86,8 +76,7 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
             <div className={styles.filterGroupLabel}>Material</div>
             {[
               ["thermolaminate", "Thermolaminate"],
-              ["16mm", "16mm decorative board"],
-              ["18mm", "18mm decorative board"],
+              ["decorative", "Decorative board"],
               ["compact", "Compact laminate"],
             ].map(([value, label]) => (
               <label className={styles.filterOption} key={value}>
@@ -95,32 +84,6 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
                 <span>{label}</span>
               </label>
             ))}
-          </div>
-
-          <div className={styles.filterGroup}>
-            <div className={styles.filterGroupLabel}>Compatibility</div>
-            {[
-              ["all", "All products"],
-              ["ikea", "IKEA compatible"],
-              ["kaboodle", "Kaboodle compatible"],
-            ].map(([value, label]) => (
-              <label className={styles.filterOption} key={value}>
-                <input type="radio" name="compat" checked={compat === value} onChange={() => setCompat(value)} />
-                <span>{label}</span>
-              </label>
-            ))}
-            <div className={`${styles.subOptions} ${compat === "ikea" ? styles.visible : ""}`}>
-              {[
-                ["besta", "Besta compatible"],
-                ["pax", "Pax compatible"],
-                ["metod", "Metod compatible"],
-              ].map(([value, label]) => (
-                <label className={styles.subOption} key={value}>
-                  <input type="checkbox" checked={ikea.includes(value)} onChange={() => setIkea(toggleValue(ikea, value))} />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
           </div>
 
           <button className={styles.filterReset} type="button" onClick={resetFilters}>

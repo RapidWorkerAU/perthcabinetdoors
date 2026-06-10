@@ -384,7 +384,13 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
           <div className={styles.relatedGrid}>
             {relatedProducts.map((related) => (
               <a className={styles.relatedTile} href={`/products/${related.id}`} key={related.id}>
-                <div className={styles.relatedImage}><div /></div>
+                <div className={styles.relatedImage}>
+                  {related.galleryImages?.[0] ? (
+                    <img src={related.galleryImages[0]} alt={related.name} className={styles.relatedImageImg} />
+                  ) : (
+                    <div />
+                  )}
+                </div>
                 <div className={styles.relatedBody}>
                   <div className={styles.relatedType}>{related.typeLabel}</div>
                   <div className={styles.relatedName}>{related.name}</div>

@@ -34,22 +34,27 @@ async function loadProductBySlug(slug) {
     return { product: getProductBySlug(slug), relatedProducts: null };
   }
 
-  const [{ data: imageRows }, { data: allRows }] = await Promise.all([
-    supabase
-      .from("product_images")
-      .select("product_id,image_url,is_primary,sort_order")
-      .eq("product_id", row.id)
-      .order("sort_order", { ascending: true }),
+  const [{ data: allRows }, { data: allImageRows }] = await Promise.all([
     supabase
       .from("products")
       .select(PRODUCT_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false }),
+    supabase
+      .from("product_images")
+      .select("product_id,image_url,is_primary,sort_order")
+      .order("sort_order", { ascending: true }),
   ]);
 
-  const product = normalizeProduct(row, imageRows || []);
-  const products = normalizeProducts(allRows || []);
+  const imagesByProduct = (allImageRows || []).reduce((acc, img) => {
+    acc[img.product_id] = acc[img.product_id] || [];
+    acc[img.product_id].push(img);
+    return acc;
+  }, {});
+
+  const product = normalizeProduct(row, imagesByProduct[row.id] || []);
+  const products = normalizeProducts(allRows || [], allImageRows || []);
   return {
     product,
     relatedProducts: getRelatedProductsFromList(product, products),
