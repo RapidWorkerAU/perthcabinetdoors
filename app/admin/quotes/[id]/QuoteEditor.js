@@ -954,11 +954,28 @@ export default function QuoteEditor({ quoteId }) {
 
   async function addLine() {
     if (editableLineIndex !== null) {
-      const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex]);
+      const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex], { updateDraft: false });
       if (!saved) return;
     }
     const nextIndex = form.lines.length;
     const nextLine = emptyLineWithDefaults(businessDefaults);
+    shouldScrollQuoteItemsToBottomRef.current = true;
+    setForm((current) => ({ ...current, lines: [...current.lines, nextLine] }));
+    setEditableLineDraft(nextLine);
+    setEditableLineIndex(nextIndex);
+    setActiveSection("items");
+  }
+
+  async function duplicateLine(index) {
+    if (editableLineIndex !== null) {
+      const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex], { updateDraft: false });
+      if (!saved) return;
+    }
+    const sourceLine = form.lines[index];
+    if (!sourceLine) return;
+    const { id: _id, ...rest } = sourceLine;
+    const nextLine = { ...rest };
+    const nextIndex = form.lines.length;
     shouldScrollQuoteItemsToBottomRef.current = true;
     setForm((current) => ({ ...current, lines: [...current.lines, nextLine] }));
     setEditableLineDraft(nextLine);
@@ -1010,7 +1027,7 @@ export default function QuoteEditor({ quoteId }) {
     });
   }
 
-  async function saveLineAtIndex(index, nextLine = form.lines[index]) {
+  async function saveLineAtIndex(index, nextLine = form.lines[index], { updateDraft = true } = {}) {
     if (!nextLine) return false;
     setSavingLineIndex(index);
     setFeedback("");
@@ -1034,7 +1051,7 @@ export default function QuoteEditor({ quoteId }) {
         const lines = current.lines.map((line, lineIndex) => (lineIndex === index ? savedLine : line));
         return mergeQuoteIntoForm({ ...current, lines }, payload.quote);
       });
-      if (index === editableLineIndex) setEditableLineDraft(savedLine);
+      if (updateDraft && index === editableLineIndex) setEditableLineDraft(savedLine);
       setFeedback("Line saved.");
       return true;
     } catch (error) {
@@ -1712,6 +1729,16 @@ export default function QuoteEditor({ quoteId }) {
                         title="Edit"
                       >
                         Edit
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowDuplicateIconButton}`}
+                        onClick={() => duplicateLine(index)}
+                        disabled={isLineSaving || savingLineIndex !== null}
+                        aria-label={`Duplicate quote line ${index + 1}`}
+                        title="Duplicate"
+                      >
+                        Duplicate
                       </button>
                       <button
                         type="button"
