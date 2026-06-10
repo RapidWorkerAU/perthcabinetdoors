@@ -350,7 +350,7 @@ export default function ProductEditorForm({
   const effectivePrimary = orderedMedia[0] || "";
   const nonPrimaryMedia = orderedMedia.slice(1);
   const showThermolaminateProfiles = material === "thermolaminate" && type !== "panel" && type !== "table-top";
-  const isSuccessFeedback = feedback === "Media linked to this product.";
+  const isSuccessFeedback = feedback === "Media linked to this product." || feedback === "Pricing saved.";
 
   useEffect(() => {
     if (!isSuccessFeedback) return undefined;
@@ -553,6 +553,41 @@ export default function ProductEditorForm({
 
   function removePricingRow(index) {
     setPricingRows((previous) => previous.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  async function savePricingSection() {
+    const productId = initialProduct?.id;
+    if (!productId || mode !== "edit") return;
+
+    const normalizedPricingRows = pricingRows
+      .map((row) => ({
+        size: String(row.size || "").trim(),
+        description: String(row.description || "").trim(),
+        price: row.price === "" || row.price == null ? 0 : Number(row.price),
+        popular: Boolean(row.popular),
+      }))
+      .filter((row) => row.size || row.description || row.price);
+
+    setIsSaving(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase
+        .from("products")
+        .update({ pricing_rows: normalizedPricingRows })
+        .eq("id", productId);
+
+      if (error) {
+        setFeedback(error.message || "Could not save pricing.");
+        return;
+      }
+
+      closeEditSection();
+      setFeedback("Pricing saved.");
+    } catch (error) {
+      setFeedback(error?.message || "Could not save pricing.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function updateInfoCard(index, key, value) {
@@ -1251,23 +1286,42 @@ export default function ProductEditorForm({
             <p className={styles.productEditModalIntro}>
               These rows appear in the indicative pricing table. Keep the size, description, and price short so the public table stays easy to scan.
             </p>
-            {pricingRows.map((row, index) => (
-              <div className={styles.adminRepeaterRow} key={`pricing-${index}`}>
-                <input className={styles.fieldInput} value={row.size || ""} onChange={(event) => updatePricingRow(index, "size", event.target.value)} placeholder="Size" />
-                <input className={styles.fieldInput} value={row.description || ""} onChange={(event) => updatePricingRow(index, "description", event.target.value)} placeholder="Description" />
-                <input className={styles.fieldInput} type="number" step="0.01" value={row.price ?? ""} onChange={(event) => updatePricingRow(index, "price", event.target.value)} placeholder="Price" />
-                <label className={styles.checkboxRow}><input type="checkbox" checked={Boolean(row.popular)} onChange={(event) => updatePricingRow(index, "popular", event.target.checked)} /> Popular</label>
-                <button
-                  type="button"
-                  className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                  onClick={() => removePricingRow(index)}
-                  aria-label={`Remove pricing row ${index + 1}`}
-                  title="Remove"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
+            <div className={styles.pricingEditTableWrap}>
+              <table className={styles.pricingEditTable}>
+                <thead>
+                  <tr>
+                    <th>Size</th>
+                    <th>Description</th>
+                    <th>Price</th>
+                    <th>Popular</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pricingRows.map((row, index) => (
+                    <tr key={`pricing-${index}`}>
+                      <td><input className={styles.fieldInput} value={row.size || ""} onChange={(event) => updatePricingRow(index, "size", event.target.value)} placeholder="e.g. 900×2100" /></td>
+                      <td><input className={styles.fieldInput} value={row.description || ""} onChange={(event) => updatePricingRow(index, "description", event.target.value)} placeholder="e.g. Painted MDF" /></td>
+                      <td className={styles.pricingEditPriceCell}><input className={styles.fieldInput} type="number" step="0.01" value={row.price ?? ""} onChange={(event) => updatePricingRow(index, "price", event.target.value)} placeholder="0.00" /></td>
+                      <td className={styles.pricingEditCheckCell}>
+                        <input type="checkbox" checked={Boolean(row.popular)} onChange={(event) => updatePricingRow(index, "popular", event.target.checked)} />
+                      </td>
+                      <td className={styles.pricingEditDeleteCell}>
+                        <button
+                          type="button"
+                          className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
+                          onClick={() => removePricingRow(index)}
+                          aria-label={`Remove pricing row ${index + 1}`}
+                          title="Remove"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <button type="button" className={styles.secondaryButton} onClick={addPricingRow}>Add pricing row</button>
           </div>
         );
@@ -1362,9 +1416,15 @@ export default function ProductEditorForm({
             {renderModalContent()}
           </div>
           <div className={styles.mediaModalFooter}>
-            <button type="button" className={styles.primaryButton} onClick={closeEditSection}>
-              Done
-            </button>
+            {activeEditSection === "pricing" ? (
+              <button type="button" className={styles.primaryButton} onClick={savePricingSection} disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save pricing"}
+              </button>
+            ) : (
+              <button type="button" className={styles.primaryButton} onClick={closeEditSection}>
+                Done
+              </button>
+            )}
           </div>
         </div>
       </div>

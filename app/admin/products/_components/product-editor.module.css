@@ -333,6 +333,16 @@
   stroke-linejoin: round;
 }
 
+.productPreviewPanelHeader .productPreviewEditButton,
+.productPreviewPanelHeader .productPreviewEditButton span {
+  color: rgba(168, 197, 160, 0.78);
+}
+
+.productPreviewPanelHeader .productPreviewEditButton:hover,
+.productPreviewPanelHeader .productPreviewEditButton:hover span {
+  color: #a8c5a0;
+}
+
 .productPreviewMediaEditButton {
   min-height: 30px;
   border: 1px solid rgba(215, 222, 232, 0.9);

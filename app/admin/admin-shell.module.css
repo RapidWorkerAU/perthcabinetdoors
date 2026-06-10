@@ -1385,6 +1385,77 @@
   align-items: center;
 }
 
+.pricingEditTableWrap {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pricingEditTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pricingEditTable th {
+  padding: 8px 8px;
+  background: #f0f2f5;
+  border-bottom: 1px solid #d7dee8;
+  color: #6b7280;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pricingEditTable td {
+  padding: 4px 4px;
+  border-bottom: 1px solid rgba(24, 29, 39, 0.07);
+  vertical-align: middle;
+}
+
+.pricingEditTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.pricingEditTable tbody tr:hover td {
+  background: rgba(107, 158, 97, 0.04);
+}
+
+.pricingEditPriceCell {
+  width: 110px;
+}
+
+.pricingEditCheckCell {
+  width: 1%;
+  text-align: center;
+  padding: 4px 14px;
+  white-space: nowrap;
+}
+
+.viewport .productEditModalBody .pricingEditCheckCell input[type="checkbox"] {
+  appearance: auto !important;
+  -webkit-appearance: checkbox !important;
+  width: 16px !important;
+  min-height: unset !important;
+  height: 16px !important;
+  border: unset !important;
+  border-radius: unset !important;
+  background: unset !important;
+  padding: unset !important;
+  box-shadow: unset !important;
+  accent-color: #4a7a42;
+  cursor: pointer;
+}
+
+.pricingEditDeleteCell {
+  width: 1%;
+  text-align: right;
+  padding: 4px 6px 4px 4px;
+  white-space: nowrap;
+}
+
 .adminStackRow {
   grid-template-columns: 1fr;
 }
