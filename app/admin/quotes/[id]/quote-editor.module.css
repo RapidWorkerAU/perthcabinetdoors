@@ -1,0 +1,489 @@
+.quoteInfoSection {
+  display: grid;
+  gap: 24px;
+}
+
+.quoteInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 12px;
+  align-items: end;
+}
+
+.quoteInfoActionField {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.quoteInfoFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.quoteNotesGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 14px;
+  align-items: start;
+}
+
+.quoteSectionActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.quoteCostsLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.quoteBuilderGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 12px;
+  align-items: end;
+}
+
+.quoteTotalsSummary {
+  display: grid;
+  gap: 10px;
+}
+
+.quoteGrandTotalPanel {
+  width: min(50%, 760px);
+  justify-self: end;
+}
+
+@media (max-width: 900px) {
+  .quoteGrandTotalPanel {
+    width: 100%;
+  }
+}
+
+.quoteItemRow {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.quoteItemRowEditing {
+  align-items: start;
+}
+
+.quoteItemRowLocked {
+  align-items: center;
+}
+
+.quoteItemRowEditing.quoteItemRowEditing > div {
+  align-self: start;
+}
+
+.quoteItemRowEditing .quoteItemNumberCell,
+.quoteItemRowEditing .quoteConfigCell,
+.quoteItemRowEditing .quoteItemTotal,
+.quoteItemRowEditing .quoteItemActions {
+  align-self: start;
+}
+
+.quoteItemRowEditing.quoteItemRowEditing > .quoteItemTotal {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10px;
+}
+
+.quoteItemRowEditing .quoteConfigCell {
+  align-content: start !important;
+}
+
+.quoteItemRowEditing .quoteItemActions {
+  align-items: flex-start;
+}
+
+.quoteItemRowLocked.quoteItemRowLocked > div {
+  align-self: center;
+}
+
+.quoteItemRowLocked.quoteItemRowLocked > .quoteItemTotal {
+  align-items: center;
+  padding-top: 0;
+}
+
+.quoteMarkupProfitRow {
+  position: relative;
+  margin: 0;
+  border-top: 1px solid #c7d8bf;
+  border-bottom: 0;
+  border-radius: 0 0 5px 5px;
+  background: transparent !important;
+  padding: 9px 0;
+}
+
+.quoteMarkupProfitRow::before {
+  content: "";
+  position: absolute;
+  inset: 0 -12px -12px;
+  z-index: 0;
+  border-radius: 0 0 5px 5px;
+  background: #eef5ea;
+}
+
+.quoteMarkupProfitRow span,
+.quoteMarkupProfitRow strong {
+  position: relative;
+  z-index: 1;
+  color: #17321f !important;
+  font-weight: 800;
+}
+
+.quoteMoneyInput {
+  position: relative;
+}
+
+.quoteMoneyInput span {
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  z-index: 1;
+  color: #1f2937;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.quoteMoneyInput input {
+  padding-left: 22px !important;
+  padding-right: 6px;
+}
+
+.quoteUnitCostControl {
+  display: grid;
+  gap: 5px;
+  align-self: start;
+}
+
+.quoteUnitCostResetButton {
+  justify-self: end;
+  border: 0;
+  background: transparent;
+  color: #2f6f35;
+  font-size: 0.62rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0 6px 0 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.quoteUnitCostResetButton:hover {
+  color: #17321f;
+}
+
+.quoteMarkupInput {
+  position: relative;
+}
+
+.quoteMarkupInput input {
+  padding-right: 18px;
+}
+
+.quoteMarkupInput span {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  color: #64748b;
+  font-size: 0.72rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.quoteColourCombo {
+  position: relative;
+}
+
+.quoteColourRead {
+  min-width: 0;
+  padding-right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 0.8rem;
+}
+
+.quoteColourRead img {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border: 1px solid #d7dee8;
+  border-radius: 4px;
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.quoteColourRead span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quoteColourCombo input {
+  padding-right: 24px;
+}
+
+.quoteColourComboButton {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 28px;
+  border: 0;
+  background: #ffffff;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+}
+
+.quoteColourComboButton:disabled {
+  cursor: not-allowed;
+}
+
+.quoteColourComboButton::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-color: #6b7280 transparent transparent;
+  border-style: solid;
+  border-width: 5px 4px 0;
+  transform: translate(-50%, -35%);
+}
+
+.quoteColourReadText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.quoteColourReadText strong {
+  overflow: hidden;
+  color: #111827;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quoteColourReadText small {
+  overflow: hidden;
+  color: #5f6b7a;
+  font-size: 0.68rem;
+  font-weight: 400;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentUploadRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 10px;
+  align-items: center;
+}
+
+.quoteAttachmentsSection {
+  width: 100%;
+  display: grid;
+  gap: 14px;
+}
+
+.quoteAttachmentsTable {
+  width: 100%;
+  table-layout: fixed;
+  border: 0;
+  border-radius: 0;
+  margin-top: 0;
+}
+
+.quoteAttachmentsTable th:nth-child(1),
+.quoteAttachmentsTable td:nth-child(1) {
+  width: 30%;
+}
+
+.quoteAttachmentsTable th:nth-child(2),
+.quoteAttachmentsTable td:nth-child(2) {
+  width: 30%;
+}
+
+.quoteAttachmentsTable th:nth-child(3),
+.quoteAttachmentsTable td:nth-child(3) {
+  width: 10%;
+}
+
+.quoteAttachmentsTable th:nth-child(4),
+.quoteAttachmentsTable td:nth-child(4) {
+  width: 18%;
+}
+
+.quoteAttachmentsTable th:nth-child(5),
+.quoteAttachmentsTable td:nth-child(5) {
+  width: 12%;
+}
+
+.quoteAttachmentsTable th {
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.quoteAttachmentsTable td {
+  border-bottom: 0;
+  color: #0f172a;
+}
+
+.quoteHingeEditButton,
+.quoteProfileEditButton {
+  width: auto;
+  min-height: 24px;
+  border: 1px solid #d7d0c5;
+  border-radius: 2px;
+  background: #fbfaf7;
+  color: #1d3424;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.quoteHingeEditButton:disabled,
+.quoteProfileEditButton:disabled {
+  background: #f5f3ee;
+  color: #a8adb7;
+  cursor: not-allowed;
+}
+
+.quoteHingeSummary,
+.quoteProfileSummary {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.quoteHingeSummary small,
+.quoteProfileSummary small {
+  display: block;
+  overflow: hidden;
+  color: #4b5563;
+  font-size: 0.68rem;
+  line-height: 1.18;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quoteHingeBareEditButton,
+.quoteProfileBareEditButton {
+  border: 0;
+  background: transparent;
+  color: #1d3424;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.1;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.quoteHingeBareEditButton::before,
+.quoteProfileBareEditButton::before {
+  content: none;
+}
+
+.quoteHingeBareEditButton:hover,
+.quoteProfileBareEditButton:hover {
+  color: #587e52;
+}
+
+.quoteHingeBareEditButton:disabled,
+.quoteProfileBareEditButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.hingeConfigModal {
+  width: min(620px, calc(100vw - 48px));
+}
+
+.profileConfigModal {
+  width: min(640px, calc(100vw - 48px));
+}
+
+.profileConfigForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.hingeConfigForm {
+  display: grid;
+  gap: 14px;
+}
+
+.hingeConfigToggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid #d7d0c5;
+  background: #ffffff;
+}
+
+.hingeConfigToggle input {
+  width: 16px !important;
+  min-width: 16px !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  margin-top: 2px;
+  padding: 0 !important;
+  border-radius: 2px !important;
+  background-color: #ffffff !important;
+  box-shadow: none !important;
+  accent-color: #1d3424;
+  appearance: auto !important;
+}
+
+.hingeConfigToggle input:checked {
+  accent-color: #1d3424;
+}
+
+.hingeConfigToggle span {
+  display: grid;
+  gap: 3px;
+}
+
+.hingeConfigToggle strong {
+  color: #111827;
+  font-size: 0.86rem;
+  line-height: 1.2;
+}
+
+.hingeConfigToggle small {
+  color: #5f6b7a;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}

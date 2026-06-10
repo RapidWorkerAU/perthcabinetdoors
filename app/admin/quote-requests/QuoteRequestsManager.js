@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../admin-shell.module.css";
+import workflowStyles from "../_components/admin-workflow.module.css";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
 import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
@@ -158,9 +159,25 @@ export default function QuoteRequestsManager() {
                 </td>
                 <td>{formatDate(request.created_at)}</td>
                 <td className={styles.quoteRequestActions}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => setPreviewRequest(request)}>Preview</button>
+                  <button
+                    type="button"
+                    className={`${styles.secondaryButton} ${styles.rowIconButton} ${styles.rowViewIconButton}`}
+                    onClick={() => setPreviewRequest(request)}
+                    aria-label={`Preview quote request from ${request.customer_name || "customer"}`}
+                    title="Preview quote request"
+                  >
+                    Preview
+                  </button>
                   {request.converted_quote_id ? (
-                    <button type="button" className={styles.secondaryButton} onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}>Open quote</button>
+                    <button
+                      type="button"
+                      className={`${styles.secondaryButton} ${styles.rowIconButton} ${styles.rowOpenIconButton}`}
+                      onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}
+                      aria-label={`Open quote for ${request.customer_name || "quote request"}`}
+                      title="Open quote"
+                    >
+                      Open quote
+                    </button>
                   ) : (
                     <button type="button" className={styles.primaryButton} onClick={() => convertToQuote(request.id)}>Convert</button>
                   )}
@@ -224,10 +241,10 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
             <p className={styles.quoteRequestNotes}>{request.notes || "No notes supplied."}</p>
           </section>
 
-          <section className={styles.quoteItemsAdminWrap}>
+          <section className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap}`}>
             <h3 className={styles.quoteRequestPreviewSectionTitle}>Line items</h3>
-            <div className={styles.quoteItemsScroller}>
-              <div className={`${styles.quoteRequestPreviewGrid} ${styles.quoteItemHead}`}>
+            <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller}`}>
+              <div className={`${styles.quoteRequestPreviewGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead}`}>
                 <div>#</div>
                 <div>Type</div>
                 <div>Material</div>
@@ -241,17 +258,17 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
                 <div>Hinges</div>
               </div>
               {lineItems.map((line, index) => (
-                <div className={`${styles.quoteRequestPreviewGrid} ${styles.quoteItemRow} ${styles.quoteItemRowLocked}`} key={line.id || index}>
-                  <div><span className={styles.quoteItemRowNum}>{index + 1}</span></div>
-                  <div className={styles.quoteReadCell}>{cleanValue(line.product_type || line.product_name)}</div>
-                  <div className={styles.quoteReadCell}>{cleanValue(line.material)}</div>
-                  <div className={styles.quoteReadCell}>{cleanValue(line.thickness)}</div>
-                  <div className={styles.quoteReadCell}>{sizeText(line)}</div>
-                  <div className={styles.quoteReadCell}>{cleanValue(line.finish)}</div>
-                  <div className={styles.quoteReadCell}>{cleanValue(line.colour)}</div>
-                  <div className={styles.quoteReadCell}>{line.qty || 1}</div>
-                  <div className={styles.quoteReadCell}>{cleanValue(line.edge_mould)}</div>
-                  <div className={styles.quoteReadCell}>{[line.profile_type, line.profile].filter(Boolean).join(" / ") || "-"}</div>
+                <div className={`${styles.quoteRequestPreviewGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`} key={line.id || index}>
+                  <div><span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{index + 1}</span></div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.product_type || line.product_name)}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.material)}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.thickness)}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{sizeText(line)}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.finish)}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.colour)}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{line.qty || 1}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.edge_mould)}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{[line.profile_type, line.profile].filter(Boolean).join(" / ") || "-"}</div>
                   <div className={styles.quoteRequestHingeCell}>
                     <span><strong>{line.hinge_holes ? "✓" : "×"}</strong> Drill holes</span>
                     <span><strong>{line.hinge_supply ? "✓" : "×"}</strong> Supply hinges</span>
@@ -278,7 +295,15 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
             ))}
           </select>
           {request.converted_quote_id ? (
-            <button type="button" className={styles.secondaryButton} onClick={() => onOpenQuote(request.converted_quote_id)}>Open quote</button>
+            <button
+              type="button"
+              className={`${styles.secondaryButton} ${styles.rowIconButton} ${styles.rowOpenIconButton}`}
+              onClick={() => onOpenQuote(request.converted_quote_id)}
+              aria-label={`Open quote for ${request.customer_name || "quote request"}`}
+              title="Open quote"
+            >
+              Open quote
+            </button>
           ) : (
             <button type="button" className={styles.secondaryButton} onClick={() => onConvert(request.id)}>Convert to quote</button>
           )}

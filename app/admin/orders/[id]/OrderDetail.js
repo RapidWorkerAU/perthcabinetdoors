@@ -10,6 +10,8 @@ import {
   ORDER_STATUSES,
 } from "../../../../lib/pcd-quote-utils";
 import styles from "../../admin-shell.module.css";
+import workflowStyles from "../../_components/admin-workflow.module.css";
+import orderStyles from "./order-detail.module.css";
 import { ADMIN_TABLE_PAGE_SIZE, AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 const sections = [
@@ -759,9 +761,9 @@ export default function OrderDetail({ orderId }) {
     const quote = order.pcd_quote || order;
     return (
       <div className={styles.quoteBuilderStack}>
-        <div className={`${styles.quoteItemsAdminWrap} ${styles.orderQuoteSummaryItems}`}>
-          <div className={styles.quoteItemsScroller}>
-            <div className={`${styles.quoteItemGrid} ${styles.quoteItemHead}`}>
+        <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderQuoteSummaryItems} ${orderStyles.orderQuoteSummaryItems}`}>
+          <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
+            <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
               <div>#</div>
               <div>Type</div>
               <div>Material</div>
@@ -784,35 +786,35 @@ export default function OrderDetail({ orderId }) {
               const showProfiles = line.material === "Thermolaminate";
               const hingesApplicable = line.product_type === "Door";
               return (
-                <div className={styles.quoteItemBlock} key={line.id || index}>
-                  <div className={`${styles.quoteItemGrid} ${styles.quoteItemRow} ${styles.quoteItemRowLocked}`}>
-                    <div><span className={styles.quoteItemRowNum}>{index + 1}</span></div>
-                    <div className={styles.quoteReadCell}>{lineValue(quoteLineTitle(line))}</div>
-                    <div className={styles.quoteReadCell}>{lineValue(line.material)}</div>
-                    <div className={styles.quoteReadCell}>{lineValue(line.thickness)}</div>
-                    <div className={styles.quoteReadCell}>{lineValue(quoteLineSize(line))}</div>
-                    <div className={styles.quoteReadCell}>{lineValue(line.colour)}</div>
-                    <div className={styles.quoteReadCell}>{line.qty || "1"}</div>
-                    <div className={styles.quoteReadCell}>{lineValue(line.edge_mould)}</div>
-                    <div className={styles.quoteReadCell}>{showProfiles ? lineValue(line.profile_type) : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{showProfiles ? lineValue(line.profile) : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</div>
-                    <div className={styles.quoteReadCell}>{formatMoney(line.product_unit_cost_ex_gst || 0, quote.currency || "AUD")}</div>
-                    <div className={styles.quoteReadCell}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</div>
-                    <div className={styles.quoteItemTotal}>{formatMoney(line.unit_price_ex_gst || 0, quote.currency || "AUD")}</div>
-                    <div className={styles.quoteItemTotal}>{formatMoney(line.line_total_ex_gst || 0, quote.currency || "AUD")}</div>
+                <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={line.id || index}>
+                  <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
+                    <div><span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{index + 1}</span></div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(quoteLineTitle(line))}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(line.material)}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(line.thickness)}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(quoteLineSize(line))}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(line.colour)}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{line.qty || "1"}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(line.edge_mould)}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{showProfiles ? lineValue(line.profile_type) : "N/A"}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{showProfiles ? lineValue(line.profile) : "N/A"}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{formatMoney(line.product_unit_cost_ex_gst || 0, quote.currency || "AUD")}</div>
+                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</div>
+                    <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal}`}>{formatMoney(line.unit_price_ex_gst || 0, quote.currency || "AUD")}</div>
+                    <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal}`}>{formatMoney(line.line_total_ex_gst || 0, quote.currency || "AUD")}</div>
                   </div>
                 </div>
               );
             })}
             {!quoteLines.length ? <div className={styles.emptyState}><p>No quote line items found for this order.</p></div> : null}
           </div>
-          <div className={`${styles.quoteTotalsLayout} ${styles.orderQuoteSummaryTotals}`}>
-            <section className={styles.quoteTotalGroup}>
+          <div className={`${styles.quoteTotalsLayout} ${styles.orderQuoteSummaryTotals} ${orderStyles.orderQuoteSummaryTotals}`}>
+            <section className={`${styles.quoteTotalGroup} ${workflowStyles.quoteTotalGroup} ${orderStyles.quoteTotalGroup}`}>
               <header>Quote totals</header>
-              <div className={styles.quoteTotalGroupBody}>
+              <div className={`${styles.quoteTotalGroupBody} ${workflowStyles.quoteTotalGroupBody} ${orderStyles.quoteTotalGroupBody}`}>
                 <div><span>Subtotal ex GST</span><strong>{formatMoney(quote.subtotal_ex_gst, quote.currency || "AUD")}</strong></div>
                 <div><span>GST</span><strong>{formatMoney(quote.gst_amount, quote.currency || "AUD")}</strong></div>
                 <div><span>Total inc GST</span><strong>{formatMoney(quote.total_inc_gst, quote.currency || "AUD")}</strong></div>
@@ -826,9 +828,9 @@ export default function OrderDetail({ orderId }) {
 
   function renderItems() {
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${styles.orderPlanningItems}`}>
-        <div className={styles.quoteItemsScroller}>
-          <div className={`${styles.quoteItemGrid} ${styles.quoteItemHead}`}>
+      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderPlanningItems} ${orderStyles.orderPlanningItems}`}>
+        <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
+          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
             <div>Item</div>
             <div>Cabinet</div>
             <div>Panel / item</div>
@@ -842,18 +844,18 @@ export default function OrderDetail({ orderId }) {
               const thermolaminated = isThermolaminatedItem(item);
               const fulfilmentValue = row.plan.fulfilment_method;
               return (
-              <div className={styles.quoteItemBlock} key={row.key}>
-                <div className={`${styles.quoteItemGrid} ${styles.quoteItemRow} ${styles.quoteItemRowLocked}`}>
-                  <div className={styles.orderItemIdentity}>
+              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={row.key}>
+                <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
+                  <div className={`${styles.orderItemIdentity} ${orderStyles.orderItemIdentity}`}>
                     <strong>{row.source}</strong>
                     <span>{itemMeta(item) || "No item details recorded"}</span>
                   </div>
-                  <div className={styles.quoteReadCell}>{row.cabinet || "-"}</div>
-                  <div className={styles.quoteReadCell}>{row.piece}</div>
-                  <div className={styles.quoteReadCell}>{row.qty}</div>
-                  <div className={styles.quoteReadCell}>{row.size}</div>
-                  <div className={styles.quoteReadCell}>{row.material}</div>
-                  <div className={styles.quoteItemField}>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.cabinet || "-"}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.piece}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.qty}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.size}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.material}</div>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                     <select value={fulfilmentValue} disabled={savingItemId === item.id || thermolaminated} onChange={(event) => updatePanelPlan(row, { fulfilment_method: event.target.value })}>
                       <option value="in_house">Made in house</option>
                       <option value="supplier_ready_made">Supplier ready made</option>
@@ -880,9 +882,9 @@ export default function OrderDetail({ orderId }) {
 
   function renderSupplierMade() {
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${styles.orderSupplierItems}`}>
-        <div className={styles.quoteItemsScroller}>
-          <div className={`${styles.quoteItemGrid} ${styles.quoteItemHead}`}>
+      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderSupplierItems} ${orderStyles.orderSupplierItems}`}>
+        <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
+          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
             <div>Item</div>
             <div>Order status</div>
             <div>Supplier</div>
@@ -892,22 +894,22 @@ export default function OrderDetail({ orderId }) {
             <div>Notes</div>
           </div>
             {supplierMadePagination.pageItems.map((row) => (
-              <div className={styles.quoteItemBlock} key={row.key}>
-                <div className={`${styles.quoteItemGrid} ${styles.quoteItemRow} ${styles.quoteItemRowLocked}`}>
-                  <div className={styles.orderItemIdentity}>
+              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={row.key}>
+                <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
+                  <div className={`${styles.orderItemIdentity} ${orderStyles.orderItemIdentity}`}>
                     <strong>{row.source}</strong>
                     <span>{row.piece} | {row.size} | {row.material}</span>
                   </div>
-                  <div className={styles.quoteItemField}>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                     <select value={row.plan.status} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { status: event.target.value })}>
                       {ORDER_LINE_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}
                     </select>
                   </div>
-                  <div className={styles.quoteItemField}><input value={row.plan.supplier_name || defaultSupplierForItem(row.item)} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></div>
-                  <div className={styles.quoteItemField}><input value={row.plan.supplier_order_ref || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></div>
-                  <div className={styles.quoteItemField}><input type="date" value={row.plan.supplier_ordered_at || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></div>
-                  <div className={styles.quoteItemField}><input type="date" value={row.plan.supplier_eta || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></div>
-                  <div className={styles.quoteItemActions}><button type="button" className={styles.rowEditButton} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button></div>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input value={row.plan.supplier_name || defaultSupplierForItem(row.item)} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></div>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input value={row.plan.supplier_order_ref || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></div>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input type="date" value={row.plan.supplier_ordered_at || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></div>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input type="date" value={row.plan.supplier_eta || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></div>
+                  <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${orderStyles.quoteItemActions}`}><button type="button" className={`${styles.rowEditButton} ${orderStyles.rowEditButton}`} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button></div>
                 </div>
               </div>
             ))}
@@ -928,9 +930,9 @@ export default function OrderDetail({ orderId }) {
 
   function renderMadeInHouse() {
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${styles.orderInHouseItems}`}>
-        <div className={styles.quoteItemsScroller}>
-          <div className={`${styles.quoteItemGrid} ${styles.quoteItemHead}`}>
+      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderInHouseItems} ${orderStyles.orderInHouseItems}`}>
+        <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
+          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
             <div>Item</div>
             <div>Board required</div>
             <div>Supplier</div>
@@ -943,28 +945,28 @@ export default function OrderDetail({ orderId }) {
             {madeInHousePagination.pageItems.map((row) => {
               const boardRequired = !!row.plan.board_required;
               return (
-                <div className={styles.quoteItemBlock} key={row.key}>
-                  <div className={`${styles.quoteItemGrid} ${styles.quoteItemRow} ${styles.quoteItemRowLocked}`}>
-                    <div className={styles.orderItemIdentity}>
+                <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={row.key}>
+                  <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
+                    <div className={`${styles.orderItemIdentity} ${orderStyles.orderItemIdentity}`}>
                       <strong>{row.source}</strong>
                       <span>{row.piece} | {row.size} | {row.material}</span>
                     </div>
-                    <div className={styles.quoteItemField}>
+                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                       <select value={boardRequired ? "yes" : "no"} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { board_required: event.target.value === "yes" })}>
                         <option value="yes">Yes</option>
                         <option value="no">No</option>
                       </select>
                     </div>
-                    <div className={styles.quoteItemField}><input value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></div>
-                    <div className={styles.quoteItemField}><input value={boardRequired ? row.plan.supplier_order_ref || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></div>
-                    <div className={styles.quoteItemField}><input type="date" value={boardRequired ? row.plan.supplier_ordered_at || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></div>
-                    <div className={styles.quoteItemField}><input type="date" value={boardRequired ? row.plan.supplier_eta || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></div>
-                    <div className={styles.quoteItemField}>
+                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></div>
+                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input value={boardRequired ? row.plan.supplier_order_ref || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></div>
+                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input type="date" value={boardRequired ? row.plan.supplier_ordered_at || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></div>
+                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input type="date" value={boardRequired ? row.plan.supplier_eta || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></div>
+                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                       <select value={row.plan.production_stage} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { production_stage: event.target.value })}>
                         {ORDER_PRODUCTION_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
                       </select>
                     </div>
-                    <div className={styles.quoteItemActions}><button type="button" className={styles.rowEditButton} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button></div>
+                    <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${orderStyles.quoteItemActions}`}><button type="button" className={`${styles.rowEditButton} ${orderStyles.rowEditButton}`} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button></div>
                   </div>
                 </div>
               );
@@ -988,7 +990,7 @@ export default function OrderDetail({ orderId }) {
     const totalPieces = cutListRows.reduce((total, row) => total + Number(row.qty || 0), 0);
 
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${styles.orderCutListItems}`}>
+      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderCutListItems} ${orderStyles.orderCutListItems}`}>
         <div className={styles.quoteBuilderSummaryLine}>
           <div className={styles.cutListSummaryText}>
             <span><strong>{cutListRows.length}</strong> cut list rows</span>
@@ -1003,8 +1005,8 @@ export default function OrderDetail({ orderId }) {
             {isGeneratingCutListPdf ? "Generating PDF..." : "Generate cut list PDF"}
           </button>
         </div>
-        <div className={styles.quoteItemsScroller}>
-          <div className={`${styles.quoteItemGrid} ${styles.quoteItemHead}`}>
+        <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
+          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
             <div>#</div>
             <div>Source item</div>
             <div>Cabinet size</div>
@@ -1017,18 +1019,18 @@ export default function OrderDetail({ orderId }) {
             <div>Notes</div>
           </div>
             {cutListPagination.pageItems.map((row, index) => (
-              <div className={styles.quoteItemBlock} key={row.key}>
-                <div className={`${styles.quoteItemGrid} ${styles.quoteItemRow} ${styles.quoteItemRowLocked}`}>
-                  <div><span className={styles.quoteItemRowNum}>{(cutListPagination.page - 1) * ADMIN_TABLE_PAGE_SIZE + index + 1}</span></div>
-                  <div className={styles.quoteReadCell}>{row.source}</div>
-                  <div className={styles.quoteReadCell}>{row.cabinet || "-"}</div>
-                  <div className={styles.quoteReadCell}>{row.piece}</div>
-                  <div className={styles.quoteReadCell}>{row.qty}</div>
-                  <div className={styles.quoteReadCell}>{formatCutSize(row.width_mm, row.height_mm)}</div>
-                  <div className={styles.quoteReadCell}>{row.thickness}</div>
-                  <div className={styles.quoteReadCell}>{row.material}</div>
-                  <div className={styles.quoteReadCell}>{row.edging}</div>
-                  <div className={styles.quoteReadCell}>{row.notes || "-"}</div>
+              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={row.key}>
+                <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
+                  <div><span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{(cutListPagination.page - 1) * ADMIN_TABLE_PAGE_SIZE + index + 1}</span></div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.source}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.cabinet || "-"}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.piece}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.qty}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{formatCutSize(row.width_mm, row.height_mm)}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.thickness}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.material}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.edging}</div>
+                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.notes || "-"}</div>
                 </div>
               </div>
             ))}
@@ -1091,9 +1093,9 @@ export default function OrderDetail({ orderId }) {
           </button>
         </div>
 
-        <div className={`${styles.quoteItemsAdminWrap} ${styles.orderPaymentItems}`}>
-          <div className={styles.quoteItemsScroller}>
-            <div className={`${styles.quoteItemGrid} ${styles.quoteItemHead}`}>
+        <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderPaymentItems} ${orderStyles.orderPaymentItems}`}>
+          <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
+            <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
               <div>Type</div>
               <div>Amount</div>
               <div>Status</div>
@@ -1102,9 +1104,9 @@ export default function OrderDetail({ orderId }) {
               <div>Actions</div>
             </div>
               {paymentPagination.pageItems.map((payment) => (
-                <div className={styles.quoteItemBlock} key={payment.id}>
-                  <div className={`${styles.quoteItemGrid} ${styles.quoteItemRow} ${styles.quoteItemRowLocked}`}>
-                  <div className={styles.quoteItemField}>
+                <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={payment.id}>
+                  <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                     <select
                       value={payment.payment_type || "progress"}
                       disabled={savingPaymentId === payment.id}
@@ -1115,7 +1117,7 @@ export default function OrderDetail({ orderId }) {
                       ))}
                     </select>
                   </div>
-                  <div className={styles.quoteItemField}>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                     <input
                       type="number"
                       min="0"
@@ -1126,7 +1128,7 @@ export default function OrderDetail({ orderId }) {
                       onBlur={(event) => updatePayment(payment, { amount: event.target.value || 0 })}
                     />
                   </div>
-                  <div className={styles.quoteItemField}>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                     <select
                       value={payment.is_paid ? "paid" : "pending"}
                       disabled={savingPaymentId === payment.id}
@@ -1136,7 +1138,7 @@ export default function OrderDetail({ orderId }) {
                       <option value="paid">Paid</option>
                     </select>
                   </div>
-                  <div className={styles.quoteItemField}>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                     <input
                       type="date"
                       value={payment.paid_at || ""}
@@ -1145,7 +1147,7 @@ export default function OrderDetail({ orderId }) {
                       onBlur={(event) => updatePayment(payment, { paid_at: event.target.value })}
                     />
                   </div>
-                  <div className={styles.quoteItemField}>
+                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
                     <input
                       value={payment.notes || ""}
                       disabled={savingPaymentId === payment.id}
@@ -1153,10 +1155,10 @@ export default function OrderDetail({ orderId }) {
                       onBlur={(event) => updatePayment(payment, { notes: event.target.value })}
                     />
                   </div>
-                  <div className={styles.quoteItemActions}>
+                  <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${orderStyles.quoteItemActions}`}>
                     <button
                       type="button"
-                      className={styles.rowEditButton}
+                      className={`${styles.rowEditButton} ${orderStyles.rowEditButton}`}
                       disabled={savingPaymentId === payment.id || payment.is_paid || Number(payment.amount || 0) <= 0}
                       onClick={() => requestPayment(payment)}
                     >
@@ -1404,10 +1406,10 @@ export default function OrderDetail({ orderId }) {
 
   return (
     <div className={styles.orderDetailPage}>
-      <div className={`${styles.quoteBuilderFrame} ${styles.orderDetailFrame}`}>
-        <section className={`${styles.quoteBuilderPanel} ${styles.orderDetailPanel}`}>
-          <header className={`${styles.quoteBuilderPanelHeader} ${styles.orderDetailPanelHeader}`}>
-            <div className={styles.quoteBuilderHeaderTop}>
+      <div className={`${styles.quoteBuilderFrame} ${workflowStyles.quoteBuilderFrame} ${styles.orderDetailFrame}`}>
+        <section className={`${styles.quoteBuilderPanel} ${workflowStyles.quoteBuilderPanel} ${styles.orderDetailPanel}`}>
+          <header className={`${styles.quoteBuilderPanelHeader} ${workflowStyles.quoteBuilderPanelHeader} ${styles.orderDetailPanelHeader}`}>
+            <div className={`${styles.quoteBuilderHeaderTop} ${workflowStyles.quoteBuilderHeaderTop}`}>
               <div>
                 <p className={styles.tableMeta}>Order section</p>
                 <h1>{activeLabel}</h1>
@@ -1417,12 +1419,14 @@ export default function OrderDetail({ orderId }) {
               </div>
             </div>
 
-            <nav className={styles.quoteBuilderTabs} aria-label="Order sections">
+            <nav className={`${styles.quoteBuilderTabs} ${workflowStyles.quoteBuilderTabs}`} aria-label="Order sections">
               {sections.map((section) => (
                 <button
                   key={section.key}
                   type="button"
-                  className={`${styles.quoteBuilderTab} ${activeSection === section.key ? styles.quoteBuilderTabActive : ""}`}
+                  className={`${styles.quoteBuilderTab} ${workflowStyles.quoteBuilderTab} ${
+                    activeSection === section.key ? `${styles.quoteBuilderTabActive} ${workflowStyles.quoteBuilderTabActive}` : ""
+                  }`}
                   onClick={() => setActiveSection(section.key)}
                 >
                   {section.label}
@@ -1431,7 +1435,7 @@ export default function OrderDetail({ orderId }) {
             </nav>
           </header>
 
-          <div className={`${styles.quoteBuilderPanelBody} ${styles.orderDetailPanelBody}`}>
+          <div className={`${styles.quoteBuilderPanelBody} ${workflowStyles.quoteBuilderPanelBody} ${styles.orderDetailPanelBody}`}>
             {renderSection()}
             {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
           </div>
@@ -1443,3 +1447,4 @@ export default function OrderDetail({ orderId }) {
     </div>
   );
 }
+

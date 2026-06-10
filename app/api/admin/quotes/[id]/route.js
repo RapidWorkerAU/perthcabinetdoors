@@ -3,28 +3,11 @@ import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activi
 import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals, GST_RATE } from "../../../../../lib/pcd-quote-utils";
-import { isEdgeProfileSelectionAvailable } from "../../../../request-quote/quote-form-data";
+import { cabinetConfigRow, dbNumber, quoteLineRow } from "./_quote-line-save";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
   return resolved?.id;
-}
-
-function dbText(value) {
-  const text = String(value ?? "").trim();
-  return text || null;
-}
-
-function dbNumber(value, fallback = 0) {
-  if (value === "" || value === null || typeof value === "undefined") return fallback;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function dbNullableNumber(value) {
-  if (value === "" || value === null || typeof value === "undefined") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
 }
 
 async function loadQuoteWithRelations(supabase, id) {
@@ -110,78 +93,6 @@ async function normalizeQuotePayload(supabase, payload = {}) {
   };
 }
 
-function quoteLineRow(line, quoteId, sortOrder) {
-  return {
-    quote_id: quoteId,
-    sort_order: sortOrder,
-    product_type: dbText(line.product_type),
-    product_name: dbText(line.product_name),
-    description: dbText(line.description),
-    material: dbText(line.material),
-    thickness: dbText(line.thickness),
-    width_mm: dbNullableNumber(line.width_mm),
-    height_mm: dbNullableNumber(line.height_mm),
-    finish: dbText(line.finish),
-    colour: dbText(line.colour),
-    profile_type: dbText(line.profile_type),
-    profile: dbText(line.profile),
-    edge_mould: isEdgeProfileSelectionAvailable(line.edge_mould, line.material) ? dbText(line.edge_mould) : null,
-    qty: dbNumber(line.qty, 1),
-    hinge_holes: Boolean(line.hinge_holes),
-    hinge_supply: Boolean(line.hinge_supply),
-    hinge_qty: dbText(line.hinge_qty),
-    product_unit_cost_ex_gst: dbNumber(line.product_unit_cost_ex_gst),
-    material_cost_ex_gst: dbNumber(line.material_cost_ex_gst),
-    hinge_drilling_cost_ex_gst: dbNumber(line.hinge_drilling_cost_ex_gst),
-    hinge_supply_cost_ex_gst: dbNumber(line.hinge_supply_cost_ex_gst),
-    hinge_drilling_qty: dbNumber(line.hinge_drilling_qty),
-    hinge_supply_qty: dbNumber(line.hinge_supply_qty),
-    labour_hours: dbNumber(line.labour_hours),
-    worker_hourly_rate: dbNumber(line.worker_hourly_rate),
-    labour_cost_ex_gst: dbNumber(line.labour_cost_ex_gst),
-    travel_cost_ex_gst: dbNumber(line.travel_cost_ex_gst),
-    delivery_cost_ex_gst: dbNumber(line.delivery_cost_ex_gst),
-    installation_cost_ex_gst: dbNumber(line.installation_cost_ex_gst),
-    other_cost_ex_gst: dbNumber(line.other_cost_ex_gst),
-    markup_percent: dbNumber(line.markup_percent),
-    markup_amount_ex_gst: dbNumber(line.markup_amount_ex_gst),
-    unit_price_ex_gst: dbNumber(line.unit_price_ex_gst),
-    line_total_ex_gst: dbNumber(line.line_total_ex_gst),
-    notes: dbText(line.notes),
-  };
-}
-
-function cabinetConfigRow(config, quoteId, lineItemId) {
-  return {
-    id: config.id || undefined,
-    line_item_id: lineItemId,
-    quote_id: quoteId,
-    label: dbText(config.label),
-    height_mm: dbNumber(config.height_mm),
-    width_mm: dbNumber(config.width_mm),
-    depth_mm: dbNumber(config.depth_mm),
-    carcass_material: dbText(config.carcass_material),
-    carcass_finish: dbText(config.carcass_finish),
-    carcass_colour: dbText(config.carcass_colour),
-    carcass_thickness_mm: dbNumber(config.carcass_thickness_mm, 16),
-    back_panel_included: config.back_panel_included ?? true,
-    back_panel_material: dbText(config.back_panel_material),
-    back_panel_thickness_mm: dbNumber(config.back_panel_thickness_mm, 16),
-    shelf_qty: dbNumber(config.shelf_qty),
-    shelf_material: dbText(config.shelf_material),
-    shelf_finish: dbText(config.shelf_finish),
-    shelf_colour: dbText(config.shelf_colour),
-    shelf_thickness_mm: dbNumber(config.shelf_thickness_mm, 16),
-    shelf_heights_mm: Array.isArray(config.shelf_heights_mm) ? config.shelf_heights_mm : [],
-    cost_per_sqm_carcass: dbNumber(config.cost_per_sqm_carcass),
-    cost_per_sqm_shelf: dbNumber(config.cost_per_sqm_shelf),
-    labour_cost: dbNumber(config.labour_cost),
-    calculated_cut_list: config.calculated_cut_list || config.cut_list || [],
-    calculated_material_cost_ex_gst: dbNumber(config.calculated_material_cost_ex_gst),
-    notes: dbText(config.notes),
-  };
-}
-
 export async function GET(_request, { params }) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;
@@ -244,51 +155,48 @@ export async function PUT(request, { params }) {
     if (existingLinesError) throw existingLinesError;
 
     const existingLineIds = new Set((existingLines || []).map((line) => line.id));
-    const savedLineIds = [];
-
-    for (const [index, line] of normalized.lines.entries()) {
-      let savedLine;
+    const lineRows = normalized.lines.map((line, index) => {
       const row = quoteLineRow(line, id, index);
-
-      if (line.id && existingLineIds.has(line.id)) {
-        const { data, error } = await context.supabase
+      if (line.id && existingLineIds.has(line.id)) row.id = line.id;
+      return row;
+    });
+    const { data: savedLines, error: savedLinesError } = lineRows.length
+      ? await context.supabase
           .from("pcd_quote_line_items")
-          .update(row)
-          .eq("id", line.id)
-          .eq("quote_id", id)
+          .upsert(lineRows, { onConflict: "id" })
           .select("*")
-          .single();
-        if (error) throw error;
-        savedLine = data;
-      } else {
-        const { data, error } = await context.supabase
-          .from("pcd_quote_line_items")
-          .insert(row)
-          .select("*")
-          .single();
-        if (error) throw error;
-        savedLine = data;
-      }
+      : { data: [], error: null };
+    if (savedLinesError) throw savedLinesError;
 
-      savedLineIds.push(savedLine.id);
+    const savedLinesBySortOrder = new Map((savedLines || []).map((line) => [line.sort_order, line]));
+    const savedLineIds = (savedLines || []).map((line) => line.id);
+    const configRows = [];
+    const configLineIdsToDelete = [];
 
+    normalized.lines.forEach((line, index) => {
+      const savedLine = savedLinesBySortOrder.get(index);
+      if (!savedLine) return;
       if (line.product_type === "base_cabinet" && line.cabinet_config) {
-        const configRow = cabinetConfigRow(line.cabinet_config, id, savedLine.id);
-        const { error: configError } = await context.supabase
-          .from("pcd_cabinet_configs")
-          .upsert(configRow, { onConflict: "line_item_id" });
-        if (configError) throw configError;
-      } else if (line.id && existingLineIds.has(line.id)) {
-        const { error: configDeleteError } = await context.supabase
-          .from("pcd_cabinet_configs")
-          .delete()
-          .eq("line_item_id", line.id);
-        if (configDeleteError) throw configDeleteError;
+        configRows.push(cabinetConfigRow(line.cabinet_config, id, savedLine.id));
+      } else if (savedLine.id) {
+        configLineIdsToDelete.push(savedLine.id);
       }
+    });
+
+    const configWrites = [];
+    if (configRows.length) {
+      configWrites.push(context.supabase.from("pcd_cabinet_configs").upsert(configRows, { onConflict: "line_item_id" }));
     }
+    if (configLineIdsToDelete.length) {
+      configWrites.push(context.supabase.from("pcd_cabinet_configs").delete().in("line_item_id", configLineIdsToDelete));
+    }
+    const configResults = await Promise.all(configWrites);
+    const configError = configResults.find((result) => result.error)?.error;
+    if (configError) throw configError;
 
     const removedLineIds = [...existingLineIds].filter((lineId) => !savedLineIds.includes(lineId));
     if (removedLineIds.length) {
+      await context.supabase.from("pcd_cabinet_configs").delete().in("line_item_id", removedLineIds);
       const { error: deleteError } = await context.supabase
         .from("pcd_quote_line_items")
         .delete()
@@ -299,6 +207,70 @@ export async function PUT(request, { params }) {
     const savedQuote = await loadQuoteWithRelations(context.supabase, id);
 
     return Response.json({ ok: true, quote: savedQuote });
+  } catch (error) {
+    return Response.json({ ok: false, error: error?.message || "Could not update quote." }, { status: 500 });
+  }
+}
+
+export async function PATCH(request, { params }) {
+  const context = await requireAdminApiContext();
+  if (context.error) return context.error;
+
+  try {
+    const id = await quoteIdFromParams(params);
+    const payload = await request.json();
+
+    const [
+      { data: beforeQuote, error: quoteLoadError },
+      { data: existingLines, error: linesLoadError },
+    ] = await Promise.all([
+      context.supabase.from("pcd_quotes").select("*").eq("id", id).maybeSingle(),
+      context.supabase.from("pcd_quote_line_items").select("*").eq("quote_id", id).order("sort_order", { ascending: true }),
+    ]);
+
+    if (quoteLoadError) throw quoteLoadError;
+    if (linesLoadError) throw linesLoadError;
+    if (!beforeQuote) return Response.json({ ok: false, error: "Quote not found." }, { status: 404 });
+
+    const normalized = await normalizeQuotePayload(context.supabase, {
+      ...beforeQuote,
+      ...payload,
+      lines: existingLines || [],
+    });
+
+    const { data: quote, error: quoteError } = await context.supabase
+      .from("pcd_quotes")
+      .update(normalized.quote)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (quoteError) throw quoteError;
+
+    const quoteChanges = describeChanges(beforeQuote || {}, normalized.quote, {
+      customer_name: "Customer",
+      customer_email: "Email",
+      customer_phone: "Phone",
+      site_address: "Site address",
+      project_name: "Project",
+      total_inc_gst: "Total inc GST",
+    });
+
+    if (quoteChanges.length) {
+      await logOrderActivity(context.supabase, {
+        order_id: beforeQuote?.order_id || null,
+        quote_id: id,
+        actor_type: "admin",
+        action_type: "quote_updated",
+        title: "Quote updated",
+        description: quoteChanges.slice(0, 8).join("; "),
+        metadata: {
+          changes: quoteChanges,
+          line_items: (existingLines || []).length,
+        },
+      });
+    }
+
+    return Response.json({ ok: true, quote });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not update quote." }, { status: 500 });
   }

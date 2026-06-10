@@ -1,0 +1,247 @@
+.orderQuoteSummaryItems .quoteItemGrid {
+  grid-template-columns:
+    32px
+    minmax(0, 0.8fr)
+    minmax(0, 0.95fr)
+    minmax(0, 0.55fr)
+    minmax(0, 0.75fr)
+    minmax(0, 1.35fr)
+    minmax(0, 0.42fr)
+    minmax(0, 0.85fr)
+    minmax(0, 0.75fr)
+    minmax(0, 0.7fr)
+    minmax(0, 0.55fr)
+    minmax(0, 0.62fr)
+    minmax(0, 0.7fr)
+    minmax(0, 0.72fr)
+    minmax(0, 0.5fr)
+    minmax(0, 0.7fr)
+    minmax(0, 0.82fr);
+}
+
+.orderQuoteSummaryTotals {
+  width: min(30%, 460px);
+  min-width: 320px;
+  justify-self: end;
+  align-self: start;
+  margin: 12px 12px 12px auto;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroup {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroup header {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #edf1f6;
+  background: #f5f3ee;
+  color: #001f36;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroupBody {
+  border-top: 0;
+  padding: 10px 12px;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroupBody div {
+  font-size: 0.8rem;
+  padding: 9px 0;
+}
+
+.orderQuoteSummaryTotals .quoteTotalGroupBody div:last-child {
+  font-weight: 800;
+}
+
+.orderPlanningItems .quoteItemGrid {
+  grid-template-columns:
+    minmax(190px, 1.15fr)
+    minmax(130px, 0.8fr)
+    minmax(150px, 1fr)
+    minmax(58px, 0.32fr)
+    minmax(110px, 0.68fr)
+    minmax(210px, 1.2fr)
+    minmax(170px, 0.9fr);
+}
+
+.orderSupplierItems .quoteItemGrid {
+  grid-template-columns:
+    minmax(260px, 1.45fr)
+    minmax(160px, 0.9fr)
+    minmax(160px, 0.9fr)
+    minmax(150px, 0.85fr)
+    minmax(140px, 0.78fr)
+    minmax(140px, 0.78fr)
+    minmax(120px, 0.62fr);
+}
+
+.orderInHouseItems .quoteItemGrid {
+  grid-template-columns:
+    minmax(260px, 1.45fr)
+    minmax(130px, 0.72fr)
+    minmax(160px, 0.9fr)
+    minmax(150px, 0.85fr)
+    minmax(140px, 0.78fr)
+    minmax(140px, 0.78fr)
+    minmax(190px, 1.08fr)
+    minmax(120px, 0.62fr);
+}
+
+.orderCutListItems .quoteItemGrid {
+  grid-template-columns:
+    42px
+    minmax(210px, 1.1fr)
+    minmax(130px, 0.72fr)
+    minmax(150px, 0.82fr)
+    minmax(58px, 0.32fr)
+    minmax(120px, 0.68fr)
+    minmax(90px, 0.5fr)
+    minmax(210px, 1.18fr)
+    minmax(150px, 0.84fr)
+    minmax(150px, 0.84fr);
+}
+
+.orderPaymentItems .quoteItemGrid {
+  grid-template-columns:
+    minmax(80px, 0.7fr)
+    minmax(90px, 0.8fr)
+    minmax(90px, 0.8fr)
+    minmax(90px, 0.7fr)
+    minmax(0, 1.6fr)
+    minmax(160px, 1.2fr) !important;
+  width: 100%;
+}
+
+.orderPaymentItems .quoteItemsScroller {
+  overflow-x: auto;
+}
+
+.orderPaymentItems .quoteItemActions {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.orderPaymentItems .rowEditButton {
+  white-space: nowrap;
+}
+
+.orderPlanningItems .quoteItemHead,
+.orderSupplierItems .quoteItemHead,
+.orderInHouseItems .quoteItemHead,
+.orderCutListItems .quoteItemHead,
+.orderPaymentItems .quoteItemHead,
+.orderQuoteSummaryItems .quoteItemHead {
+  min-height: 38px;
+  font-size: 0.58rem;
+}
+
+.orderPlanningItems .quoteItemRow,
+.orderSupplierItems .quoteItemRow,
+.orderInHouseItems .quoteItemRow,
+.orderCutListItems .quoteItemRow,
+.orderPaymentItems .quoteItemRow,
+.orderQuoteSummaryItems .quoteItemRow {
+  min-height: 68px;
+  align-items: center;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-size: 0.76rem;
+}
+
+.orderPlanningItems .quoteReadCell,
+.orderSupplierItems .quoteReadCell,
+.orderInHouseItems .quoteReadCell,
+.orderCutListItems .quoteReadCell,
+.orderPaymentItems .quoteReadCell,
+.orderQuoteSummaryItems .quoteReadCell {
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.orderPlanningItems .orderItemIdentity,
+.orderSupplierItems .orderItemIdentity,
+.orderInHouseItems .orderItemIdentity,
+.orderCutListItems .orderItemIdentity,
+.orderPaymentItems .orderItemIdentity {
+  gap: 5px;
+}
+
+.orderPlanningItems .orderItemIdentity strong,
+.orderSupplierItems .orderItemIdentity strong,
+.orderInHouseItems .orderItemIdentity strong,
+.orderCutListItems .orderItemIdentity strong,
+.orderPaymentItems .orderItemIdentity strong {
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.orderPlanningItems .orderItemIdentity span,
+.orderSupplierItems .orderItemIdentity span,
+.orderInHouseItems .orderItemIdentity span,
+.orderCutListItems .orderItemIdentity span,
+.orderPaymentItems .orderItemIdentity span {
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.orderPlanningItems .quoteItemField input,
+.orderPlanningItems .quoteItemField select,
+.orderSupplierItems .quoteItemField input,
+.orderSupplierItems .quoteItemField select,
+.orderInHouseItems .quoteItemField input,
+.orderInHouseItems .quoteItemField select,
+.orderPaymentItems .quoteItemField input,
+.orderPaymentItems .quoteItemField select {
+  min-height: 32px;
+  font-size: 0.74rem;
+}
+
+.orderPlanningItems .quoteItemField,
+.orderSupplierItems .quoteItemField,
+.orderInHouseItems .quoteItemField,
+.orderPaymentItems .quoteItemField {
+  min-width: 0;
+}
+
+.orderItemIdentity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.orderItemIdentity strong {
+  color: var(--admin-text);
+  font-family: Montserrat, Arial, sans-serif;
+  font-size: 0.86rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orderItemIdentity span {
+  color: var(--admin-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.quoteItemsScroller,
+.quoteItemGrid,
+.quoteItemHead,
+.quoteItemRow,
+.quoteReadCell,
+.quoteItemField,
+.quoteItemActions,
+.quoteTotalGroup,
+.quoteTotalGroupBody,
+.rowEditButton {
+  /* Local hooks for order-specific CSS module descendant selectors. */
+}

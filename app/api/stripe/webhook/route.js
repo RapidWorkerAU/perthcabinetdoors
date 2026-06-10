@@ -1,6 +1,6 @@
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
-import { sendPaymentReceiptEmail } from "../../../../lib/pcd-payment-receipts";
-import { fromCents, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
+import { sendPaymentReceivedSalesEmail } from "../../../../lib/pcd-payment-notifications";
+import { fromCents, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ async function syncDepositFields(supabase, orderId) {
     .eq("id", orderId);
 }
 
-async function completeCheckoutSession(session) {
+async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
   const supabase = createSupabaseAdminClient();
   const metadata = session.metadata || {};
   const paymentId = metadata.payment_id;
@@ -38,9 +38,17 @@ async function completeCheckoutSession(session) {
   const quoteId = metadata.quote_id || null;
   if (!paymentId || !orderId) return;
 
+  const { data: existingPayment, error: existingPaymentError } = await supabase
+    .from("pcd_order_payments")
+    .select("id,is_paid")
+    .eq("id", paymentId)
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (existingPaymentError || !existingPayment) throw existingPaymentError || new Error("Payment not found.");
+  if (existingPayment.is_paid) return;
+
   const paidAt = new Date().toISOString().slice(0, 10);
   const amount = session.amount_total ? fromCents(session.amount_total) : null;
-  const receiptNumber = `PCD-R-${String(paymentId).slice(0, 8).toUpperCase()}`;
   const { data: payment, error } = await supabase
     .from("pcd_order_payments")
     .update({
@@ -48,8 +56,6 @@ async function completeCheckoutSession(session) {
       paid_at: paidAt,
       ...(amount === null ? {} : { amount }),
       request_status: "paid",
-      receipt_number: receiptNumber,
-      receipt_sent_at: new Date().toISOString(),
       stripe_checkout_session_id: session.id,
       stripe_payment_intent_id: session.payment_intent || null,
       stripe_payment_status: session.payment_status || "paid",
@@ -106,7 +112,17 @@ async function completeCheckoutSession(session) {
     event_key: `payment:${payment.id}:received`,
   });
 
-  await sendPaymentReceiptEmail({ payment, order, quote });
+  try {
+    await sendPaymentReceivedSalesEmail({
+      payment,
+      order,
+      quote,
+      flow: metadata.flow,
+      adminOrderUrl: baseUrl && orderId ? `${baseUrl}/admin/orders/${orderId}` : "",
+    });
+  } catch (emailError) {
+    console.error("Could not send payment received notification email.", emailError);
+  }
 }
 
 export async function POST(request) {
@@ -114,7 +130,7 @@ export async function POST(request) {
   try {
     const event = verifyStripeWebhook(rawBody, request.headers.get("stripe-signature"));
     if (event.type === "checkout.session.completed") {
-      await completeCheckoutSession(event.data.object);
+      await completeCheckoutSession(event.data.object, { baseUrl: siteUrl(request.url) });
     }
     return Response.json({ received: true });
   } catch (error) {

@@ -6,6 +6,11 @@ import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../request-quote/quote-form-data";
 import { buildColourFamilyFromLibraryRows, COLOUR_MATERIALS, inferThicknessFromMaterial } from "../../../../lib/pcd-colour-library";
 import styles from "../../admin-shell.module.css";
+import productStyles from "./product-editor.module.css";
+
+function productClass(name) {
+  return [styles[name], productStyles[name]].filter(Boolean).join(" ");
+}
 
 function normalizeSlug(value) {
   return value
@@ -778,7 +783,7 @@ export default function ProductEditorForm({
 
   function renderEditButton(section, label) {
     return (
-      <button type="button" className={styles.productPreviewEditButton} onClick={() => openEditSection(section)}>
+      <button type="button" className={productClass("productPreviewEditButton")} onClick={() => openEditSection(section)}>
         <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
           <path d="M14.7 5.3l4 4L8.9 19H5v-3.9l9.7-9.8z" />
           <path d="M16.4 3.6l2-2 4 4-2 2" />
@@ -790,7 +795,7 @@ export default function ProductEditorForm({
 
   function renderMediaEditButton() {
     return (
-      <button type="button" className={`${styles.productPreviewEditButton} ${styles.productPreviewMediaEditButton}`} onClick={openMediaModal}>
+      <button type="button" className={`${productClass("productPreviewEditButton")} ${productClass("productPreviewMediaEditButton")}`} onClick={openMediaModal}>
         <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
           <path d="M14.7 5.3l4 4L8.9 19H5v-3.9l9.7-9.8z" />
           <path d="M16.4 3.6l2-2 4 4-2 2" />
@@ -802,7 +807,7 @@ export default function ProductEditorForm({
 
   function renderImagePlaceholder(label = "Product image") {
     return (
-      <div className={styles.productPreviewImagePlaceholder}>
+      <div className={productClass("productPreviewImagePlaceholder")}>
         <div />
         <span>{label}</span>
       </div>
@@ -811,13 +816,13 @@ export default function ProductEditorForm({
 
   function renderMediaStrip() {
     return (
-      <div className={styles.productPreviewMediaStrip}>
+      <div className={productClass("productPreviewMediaStrip")}>
         {orderedMedia.length ? (
           orderedMedia.slice(0, 4).map((url, index) => (
             <button
               type="button"
               key={url}
-              className={`${styles.productPreviewThumb} ${index === 0 ? styles.productPreviewThumbActive : ""}`}
+              className={`${productClass("productPreviewThumb")} ${index === 0 ? productClass("productPreviewThumbActive") : ""}`}
               onClick={() => setPrimaryAndNormalize(url)}
               title={index === 0 ? "Primary image" : "Set as primary image"}
             >
@@ -827,7 +832,7 @@ export default function ProductEditorForm({
         ) : (
           <>
             {["Front view", "Side profile", "Close-up", "Installed"].map((label) => (
-              <button type="button" key={label} className={styles.productPreviewThumb} onClick={openMediaModal}>
+              <button type="button" key={label} className={productClass("productPreviewThumb")} onClick={openMediaModal}>
                 {label}
               </button>
             ))}
@@ -839,9 +844,9 @@ export default function ProductEditorForm({
 
   function renderAdminOptionViewer() {
     return (
-      <div className={`${styles.productOptionViewer} ${styles.fieldWide}`}>
+      <div className={`${productClass("productOptionViewer")} ${styles.fieldWide}`}>
         {showThermolaminateProfiles ? (
-          <div className={styles.productOptionViewerToggle} role="radiogroup" aria-label="Product option viewer">
+          <div className={productClass("productOptionViewerToggle")} role="radiogroup" aria-label="Product option viewer">
             {[
               ["colours", "Colours"],
               ["profiles", "Front profiles"],
@@ -849,7 +854,7 @@ export default function ProductEditorForm({
             ].map(([value, label]) => (
               <button
                 aria-checked={adminOptionViewerMode === value}
-                className={`${styles.productOptionViewerToggleButton} ${adminOptionViewerMode === value ? styles.productOptionViewerToggleButtonActive : ""}`}
+                className={`${productClass("productOptionViewerToggleButton")} ${adminOptionViewerMode === value ? productClass("productOptionViewerToggleButtonActive") : ""}`}
                 key={value}
                 onClick={() => setAdminOptionViewerMode(value)}
                 role="radio"
@@ -863,7 +868,7 @@ export default function ProductEditorForm({
 
         {adminOptionViewerMode === "colours" || !showThermolaminateProfiles ? (
           <>
-            <div className={styles.productColourLibraryPreviewHeader}>
+            <div className={productClass("productColourLibraryPreviewHeader")}>
               <div>
                 <strong>Colour Library selections</strong>
                 <span>
@@ -874,14 +879,14 @@ export default function ProductEditorForm({
               </div>
             </div>
             {colourFamily.groups.length ? (
-              <div className={styles.productColourLibraryGroups}>
+              <div className={productClass("productColourLibraryGroups")}>
                 {colourFamily.groups.map((finish, finishIndex) => (
-                  <div className={styles.productColourLibraryGroup} key={`${finish.label}-${finishIndex}`}>
+                  <div className={productClass("productColourLibraryGroup")} key={`${finish.label}-${finishIndex}`}>
                     <div>
                       <strong>{finish.label}</strong>
                       <span>{finish.colours.length} colour{finish.colours.length === 1 ? "" : "s"}</span>
                     </div>
-                    <div className={styles.productColourLibrarySwatches}>
+                    <div className={productClass("productColourLibrarySwatches")}>
                       {finish.colours.slice(0, 14).map((colour, colourIndex) => (
                         <span key={colour.id || `${finish.label}-${colour.name}-${colourIndex}`} title={colour.name}>
                           <img src={colour.src} alt="" />
@@ -900,16 +905,16 @@ export default function ProductEditorForm({
 
         {showThermolaminateProfiles && adminOptionViewerMode === "profiles" ? (
           <>
-            <div className={styles.productColourLibraryPreviewHeader}>
+            <div className={productClass("productColourLibraryPreviewHeader")}>
               <div>
                 <strong>Front profile type</strong>
                 <span>Thermolaminate front profiles match the quote form choices.</span>
               </div>
             </div>
-            <div className={styles.productOptionViewerTabs}>
+            <div className={productClass("productOptionViewerTabs")}>
               {adminProfileTypes.map((profileType) => (
                 <button
-                  className={resolvedAdminProfileType === profileType ? styles.productOptionViewerTabActive : ""}
+                  className={resolvedAdminProfileType === profileType ? productClass("productOptionViewerTabActive") : ""}
                   key={profileType}
                   onClick={() => {
                     setActiveAdminProfileType(profileType);
@@ -921,10 +926,10 @@ export default function ProductEditorForm({
                 </button>
               ))}
             </div>
-            <div className={styles.productOptionProfileGrid}>
+            <div className={productClass("productOptionProfileGrid")}>
               {adminProfileOptions.map((profile, index) => (
                 <button
-                  className={activeAdminProfile === index ? styles.productOptionImageTileActive : ""}
+                  className={activeAdminProfile === index ? productClass("productOptionImageTileActive") : ""}
                   key={`${resolvedAdminProfileType}-${profile}`}
                   onClick={() => setActiveAdminProfile(index)}
                   title={profile}
@@ -941,16 +946,16 @@ export default function ProductEditorForm({
 
         {showThermolaminateProfiles && adminOptionViewerMode === "edges" ? (
           <>
-            <div className={styles.productColourLibraryPreviewHeader}>
+            <div className={productClass("productColourLibraryPreviewHeader")}>
               <div>
                 <strong>Edge profile</strong>
                 <span>Edge profiles match the quote form choices.</span>
               </div>
             </div>
-            <div className={styles.productOptionEdgeGrid}>
+            <div className={productClass("productOptionEdgeGrid")}>
               {EDGE_PROFILES.map((edge, index) => (
                 <button
-                  className={activeAdminEdge === index ? styles.productOptionImageTileActive : ""}
+                  className={activeAdminEdge === index ? productClass("productOptionImageTileActive") : ""}
                   key={edge}
                   onClick={() => setActiveAdminEdge(index)}
                   title={edge}
@@ -971,9 +976,9 @@ export default function ProductEditorForm({
 
   function renderProductPreviewOptionViewer() {
     return (
-      <div className={styles.productPreviewOptionViewer}>
+      <div className={productClass("productPreviewOptionViewer")}>
         {showThermolaminateProfiles ? (
-          <div className={styles.productPreviewViewerToggle} role="radiogroup" aria-label="Product option viewer preview">
+          <div className={productClass("productPreviewViewerToggle")} role="radiogroup" aria-label="Product option viewer preview">
             {[
               ["colours", "Colours"],
               ["profiles", "Front profiles"],
@@ -981,7 +986,7 @@ export default function ProductEditorForm({
             ].map(([value, label]) => (
               <button
                 aria-checked={adminOptionViewerMode === value}
-                className={adminOptionViewerMode === value ? styles.productPreviewViewerToggleActive : ""}
+                className={adminOptionViewerMode === value ? productClass("productPreviewViewerToggleActive") : ""}
                 key={value}
                 onClick={() => setAdminOptionViewerMode(value)}
                 role="radio"
@@ -994,76 +999,76 @@ export default function ProductEditorForm({
         ) : null}
 
         {adminOptionViewerMode === "colours" || !showThermolaminateProfiles ? (
-          <div className={styles.productPreviewColourPicker}>
-            <div className={styles.productPreviewColourHeader}>
-              <div className={styles.productPreviewSectionLabel}>{colourFamily.label} colour</div>
+          <div className={productClass("productPreviewColourPicker")}>
+            <div className={productClass("productPreviewColourHeader")}>
+              <div className={productClass("productPreviewSectionLabel")}>{colourFamily.label} colour</div>
               {renderEditButton("quote", "Edit options")}
             </div>
-            <div className={styles.productPreviewFinishTabs}>
+            <div className={productClass("productPreviewFinishTabs")}>
               {colourFamily.groups.map((finish, index) => (
-                <span className={index === 0 ? styles.productPreviewFinishTabActive : ""} key={`${finish.label}-${index}`}>
+                <span className={index === 0 ? productClass("productPreviewFinishTabActive") : ""} key={`${finish.label}-${index}`}>
                   {finish.label}
                 </span>
               ))}
             </div>
-            <div className={styles.productPreviewSwatches}>
+            <div className={productClass("productPreviewSwatches")}>
               {selectedFinish.colours.slice(0, 12).map((colour, index) => (
-                <span className={index === 0 ? styles.productPreviewSwatchActive : ""} key={colour.id || `${selectedFinish.label}-${colour.name}-${index}`}>
+                <span className={index === 0 ? productClass("productPreviewSwatchActive") : ""} key={colour.id || `${selectedFinish.label}-${colour.name}-${index}`}>
                   <img src={colour.src} alt="" />
                 </span>
               ))}
             </div>
-            <div className={styles.productPreviewColourName}>
+            <div className={productClass("productPreviewColourName")}>
               {selectedColour.name} <span>{selectedFinish.label}</span>
             </div>
-            <div className={styles.productPreviewColourNote}>
+            <div className={productClass("productPreviewColourNote")}>
               {colourFamily.note} Shown colours are indicative only. Request a sample before ordering.
             </div>
           </div>
         ) : null}
 
         {showThermolaminateProfiles && adminOptionViewerMode === "profiles" ? (
-          <div className={styles.productPreviewColourPicker}>
-            <div className={styles.productPreviewColourHeader}>
-              <div className={styles.productPreviewSectionLabel}>Front profile type</div>
+          <div className={productClass("productPreviewColourPicker")}>
+            <div className={productClass("productPreviewColourHeader")}>
+              <div className={productClass("productPreviewSectionLabel")}>Front profile type</div>
               {renderEditButton("quote", "Edit options")}
             </div>
-            <div className={styles.productPreviewFinishTabs}>
+            <div className={productClass("productPreviewFinishTabs")}>
               {adminProfileTypes.map((profileType) => (
-                <span className={resolvedAdminProfileType === profileType ? styles.productPreviewFinishTabActive : ""} key={profileType}>
+                <span className={resolvedAdminProfileType === profileType ? productClass("productPreviewFinishTabActive") : ""} key={profileType}>
                   {profileType}
                 </span>
               ))}
             </div>
-            <div className={styles.productPreviewProfileGrid}>
+            <div className={productClass("productPreviewProfileGrid")}>
               {adminProfileOptions.slice(0, 10).map((profile, index) => (
-                <span className={activeAdminProfile === index ? styles.productPreviewOptionTileActive : ""} key={`${resolvedAdminProfileType}-${profile}`}>
+                <span className={activeAdminProfile === index ? productClass("productPreviewOptionTileActive") : ""} key={`${resolvedAdminProfileType}-${profile}`}>
                   <img src={profileOptionSrc(resolvedAdminProfileType, profile)} alt="" />
                   <small>{profile}</small>
                 </span>
               ))}
             </div>
             {selectedAdminProfile ? (
-              <div className={styles.productPreviewColourName}>{selectedAdminProfile} <span>{resolvedAdminProfileType}</span></div>
+              <div className={productClass("productPreviewColourName")}>{selectedAdminProfile} <span>{resolvedAdminProfileType}</span></div>
             ) : null}
           </div>
         ) : null}
 
         {showThermolaminateProfiles && adminOptionViewerMode === "edges" ? (
-          <div className={styles.productPreviewColourPicker}>
-            <div className={styles.productPreviewColourHeader}>
-              <div className={styles.productPreviewSectionLabel}>Edge profile</div>
+          <div className={productClass("productPreviewColourPicker")}>
+            <div className={productClass("productPreviewColourHeader")}>
+              <div className={productClass("productPreviewSectionLabel")}>Edge profile</div>
               {renderEditButton("quote", "Edit options")}
             </div>
-            <div className={styles.productPreviewEdgeGrid}>
+            <div className={productClass("productPreviewEdgeGrid")}>
               {EDGE_PROFILES.map((edge, index) => (
-                <span className={activeAdminEdge === index ? styles.productPreviewOptionTileActive : ""} key={edge}>
+                <span className={activeAdminEdge === index ? productClass("productPreviewOptionTileActive") : ""} key={edge}>
                   <img src={edgeOptionSrc(edge)} alt="" />
                   <small>{edge}</small>
                 </span>
               ))}
             </div>
-            {selectedAdminEdge ? <div className={styles.productPreviewColourName}>{selectedAdminEdge}</div> : null}
+            {selectedAdminEdge ? <div className={productClass("productPreviewColourName")}>{selectedAdminEdge}</div> : null}
           </div>
         ) : null}
       </div>
@@ -1373,12 +1378,12 @@ export default function ProductEditorForm({
           <div>
             <p className={styles.editorSubtitle}>{name || "Product details"}</p>
           </div>
-          <div className={styles.productEditorModeToggle} role="radiogroup" aria-label="Product editor preview mode">
+          <div className={productClass("productEditorModeToggle")} role="radiogroup" aria-label="Product editor preview mode">
             <button
               type="button"
               role="radio"
               aria-checked={previewMode === "page"}
-              className={`${styles.productEditorModeButton} ${previewMode === "page" ? styles.productEditorModeButtonActive : ""}`}
+              className={`${productClass("productEditorModeButton")} ${previewMode === "page" ? productClass("productEditorModeButtonActive") : ""}`}
               onClick={() => setPreviewMode("page")}
             >
               Product page
@@ -1387,7 +1392,7 @@ export default function ProductEditorForm({
               type="button"
               role="radio"
               aria-checked={previewMode === "tile"}
-              className={`${styles.productEditorModeButton} ${previewMode === "tile" ? styles.productEditorModeButtonActive : ""}`}
+              className={`${productClass("productEditorModeButton")} ${previewMode === "tile" ? productClass("productEditorModeButtonActive") : ""}`}
               onClick={() => setPreviewMode("tile")}
             >
               Product library tile
@@ -1409,36 +1414,36 @@ export default function ProductEditorForm({
 
         {feedback ? (
           <div
-            className={`${styles.productEditorToast} ${isSuccessFeedback ? styles.productEditorToastSuccess : styles.productEditorToastError}`}
+            className={`${productClass("productEditorToast")} ${isSuccessFeedback ? productClass("productEditorToastSuccess") : productClass("productEditorToastError")}`}
             role={isSuccessFeedback ? "status" : "alert"}
           >
-            <span className={styles.productEditorToastIcon} aria-hidden="true" />
+            <span className={productClass("productEditorToastIcon")} aria-hidden="true" />
             <span>{feedback}</span>
           </div>
         ) : null}
 
-        <div className={styles.productPreviewCanvas}>
+        <div className={productClass("productPreviewCanvas")}>
           {previewMode === "page" ? (
-            <div className={styles.productPreviewPage}>
-              <section className={styles.productPreviewHero}>
-                <div className={styles.productPreviewGallery}>
-                  <div className={styles.productPreviewMainImage}>
+            <div className={productClass("productPreviewPage")}>
+              <section className={productClass("productPreviewHero")}>
+                <div className={productClass("productPreviewGallery")}>
+                  <div className={productClass("productPreviewMainImage")}>
                     {effectivePrimary ? (
                       <img src={resolveImageSrc(effectivePrimary)} alt={name || "Product image"} />
                     ) : (
                       renderImagePlaceholder("Product image")
                     )}
-                    {heroCaption ? <span className={styles.productPreviewCaption}>{heroCaption}</span> : null}
-                    <div className={styles.productPreviewImageActions}>
+                    {heroCaption ? <span className={productClass("productPreviewCaption")}>{heroCaption}</span> : null}
+                    <div className={productClass("productPreviewImageActions")}>
                       {renderMediaEditButton()}
                     </div>
                   </div>
                   {renderMediaStrip()}
                 </div>
 
-                <div className={styles.productPreviewDetails}>
-                  <div className={styles.productPreviewSectionHeader}>
-                    <div className={styles.productPreviewBadges}>
+                <div className={productClass("productPreviewDetails")}>
+                  <div className={productClass("productPreviewSectionHeader")}>
+                    <div className={productClass("productPreviewBadges")}>
                       <span>{typeLabel || "Type"}</span>
                       <span>{materialLabel || "Material"}</span>
                       {compatibilityLabel ? <span>{compatibilityLabel}</span> : null}
@@ -1448,7 +1453,7 @@ export default function ProductEditorForm({
                   <h1>{name || "Product name"}</h1>
                   <p>{detailDescription || longDescription || "Add a product detail description so customers understand what they are viewing."}</p>
 
-                  <div className={styles.productPreviewSpecList}>
+                  <div className={productClass("productPreviewSpecList")}>
                     <div><span>Material</span><strong>{materialLabel || "-"}</strong></div>
                     <div><span>Style</span><strong>{style || "-"}</strong></div>
                     <div><span>Finish brand</span><strong>{finishBrand || "-"}</strong></div>
@@ -1457,26 +1462,26 @@ export default function ProductEditorForm({
                     <div><span>Made to measure</span><strong>{madeToMeasure || "-"}</strong></div>
                     <div><span>Lead time</span><strong>{leadTime || "-"}</strong></div>
                   </div>
-                  <div className={styles.productPreviewInlineActions}>{renderEditButton("specs", "Edit specs")}</div>
+                  <div className={productClass("productPreviewInlineActions")}>{renderEditButton("specs", "Edit specs")}</div>
 
                   {renderProductPreviewOptionViewer()}
 
-                  <div className={styles.productPreviewPriceBlock}>
+                  <div className={productClass("productPreviewPriceBlock")}>
                     <span>Starting from</span>
                     <strong>{formatMoney(priceFrom)}</strong>
                     <small>{standardSize || "Standard size"} - see full pricing table below</small>
                     {renderEditButton("tile", "Edit price/status")}
                   </div>
 
-                  <div className={styles.productPreviewCtaGroup}>
+                  <div className={productClass("productPreviewCtaGroup")}>
                     <span>{ctaLabel || "Get a free quote"}</span>
                     <span>Call us - 0408 906 784</span>
                     {renderEditButton("settings", "Edit CTA/SEO")}
                   </div>
-                  <p className={styles.productPreviewCtaNote}>
+                  <p className={productClass("productPreviewCtaNote")}>
                     We will come back to you promptly with a quote based on your exact measurements and chosen finish.
                   </p>
-                  <div className={styles.productPreviewDeliveryStrip}>
+                  <div className={productClass("productPreviewDeliveryStrip")}>
                     <div><span />Flat-rate shipping, Perth metro</div>
                     <div><span />{type === "panel" || type === "table-top" ? "Cut to your measurements" : "Pre-drilled, ready to hang"}</div>
                     <div><span />Made to your measurements</div>
@@ -1484,13 +1489,13 @@ export default function ProductEditorForm({
                 </div>
               </section>
 
-              <section className={styles.productPreviewLowerGrid}>
-                <article className={styles.productPreviewPanel}>
-                  <div className={styles.productPreviewPanelHeader}>
+              <section className={productClass("productPreviewLowerGrid")}>
+                <article className={productClass("productPreviewPanel")}>
+                  <div className={productClass("productPreviewPanelHeader")}>
                     <h2>Indicative pricing</h2>
                     {renderEditButton("pricing")}
                   </div>
-                  <table className={styles.productPreviewPricingTable}>
+                  <table className={productClass("productPreviewPricingTable")}>
                     <thead>
                       <tr>
                         <th>Size</th>
@@ -1508,42 +1513,42 @@ export default function ProductEditorForm({
                       ))}
                     </tbody>
                   </table>
-                  <p className={styles.productPreviewPricingNote}>
+                  <p className={productClass("productPreviewPricingNote")}>
                     All prices are indicative and in {currency || "AUD"}. Final pricing is confirmed on enquiry based on your dimensions, quantity and chosen {finishBrand || "finish"}. Laminex and Formica pricing available on request.
                   </p>
                 </article>
 
-                <article className={styles.productPreviewPanel}>
-                  <div className={styles.productPreviewPanelHeader}>
+                <article className={productClass("productPreviewPanel")}>
+                  <div className={productClass("productPreviewPanelHeader")}>
                     <h2>Enquire about a custom size</h2>
                   </div>
-                  <div className={styles.productPreviewEnquiryBody} aria-label="Read-only public quote enquiry form preview">
+                  <div className={productClass("productPreviewEnquiryBody")} aria-label="Read-only public quote enquiry form preview">
                     <p>Need a size not listed above, or want a firm quote? Fill in your details and we will get back to you promptly.</p>
-                    <div className={styles.productPreviewFieldRow}>
+                    <div className={productClass("productPreviewFieldRow")}>
                       <label>Width (mm)<input type="text" placeholder="e.g. 600" disabled /></label>
                       <label>Height (mm)<input type="text" placeholder="e.g. 900" disabled /></label>
                     </div>
-                    <div className={styles.productPreviewFieldRow}>
+                    <div className={productClass("productPreviewFieldRow")}>
                       <label>Quantity<input type="text" placeholder="e.g. 6" disabled /></label>
                       <label>Colour / finish<input type="text" placeholder={`e.g. ${selectedColour.name}`} disabled /></label>
                     </div>
-                    <div className={styles.productPreviewFieldRow}>
+                    <div className={productClass("productPreviewFieldRow")}>
                       <label>Your name<input type="text" placeholder="First and last name" disabled /></label>
                       <label>Phone or email<input type="text" placeholder="How should we reach you?" disabled /></label>
                     </div>
-                    <label className={styles.productPreviewFieldFull}>Delivery suburb<input type="text" placeholder="e.g. Subiaco" disabled /></label>
-                    <label className={styles.productPreviewFieldFull}>Anything else?<textarea placeholder="e.g. compatible cabinet range, hinge requirements, delivery suburb..." disabled /></label>
-                    <button type="button" className={styles.productPreviewSubmitButton} disabled>
+                    <label className={productClass("productPreviewFieldFull")}>Delivery suburb<input type="text" placeholder="e.g. Subiaco" disabled /></label>
+                    <label className={productClass("productPreviewFieldFull")}>Anything else?<textarea placeholder="e.g. compatible cabinet range, hinge requirements, delivery suburb..." disabled /></label>
+                    <button type="button" className={productClass("productPreviewSubmitButton")} disabled>
                       Send enquiry
                     </button>
                   </div>
                 </article>
               </section>
 
-              <section className={styles.productPreviewInfoSection}>
+              <section className={productClass("productPreviewInfoSection")}>
                 <h2>Product information</h2>
                 <p>Everything you need to know before ordering</p>
-                <div className={styles.productPreviewInfoGrid}>
+                <div className={productClass("productPreviewInfoGrid")}>
                   {visibleInfoCards.map((card, index) => (
                     <article key={`preview-info-${index}`}>
                       <h3>{card.title || "Information card"}</h3>
@@ -1555,30 +1560,30 @@ export default function ProductEditorForm({
 
             </div>
           ) : (
-            <div className={styles.productTilePreviewStage}>
-              <article className={styles.productLibraryTilePreview}>
-                <div className={styles.productLibraryTileImage}>
+            <div className={productClass("productTilePreviewStage")}>
+              <article className={productClass("productLibraryTilePreview")}>
+                <div className={productClass("productLibraryTileImage")}>
                   {effectivePrimary ? <img src={resolveImageSrc(effectivePrimary)} alt={name || "Product image"} /> : renderImagePlaceholder("Tile image")}
-                  <div className={styles.productLibraryTileBadges}>
+                  <div className={productClass("productLibraryTileBadges")}>
                     {compatibilityLabel ? <span>{compatibilityLabel}</span> : null}
                     {materialLabel ? <span>{materialLabel}</span> : null}
                   </div>
                   {renderMediaEditButton()}
                 </div>
-                <div className={styles.productLibraryTileBody}>
-                  <div className={styles.productPreviewSectionHeader}>
-                    <span className={styles.productLibraryTileType}>{eyebrow || typeLabel || "Product"}</span>
+                <div className={productClass("productLibraryTileBody")}>
+                  <div className={productClass("productPreviewSectionHeader")}>
+                    <span className={productClass("productLibraryTileType")}>{eyebrow || typeLabel || "Product"}</span>
                     {renderEditButton("tile")}
                   </div>
                   <h2>{cardTitle || name || "Product title"}</h2>
                   <p>{shortDescription || longDescription || "Add a short catalogue description."}</p>
-                  <div className={styles.productLibraryTileFooter}>
+                  <div className={productClass("productLibraryTileFooter")}>
                     <div>
                       <span>Starting from</span>
                       <strong>{formatMoney(priceFrom)}</strong>
                       <small>{standardSize || "Standard size"}</small>
                     </div>
-                    <span className={styles.productLibraryTileButton}>View product</span>
+                    <span className={productClass("productLibraryTileButton")}>View product</span>
                   </div>
                 </div>
               </article>

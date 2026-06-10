@@ -179,33 +179,39 @@ export default function QuotesTable() {
                   <div className={styles.rowActions}>
                     <button
                       type="button"
-                      className={styles.rowEditButton}
+                      className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowOpenIconButton}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         router.push(`/admin/quotes/${quote.id}`);
                       }}
+                      aria-label={`Open quote ${quote.quote_number || quote.id}`}
+                      title="Open quote"
                     >
                       Open
                     </button>
                     {quote.access_code ? (
                       <a
-                        className={styles.rowEditButton}
+                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowViewIconButton}`}
                         href={`/quotes/view?code=${encodeURIComponent(quote.access_code)}`}
                         onClick={(event) => event.stopPropagation()}
                         target="_blank"
                         rel="noreferrer"
+                        aria-label={`View public quote ${quote.quote_number || quote.id}`}
+                        title="View public quote"
                       >
                         View
                       </a>
                     ) : null}
                     <button
                       type="button"
-                      className={styles.rowEditButton}
+                      className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowDuplicateIconButton}`}
                       disabled={duplicatingQuoteId === quote.id}
                       onClick={(event) => {
                         event.stopPropagation();
                         duplicateQuote(quote.id);
                       }}
+                      aria-label={`Duplicate quote ${quote.quote_number || quote.id}`}
+                      title={duplicatingQuoteId === quote.id ? "Duplicating quote" : "Duplicate quote"}
                     >
                       {duplicatingQuoteId === quote.id ? "Duplicating..." : "Duplicate"}
                     </button>

@@ -152,11 +152,13 @@ export default function ProjectsManager() {
                     <div className={styles.rowActions}>
                       <button
                         type="button"
-                        className={styles.rowEditButton}
+                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowOpenIconButton}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           router.push(`/admin/projects/${project.id}`);
                         }}
+                        aria-label={`Open project ${project.project_number || project.id}`}
+                        title="Open project"
                       >
                         Open
                       </button>
