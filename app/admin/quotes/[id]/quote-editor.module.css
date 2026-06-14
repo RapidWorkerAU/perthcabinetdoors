@@ -61,9 +61,32 @@
   justify-self: end;
 }
 
+.quoteFeedbackToast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80;
+  max-width: min(420px, calc(100vw - 48px));
+  border: 1px solid #c7d8bf;
+  border-radius: 6px;
+  background: #f5fbf1;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+  color: #17321f;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 12px 14px;
+}
+
 @media (max-width: 900px) {
   .quoteGrandTotalPanel {
     width: 100%;
+  }
+
+  .quoteFeedbackToast {
+    right: 16px;
+    bottom: 16px;
+    max-width: calc(100vw - 32px);
   }
 }
 
@@ -72,12 +95,107 @@
   padding-bottom: 10px;
 }
 
+.quoteItemsAdminWrap {
+  padding-right: 0;
+}
+
+.quoteItemsScroller.quoteItemsScroller {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+.quoteItemGrid {
+  width: calc(100% - 28px);
+}
+
+.quoteItemBlock {
+  position: relative;
+  overflow: visible;
+}
+
 .quoteItemRowEditing {
   align-items: start;
 }
 
 .quoteItemRowLocked {
   align-items: center;
+}
+
+.quoteItemNumberCell {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.quoteReorderControls {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  z-index: 2;
+  width: 18px;
+  display: grid;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+
+.quoteReorderButton {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 3px;
+  background: #e8eee5;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.quoteReorderButton::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  transform: translate(-50%, -50%);
+}
+
+.quoteReorderButton:first-child::before {
+  border-bottom: 5px solid #1d3424;
+}
+
+.quoteReorderButton:last-child::before {
+  border-top: 5px solid #1d3424;
+}
+
+.quoteReorderButton:hover:not(:disabled) {
+  background: #d4e2ce;
+}
+
+.quoteReorderButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.quoteItemActions .quoteLineNoteIconButton.quoteLineNoteIconButton {
+  --row-icon-color: #1d3424;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+}
+
+.quoteLineNoteIconButton::before {
+  -webkit-mask: url("/images/icons/comments.svg") center / contain no-repeat;
+  mask: url("/images/icons/comments.svg") center / contain no-repeat;
+}
+
+.quoteLineNoteIconButtonActive.quoteLineNoteIconButtonActive {
+  border-color: #587e52;
+  background: #eaf5e8;
 }
 
 .quoteItemRowEditing.quoteItemRowEditing > div {
@@ -103,6 +221,25 @@
 
 .quoteItemRowEditing .quoteItemActions {
   align-items: flex-start;
+}
+
+.quoteItemActions.quoteItemActions {
+  display: grid !important;
+  grid-template-columns: repeat(2, 24px);
+  grid-auto-rows: 24px;
+  justify-content: center !important;
+  align-content: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.quoteItemActions.quoteItemActions .quoteLineNoteIconButton,
+.quoteItemActions.quoteItemActions :global(.rowIconButton) {
+  width: 24px !important;
+  min-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  flex: 0 0 24px;
 }
 
 .quoteItemRowLocked.quoteItemRowLocked > div {
@@ -430,6 +567,10 @@
 
 .profileConfigModal {
   width: min(640px, calc(100vw - 48px));
+}
+
+.lineNoteModal {
+  width: min(560px, calc(100vw - 48px));
 }
 
 .profileConfigForm {

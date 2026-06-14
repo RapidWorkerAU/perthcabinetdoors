@@ -64,6 +64,7 @@ const emptyLine = {
   calculated_unit_cost_ex_gst: 0,
   markup_percent: DEFAULT_BUSINESS_DEFAULTS.markup_percent,
   notes: "",
+  client_note: "",
 };
 
 function emptyLineWithDefaults(defaults = DEFAULT_BUSINESS_DEFAULTS) {
@@ -141,6 +142,7 @@ function lineFromQuoteLine(line) {
     unit_cost_per_sqm_ex_gst: line.unit_cost_per_sqm_ex_gst ?? 0,
     calculated_unit_cost_ex_gst: line.calculated_unit_cost_ex_gst ?? 0,
     markup_percent: line.markup_percent ?? "",
+    client_note: line.client_note ?? "",
     notes: line.notes ?? "",
   };
 }
@@ -537,6 +539,7 @@ export default function QuoteEditor({ quoteId }) {
   const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
   const [hingeModal, setHingeModal] = useState(null);
   const [profileModal, setProfileModal] = useState(null);
+  const [lineNoteModal, setLineNoteModal] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [savingLineIndex, setSavingLineIndex] = useState(null);
@@ -640,6 +643,12 @@ export default function QuoteEditor({ quoteId }) {
       scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
     });
   }, [form.lines.length]);
+
+  useEffect(() => {
+    if (!feedback) return undefined;
+    const timeout = window.setTimeout(() => setFeedback(""), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
 
   async function loadBusinessDefaults() {
     try {
@@ -804,6 +813,30 @@ export default function QuoteEditor({ quoteId }) {
       updateSavedLine(profileModal.lineIndex, (line) => ({ ...line, ...patch }));
     }
     setProfileModal(null);
+  }
+
+  function openLineNoteModal(index) {
+    if (editableLineIndex !== null || savingLineIndex !== null) return;
+    const line = form.lines[index];
+    if (!line) return;
+    setLineNoteModal({
+      lineIndex: index,
+      client_note: line.client_note || "",
+    });
+  }
+
+  function updateLineNoteModal(value) {
+    setLineNoteModal((current) => (current ? { ...current, client_note: value } : current));
+  }
+
+  async function saveLineNoteModal() {
+    if (!lineNoteModal) return;
+    const line = form.lines[lineNoteModal.lineIndex];
+    if (!line) return;
+    const nextLine = { ...line, client_note: lineNoteModal.client_note };
+    updateSavedLine(lineNoteModal.lineIndex, () => nextLine);
+    const saved = await saveLineAtIndex(lineNoteModal.lineIndex, nextLine, { updateDraft: false });
+    if (saved) setLineNoteModal(null);
   }
 
   function applyProductLinePatch(line, patch) {
@@ -1025,6 +1058,64 @@ export default function QuoteEditor({ quoteId }) {
       if (current === index) return null;
       return current > index ? current - 1 : current;
     });
+  }
+
+  async function moveLine(index, direction) {
+    const targetIndex = index + direction;
+    const currentLines = form.lines;
+    if (
+      targetIndex < 0 ||
+      targetIndex >= currentLines.length ||
+      editableLineIndex !== null ||
+      savingLineIndex !== null
+    ) {
+      return;
+    }
+    if (currentLines.some((line) => !line.id)) {
+      setFeedback("Save all quote lines before reordering.");
+      return;
+    }
+
+    const nextLines = [...currentLines];
+    [nextLines[index], nextLines[targetIndex]] = [nextLines[targetIndex], nextLines[index]];
+    setForm((current) => ({ ...current, lines: nextLines }));
+    setActiveCabinetLineIndex((current) => {
+      if (current === index) return targetIndex;
+      if (current === targetIndex) return index;
+      return current;
+    });
+    setSavingLineIndex(targetIndex);
+    setFeedback("");
+
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/lines/reorder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ line_ids: nextLines.map((line) => line.id) }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        setForm((current) => ({ ...current, lines: currentLines }));
+        setActiveCabinetLineIndex((current) => {
+          if (current === index) return targetIndex;
+          if (current === targetIndex) return index;
+          return current;
+        });
+        setFeedback(payload.error || "Could not reorder quote lines.");
+        return;
+      }
+      setFeedback("Line order updated.");
+    } catch (error) {
+      setForm((current) => ({ ...current, lines: currentLines }));
+      setActiveCabinetLineIndex((current) => {
+        if (current === index) return targetIndex;
+        if (current === targetIndex) return index;
+        return current;
+      });
+      setFeedback(error?.message || "Could not reorder quote lines.");
+    } finally {
+      setSavingLineIndex(null);
+    }
   }
 
   async function saveLineAtIndex(index, nextLine = form.lines[index], { updateDraft = true } = {}) {
@@ -1453,12 +1544,12 @@ export default function QuoteEditor({ quoteId }) {
 
   function renderItems() {
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap}`}>
+      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${quoteStyles.quoteItemsAdminWrap}`}>
         <div className={`${styles.quoteSectionActions} ${quoteStyles.quoteSectionActions}`}>
           <button type="button" className={styles.secondaryButton} onClick={addLine}>+ Add line item</button>
         </div>
-        <div ref={quoteItemsScrollerRef} className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller}`}>
-          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead}`}>
+        <div ref={quoteItemsScrollerRef} className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${quoteStyles.quoteItemsScroller}`}>
+          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${quoteStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead}`}>
             <div>#</div>
             <div>Type</div>
             <div>Material</div>
@@ -1491,19 +1582,22 @@ export default function QuoteEditor({ quoteId }) {
             } = lineViewModel(line);
             const isBaseCabinetEditable = isEditable && isBaseCabinet;
             const isLineSaving = savingLineIndex === index;
+            const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id;
             const canResetUnitCost =
               isEditable &&
               !isBaseCabinetEditable &&
               line.unit_cost_mode === "manual" &&
               Number(line.calculated_unit_cost_ex_gst || 0) > 0;
             return (
-              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={savedLine.id || index}>
-              <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${quoteStyles.quoteItemRow} ${
+              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock} ${quoteStyles.quoteItemBlock}`} key={savedLine.id || index}>
+              <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${quoteStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${quoteStyles.quoteItemRow} ${
                 isEditable
                   ? `${styles.quoteItemRowEditing} ${workflowStyles.quoteItemRowEditing} ${quoteStyles.quoteItemRowEditing}`
                   : `${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked} ${quoteStyles.quoteItemRowLocked}`
               }`}>
-                <div className={quoteStyles.quoteItemNumberCell}><span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{index + 1}</span></div>
+                <div className={quoteStyles.quoteItemNumberCell}>
+                  <span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{index + 1}</span>
+                </div>
                 {isEditable ? (
                   <>
                     <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField}`}>
@@ -1719,7 +1813,17 @@ export default function QuoteEditor({ quoteId }) {
                     <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{line.markup_percent ?? businessDefaults.markup_percent}%</div>
                     <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal}`}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</div>
                     <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal}`}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</div>
-                    <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions}`}>
+                    <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${quoteStyles.quoteItemActions}`}>
+                      <button
+                        type="button"
+                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${quoteStyles.quoteLineNoteIconButton} ${line.client_note ? quoteStyles.quoteLineNoteIconButtonActive : ""}`}
+                        onClick={() => openLineNoteModal(index)}
+                        disabled={isLineSaving || savingLineIndex !== null}
+                        aria-label={`${line.client_note ? "Edit" : "Add"} client note for quote line ${index + 1}`}
+                        title={line.client_note ? "Edit client note" : "Add client note"}
+                      >
+                        Note
+                      </button>
                       <button
                         type="button"
                         className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
@@ -1754,6 +1858,28 @@ export default function QuoteEditor({ quoteId }) {
                   </>
                 )}
               </div>
+              <span className={quoteStyles.quoteReorderControls} aria-label={`Reorder quote line ${index + 1}`}>
+                <button
+                  type="button"
+                  className={quoteStyles.quoteReorderButton}
+                  onClick={() => moveLine(index, -1)}
+                  disabled={!canMoveLines || index === 0}
+                  aria-label={`Move quote line ${index + 1} up`}
+                  title="Move up"
+                >
+                  Up
+                </button>
+                <button
+                  type="button"
+                  className={quoteStyles.quoteReorderButton}
+                  onClick={() => moveLine(index, 1)}
+                  disabled={!canMoveLines || index === form.lines.length - 1}
+                  aria-label={`Move quote line ${index + 1} down`}
+                  title="Move down"
+                >
+                  Down
+                </button>
+              </span>
               </div>
             );
           })}
@@ -1954,6 +2080,7 @@ export default function QuoteEditor({ quoteId }) {
     meta: profileModal?.profile_type || "Profile",
     src: profileOptionSrc(profileModal?.profile_type, profile),
   }));
+  const isFeedbackInModal = Boolean(publishEmail || isCustomerModalOpen || lineNoteModal);
 
   return (
     <>
@@ -1999,11 +2126,11 @@ export default function QuoteEditor({ quoteId }) {
 
           <div className={`${styles.quoteBuilderPanelBody} ${workflowStyles.quoteBuilderPanelBody}`}>
             {isLoading ? <div className={styles.placeholderText}>Loading quote...</div> : renderActiveSection()}
-            {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
             {form.order_id ? <div className={styles.inlineNotice}>This quote has been approved and converted to an order.</div> : null}
           </div>
         </section>
       </form>
+      {feedback && !isFeedbackInModal ? <div className={quoteStyles.quoteFeedbackToast} role="status">{feedback}</div> : null}
       {publishEmail && typeof document !== "undefined"
         ? createPortal(
             <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="publish-quote-email-title">
@@ -2107,6 +2234,43 @@ export default function QuoteEditor({ quoteId }) {
                   </button>
                   <button type="button" className={styles.primaryButton} onClick={saveCustomerFromDetails} disabled={isSavingCustomer || !customerForm.name.trim()}>
                     {isSavingCustomer ? "Saving..." : "Save customer"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+      {lineNoteModal && typeof document !== "undefined"
+        ? createPortal(
+            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="line-note-title">
+              <div className={`${styles.customerModal} ${quoteStyles.lineNoteModal}`}>
+                <div className={styles.customerModalHeader}>
+                  <span className={styles.customerModalIcon}>NT</span>
+                  <div>
+                    <p className={styles.tableMeta}>Client note</p>
+                    <h2 id="line-note-title">Line {lineNoteModal.lineIndex + 1} note</h2>
+                  </div>
+                </div>
+                <div className={styles.customerModalBody}>
+                  <label className={styles.fieldLabel}>
+                    Note shown on public quote
+                    <textarea
+                      className={styles.textareaInput}
+                      rows={6}
+                      value={lineNoteModal.client_note}
+                      onChange={(event) => updateLineNoteModal(event.target.value)}
+                      placeholder="Add a short note for the client about this line item."
+                    />
+                  </label>
+                  {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
+                </div>
+                <div className={styles.customerModalFooter}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => setLineNoteModal(null)} disabled={savingLineIndex !== null}>
+                    Cancel
+                  </button>
+                  <button type="button" className={styles.primaryButton} onClick={saveLineNoteModal} disabled={savingLineIndex !== null}>
+                    {savingLineIndex === lineNoteModal.lineIndex ? "Saving..." : "Save note"}
                   </button>
                 </div>
               </div>

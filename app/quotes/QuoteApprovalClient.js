@@ -280,6 +280,7 @@ export default function QuoteApprovalClient() {
                 <tr>
                   <th>#</th>
                   <th>Item details</th>
+                  <th>Client notes</th>
                   <th>W x H x D (mm)</th>
                   <th>Qty</th>
                   <th>Edge profile</th>
@@ -296,10 +297,18 @@ export default function QuoteApprovalClient() {
                   const colourSrc = colourSrcForLine(line);
                   const edgeSrc = edgeOptionSrc(line.edge_mould);
                   const profileSrc = showProfiles ? profileOptionSrc(line.profile_type, line.profile) : "";
+                  const clientNote = String(line.client_note || "").trim();
                   return (
-                    <tr key={line.id}>
+                    <tr key={line.id || index}>
                       <td><span className={styles.quoteItemNumber}>{index + 1}</span></td>
                       <td><DetailStack line={line} /></td>
+                      <td>
+                        {clientNote ? (
+                          <span className={styles.quoteLineClientNote}>{clientNote}</span>
+                        ) : (
+                          <span className={styles.quoteLineClientNoteEmpty}>-</span>
+                        )}
+                      </td>
                       <td>{lineValue(quoteLineSizeText(line))}</td>
                       <td>{line.qty || "1"}</td>
                       <td><PreviewName src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} /></td>
@@ -333,6 +342,7 @@ export default function QuoteApprovalClient() {
               const profileSrc = showProfiles ? profileOptionSrc(line.profile_type, line.profile) : "";
               const lineKey = line.id || `line-${index}`;
               const isExpanded = expandedMobileLineId === lineKey;
+              const clientNote = String(line.client_note || "").trim();
               return (
                 <article className={`${styles.quoteItemMobileCard} ${isExpanded ? styles.quoteItemMobileCardOpen : ""}`} key={lineKey}>
                   <button
@@ -387,6 +397,11 @@ export default function QuoteApprovalClient() {
                         </span>
                         <span>Hinge qty: {hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</span>
                       </div>
+                      {clientNote ? (
+                        <div className={styles.quoteLineClientNote}>
+                          <strong>Note:</strong> {clientNote}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </article>

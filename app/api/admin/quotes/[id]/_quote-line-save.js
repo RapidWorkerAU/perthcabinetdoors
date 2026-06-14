@@ -71,6 +71,7 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     markup_amount_ex_gst: dbNumber(line.markup_amount_ex_gst),
     unit_price_ex_gst: dbNumber(line.unit_price_ex_gst),
     line_total_ex_gst: dbNumber(line.line_total_ex_gst),
+    client_note: dbText(line.client_note),
     notes: dbText(line.notes),
   };
 }

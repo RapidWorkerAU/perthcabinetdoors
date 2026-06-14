@@ -35,6 +35,7 @@ const LINE_COPY_FIELDS = [
   "installation_cost_ex_gst",
   "other_cost_ex_gst",
   "markup_percent",
+  "client_note",
   "notes",
 ];
 
@@ -117,6 +118,7 @@ function quoteLineRow(line, quoteId, sortOrder) {
     markup_amount_ex_gst: numberValue(line.markup_amount_ex_gst),
     unit_price_ex_gst: numberValue(line.unit_price_ex_gst),
     line_total_ex_gst: numberValue(line.line_total_ex_gst),
+    client_note: cleanText(line.client_note),
     notes: cleanText(line.notes),
   };
 }

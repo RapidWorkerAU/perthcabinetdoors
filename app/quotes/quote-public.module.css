@@ -361,43 +361,48 @@
 
 .quoteItemsPublicTable th:nth-child(2),
 .quoteItemsPublicTable td:nth-child(2) {
-  width: 18%;
+  width: 16%;
 }
 
 .quoteItemsPublicTable th:nth-child(3),
 .quoteItemsPublicTable td:nth-child(3) {
-  width: 8%;
+  width: 14%;
 }
 
 .quoteItemsPublicTable th:nth-child(4),
 .quoteItemsPublicTable td:nth-child(4) {
-  width: 5%;
+  width: 7%;
 }
 
 .quoteItemsPublicTable th:nth-child(5),
 .quoteItemsPublicTable td:nth-child(5) {
-  width: 14%;
+  width: 5%;
 }
 
 .quoteItemsPublicTable th:nth-child(6),
 .quoteItemsPublicTable td:nth-child(6) {
-  width: 14%;
+  width: 12%;
 }
 
 .quoteItemsPublicTable th:nth-child(7),
 .quoteItemsPublicTable td:nth-child(7) {
-  width: 14%;
+  width: 12%;
 }
 
 .quoteItemsPublicTable th:nth-child(8),
 .quoteItemsPublicTable td:nth-child(8) {
-  width: 10%;
-  text-align: right;
+  width: 13%;
 }
 
 .quoteItemsPublicTable th:nth-child(9),
 .quoteItemsPublicTable td:nth-child(9) {
-  width: 14%;
+  width: 8%;
+  text-align: right;
+}
+
+.quoteItemsPublicTable th:nth-child(10),
+.quoteItemsPublicTable td:nth-child(10) {
+  width: 13%;
   text-align: right;
 }
 
@@ -417,6 +422,21 @@
   color: #253041;
   font-size: 0.72rem;
   line-height: 1.2;
+}
+
+.quoteLineClientNote {
+  color: #253041;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.quoteLineClientNoteEmpty {
+  color: #9a8b78;
+}
+
+.quoteLineClientNote strong {
+  color: #2c231a;
 }
 
 .quoteItemNumber {
