@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 import { getAllowedAdminEmailClient } from "../../lib/admin-access";
 import styles from "./admin-auth.module.css";
 
@@ -40,42 +39,34 @@ export default function AdminLoginPage() {
     event.preventDefault();
     setStatus("");
 
-    const normalizedEmail = allowedAdminEmail;
     if (!password) {
       setStatus("Enter your admin password.");
-      return;
-    }
-
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      setStatus("Admin login is not configured. Supabase environment variables are missing.");
       return;
     }
 
     setIsBusy(true);
 
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
+      const response = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
       });
+      const payload = await response.json().catch(() => ({}));
 
-      if (error) {
-        setStatus(authErrorMessage(error));
-        return;
-      }
-
-      const signedInEmail = data?.user?.email?.toLowerCase() || "";
-      if (signedInEmail !== allowedAdminEmail) {
-        await supabase.auth.signOut();
-        setStatus("This account is not authorized for admin access.");
+      if (!response.ok || !payload.ok) {
+        setStatus(payload.error || "Login failed. Please try again.");
         return;
       }
 
       router.push("/admin/dashboard");
       router.refresh();
     } catch (error) {
-      setStatus(error?.message || "Login failed. Please check the site configuration and try again.");
+      setStatus(
+        error?.message === "Failed to fetch"
+          ? "The site could not submit the login request. Check the work network connection and try again."
+          : error?.message || "Login failed. Please check the site configuration and try again."
+      );
     } finally {
       setIsBusy(false);
     }
@@ -93,6 +84,7 @@ export default function AdminLoginPage() {
 
     setIsBusy(true);
     try {
+      const { createSupabaseBrowserClient } = await import("../../lib/supabase/client");
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: `${window.location.origin}/admin/reset-password`,
