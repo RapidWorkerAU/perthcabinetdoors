@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
 import { COLOUR_MATERIALS, COLOUR_ORDER_TYPES, materialLabelForType, normaliseOrderTypes, orderTypesLabel, thicknessOptionsForMaterial } from "../../../lib/pcd-colour-library";
-import styles from "../admin-shell.module.css";
+import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../_components/AdminActionDropdown";
+import styles from "../admin-content.module.css";
 import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 const emptyDraft = {
@@ -145,6 +146,7 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
   const [selectedFileName, setSelectedFileName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [openFilter, setOpenFilter] = useState(null);
+  const [selectedRowIds, setSelectedRowIds] = useState([]);
   const [columnFilters, setColumnFilters] = useState({
     supplier: [],
     finish: [],
@@ -185,6 +187,7 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
   }, [sortedRows]);
 
   const activeFilterCount = Object.values(columnFilters).reduce((count, values) => count + values.length, 0);
+  const selectedRowCount = selectedRowIds.length;
 
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -299,6 +302,18 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
   function clearAllFilters() {
     setColumnFilters({ supplier: [], finish: [], material: [], thickness: [], orderType: [] });
     setOpenFilter(null);
+  }
+
+  function toggleSelectedRow(id) {
+    setSelectedRowIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function toggleSelectedPage(checked) {
+    const pageIds = colourPagination.pageItems.map((row) => row.id);
+    setSelectedRowIds((current) => {
+      if (!checked) return current.filter((id) => !pageIds.includes(id));
+      return Array.from(new Set([...current, ...pageIds]));
+    });
   }
 
   function sortOrderForDraft() {
@@ -466,6 +481,25 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
     }
   }
 
+  async function deleteSelectedRows() {
+    if (!selectedRowIds.length) return;
+    setIsSaving(true);
+    setFeedback("");
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.from("pcd_colour_library").delete().in("id", selectedRowIds);
+      if (error) throw error;
+
+      setRows((current) => current.filter((item) => !selectedRowIds.includes(item.id)));
+      setSelectedRowIds([]);
+      setFeedback("Selected colour lines deleted. Image storage was left untouched.");
+    } catch (error) {
+      setFeedback(error?.message || "Could not delete selected colour lines.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   const modal =
     isModalOpen && typeof document !== "undefined"
       ? createPortal(
@@ -477,6 +511,9 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
                   <p className={styles.tableMeta}>Colour library</p>
                   <h2 id="colour-line-modal-title">{draft.id ? "Edit colour line" : "Add colour line"}</h2>
                 </div>
+                <button type="button" className={styles.modalCloseButton} onClick={closeModal} disabled={isSaving}>
+                  Close
+                </button>
               </div>
               <div className={styles.customerModalBody}>
                 <div className={styles.colourLibraryModalGrid}>
@@ -593,6 +630,9 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
                   <p className={styles.tableMeta}>Delete colour line</p>
                   <h2 id="delete-colour-title">Delete {rowToDelete.name}?</h2>
                 </div>
+                <button type="button" className={styles.modalCloseButton} onClick={() => setRowToDelete(null)} disabled={isSaving}>
+                  Close
+                </button>
               </div>
               <div className={styles.customerModalBody}>
                 <p className={styles.sectionText}>
@@ -615,27 +655,24 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
 
   return (
     <>
-      <section className={`${styles.settingsCard} ${styles.colourLibraryCard}`}>
-        <div className={`${styles.sectionHeaderRow} ${styles.colourLibraryActionBar}`}>
-          <label className={styles.colourLibrarySearch}>
-            <span>Search colour lines</span>
+      <section className={styles.productsSection}>
+        <div className={`${styles.sectionHeaderRow} ${styles.tableToolbar} ${styles.colourLibraryActionBar}`}>
+          <div className={styles.tableToolbarFilters}>
+            <AdminBulkDeleteButton count={selectedRowCount} disabled={isSaving} onConfirm={deleteSelectedRows} />
             <input
-              className={styles.fieldInput}
+              className={styles.customerSearchInput}
               type="search"
               placeholder="Search by colour, finish, supplier, material or order type"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
-          </label>
-          {activeFilterCount ? (
-            <button type="button" className={styles.secondaryButton} onClick={clearAllFilters}>
-              Clear filters ({activeFilterCount})
-            </button>
-          ) : null}
-          <div className={styles.inlineButtonRow}>
-            <button type="button" className={styles.secondaryButton} onClick={refreshLibrary} disabled={isSaving}>
-              Refresh
-            </button>
+            {activeFilterCount ? (
+              <button type="button" className={styles.secondaryButton} onClick={clearAllFilters}>
+                Clear filters ({activeFilterCount})
+              </button>
+            ) : null}
+          </div>
+          <div className={styles.tableToolbarActions}>
             <button type="button" className={styles.primaryButton} onClick={openAddModal}>
               Add colour line
             </button>
@@ -648,6 +685,14 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
           <table className={`${styles.productsTable} ${styles.colourLibraryTable}`}>
             <thead>
               <tr>
+                <th className={styles.rowSelectCol}>
+                  <input
+                    type="checkbox"
+                    checked={colourPagination.pageItems.length > 0 && colourPagination.pageItems.every((row) => selectedRowIds.includes(row.id))}
+                    onChange={(event) => toggleSelectedPage(event.target.checked)}
+                    aria-label="Select all visible colour lines"
+                  />
+                </th>
                 <th>Tile</th>
                 <th>Colour</th>
                 <th>{renderColumnFilter("supplier", "Supplier")}</th>
@@ -658,7 +703,6 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
                 <th>Board size</th>
                 <th>Cost / board</th>
                 <th>Cost / sqm</th>
-                <th>Source</th>
                 <th>Sort</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -667,6 +711,14 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
             <tbody>
               {colourPagination.pageItems.map((row) => (
                 <tr key={row.id}>
+                  <td className={styles.rowSelectCol}>
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.includes(row.id)}
+                      onChange={() => toggleSelectedRow(row.id)}
+                      aria-label={`Select ${row.name}`}
+                    />
+                  </td>
                   <td>
                     <span className={styles.colourLibraryTableTile}>
                       {row.image_url ? <img src={row.image_url} alt="" /> : null}
@@ -681,34 +733,22 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
                   <td>{boardSizeLabel(row)}</td>
                   <td>${Number(row.cost_per_board_ex_gst || 0).toFixed(2)}</td>
                   <td>${Number(row.cost_per_sqm_ex_gst || 0).toFixed(2)}</td>
-                  <td>{imageSourceLabel(row)}</td>
                   <td>{row.sort_order || 0}</td>
                   <td>
                     <span className={`${styles.statusPill} ${statusClassForRow(row)}`}>
                       {row.is_active ? "Active" : "Hidden"}
                     </span>
                   </td>
-                  <td className={styles.rowActions}>
-                    <button
-                      type="button"
-                      className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
-                      onClick={() => openEditModal(row)}
+                  <td className={styles.actionsCol}>
+                    <AdminActionDropdown
                       disabled={isSaving}
-                      aria-label={`Edit ${row.name}`}
-                      title="Edit"
+                      label={`Open actions for ${row.name}`}
                     >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                      onClick={() => setRowToDelete(row)}
-                      disabled={isSaving}
-                      aria-label={`Delete ${row.name}`}
-                      title="Delete"
-                    >
-                      Delete
-                    </button>
+                      <button type="button" className={styles.tableActionMenuItem} onClick={() => openEditModal(row)}>
+                        Edit
+                      </button>
+                      <AdminConfirmDeleteAction onConfirm={() => deleteRow(row)} />
+                    </AdminActionDropdown>
                   </td>
                 </tr>
               ))}
@@ -735,3 +775,4 @@ export default function ColourLibraryManager({ initialRows = [], initialError = 
     </>
   );
 }
+

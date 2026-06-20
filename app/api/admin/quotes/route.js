@@ -1,10 +1,10 @@
-import { randomBytes } from "node:crypto";
+﻿import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
-import { calculateQuoteTotals, GST_RATE } from "../../../../lib/pcd-quote-utils";
-import { isEdgeProfileSelectionAvailable } from "../../../request-quote/quote-form-data";
+import { calculateQuoteTotals } from "../../../../lib/pcd-quote-utils";
+import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
 
 function makeQuoteNumber() {
   return `PCD-Q-${new Date().getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -16,7 +16,9 @@ function makeAccessCode() {
 
 async function normalizeQuotePayload(supabase, payload = {}) {
   const businessDefaults = await getBusinessDefaults(supabase);
-  const totals = calculateQuoteTotals(payload.lines || [], payload.gst_rate ?? GST_RATE, {
+  const quoteCurrency = payload.currency || businessDefaults.currency;
+  const gstRate = payload.gst_rate ?? businessDefaults.gst_rate;
+  const totals = calculateQuoteTotals(payload.lines || [], gstRate, {
     ...payload,
     business_defaults: businessDefaults,
   });
@@ -32,8 +34,8 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       customer_phone: payload.customer_phone || null,
       site_address: payload.site_address || null,
       project_name: payload.project_name || null,
-      currency: payload.currency || "AUD",
-      gst_rate: payload.gst_rate ?? GST_RATE,
+      currency: quoteCurrency,
+      gst_rate: gstRate,
       subtotal_ex_gst: totals.subtotal_ex_gst,
       gst_amount: totals.gst_amount,
       total_inc_gst: totals.total_inc_gst,
@@ -142,3 +144,4 @@ export async function POST(request) {
     );
   }
 }
+

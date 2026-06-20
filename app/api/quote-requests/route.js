@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+﻿import { Resend } from "resend";
 import { z } from "zod";
 import {
   SALES_EMAIL,
@@ -9,7 +9,7 @@ import {
 } from "../../../lib/pcd-email-templates";
 import { logOrderActivity } from "../../../lib/pcd-activity-log";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
-import { isEdgeProfileSelectionAvailable } from "../../request-quote/quote-form-data";
+import { isEdgeProfileSelectionAvailable } from "../../../lib/quote-form-data";
 
 const lineSchema = z.object({
   productType: z.string().optional(),
@@ -168,3 +168,4 @@ export async function POST(request) {
     return Response.json({ ok: false, error: error?.message || "Could not send quote request." }, { status: 500 });
   }
 }
+

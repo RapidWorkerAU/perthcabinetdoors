@@ -32,3 +32,18 @@ export async function PATCH(request, { params }) {
     return Response.json({ ok: false, error: error?.message || "Could not update customer." }, { status: 500 });
   }
 }
+
+export async function DELETE(_request, { params }) {
+  const context = await requireAdminApiContext();
+  if (context.error) return context.error;
+
+  try {
+    const id = await customerIdFromParams(params);
+    const { error } = await context.supabase.from("pcd_customers").delete().eq("id", id);
+
+    if (error) throw error;
+    return Response.json({ ok: true });
+  } catch (error) {
+    return Response.json({ ok: false, error: error?.message || "Could not delete customer." }, { status: 500 });
+  }
+}

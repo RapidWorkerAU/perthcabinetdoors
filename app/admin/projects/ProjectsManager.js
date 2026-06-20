@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMoney } from "../../../lib/pcd-quote-utils";
-import styles from "../admin-shell.module.css";
+import styles from "../admin-content.module.css";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
+import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../_components/AdminActionDropdown";
 import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 function formatDate(value) {
@@ -40,8 +41,10 @@ export default function ProjectsManager() {
   const router = useRouter();
   const [projects, setProjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [setupRequired, setSetupRequired] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState([]);
 
   const totals = useMemo(() => {
     return projects.reduce(
@@ -82,20 +85,53 @@ export default function ProjectsManager() {
     loadProjects();
   }, []);
 
+  async function deleteProjects(ids) {
+    if (!ids.length) return;
+    setIsDeleting(true);
+    setFeedback("");
+
+    try {
+      for (const id of ids) {
+        const response = await fetch(`/api/admin/projects/${id}`, { method: "DELETE" });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "Could not delete project.");
+        }
+      }
+
+      setProjects((current) => current.filter((project) => !ids.includes(project.id)));
+      setSelectedProjectIds((current) => current.filter((id) => !ids.includes(id)));
+      setFeedback(`${ids.length} project${ids.length === 1 ? "" : "s"} deleted.`);
+    } catch (error) {
+      setFeedback(error?.message || "Could not delete selected projects.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  function toggleSelectedProject(id) {
+    setSelectedProjectIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function toggleSelectedProjectPage(checked) {
+    const pageIds = projectPagination.pageItems.map((project) => project.id);
+    setSelectedProjectIds((current) => {
+      if (!checked) return current.filter((id) => !pageIds.includes(id));
+      return Array.from(new Set([...current, ...pageIds]));
+    });
+  }
+
   return (
     <section className={styles.productsSection}>
-      <div className={styles.productsHeaderBar}>
-        <div>
-          <p className={styles.tableMeta}>{isLoading ? "Loading projects" : `${projects.length} projects`}</p>
+      <div className={`${styles.productsHeaderBar} ${styles.tableToolbar}`}>
+        <div className={styles.tableToolbarFilters}>
+          <AdminBulkDeleteButton count={selectedProjectIds.length} disabled={isDeleting} onConfirm={() => deleteProjects(selectedProjectIds)} />
         </div>
         <div className={styles.rowActions}>
           <span className={styles.projectListMetric}>{totals.active} active</span>
           <span className={styles.projectListMetric}>
             {totals.lineItemsComplete}/{totals.lineItems} items complete
           </span>
-          <button type="button" className={styles.secondaryButton} onClick={loadProjects} disabled={isLoading}>
-            Refresh
-          </button>
         </div>
       </div>
 
@@ -108,6 +144,14 @@ export default function ProjectsManager() {
         <table className={styles.productsTable}>
           <thead>
             <tr>
+              <th className={styles.rowSelectCol}>
+                <input
+                  type="checkbox"
+                  checked={projectPagination.pageItems.length > 0 && projectPagination.pageItems.every((project) => selectedProjectIds.includes(project.id))}
+                  onChange={(event) => toggleSelectedProjectPage(event.target.checked)}
+                  aria-label="Select all visible projects"
+                />
+              </th>
               <th>Project</th>
               <th>Customer</th>
               <th>Job</th>
@@ -128,6 +172,14 @@ export default function ProjectsManager() {
                   className={styles.rowClickable}
                   onClick={() => router.push(`/admin/projects/${project.id}`)}
                 >
+                  <td className={styles.rowSelectCol} onClick={(event) => event.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedProjectIds.includes(project.id)}
+                      onChange={() => toggleSelectedProject(project.id)}
+                      aria-label={`Select project ${project.project_number || project.id}`}
+                    />
+                  </td>
                   <td className={styles.productNameCell}>{project.project_number}</td>
                   <td>{project.customer_name || "-"}</td>
                   <td>{project.name || "-"}</td>
@@ -148,21 +200,13 @@ export default function ProjectsManager() {
                   </td>
                   <td>{formatMoney(project.total_inc_gst, "AUD")}</td>
                   <td>{formatDate(project.accepted_at || project.created_at)}</td>
-                  <td>
-                    <div className={styles.rowActions}>
-                      <button
-                        type="button"
-                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowOpenIconButton}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          router.push(`/admin/projects/${project.id}`);
-                        }}
-                        aria-label={`Open project ${project.project_number || project.id}`}
-                        title="Open project"
-                      >
+                  <td className={styles.actionsCol}>
+                    <AdminActionDropdown label={`Open actions for project ${project.project_number || project.id}`}>
+                      <button type="button" className={styles.tableActionMenuItem} onClick={() => router.push(`/admin/projects/${project.id}`)}>
                         Open
                       </button>
-                    </div>
+                      <AdminConfirmDeleteAction disabled={isDeleting} onConfirm={() => deleteProjects([project.id])} />
+                    </AdminActionDropdown>
                   </td>
                 </tr>
               );
@@ -170,7 +214,7 @@ export default function ProjectsManager() {
 
             {!projects.length && !isLoading ? (
               <tr>
-                <td colSpan="8" className={styles.emptyCell}>
+                <td colSpan="9" className={styles.emptyCell}>
                   No projects yet. Approved quotes will create projects automatically.
                 </td>
               </tr>
@@ -178,7 +222,7 @@ export default function ProjectsManager() {
 
             {isLoading ? (
               <tr>
-                <td colSpan="8" className={styles.emptyCell}>
+                <td colSpan="9" className={styles.emptyCell}>
                   Loading projects...
                 </td>
               </tr>
@@ -196,3 +240,4 @@ export default function ProjectsManager() {
     </section>
   );
 }
+

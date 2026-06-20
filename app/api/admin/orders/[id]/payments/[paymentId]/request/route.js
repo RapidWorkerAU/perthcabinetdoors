@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+﻿import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
 import { createCheckoutSession, siteUrl } from "../../../../../../../../lib/pcd-stripe";
@@ -38,7 +38,7 @@ function paymentRequestHtml({ order, payment, checkoutUrl }) {
   return `<!doctype html><html><body style="margin:0;background:#f4f0e8;padding:28px 14px;font-family:Arial,sans-serif;color:#18221b;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fffaf3;border:1px solid #d8cbb8;">
-    <tr><td style="background:#eef7ed;padding:26px 30px;border-bottom:1px solid #d5e4d1;"><div style="color:#2f6b3b;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;">Perth Cabinet Doors</div><h1 style="margin:8px 0 0;color:#001f36;font-family:Georgia,serif;font-size:28px;font-weight:400;">Payment request</h1></td></tr>
+    <tr><td style="background:#eef7ed;padding:26px 30px;border-bottom:1px solid #d5e4d1;"><div style="color:#2f6b3b;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;">Perth Cabinet Doors</div><h1 style="margin:8px 0 0;color:#001f36;font-family:Arial,sans-serif;font-size:28px;font-weight:400;">Payment request</h1></td></tr>
     <tr><td style="padding:26px 30px;"><p style="margin:0 0 14px;font-size:15px;line-height:1.6;">Hi ${escapeHtml(order.customer_name || "there")},</p>
     <p style="margin:0 0 18px;font-size:15px;line-height:1.6;">A payment is requested for ${escapeHtml(order.order_number || "your PCD order")}.</p>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f7f2ea;border:1px solid #e3d7c6;">
@@ -136,3 +136,4 @@ export async function POST(request, { params }) {
     return Response.json({ ok: false, error: error?.message || "Could not request payment." }, { status: 500 });
   }
 }
+

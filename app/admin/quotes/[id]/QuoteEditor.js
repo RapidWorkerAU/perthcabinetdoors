@@ -5,8 +5,11 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
-import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, GST_RATE, roundMoney } from "../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney } from "../../../../lib/pcd-quote-utils";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
+import RoomManager from "./_components/RoomManager";
+import PlannerOverlay from "./_components/PlannerOverlay";
+import ElevationPanel from "./_components/ElevationPanel";
 import {
   edgeProfilesForMaterial,
   isEdgeProfileSelectionAvailable,
@@ -17,10 +20,11 @@ import {
   profileNamesForSelection,
   profileTypesForSelection,
   thicknessOptionsForMaterial,
-} from "../../../request-quote/quote-form-data";
-import styles from "../../admin-shell.module.css";
+} from "../../../../lib/quote-form-data";
+import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
 import workflowStyles from "../../_components/admin-workflow.module.css";
+import { AdminActionDropdown, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
 import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 const sections = [
@@ -31,6 +35,7 @@ const sections = [
   { key: "totals", label: "Quote Totals" },
   { key: "notes", label: "Notes" },
   { key: "attachments", label: "Attachments" },
+  { key: "elevations", label: "Elevations"   },
 ];
 
 const BASE_CABINET_TYPE = "base_cabinet";
@@ -39,6 +44,12 @@ const quoteProductTypes = [
   ...PRODUCT_TYPES.map((type) => ({ value: type, label: type })),
   { value: BASE_CABINET_TYPE, label: "Base cabinet" },
 ];
+const ADMIN_DROPDOWN_OPEN_EVENT = "pcd-admin-dropdown-open";
+
+const CABINET_TYPE_LABELS = {
+  base: "Base", wall: "Wall", tall: "Tall",
+  corner_base: "Corner Base", corner_wall: "Corner Wall", island: "Island",
+};
 
 const emptyLine = {
   product_type: "",
@@ -87,8 +98,8 @@ const emptyForm = {
   customer_phone: "",
   site_address: "",
   project_name: "",
-  currency: "AUD",
-  gst_rate: GST_RATE,
+  currency: DEFAULT_BUSINESS_DEFAULTS.currency,
+  gst_rate: DEFAULT_BUSINESS_DEFAULTS.gst_rate,
   labour_hours: "",
   worker_hourly_rate: DEFAULT_BUSINESS_DEFAULTS.worker_hourly_rate,
   travel_cost_ex_gst: "",
@@ -358,6 +369,8 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value || "");
   const [menuStyle, setMenuStyle] = useState({});
+  const dropdownIdRef = useRef(`quote-combobox-${Math.random().toString(36).slice(2)}`);
+  const menuRef = useRef(null);
   const wrapRef = useRef(null);
   const cleanedQuery = query.trim().toLowerCase();
   const visibleOptions =
@@ -368,6 +381,27 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
   useEffect(() => {
     setQuery(value || "");
   }, [value]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function closeOtherDropdowns(event) {
+      if (event.detail !== dropdownIdRef.current) setOpen(false);
+    }
+
+    function closeOnOutsidePointer(event) {
+      const target = event.target;
+      if (wrapRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+
+    window.addEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      window.removeEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !wrapRef.current) return;
@@ -410,6 +444,12 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
     setOpen(false);
   }
 
+  function openMenu() {
+    if (disabled) return;
+    window.dispatchEvent(new CustomEvent(ADMIN_DROPDOWN_OPEN_EVENT, { detail: dropdownIdRef.current }));
+    setOpen(true);
+  }
+
   return (
     <div className={`${styles.quoteColourCombo} ${quoteStyles.quoteColourCombo}`} ref={wrapRef}>
       <input
@@ -417,14 +457,13 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
         placeholder={placeholder}
         type="text"
         value={query}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
         onChange={(event) => {
           const nextQuery = event.target.value;
           setQuery(nextQuery);
-          setOpen(true);
+          openMenu();
           onChange({ name: nextQuery, label: nextQuery, finish: "" });
         }}
-        onFocus={() => !disabled && setOpen(true)}
+        onFocus={openMenu}
       />
       <button
         aria-label="Open options"
@@ -433,12 +472,17 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
         type="button"
         onMouseDown={(event) => {
           event.preventDefault();
-          if (!disabled) setOpen((current) => !current);
+          if (disabled) return;
+          if (open) {
+            setOpen(false);
+          } else {
+            openMenu();
+          }
         }}
       />
       {open && !disabled && typeof document !== "undefined"
         ? createPortal(
-            <div className={styles.quoteColourMenu} style={menuStyle}>
+            <div className={styles.quoteColourMenu} ref={menuRef} style={menuStyle}>
               {visibleOptions.length ? (
                 visibleOptions.map((option) => (
                   <button
@@ -448,7 +492,7 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
                     onMouseDown={() => choose(option)}
                   >
                     <span className={styles.quoteOptionThumb}>
-                      <img alt="" src={option.src} />
+                      {option.src ? <img alt="" src={option.src} /> : <span>{String(option.name || option.label || "?").slice(0, 2).toUpperCase()}</span>}
                     </span>
                     <span>
                       <strong>{option.name || option.label}</strong>
@@ -466,6 +510,102 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
     </div>
   );
 });
+
+const QuoteTileCombobox = memo(function QuoteTileCombobox({ disabled = false, placeholder, value, options, onChange }) {
+  return (
+    <QuoteImageCombobox
+      disabled={disabled}
+      placeholder={placeholder}
+      value={value}
+      options={options.map((option) => (typeof option === "string" ? { label: option, name: option } : option))}
+      onChange={onChange}
+    />
+  );
+});
+
+function QuoteLineActionDropdown({ children, disabled = false, index, isOpen, onClose, onToggle }) {
+  const buttonRef = useRef(null);
+  const dropdownIdRef = useRef(`quote-action-${Math.random().toString(36).slice(2)}`);
+  const menuRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState({});
+
+  useEffect(() => {
+    if (!isOpen || !buttonRef.current) return;
+
+    function closeOtherDropdowns(event) {
+      if (event.detail !== dropdownIdRef.current) onClose();
+    }
+
+    function closeOnOutsidePointer(event) {
+      const target = event.target;
+      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      onClose();
+    }
+
+    function positionMenu() {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const viewportPadding = 12;
+      const width = 156;
+      const left = Math.min(
+        Math.max(rect.right - width, viewportPadding),
+        window.innerWidth - width - viewportPadding
+      );
+      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+      const spaceAbove = rect.top - viewportPadding;
+      const openAbove = spaceBelow < 150 && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(132, Math.min(260, (openAbove ? spaceAbove : spaceBelow) - 4));
+
+      setMenuStyle({
+        bottom: openAbove ? `${window.innerHeight - rect.top + 4}px` : "auto",
+        left: `${left}px`,
+        maxHeight: `${maxHeight}px`,
+        position: "fixed",
+        right: "auto",
+        top: openAbove ? "auto" : `${rect.bottom + 4}px`,
+        width: `${width}px`,
+      });
+    }
+
+    positionMenu();
+    window.addEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      window.removeEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
+  }, [isOpen, onClose]);
+
+  return (
+    <div className={quoteStyles.quoteActionMenuWrap}>
+      <button
+        type="button"
+        className={quoteStyles.quoteActionMenuButton}
+        onClick={() => {
+          if (!isOpen) window.dispatchEvent(new CustomEvent(ADMIN_DROPDOWN_OPEN_EVENT, { detail: dropdownIdRef.current }));
+          onToggle();
+        }}
+        disabled={disabled}
+        aria-expanded={isOpen}
+        aria-label={`Open actions for quote line ${index + 1}`}
+        ref={buttonRef}
+      >
+        Actions
+      </button>
+      {isOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className={quoteStyles.quoteActionMenu} ref={menuRef} style={menuStyle}>
+              {children}
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}
 
 const QuoteColourCombobox = memo(function QuoteColourCombobox({ disabled = false, line, onChange }) {
   const [databaseOptions, setDatabaseOptions] = useState(null);
@@ -536,6 +676,8 @@ export default function QuoteEditor({ quoteId }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [editableLineIndex, setEditableLineIndex] = useState(null);
   const [editableLineDraft, setEditableLineDraft] = useState(null);
+  const [openLineActionIndex, setOpenLineActionIndex] = useState(null);
+  const [deleteLineConfirmIndex, setDeleteLineConfirmIndex] = useState(null);
   const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
   const [hingeModal, setHingeModal] = useState(null);
   const [profileModal, setProfileModal] = useState(null);
@@ -550,6 +692,10 @@ export default function QuoteEditor({ quoteId }) {
   const [publishEmail, setPublishEmail] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
+  const [rooms, setRooms] = useState([]);
+  const [roomsLoaded, setRoomsLoaded] = useState(false);
+  const [isGeneratingLines, setIsGeneratingLines] = useState(false);
+  const [plannerRoom, setPlannerRoom] = useState(null);
 
   const totals = useMemo(
     () => calculateQuoteTotals(form.lines, form.gst_rate, { ...form, business_defaults: businessDefaults }),
@@ -635,6 +781,12 @@ export default function QuoteEditor({ quoteId }) {
   }, [quoteId]);
 
   useEffect(() => {
+    if ((activeSection !== "rooms" && activeSection !== "elevations") || roomsLoaded) return;
+    loadRooms();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, roomsLoaded]);
+
+  useEffect(() => {
     if (!shouldScrollQuoteItemsToBottomRef.current) return;
     shouldScrollQuoteItemsToBottomRef.current = false;
     const scroller = quoteItemsScrollerRef.current;
@@ -659,6 +811,14 @@ export default function QuoteEditor({ quoteId }) {
       setBusinessDefaults(nextDefaults);
       setForm((current) => ({
         ...current,
+        currency:
+          current.currency === "" || current.currency === null || current.currency === undefined
+            ? nextDefaults.currency
+            : current.currency,
+        gst_rate:
+          current.gst_rate === "" || current.gst_rate === null || current.gst_rate === undefined
+            ? nextDefaults.gst_rate
+            : current.gst_rate,
         worker_hourly_rate:
           current.worker_hourly_rate === "" || current.worker_hourly_rate === null || current.worker_hourly_rate === undefined
             ? nextDefaults.worker_hourly_rate
@@ -673,6 +833,80 @@ export default function QuoteEditor({ quoteId }) {
       }));
     } catch {
       // Business defaults are optional; built-in defaults remain available.
+    }
+  }
+
+  async function loadRooms() {
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/rooms`, { cache: "no-store" });
+      const payload = await response.json();
+      if (payload.ok) {
+        setRooms(payload.rooms || []);
+        setRoomsLoaded(true);
+      }
+    } catch {}
+  }
+
+  async function handleGenerateLineItems() {
+    if (!rooms.length) return;
+    setIsGeneratingLines(true);
+    setFeedback("");
+    let created = 0;
+    let linkFailed = 0;
+    const sortBase = form.lines.filter((l) => l.id).length;
+    try {
+      for (const room of rooms) {
+        // Room with no cabinets returns ok:true with empty array — skips cleanly
+        const cabRes = await fetch(`/api/admin/quotes/${quoteId}/rooms/${room.id}/cabinets`, { cache: "no-store" });
+        const cabData = await cabRes.json();
+        if (!cabData.ok) continue;
+        // quote_line_item_id filter prevents duplicates if run twice
+        const unlinked = (cabData.cabinets || []).filter((c) => !c.quote_line_item_id);
+        for (const cabinet of unlinked) {
+          const lineRes = await fetch(`/api/admin/quotes/${quoteId}/lines`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              line: {
+                product_name: CABINET_TYPE_LABELS[cabinet.cabinet_type] || "Cabinet",
+                description: `Room: ${room.name}`,
+                width_mm: cabinet.width_mm || null,
+                height_mm: cabinet.height_mm || null,
+              },
+              sort_order: sortBase + created,
+            }),
+          });
+          const lineData = await lineRes.json();
+          if (!lineData.ok) continue;
+          created++;
+          const patchRes = await fetch(`/api/admin/quotes/${quoteId}/rooms/${room.id}/cabinets/${cabinet.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quote_line_item_id: lineData.line.id }),
+          });
+          const patchData = await patchRes.json();
+          if (!patchData.ok) {
+            console.warn(`Cabinet ${cabinet.id}: line ${lineData.line.id} created but link PATCH failed:`, patchData.error);
+            linkFailed++;
+          }
+        }
+      }
+      if (created > 0) {
+        const quoteRes = await fetch(`/api/admin/quotes/${quoteId}`, { cache: "no-store" });
+        const quoteData = await quoteRes.json();
+        if (quoteData.ok) setForm(formFromQuote(quoteData.quote));
+      }
+      const base = created > 0
+        ? `Generated ${created} line item${created !== 1 ? "s" : ""} and linked to cabinets.`
+        : "All cabinets are already linked to line items.";
+      const warning = linkFailed > 0
+        ? ` Warning: ${linkFailed} cabinet${linkFailed !== 1 ? "s" : ""} could not be linked — check the console.`
+        : "";
+      setFeedback(base + warning);
+    } catch (err) {
+      setFeedback(err?.message || "Could not generate line items.");
+    } finally {
+      setIsGeneratingLines(false);
     }
   }
 
@@ -1060,6 +1294,16 @@ export default function QuoteEditor({ quoteId }) {
     });
   }
 
+  function closeLineActions() {
+    setOpenLineActionIndex(null);
+    setDeleteLineConfirmIndex(null);
+  }
+
+  function runLineAction(callback) {
+    closeLineActions();
+    callback();
+  }
+
   async function moveLine(index, direction) {
     const targetIndex = index + direction;
     const currentLines = form.lines;
@@ -1392,6 +1636,7 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+
   async function generateCabinetDrawingsAttachment() {
     setIsGeneratingCabinetPdf(true);
     setFeedback("");
@@ -1409,6 +1654,50 @@ export default function QuoteEditor({ quoteId }) {
     } finally {
       setIsGeneratingCabinetPdf(false);
     }
+  }
+
+  // ---- Room CRUD (state-only callbacks — RoomManager owns the API calls) ----
+
+  function handleRoomAdd(room) {
+    setRooms((prev) => [...prev, room]);
+  }
+
+  function handleRoomUpdate(room) {
+    setRooms((prev) => prev.map((r) => (r.id === room.id ? room : r)));
+  }
+
+  function handleRoomDelete(roomId) {
+    setRooms((prev) => prev.filter((r) => r.id !== roomId));
+  }
+
+  async function handlePlannerSaved() {
+    await loadRooms();
+    setPlannerRoom(null);
+  }
+
+  function renderRooms() {
+    return (
+      <div className={quoteStyles.roomPlannerSection}>
+        <div className={quoteStyles.roomPlannerActions}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={handleGenerateLineItems}
+            disabled={isGeneratingLines || !rooms.length}
+          >
+            {isGeneratingLines ? "Generating…" : "Generate line items"}
+          </button>
+        </div>
+        <RoomManager
+          quoteId={quoteId}
+          rooms={rooms}
+          onRoomAdd={handleRoomAdd}
+          onRoomUpdate={handleRoomUpdate}
+          onRoomDelete={handleRoomDelete}
+          onOpenPlanner={setPlannerRoom}
+        />
+      </div>
+    );
   }
 
   function renderDetails() {
@@ -1518,14 +1807,13 @@ export default function QuoteEditor({ quoteId }) {
                         </span>
                       </td>
                       <td>{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className={styles.rowEditButton}
-                          onClick={() => setActiveCabinetLineIndex(index)}
-                        >
-                          Configure
-                        </button>
+                      <td className={styles.actionsCol}>
+                        <AdminActionDropdown label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
+                          <button type="button" className={styles.tableActionMenuItem} onClick={() => setActiveCabinetLineIndex(index)}>
+                            Configure
+                          </button>
+                          <AdminConfirmDeleteAction onConfirm={() => removeLine(index)} />
+                        </AdminActionDropdown>
                       </td>
                     </tr>
                   );
@@ -1534,8 +1822,9 @@ export default function QuoteEditor({ quoteId }) {
             </table>
           </div>
         ) : (
-          <div className={styles.placeholderText}>
-            No base cabinets yet. Add a line item with type Base cabinet first.
+          <div className={styles.emptyState}>
+            <p className={styles.emptyStateTitle}>No base cabinets yet</p>
+            <p className={styles.emptyStateText}>Add a line item with type Base cabinet first.</p>
           </div>
         )}
       </div>
@@ -1549,340 +1838,327 @@ export default function QuoteEditor({ quoteId }) {
           <button type="button" className={styles.secondaryButton} onClick={addLine}>+ Add line item</button>
         </div>
         <div ref={quoteItemsScrollerRef} className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${quoteStyles.quoteItemsScroller}`}>
-          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${quoteStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead}`}>
-            <div>#</div>
-            <div>Type</div>
-            <div>Material</div>
-            <div>Thickness</div>
-            <div>W x H (mm)</div>
-            <div>Colour</div>
-            <div>Qty</div>
-            <div>Edge profile</div>
-            <div>Profile config</div>
-            <div>Hinge config</div>
-            <div>Unit cost</div>
-            <div>Markup %</div>
-            <div>Unit + markup</div>
-            <div>Total ex GST</div>
-            <div>Actions</div>
-          </div>
-          {form.lines.map((savedLine, index) => {
-            const isEditable = editableLineIndex === index;
-            const line = isEditable && editableLineDraft ? editableLineDraft : savedLine;
-            const {
-              calculated,
-              materialOptions,
-              thicknessOptions,
-              showEdges,
-              showProfiles,
-              edgeOptions,
-              hingesApplicable,
-              colourSrc,
-              isBaseCabinet,
-            } = lineViewModel(line);
-            const isBaseCabinetEditable = isEditable && isBaseCabinet;
-            const isLineSaving = savingLineIndex === index;
-            const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id;
-            const canResetUnitCost =
-              isEditable &&
-              !isBaseCabinetEditable &&
-              line.unit_cost_mode === "manual" &&
-              Number(line.calculated_unit_cost_ex_gst || 0) > 0;
-            return (
-              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock} ${quoteStyles.quoteItemBlock}`} key={savedLine.id || index}>
-              <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${quoteStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${quoteStyles.quoteItemRow} ${
-                isEditable
-                  ? `${styles.quoteItemRowEditing} ${workflowStyles.quoteItemRowEditing} ${quoteStyles.quoteItemRowEditing}`
-                  : `${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked} ${quoteStyles.quoteItemRowLocked}`
-              }`}>
-                <div className={quoteStyles.quoteItemNumberCell}>
-                  <span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{index + 1}</span>
-                </div>
-                {isEditable ? (
-                  <>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField}`}>
-                      <select value={line.product_type} onChange={(event) => updateProductLine(index, { product_type: event.target.value })}>
-                        <option value="" disabled>Type</option>
-                        {quoteProductTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
-                      </select>
-                    </div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField}`}>
-                      <select value={line.material} onChange={(event) => updateProductLine(index, { material: event.target.value })}>
-                        <option value="" disabled>Material</option>
-                        {materialOptions.map((material) => <option key={material}>{material}</option>)}
-                      </select>
-                    </div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField}`}>
-                      <select disabled={!line.material || isBaseCabinetEditable} value={line.thickness} onChange={(event) => updateProductLine(index, { thickness: event.target.value })}>
-                        <option value="" disabled>{line.material ? "Thickness" : "Select material first"}</option>
-                        {thicknessOptions.map((thickness) => <option key={thickness}>{thickness}</option>)}
-                      </select>
-                    </div>
-                    <div className={`${styles.quoteItemSize} ${workflowStyles.quoteItemSize}`}>
-                      <input disabled={isBaseCabinetEditable} min="1" type="number" placeholder="W" value={line.width_mm} onChange={(event) => updateLine(index, "width_mm", event.target.value)} />
-                      <input disabled={isBaseCabinetEditable} min="1" type="number" placeholder="H" value={line.height_mm} onChange={(event) => updateLine(index, "height_mm", event.target.value)} />
-                    </div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField}`}>
-                      <QuoteColourCombobox line={line} onChange={(patch) => updateProductLine(index, patch)} />
-                    </div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField}`}>
-                      <input min="1" type="number" value={line.qty} onChange={(event) => updateLine(index, "qty", event.target.value)} />
-                    </div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField}`}>
-                      {isBaseCabinetEditable ? <span className={`${styles.notApplicable} ${workflowStyles.notApplicable}`}>Configured in cabinet tab</span> : showEdges ? (
-                        <QuoteImageCombobox
-                          placeholder="Edge"
-                          value={line.edge_mould}
-                          options={edgeOptions}
-                          onChange={(option) => updateLine(index, "edge_mould", option.name || option.label)}
-                        />
-                      ) : <span className={`${styles.notApplicable} ${workflowStyles.notApplicable}`}>N/A</span>}
-                    </div>
-                    <div className={`${styles.quoteProfileConfigCell} ${quoteStyles.quoteConfigCell}`}>
-                      {showProfiles && hasProfileConfig(line) ? (
-                        <>
-                          <span className={quoteStyles.quoteProfileSummary}>
-                            {profileConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
-                          </span>
-                          <button
-                            type="button"
-                            className={quoteStyles.quoteProfileBareEditButton}
-                            onClick={() => openProfileModal(index)}
-                            disabled={isBaseCabinetEditable}
-                            aria-label={`Edit profile for quote line ${index + 1}`}
-                            title="Edit profile"
-                          >
-                            Edit
-                          </button>
-                        </>
-                      ) : (
+          <table className={`${styles.interactiveTable} ${quoteStyles.quoteItemsTable}`}>
+            <colgroup>
+              <col className={quoteStyles.quoteItemsColNumber} />
+              <col className={quoteStyles.quoteItemsColType} />
+              <col className={quoteStyles.quoteItemsColMaterial} />
+              <col className={quoteStyles.quoteItemsColThickness} />
+              <col className={quoteStyles.quoteItemsColSize} />
+              <col className={quoteStyles.quoteItemsColColour} />
+              <col className={quoteStyles.quoteItemsColQty} />
+              <col className={quoteStyles.quoteItemsColEdge} />
+              <col className={quoteStyles.quoteItemsColConfig} />
+              <col className={quoteStyles.quoteItemsColConfig} />
+              <col className={quoteStyles.quoteItemsColMoney} />
+              <col className={quoteStyles.quoteItemsColMarkup} />
+              <col className={quoteStyles.quoteItemsColMoney} />
+              <col className={quoteStyles.quoteItemsColMoney} />
+              <col className={quoteStyles.quoteItemsColActions} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Material</th>
+                <th>Thickness</th>
+                <th>W x H (mm)</th>
+                <th>Colour</th>
+                <th>Qty</th>
+                <th>Edge profile</th>
+                <th>Profile config</th>
+                <th>Hinge config</th>
+                <th>Unit cost</th>
+                <th>Markup %</th>
+                <th>Unit + markup</th>
+                <th>Total ex GST</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {form.lines.map((savedLine, index) => {
+                const isEditable = editableLineIndex === index;
+                const line = isEditable && editableLineDraft ? editableLineDraft : savedLine;
+                const {
+                  calculated,
+                  materialOptions,
+                  thicknessOptions,
+                  showEdges,
+                  showProfiles,
+                  edgeOptions,
+                  hingesApplicable,
+                  colourSrc,
+                  isBaseCabinet,
+                } = lineViewModel(line);
+                const isBaseCabinetEditable = isEditable && isBaseCabinet;
+                const isLineSaving = savingLineIndex === index;
+                const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id;
+                const canResetUnitCost =
+                  isEditable &&
+                  !isBaseCabinetEditable &&
+                  line.unit_cost_mode === "manual" &&
+                  Number(line.calculated_unit_cost_ex_gst || 0) > 0;
+                return (
+                  <tr
+                    className={`${quoteStyles.quoteItemRow} ${
+                      isEditable ? quoteStyles.quoteItemRowEditing : quoteStyles.quoteItemRowLocked
+                    }`}
+                    key={savedLine.id || index}
+                  >
+                    <td className={quoteStyles.quoteItemNumberCell}>
+                      <span className={styles.quoteItemRowNum}>{index + 1}</span>
+                      <span className={quoteStyles.quoteReorderControls} aria-label={`Reorder quote line ${index + 1}`}>
                         <button
                           type="button"
-                          className={quoteStyles.quoteProfileEditButton}
-                          onClick={() => openProfileModal(index)}
-                          disabled={isBaseCabinetEditable || !showProfiles}
+                          className={quoteStyles.quoteReorderButton}
+                          onClick={() => moveLine(index, -1)}
+                          disabled={!canMoveLines || index === 0}
+                          aria-label={`Move quote line ${index + 1} up`}
+                          title="Move up"
                         >
-                          Edit Profile
+                          Up
                         </button>
-                      )}
-                    </div>
-                    <div className={`${styles.quoteHingeConfigCell} ${quoteStyles.quoteConfigCell}`}>
-                      {hingesApplicable && hasHingeConfig(line) ? (
-                        <>
-                          <span className={quoteStyles.quoteHingeSummary}>
-                            {hingeConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
-                          </span>
-                          <button
-                            type="button"
-                            className={quoteStyles.quoteHingeBareEditButton}
-                            onClick={() => openHingeModal(index)}
-                            disabled={isBaseCabinetEditable}
-                            aria-label={`Edit hinges for quote line ${index + 1}`}
-                            title="Edit hinges"
-                          >
-                            Edit
-                          </button>
-                        </>
-                      ) : (
                         <button
                           type="button"
-                          className={quoteStyles.quoteHingeEditButton}
-                          onClick={() => openHingeModal(index)}
-                          disabled={isBaseCabinetEditable || !hingesApplicable}
+                          className={quoteStyles.quoteReorderButton}
+                          onClick={() => moveLine(index, 1)}
+                          disabled={!canMoveLines || index === form.lines.length - 1}
+                          aria-label={`Move quote line ${index + 1} down`}
+                          title="Move down"
                         >
-                          Edit Hinges
+                          Down
                         </button>
-                      )}
-                    </div>
-                    <div className={quoteStyles.quoteUnitCostControl}>
-                      <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${styles.quoteMoneyInput} ${quoteStyles.quoteMoneyInput}`}>
-                        <span>$</span>
-                        <input disabled={isBaseCabinetEditable} type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={(event) => updateLine(index, "product_unit_cost_ex_gst", event.target.value)} />
-                      </div>
-                      {canResetUnitCost ? (
-                        <button
-                          type="button"
-                          className={quoteStyles.quoteUnitCostResetButton}
-                          onClick={() => resetLineUnitCost(index)}
-                          aria-label={`Reset quote line ${index + 1} unit cost to calculated cost`}
-                          title={`Reset to calculated cost (${formatMoney(line.calculated_unit_cost_ex_gst, form.currency)})`}
-                        >
-                          Reset
-                        </button>
-                      ) : null}
-                    </div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${styles.quoteMarkupInput} ${quoteStyles.quoteMarkupInput}`}>
-                      <input type="number" min="0" step="0.01" value={line.markup_percent} onChange={(event) => updateLine(index, "markup_percent", event.target.value)} />
-                      <span>%</span>
-                    </div>
-                    <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal} ${quoteStyles.quoteItemTotal}`}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</div>
-                    <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal} ${quoteStyles.quoteItemTotal}`}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</div>
-                    <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${quoteStyles.quoteItemActions}`}>
-                      <button
-                        type="button"
-                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowSaveIconButton}`}
-                        onClick={saveLine}
-                        disabled={isLineSaving}
-                        aria-label={`Save quote line ${index + 1}`}
-                        title="Save"
-                      >
-                        {isLineSaving ? "Saving..." : "Save"}
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                        onClick={() => removeLine(index)}
-                        disabled={isLineSaving}
-                        aria-label={`Delete quote line ${index + 1}`}
-                        title="Delete"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{lineValue(displayProductType(line.product_type))}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{lineValue(line.material)}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{lineValue(line.thickness)}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{lineValue(quoteLineSizeText(line))}</div>
-                    <div className={`${styles.quoteColourRead} ${quoteStyles.quoteColourRead}`}>
-                      {colourSrc ? <img alt="" src={colourSrc} /> : null}
-                      <span className={quoteStyles.quoteColourReadText}>
-                        <strong>{lineValue(line.colour)}</strong>
-                        {line.finish ? <small>{line.finish}</small> : null}
                       </span>
-                    </div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{line.qty || "1"}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{lineValue(line.edge_mould)}</div>
-                    <div className={styles.quoteProfileConfigCell}>
-                      {showProfiles && hasProfileConfig(line) ? (
-                        <>
-                          <span className={quoteStyles.quoteProfileSummary}>
-                            {profileConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
-                          </span>
-                          <button
-                            type="button"
-                            className={quoteStyles.quoteProfileBareEditButton}
-                            onClick={() => openProfileModal(index)}
-                            aria-label={`Edit profile for quote line ${index + 1}`}
-                            title="Edit profile"
+                    </td>
+                    {isEditable ? (
+                      <>
+                        <td className={quoteStyles.quoteTableFieldCell}>
+                          <QuoteTileCombobox
+                            placeholder="Type"
+                            value={displayProductType(line.product_type)}
+                            options={quoteProductTypes.map((type) => ({ label: type.label, name: type.label, value: type.value, meta: "Product type" }))}
+                            onChange={(option) => updateProductLine(index, { product_type: option.value || option.name || option.label })}
+                          />
+                        </td>
+                        <td className={quoteStyles.quoteTableFieldCell}>
+                          <QuoteTileCombobox
+                            placeholder="Material"
+                            value={line.material}
+                            options={materialOptions.map((material) => ({ label: material, name: material, meta: "Material" }))}
+                            onChange={(option) => updateProductLine(index, { material: option.name || option.label })}
+                          />
+                        </td>
+                        <td className={quoteStyles.quoteTableFieldCell}>
+                          <QuoteTileCombobox
+                            disabled={!line.material || isBaseCabinetEditable}
+                            placeholder={line.material ? "Thickness" : "Select material first"}
+                            value={line.thickness}
+                            options={thicknessOptions.map((thickness) => ({ label: thickness, name: thickness, meta: "Thickness" }))}
+                            onChange={(option) => updateProductLine(index, { thickness: option.name || option.label })}
+                          />
+                        </td>
+                        <td className={quoteStyles.quoteTableSizeCell}>
+                          <input disabled={isBaseCabinetEditable} min="1" type="number" placeholder="W" value={line.width_mm} onChange={(event) => updateLine(index, "width_mm", event.target.value)} />
+                          <input disabled={isBaseCabinetEditable} min="1" type="number" placeholder="H" value={line.height_mm} onChange={(event) => updateLine(index, "height_mm", event.target.value)} />
+                        </td>
+                        <td className={quoteStyles.quoteTableFieldCell}>
+                          <QuoteColourCombobox line={line} onChange={(patch) => updateProductLine(index, patch)} />
+                        </td>
+                        <td className={quoteStyles.quoteTableFieldCell}>
+                          <input min="1" type="number" value={line.qty} onChange={(event) => updateLine(index, "qty", event.target.value)} />
+                        </td>
+                        <td className={quoteStyles.quoteTableFieldCell}>
+                          {isBaseCabinetEditable ? <span className={styles.notApplicable}>Configured in cabinet tab</span> : showEdges ? (
+                            <QuoteImageCombobox
+                              placeholder="Edge"
+                              value={line.edge_mould}
+                              options={edgeOptions}
+                              onChange={(option) => updateLine(index, "edge_mould", option.name || option.label)}
+                            />
+                          ) : <span className={styles.notApplicable}>N/A</span>}
+                        </td>
+                        <td className={`${styles.quoteProfileConfigCell} ${quoteStyles.quoteConfigCell}`}>
+                          {showProfiles && hasProfileConfig(line) ? (
+                            <>
+                              <span className={quoteStyles.quoteProfileSummary}>
+                                {profileConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                              </span>
+                              <button type="button" className={quoteStyles.quoteProfileBareEditButton} onClick={() => openProfileModal(index)} disabled={isBaseCabinetEditable} aria-label={`Edit profile for quote line ${index + 1}`} title="Edit profile">
+                                Edit
+                              </button>
+                            </>
+                          ) : (
+                            <button type="button" className={quoteStyles.quoteProfileEditButton} onClick={() => openProfileModal(index)} disabled={isBaseCabinetEditable || !showProfiles}>
+                              Edit Profile
+                            </button>
+                          )}
+                        </td>
+                        <td className={`${styles.quoteHingeConfigCell} ${quoteStyles.quoteConfigCell}`}>
+                          {hingesApplicable && hasHingeConfig(line) ? (
+                            <>
+                              <span className={quoteStyles.quoteHingeSummary}>
+                                {hingeConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                              </span>
+                              <button type="button" className={quoteStyles.quoteHingeBareEditButton} onClick={() => openHingeModal(index)} disabled={isBaseCabinetEditable} aria-label={`Edit hinges for quote line ${index + 1}`} title="Edit hinges">
+                                Edit
+                              </button>
+                            </>
+                          ) : (
+                            <button type="button" className={quoteStyles.quoteHingeEditButton} onClick={() => openHingeModal(index)} disabled={isBaseCabinetEditable || !hingesApplicable}>
+                              Edit Hinges
+                            </button>
+                          )}
+                        </td>
+                        <td className={quoteStyles.quoteUnitCostControl}>
+                          <div className={`${quoteStyles.quoteTableFieldCell} ${styles.quoteMoneyInput} ${quoteStyles.quoteMoneyInput}`}>
+                            <span>$</span>
+                            <input disabled={isBaseCabinetEditable} type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={(event) => updateLine(index, "product_unit_cost_ex_gst", event.target.value)} />
+                          </div>
+                          {canResetUnitCost ? (
+                            <button type="button" className={quoteStyles.quoteUnitCostResetButton} onClick={() => resetLineUnitCost(index)} aria-label={`Reset quote line ${index + 1} unit cost to calculated cost`} title={`Reset to calculated cost (${formatMoney(line.calculated_unit_cost_ex_gst, form.currency)})`}>
+                              Reset
+                            </button>
+                          ) : null}
+                        </td>
+                        <td className={`${quoteStyles.quoteTableFieldCell} ${styles.quoteMarkupInput} ${quoteStyles.quoteMarkupInput}`}>
+                          <input type="number" min="0" step="0.01" value={line.markup_percent} onChange={(event) => updateLine(index, "markup_percent", event.target.value)} />
+                          <span>%</span>
+                        </td>
+                        <td className={styles.quoteItemTotal}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</td>
+                        <td className={styles.quoteItemTotal}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</td>
+                        <td className={`${styles.quoteItemActions} ${quoteStyles.quoteItemActions}`}>
+                          <QuoteLineActionDropdown
+                            disabled={isLineSaving}
+                            index={index}
+                            isOpen={openLineActionIndex === index}
+                            onClose={closeLineActions}
+                            onToggle={() => {
+                              setOpenLineActionIndex((current) => (current === index ? null : index));
+                              setDeleteLineConfirmIndex(null);
+                            }}
                           >
-                            Edit
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          className={quoteStyles.quoteProfileEditButton}
-                          onClick={() => openProfileModal(index)}
-                          disabled={!showProfiles}
-                        >
-                          Edit Profile
-                        </button>
-                      )}
-                    </div>
-                    <div className={styles.quoteHingeConfigCell}>
-                      {hingesApplicable && hasHingeConfig(line) ? (
-                        <>
-                          <span className={quoteStyles.quoteHingeSummary}>
-                            {hingeConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                            {deleteLineConfirmIndex === index ? (
+                              <>
+                                <span className={quoteStyles.quoteActionConfirmText}>Delete line?</span>
+                                <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => runLineAction(() => removeLine(index))}>
+                                  Confirm delete
+                                </button>
+                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => setDeleteLineConfirmIndex(null)}>
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(saveLine)}>
+                                  {isLineSaving ? "Saving..." : "Save"}
+                                </button>
+                                <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => setDeleteLineConfirmIndex(index)}>
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                          </QuoteLineActionDropdown>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className={styles.quoteReadCell}>{lineValue(displayProductType(line.product_type))}</td>
+                        <td className={styles.quoteReadCell}>{lineValue(line.material)}</td>
+                        <td className={styles.quoteReadCell}>{lineValue(line.thickness)}</td>
+                        <td className={styles.quoteReadCell}>{lineValue(quoteLineSizeText(line))}</td>
+                        <td>
+                          <span className={`${styles.quoteColourRead} ${quoteStyles.quoteColourRead}`}>
+                            {colourSrc ? <img alt="" src={colourSrc} /> : null}
+                            <span className={quoteStyles.quoteColourReadText}>
+                              <strong>{lineValue(line.colour)}</strong>
+                              {line.finish ? <small>{line.finish}</small> : null}
+                            </span>
                           </span>
-                          <button
-                            type="button"
-                            className={quoteStyles.quoteHingeBareEditButton}
-                            onClick={() => openHingeModal(index)}
-                            aria-label={`Edit hinges for quote line ${index + 1}`}
-                            title="Edit hinges"
+                        </td>
+                        <td className={styles.quoteReadCell}>{line.qty || "1"}</td>
+                        <td className={styles.quoteReadCell}>{lineValue(line.edge_mould)}</td>
+                        <td className={`${styles.quoteProfileConfigCell} ${quoteStyles.quoteConfigCell}`}>
+                          {showProfiles && hasProfileConfig(line) ? (
+                            <>
+                              <span className={quoteStyles.quoteProfileSummary}>
+                                {profileConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                              </span>
+                              <button type="button" className={quoteStyles.quoteProfileBareEditButton} onClick={() => openProfileModal(index)} aria-label={`Edit profile for quote line ${index + 1}`} title="Edit profile">
+                                Edit
+                              </button>
+                            </>
+                          ) : (
+                            <button type="button" className={quoteStyles.quoteProfileEditButton} onClick={() => openProfileModal(index)} disabled={!showProfiles}>
+                              Edit Profile
+                            </button>
+                          )}
+                        </td>
+                        <td className={`${styles.quoteHingeConfigCell} ${quoteStyles.quoteConfigCell}`}>
+                          {hingesApplicable && hasHingeConfig(line) ? (
+                            <>
+                              <span className={quoteStyles.quoteHingeSummary}>
+                                {hingeConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
+                              </span>
+                              <button type="button" className={quoteStyles.quoteHingeBareEditButton} onClick={() => openHingeModal(index)} aria-label={`Edit hinges for quote line ${index + 1}`} title="Edit hinges">
+                                Edit
+                              </button>
+                            </>
+                          ) : (
+                            <button type="button" className={quoteStyles.quoteHingeEditButton} onClick={() => openHingeModal(index)} disabled={!hingesApplicable}>
+                              Edit Hinges
+                            </button>
+                          )}
+                        </td>
+                        <td className={styles.quoteReadCell}>{formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}</td>
+                        <td className={styles.quoteReadCell}>{line.markup_percent ?? businessDefaults.markup_percent}%</td>
+                        <td className={styles.quoteItemTotal}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</td>
+                        <td className={styles.quoteItemTotal}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</td>
+                        <td className={`${styles.quoteItemActions} ${quoteStyles.quoteItemActions}`}>
+                          <QuoteLineActionDropdown
+                            disabled={isLineSaving || savingLineIndex !== null}
+                            index={index}
+                            isOpen={openLineActionIndex === index}
+                            onClose={closeLineActions}
+                            onToggle={() => {
+                              setOpenLineActionIndex((current) => (current === index ? null : index));
+                              setDeleteLineConfirmIndex(null);
+                            }}
                           >
-                            Edit
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          className={quoteStyles.quoteHingeEditButton}
-                          onClick={() => openHingeModal(index)}
-                          disabled={!hingesApplicable}
-                        >
-                          Edit Hinges
-                        </button>
-                      )}
-                    </div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{line.markup_percent ?? businessDefaults.markup_percent}%</div>
-                    <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal}`}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</div>
-                    <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal}`}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</div>
-                    <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${quoteStyles.quoteItemActions}`}>
-                      <button
-                        type="button"
-                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${quoteStyles.quoteLineNoteIconButton} ${line.client_note ? quoteStyles.quoteLineNoteIconButtonActive : ""}`}
-                        onClick={() => openLineNoteModal(index)}
-                        disabled={isLineSaving || savingLineIndex !== null}
-                        aria-label={`${line.client_note ? "Edit" : "Add"} client note for quote line ${index + 1}`}
-                        title={line.client_note ? "Edit client note" : "Add client note"}
-                      >
-                        Note
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
-                        onClick={() => editLine(index)}
-                        disabled={isLineSaving || savingLineIndex !== null}
-                        aria-label={`Edit quote line ${index + 1}`}
-                        title="Edit"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowDuplicateIconButton}`}
-                        onClick={() => duplicateLine(index)}
-                        disabled={isLineSaving || savingLineIndex !== null}
-                        aria-label={`Duplicate quote line ${index + 1}`}
-                        title="Duplicate"
-                      >
-                        Duplicate
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                        onClick={() => removeLine(index)}
-                        disabled={isLineSaving}
-                        aria-label={`Delete quote line ${index + 1}`}
-                        title="Delete"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-              <span className={quoteStyles.quoteReorderControls} aria-label={`Reorder quote line ${index + 1}`}>
-                <button
-                  type="button"
-                  className={quoteStyles.quoteReorderButton}
-                  onClick={() => moveLine(index, -1)}
-                  disabled={!canMoveLines || index === 0}
-                  aria-label={`Move quote line ${index + 1} up`}
-                  title="Move up"
-                >
-                  Up
-                </button>
-                <button
-                  type="button"
-                  className={quoteStyles.quoteReorderButton}
-                  onClick={() => moveLine(index, 1)}
-                  disabled={!canMoveLines || index === form.lines.length - 1}
-                  aria-label={`Move quote line ${index + 1} down`}
-                  title="Move down"
-                >
-                  Down
-                </button>
-              </span>
-              </div>
-            );
-          })}
+                            {deleteLineConfirmIndex === index ? (
+                              <>
+                                <span className={quoteStyles.quoteActionConfirmText}>Delete line?</span>
+                                <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => runLineAction(() => removeLine(index))}>
+                                  Confirm delete
+                                </button>
+                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => setDeleteLineConfirmIndex(null)}>
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => openLineNoteModal(index))}>
+                                  {line.client_note ? "Edit note" : "Add note"}
+                                </button>
+                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => editLine(index))}>
+                                  Edit
+                                </button>
+                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => duplicateLine(index))}>
+                                  Duplicate
+                                </button>
+                                <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => setDeleteLineConfirmIndex(index)}>
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                          </QuoteLineActionDropdown>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     );
@@ -1920,15 +2196,17 @@ export default function QuoteEditor({ quoteId }) {
             <input className={styles.fieldInput} type="number" step="0.01" value={form.installation_cost_ex_gst} onChange={(event) => updateForm("installation_cost_ex_gst", event.target.value)} />
           </Field>
         </div>
-        <div className={`${styles.quoteTotalsPanel} ${workflowStyles.quoteTotalsPanel}`}>
-          <div><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
-          <div><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
-          <div><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
-          <div><span>Labour</span><strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong></div>
-          <div><span>Travel</span><strong>{formatMoney(totals.travel_cost_ex_gst, form.currency)}</strong></div>
-          <div><span>Delivery</span><strong>{formatMoney(totals.delivery_cost_ex_gst, form.currency)}</strong></div>
-          <div><span>Consumables</span><strong>{formatMoney(totals.installation_cost_ex_gst, form.currency)}</strong></div>
-          <div className={`${styles.quoteMarkupProfitRow} ${quoteStyles.quoteMarkupProfitRow}`}><span>Line markups (Profit)</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
+        <div className={`${styles.adminTotalCard} ${styles.adminTotalCardFull}`}>
+          <div className={styles.adminTotalRows}>
+            <div className={styles.adminTotalRow}><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminTotalRow}><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminTotalRow}><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminTotalRow}><span>Labour</span><strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminTotalRow}><span>Travel</span><strong>{formatMoney(totals.travel_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminTotalRow}><span>Delivery</span><strong>{formatMoney(totals.delivery_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminTotalRow}><span>Consumables</span><strong>{formatMoney(totals.installation_cost_ex_gst, form.currency)}</strong></div>
+            <div className={`${styles.adminTotalRow} ${styles.adminTotalRowEmphasis}`}><span>Line markups (Profit)</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
+          </div>
         </div>
       </div>
     );
@@ -1936,51 +2214,51 @@ export default function QuoteEditor({ quoteId }) {
 
   function renderTotals() {
     return (
-      <div className={styles.quoteTotalsLayout}>
-        <div className={quoteStyles.quoteTotalsSummary}>
-          <details className={`${styles.quoteTotalGroup} ${workflowStyles.quoteTotalGroup}`}>
-            <summary>
+      <div className={styles.adminTotalsLayout}>
+        <div className={styles.adminTotalsStack}>
+          <details className={styles.adminBreakdownGroup}>
+            <summary className={styles.adminBreakdownSummary}>
               <span><strong>Products and hardware</strong><small>Product lines, per-line markup, drilling, and hinge supply.</small></span>
               <strong>{formatMoney(totals.material_cost_ex_gst, form.currency)}</strong>
             </summary>
-            <div className={`${styles.quoteTotalGroupBody} ${workflowStyles.quoteTotalGroupBody}`}>
-              <div><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
-              <div><span>Line markups</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
-              <div><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
-              <div><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminBreakdownRows}>
+              <div className={styles.adminTotalRow}><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
+              <div className={styles.adminTotalRow}><span>Line markups</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
+              <div className={styles.adminTotalRow}><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
+              <div className={styles.adminTotalRow}><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
             </div>
           </details>
-          <details className={`${styles.quoteTotalGroup} ${workflowStyles.quoteTotalGroup}`}>
-            <summary>
+          <details className={styles.adminBreakdownGroup}>
+            <summary className={styles.adminBreakdownSummary}>
               <span><strong>Labour</strong><small>Workshop or job labour calculated from hours and hourly rate.</small></span>
               <strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong>
             </summary>
-            <div className={`${styles.quoteTotalGroupBody} ${workflowStyles.quoteTotalGroupBody}`}>
-              <div><span>Labour hours</span><strong>{totals.labour_hours || 0}</strong></div>
-              <div><span>Hourly rate</span><strong>{formatMoney(totals.worker_hourly_rate, form.currency)}</strong></div>
-              <div><span>Labour total</span><strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminBreakdownRows}>
+              <div className={styles.adminTotalRow}><span>Labour hours</span><strong>{totals.labour_hours || 0}</strong></div>
+              <div className={styles.adminTotalRow}><span>Hourly rate</span><strong>{formatMoney(totals.worker_hourly_rate, form.currency)}</strong></div>
+              <div className={styles.adminTotalRow}><span>Labour total</span><strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong></div>
             </div>
           </details>
-          <details className={`${styles.quoteTotalGroup} ${workflowStyles.quoteTotalGroup}`}>
-            <summary>
+          <details className={styles.adminBreakdownGroup}>
+            <summary className={styles.adminBreakdownSummary}>
               <span><strong>Logistics and consumables</strong><small>Travel, delivery, and small materials such as glue or screws.</small></span>
               <strong>{formatMoney(totals.travel_cost_ex_gst + totals.delivery_cost_ex_gst + totals.installation_cost_ex_gst, form.currency)}</strong>
             </summary>
-            <div className={`${styles.quoteTotalGroupBody} ${workflowStyles.quoteTotalGroupBody}`}>
-              <div><span>Travel</span><strong>{formatMoney(totals.travel_cost_ex_gst, form.currency)}</strong></div>
-              <div><span>Delivery</span><strong>{formatMoney(totals.delivery_cost_ex_gst, form.currency)}</strong></div>
-              <div><span>Consumables</span><strong>{formatMoney(totals.installation_cost_ex_gst, form.currency)}</strong></div>
+            <div className={styles.adminBreakdownRows}>
+              <div className={styles.adminTotalRow}><span>Travel</span><strong>{formatMoney(totals.travel_cost_ex_gst, form.currency)}</strong></div>
+              <div className={styles.adminTotalRow}><span>Delivery</span><strong>{formatMoney(totals.delivery_cost_ex_gst, form.currency)}</strong></div>
+              <div className={styles.adminTotalRow}><span>Consumables</span><strong>{formatMoney(totals.installation_cost_ex_gst, form.currency)}</strong></div>
             </div>
           </details>
-          <div className={`${styles.quoteGrandTotalPanel} ${workflowStyles.quoteGrandTotalPanel} ${quoteStyles.quoteGrandTotalPanel}`}>
-            <div><span>Subtotal ex GST</span><strong>{formatMoney(totals.subtotal_ex_gst, form.currency)}</strong></div>
-            <div><span>GST</span><strong>{formatMoney(totals.gst_amount, form.currency)}</strong></div>
-            <div><span>Total inc GST</span><strong>{formatMoney(totals.total_inc_gst, form.currency)}</strong></div>
+          <div className={styles.adminTotalsRow}>
+            <div className={styles.adminTotalCard}>
+              <div className={styles.adminTotalRows}>
+                <div className={styles.adminTotalRow}><span>Subtotal ex GST</span><strong>{formatMoney(totals.subtotal_ex_gst, form.currency)}</strong></div>
+                <div className={styles.adminTotalRow}><span>GST</span><strong>{formatMoney(totals.gst_amount, form.currency)}</strong></div>
+                <div className={styles.adminTotalRow}><span>Total inc GST</span><strong>{formatMoney(totals.total_inc_gst, form.currency)}</strong></div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className={`${styles.quoteBuilderGrid} ${quoteStyles.quoteBuilderGrid}`}>
-          <Field label="Currency"><input className={styles.fieldInput} value={form.currency} onChange={(event) => updateForm("currency", event.target.value.toUpperCase())} /></Field>
-          <Field label="GST rate"><input className={styles.fieldInput} type="number" step="0.01" value={form.gst_rate} onChange={(event) => updateForm("gst_rate", event.target.value)} /></Field>
         </div>
       </div>
     );
@@ -2018,26 +2296,13 @@ export default function QuoteEditor({ quoteId }) {
                   <td>{attachment.file_type || "File"}</td>
                   <td>{formatFileSize(attachment.file_size)}</td>
                   <td>{attachment.created_at ? new Date(attachment.created_at).toLocaleString("en-AU") : "-"}</td>
-                  <td className={styles.rowActions}>
-                    <a
-                      className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowViewIconButton}`}
-                      href={attachment.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`View attachment ${attachment.file_name || "file"}`}
-                      title="View attachment"
-                    >
+                  <td className={styles.actionsCol}>
+                    <AdminActionDropdown label={`Open actions for ${attachment.file_name || "attachment"}`}>
+                    <a className={styles.tableActionMenuItem} href={attachment.file_url} target="_blank" rel="noreferrer">
                       View
                     </a>
-                    <button
-                      type="button"
-                      className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                      onClick={() => deleteAttachment(attachment)}
-                      aria-label={`Delete ${attachment.file_name}`}
-                      title="Delete"
-                    >
-                      Delete
-                    </button>
+                    <AdminConfirmDeleteAction disabled={isUploading} onConfirm={() => deleteAttachment(attachment)} />
+                    </AdminActionDropdown>
                   </td>
                 </tr>
               ))}
@@ -2063,6 +2328,8 @@ export default function QuoteEditor({ quoteId }) {
     if (activeSection === "notes") return renderNotes();
     if (activeSection === "totals") return renderTotals();
     if (activeSection === "attachments") return renderAttachments();
+    if (activeSection === "rooms") return renderRooms();
+    if (activeSection === "elevations") return <ElevationPanel rooms={rooms} quoteId={quoteId} quoteNumber={form.quote_number} />;
     return renderDetails();
   }
 
@@ -2130,7 +2397,7 @@ export default function QuoteEditor({ quoteId }) {
           </div>
         </section>
       </form>
-      {feedback && !isFeedbackInModal ? <div className={quoteStyles.quoteFeedbackToast} role="status">{feedback}</div> : null}
+      {feedback && !isFeedbackInModal ? <div className={styles.feedbackToast} role="status">{feedback}</div> : null}
       {publishEmail && typeof document !== "undefined"
         ? createPortal(
             <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="publish-quote-email-title">
@@ -2141,6 +2408,9 @@ export default function QuoteEditor({ quoteId }) {
                     <p className={styles.tableMeta}>Publish quote</p>
                     <h2 id="publish-quote-email-title">Email customer</h2>
                   </div>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setPublishEmail(null)} disabled={isSaving}>
+                    Close
+                  </button>
                 </div>
                 <div className={styles.customerModalBody}>
                   <div className={styles.customerModalGrid}>
@@ -2216,6 +2486,9 @@ export default function QuoteEditor({ quoteId }) {
                     <p className={styles.tableMeta}>Customer</p>
                     <h2 id="create-customer-title">Create new customer</h2>
                   </div>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setIsCustomerModalOpen(false)} disabled={isSavingCustomer}>
+                    Close
+                  </button>
                 </div>
                 <div className={styles.customerModalBody}>
                   <div className={styles.customerModalGrid}>
@@ -2251,6 +2524,9 @@ export default function QuoteEditor({ quoteId }) {
                     <p className={styles.tableMeta}>Client note</p>
                     <h2 id="line-note-title">Line {lineNoteModal.lineIndex + 1} note</h2>
                   </div>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setLineNoteModal(null)} disabled={savingLineIndex !== null}>
+                    Close
+                  </button>
                 </div>
                 <div className={styles.customerModalBody}>
                   <label className={styles.fieldLabel}>
@@ -2288,6 +2564,9 @@ export default function QuoteEditor({ quoteId }) {
                     <p className={styles.tableMeta}>Line item profile</p>
                     <h2 id="profile-config-title">Edit Profile</h2>
                   </div>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setProfileModal(null)}>
+                    Close
+                  </button>
                 </div>
                 <div className={styles.customerModalBody}>
                   <div className={quoteStyles.profileConfigForm}>
@@ -2337,6 +2616,9 @@ export default function QuoteEditor({ quoteId }) {
                     <p className={styles.tableMeta}>Line item hinges</p>
                     <h2 id="hinge-config-title">Edit Hinges</h2>
                   </div>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setHingeModal(null)}>
+                    Close
+                  </button>
                 </div>
                 <div className={styles.customerModalBody}>
                   <div className={quoteStyles.hingeConfigForm}>
@@ -2392,6 +2674,15 @@ export default function QuoteEditor({ quoteId }) {
             document.body
           )
         : null}
+      {plannerRoom && (
+        <PlannerOverlay
+          room={plannerRoom}
+          quoteId={quoteId}
+          quoteLineItems={form.lines.filter((l) => l.id)}
+          onClose={() => setPlannerRoom(null)}
+          onSaved={handlePlannerSaved}
+        />
+      )}
       {activeCabinetLine && isBaseCabinetLine(activeCabinetLine) && typeof document !== "undefined"
         ? createPortal(
             <div

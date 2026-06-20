@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import styles from "../admin-shell.module.css";
+import styles from "../admin-content.module.css";
+import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../_components/AdminActionDropdown";
 import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 const emptyForm = {
@@ -48,6 +49,7 @@ export default function CustomersManager() {
   const [setupRequired, setSetupRequired] = useState(false);
   const [search, setSearch] = useState("");
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState([]);
 
   const filteredCustomers = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -146,23 +148,56 @@ export default function CustomersManager() {
     }
   }
 
+  async function deleteCustomers(ids) {
+    if (!ids.length) return;
+    setIsSaving(true);
+    setFeedback("");
+
+    try {
+      for (const id of ids) {
+        const response = await fetch(`/api/admin/customers/${id}`, { method: "DELETE" });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "Could not delete customer.");
+        }
+      }
+
+      setCustomers((current) => current.filter((customer) => !ids.includes(customer.id)));
+      setSelectedCustomerIds((current) => current.filter((id) => !ids.includes(id)));
+      setFeedback(`${ids.length} customer${ids.length === 1 ? "" : "s"} deleted.`);
+    } catch (error) {
+      setFeedback(error?.message || "Could not delete selected customers.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function toggleSelectedCustomer(id) {
+    setSelectedCustomerIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function toggleSelectedCustomerPage(checked) {
+    const pageIds = customerPagination.pageItems.map((customer) => customer.id);
+    setSelectedCustomerIds((current) => {
+      if (!checked) return current.filter((id) => !pageIds.includes(id));
+      return Array.from(new Set([...current, ...pageIds]));
+    });
+  }
+
   return (
     <div className={styles.quoteBuilderShell}>
       <section className={styles.productsSection}>
-        <div className={`${styles.productsHeaderBar} ${styles.customerToolbar}`}>
-          <p className={styles.tableMeta}>
-              {isLoading ? "Loading customers" : `${filteredCustomers.length} of ${customers.length} customers`}
-          </p>
-          <div className={styles.customerToolbarActions}>
+        <div className={`${styles.productsHeaderBar} ${styles.tableToolbar} ${styles.customerToolbar}`}>
+          <div className={styles.tableToolbarFilters}>
+            <AdminBulkDeleteButton count={selectedCustomerIds.length} disabled={isSaving} onConfirm={() => deleteCustomers(selectedCustomerIds)} />
             <input
               className={styles.customerSearchInput}
               placeholder="Search customers"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <button type="button" className={styles.secondaryButton} onClick={loadCustomers} disabled={isLoading}>
-              Refresh
-            </button>
+          </div>
+          <div className={styles.tableToolbarActions}>
             <button type="button" className={styles.primaryButton} onClick={openNewCustomerModal}>
               Add customer
             </button>
@@ -177,7 +212,15 @@ export default function CustomersManager() {
         <div className={styles.productsTableWrap}>
           <table className={styles.productsTable}>
             <thead>
-              <tr>
+            <tr>
+                <th className={styles.rowSelectCol}>
+                  <input
+                    type="checkbox"
+                    checked={customerPagination.pageItems.length > 0 && customerPagination.pageItems.every((customer) => selectedCustomerIds.includes(customer.id))}
+                    onChange={(event) => toggleSelectedCustomerPage(event.target.checked)}
+                    aria-label="Select all visible customers"
+                  />
+                </th>
                 <th>Customer</th>
                 <th>Company</th>
                 <th>Email</th>
@@ -191,6 +234,14 @@ export default function CustomersManager() {
             <tbody>
               {customerPagination.pageItems.map((customer) => (
                 <tr key={customer.id}>
+                  <td className={styles.rowSelectCol}>
+                    <input
+                      type="checkbox"
+                      checked={selectedCustomerIds.includes(customer.id)}
+                      onChange={() => toggleSelectedCustomer(customer.id)}
+                      aria-label={`Select ${customer.name || "customer"}`}
+                    />
+                  </td>
                   <td className={styles.productNameCell}>{customer.name || "-"}</td>
                   <td>{customer.company_name || "-"}</td>
                   <td>{customer.email || "-"}</td>
@@ -202,25 +253,20 @@ export default function CustomersManager() {
                     </span>
                   </td>
                   <td>{formatDate(customer.updated_at || customer.created_at)}</td>
-                  <td>
-                    <div className={styles.rowActions}>
-                      <button
-                        type="button"
-                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
-                        onClick={() => openEditCustomerModal(customer)}
-                        aria-label={`Edit ${customer.name || "customer"}`}
-                        title="Edit"
-                      >
+                  <td className={styles.actionsCol}>
+                    <AdminActionDropdown label={`Open actions for ${customer.name || "customer"}`}>
+                      <button type="button" className={styles.tableActionMenuItem} onClick={() => openEditCustomerModal(customer)}>
                         Edit
                       </button>
-                    </div>
+                      <AdminConfirmDeleteAction disabled={isSaving} onConfirm={() => deleteCustomers([customer.id])} />
+                    </AdminActionDropdown>
                   </td>
                 </tr>
               ))}
 
               {!filteredCustomers.length && !isLoading ? (
                 <tr>
-                  <td colSpan="8" className={styles.emptyCell}>
+                  <td colSpan="9" className={styles.emptyCell}>
                     No customers found.
                   </td>
                 </tr>
@@ -228,7 +274,7 @@ export default function CustomersManager() {
 
               {isLoading ? (
                 <tr>
-                  <td colSpan="8" className={styles.emptyCell}>
+                  <td colSpan="9" className={styles.emptyCell}>
                     Loading customers...
                   </td>
                 </tr>
@@ -254,6 +300,9 @@ export default function CustomersManager() {
                 <p className={styles.tableMeta}>{form.id ? "Edit customer" : "New customer"}</p>
                 <h2>{form.id ? "Edit Customer" : "Add Customer"}</h2>
               </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeCustomerModal} disabled={isSaving}>
+                Close
+              </button>
             </header>
 
             <div className={styles.customerModalBody}>
@@ -334,3 +383,4 @@ export default function CustomersManager() {
     </div>
   );
 }
+

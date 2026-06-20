@@ -1,11 +1,12 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
-import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../request-quote/quote-form-data";
+import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../../lib/quote-form-data";
 import { buildColourFamilyFromLibraryRows, COLOUR_MATERIALS, inferThicknessFromMaterial } from "../../../../lib/pcd-colour-library";
-import styles from "../../admin-shell.module.css";
+import styles from "../../admin-content.module.css";
+import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
 import productStyles from "./product-editor.module.css";
 
 function productClass(name) {
@@ -307,6 +308,7 @@ export default function ProductEditorForm({
   const [featuresText, setFeaturesText] = useState(arrayToLines(initialProduct?.features));
   const [finishes, setFinishes] = useState(normalizeFinishes(initialProduct?.finishes));
   const [pricingRows, setPricingRows] = useState(normalizePricingRows(initialProduct?.pricing_rows));
+  const [selectedPricingRowIndexes, setSelectedPricingRowIndexes] = useState([]);
   const [infoCards, setInfoCards] = useState(normalizeInfoCards(initialProduct?.info_cards));
   const [relatedProductIdsText, setRelatedProductIdsText] = useState(
     arrayToLines(initialProduct?.related_product_ids)
@@ -553,6 +555,23 @@ export default function ProductEditorForm({
 
   function removePricingRow(index) {
     setPricingRows((previous) => previous.filter((_, itemIndex) => itemIndex !== index));
+    setSelectedPricingRowIndexes((current) => current.filter((itemIndex) => itemIndex !== index));
+  }
+
+  function removePricingRows(indexes) {
+    const indexSet = new Set(indexes);
+    setPricingRows((previous) => previous.filter((_, itemIndex) => !indexSet.has(itemIndex)));
+    setSelectedPricingRowIndexes([]);
+  }
+
+  function toggleSelectedPricingRow(index) {
+    setSelectedPricingRowIndexes((current) =>
+      current.includes(index) ? current.filter((itemIndex) => itemIndex !== index) : [...current, index]
+    );
+  }
+
+  function toggleSelectedPricingRows(checked) {
+    setSelectedPricingRowIndexes(checked ? pricingRows.map((_, index) => index) : []);
   }
 
   async function savePricingSection() {
@@ -1286,43 +1305,58 @@ export default function ProductEditorForm({
             <p className={styles.productEditModalIntro}>
               These rows appear in the indicative pricing table. Keep the size, description, and price short so the public table stays easy to scan.
             </p>
+            <div className={`${styles.productsHeaderBar} ${styles.tableToolbar}`}>
+              <div className={styles.tableToolbarFilters}>
+                <AdminBulkDeleteButton count={selectedPricingRowIndexes.length} onConfirm={() => removePricingRows(selectedPricingRowIndexes)} />
+              </div>
+              <button type="button" className={styles.secondaryButton} onClick={addPricingRow}>Add pricing row</button>
+            </div>
             <div className={styles.pricingEditTableWrap}>
               <table className={styles.pricingEditTable}>
                 <thead>
                   <tr>
+                    <th className={styles.rowSelectCol}>
+                      <input
+                        type="checkbox"
+                        checked={pricingRows.length > 0 && selectedPricingRowIndexes.length === pricingRows.length}
+                        onChange={(event) => toggleSelectedPricingRows(event.target.checked)}
+                        aria-label="Select all pricing rows"
+                      />
+                    </th>
                     <th>Size</th>
                     <th>Description</th>
                     <th>Price</th>
                     <th>Popular</th>
-                    <th></th>
+                    <th className={styles.actionsCol}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pricingRows.map((row, index) => (
                     <tr key={`pricing-${index}`}>
-                      <td><input className={styles.fieldInput} value={row.size || ""} onChange={(event) => updatePricingRow(index, "size", event.target.value)} placeholder="e.g. 900×2100" /></td>
+                      <td className={styles.rowSelectCol}>
+                        <input
+                          type="checkbox"
+                          checked={selectedPricingRowIndexes.includes(index)}
+                          onChange={() => toggleSelectedPricingRow(index)}
+                          aria-label={`Select pricing row ${index + 1}`}
+                        />
+                      </td>
+                      <td><input className={styles.fieldInput} value={row.size || ""} onChange={(event) => updatePricingRow(index, "size", event.target.value)} placeholder="e.g. 900Ã—2100" /></td>
                       <td><input className={styles.fieldInput} value={row.description || ""} onChange={(event) => updatePricingRow(index, "description", event.target.value)} placeholder="e.g. Painted MDF" /></td>
                       <td className={styles.pricingEditPriceCell}><input className={styles.fieldInput} type="number" step="0.01" value={row.price ?? ""} onChange={(event) => updatePricingRow(index, "price", event.target.value)} placeholder="0.00" /></td>
                       <td className={styles.pricingEditCheckCell}>
                         <input type="checkbox" checked={Boolean(row.popular)} onChange={(event) => updatePricingRow(index, "popular", event.target.checked)} />
                       </td>
-                      <td className={styles.pricingEditDeleteCell}>
-                        <button
-                          type="button"
-                          className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                          onClick={() => removePricingRow(index)}
-                          aria-label={`Remove pricing row ${index + 1}`}
-                          title="Remove"
-                        >
-                          Remove
-                        </button>
+                      <td className={styles.actionsCol}>
+                        <AdminActionDropdown label={`Open actions for pricing row ${index + 1}`}>
+                          <AdminConfirmDeleteAction onConfirm={() => removePricingRow(index)} />
+                        </AdminActionDropdown>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <button type="button" className={styles.secondaryButton} onClick={addPricingRow}>Add pricing row</button>
           </div>
         );
       case "quote":
@@ -1406,9 +1440,12 @@ export default function ProductEditorForm({
       <div className={styles.mediaModalBackdrop} role="dialog" aria-modal="true" onMouseDown={closeEditSection}>
         <div className={styles.productEditModalPanel} onMouseDown={(event) => event.stopPropagation()}>
           <div className={styles.mediaModalHeader}>
-            <h2 className={styles.mediaModalTitle}>{titleMap[activeEditSection] || "Edit section"}</h2>
-            <button type="button" className={styles.mediaCloseButton} onClick={closeEditSection}>
-              x
+            <div>
+              <p className={styles.tableMeta}>Product editor</p>
+              <h2 className={styles.mediaModalTitle}>{titleMap[activeEditSection] || "Edit section"}</h2>
+            </div>
+            <button type="button" className={styles.modalCloseButton} onClick={closeEditSection}>
+              Close
             </button>
           </div>
           <div className={styles.productEditModalBody}>
@@ -1658,9 +1695,12 @@ export default function ProductEditorForm({
         <div className={styles.mediaModalBackdrop} role="dialog" aria-modal="true">
           <div className={styles.mediaModalPanel}>
             <div className={styles.mediaModalHeader}>
-              <h2 className={styles.mediaModalTitle}>Select file</h2>
-              <button type="button" className={styles.mediaCloseButton} onClick={closeMediaModal}>
-                x
+              <div>
+                <p className={styles.tableMeta}>Media library</p>
+                <h2 className={styles.mediaModalTitle}>Select file</h2>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeMediaModal}>
+                Close
               </button>
             </div>
 
@@ -1741,3 +1781,5 @@ export default function ProductEditorForm({
     </section>
   );
 }
+
+

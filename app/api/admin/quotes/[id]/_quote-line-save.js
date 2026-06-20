@@ -1,6 +1,6 @@
-import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
+﻿import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, GST_RATE, roundMoney } from "../../../../../lib/pcd-quote-utils";
-import { isEdgeProfileSelectionAvailable } from "../../../../request-quote/quote-form-data";
+import { isEdgeProfileSelectionAvailable } from "../../../../../lib/quote-form-data";
 
 export async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -260,3 +260,4 @@ export async function deleteQuoteLine(supabase, quoteId, lineId) {
   const quote = await recalculateQuoteTotals(supabase, quoteId);
   return { quote };
 }
+

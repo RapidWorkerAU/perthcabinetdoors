@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, GST_RATE } from "../../../lib/pcd-quote-utils";
-import styles from "../admin-shell.module.css";
+import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney } from "../../../lib/pcd-quote-utils";
+import styles from "../admin-content.module.css";
 
 const emptyLine = {
   product_name: "",
@@ -36,8 +36,8 @@ const emptyForm = {
   customer_phone: "",
   site_address: "",
   project_name: "",
-  currency: "AUD",
-  gst_rate: GST_RATE,
+  currency: DEFAULT_BUSINESS_DEFAULTS.currency,
+  gst_rate: DEFAULT_BUSINESS_DEFAULTS.gst_rate,
   notes: "",
   terms: "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.",
   lines: [{ ...emptyLine }],
@@ -133,6 +133,14 @@ export default function QuotesManager() {
       setBusinessDefaults(nextDefaults);
       setForm((current) => ({
         ...current,
+        currency:
+          current.currency === "" || current.currency === null || current.currency === undefined
+            ? nextDefaults.currency
+            : current.currency,
+        gst_rate:
+          current.gst_rate === "" || current.gst_rate === null || current.gst_rate === undefined
+            ? nextDefaults.gst_rate
+            : current.gst_rate,
         lines: current.lines.map((line) => ({
           ...line,
           worker_hourly_rate:
@@ -229,7 +237,6 @@ export default function QuotesManager() {
     <div className={styles.workflowLayout}>
       <aside className={styles.workflowList}>
         <div className={styles.workflowListHeader}>
-          <span className={styles.tableMeta}>{isLoading ? "Loading quotes" : `${quotes.length} quotes`}</span>
           <button type="button" className={styles.primaryButton} onClick={() => setForm({ ...emptyForm, lines: [emptyLineWithDefaults(businessDefaults)] })}>
             New quote
           </button>
@@ -377,3 +384,4 @@ export default function QuotesManager() {
     </div>
   );
 }
+

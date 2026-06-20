@@ -1,9 +1,9 @@
-import { randomBytes } from "node:crypto";
+﻿import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../../../lib/pcd-business-defaults";
-import { calculateQuoteTotals, GST_RATE } from "../../../../../../lib/pcd-quote-utils";
-import { isEdgeProfileSelectionAvailable } from "../../../../../request-quote/quote-form-data";
+import { calculateQuoteTotals } from "../../../../../../lib/pcd-quote-utils";
+import { isEdgeProfileSelectionAvailable } from "../../../../../../lib/quote-form-data";
 
 const LINE_COPY_FIELDS = [
   "product_type",
@@ -145,7 +145,7 @@ export async function POST(_request, { params }) {
 
     const businessDefaults = await getBusinessDefaults(context.supabase);
     const copiedLines = (sourceLines || []).map(copyLineForCalculation);
-    const totals = calculateQuoteTotals(copiedLines, sourceQuote.gst_rate ?? GST_RATE, {
+    const totals = calculateQuoteTotals(copiedLines, businessDefaults.gst_rate, {
       business_defaults: businessDefaults,
     });
 
@@ -162,8 +162,8 @@ export async function POST(_request, { params }) {
         customer_phone: null,
         site_address: null,
         project_name: null,
-        currency: sourceQuote.currency || "AUD",
-        gst_rate: sourceQuote.gst_rate ?? GST_RATE,
+        currency: businessDefaults.currency,
+        gst_rate: businessDefaults.gst_rate,
         subtotal_ex_gst: totals.subtotal_ex_gst,
         gst_amount: totals.gst_amount,
         total_inc_gst: totals.total_inc_gst,
@@ -220,3 +220,4 @@ export async function POST(_request, { params }) {
     return Response.json({ ok: false, error: error?.message || "Could not duplicate quote." }, { status: 500 });
   }
 }
+

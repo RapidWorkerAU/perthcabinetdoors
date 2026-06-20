@@ -1,10 +1,9 @@
-import { randomBytes } from "node:crypto";
+﻿import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
-import { GST_RATE } from "../../../../lib/pcd-quote-utils";
-import { isEdgeProfileSelectionAvailable } from "../../../request-quote/quote-form-data";
+import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
 
 function makeQuoteNumber() {
   return `PCD-Q-${new Date().getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -73,8 +72,8 @@ export async function POST(request) {
         customer_phone: quoteRequest.customer_phone,
         site_address: quoteRequest.delivery_suburb,
         project_name: quoteRequest.cabinet_brand,
-        currency: "AUD",
-        gst_rate: GST_RATE,
+        currency: businessDefaults.currency,
+        gst_rate: businessDefaults.gst_rate,
         worker_hourly_rate: businessDefaults.worker_hourly_rate,
         notes: quoteRequest.notes,
         terms: "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.",
@@ -149,3 +148,4 @@ export async function POST(request) {
     return Response.json({ ok: false, error: error?.message || "Could not convert quote request." }, { status: 500 });
   }
 }
+

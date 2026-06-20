@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import styles from "../admin-shell.module.css";
-import workflowStyles from "../_components/admin-workflow.module.css";
+import styles from "../admin-content.module.css";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
+import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../_components/AdminActionDropdown";
 import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
 
 const STATUSES = ["new", "reviewing", "waiting_on_customer", "converted_to_quote", "closed"];
@@ -34,8 +34,10 @@ export default function QuoteRequestsManager() {
   const [quoteRequests, setQuoteRequests] = useState([]);
   const [previewRequest, setPreviewRequest] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [feedback, setFeedback] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("new");
+  const [selectedQuoteRequestIds, setSelectedQuoteRequestIds] = useState([]);
 
   const statusCounts = useMemo(() => {
     return quoteRequests.reduce(
@@ -99,14 +101,53 @@ export default function QuoteRequestsManager() {
     }
   }
 
+  async function deleteQuoteRequests(ids) {
+    if (!ids.length) return;
+    setIsDeleting(true);
+    setFeedback("");
+
+    try {
+      for (const id of ids) {
+        const response = await fetch(`/api/admin/quote-requests/${id}`, { method: "DELETE" });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "Could not delete quote request.");
+        }
+      }
+
+      setQuoteRequests((current) => current.filter((request) => !ids.includes(request.id)));
+      setSelectedQuoteRequestIds((current) => current.filter((id) => !ids.includes(id)));
+      setPreviewRequest((current) => (current && ids.includes(current.id) ? null : current));
+      setFeedback(`${ids.length} quote request${ids.length === 1 ? "" : "s"} deleted.`);
+    } catch (error) {
+      setFeedback(error?.message || "Could not delete selected quote requests.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  function toggleSelectedQuoteRequest(id) {
+    setSelectedQuoteRequestIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function toggleSelectedQuoteRequestPage(checked) {
+    const pageIds = quoteRequestPagination.pageItems.map((request) => request.id);
+    setSelectedQuoteRequestIds((current) => {
+      if (!checked) return current.filter((id) => !pageIds.includes(id));
+      return Array.from(new Set([...current, ...pageIds]));
+    });
+  }
+
   useEffect(() => {
     loadQuoteRequests();
   }, []);
 
   return (
     <section className={styles.productsSection}>
-      <div className={styles.productsHeaderBar}>
-        <p className={styles.tableMeta}>{isLoading ? "Loading quote requests" : `${visibleQuoteRequests.length} of ${quoteRequests.length} quote requests`}</p>
+      <div className={`${styles.productsHeaderBar} ${styles.tableToolbar}`}>
+        <div className={styles.tableToolbarFilters}>
+          <AdminBulkDeleteButton count={selectedQuoteRequestIds.length} disabled={isDeleting} onConfirm={() => deleteQuoteRequests(selectedQuoteRequestIds)} />
+        </div>
         <div className={styles.statusFilterBar} aria-label="Filter quote requests by status">
           {FILTERS.map((status) => (
             <button
@@ -120,13 +161,20 @@ export default function QuoteRequestsManager() {
             </button>
           ))}
         </div>
-        <button type="button" className={styles.secondaryButton} onClick={loadQuoteRequests}>Refresh</button>
       </div>
       {feedback ? <div className={styles.inlineNotice}>{feedback}</div> : null}
       <div className={styles.productsTableWrap}>
         <table className={styles.productsTable}>
           <thead>
             <tr>
+              <th className={styles.rowSelectCol}>
+                <input
+                  type="checkbox"
+                  checked={quoteRequestPagination.pageItems.length > 0 && quoteRequestPagination.pageItems.every((request) => selectedQuoteRequestIds.includes(request.id))}
+                  onChange={(event) => toggleSelectedQuoteRequestPage(event.target.checked)}
+                  aria-label="Select all visible quote requests"
+                />
+              </th>
               <th>Customer</th>
               <th>Suburb</th>
               <th>Source</th>
@@ -139,6 +187,14 @@ export default function QuoteRequestsManager() {
           <tbody>
             {quoteRequestPagination.pageItems.map((request) => (
               <tr key={request.id}>
+                <td className={styles.rowSelectCol}>
+                  <input
+                    type="checkbox"
+                    checked={selectedQuoteRequestIds.includes(request.id)}
+                    onChange={() => toggleSelectedQuoteRequest(request.id)}
+                    aria-label={`Select quote request from ${request.customer_name || "customer"}`}
+                  />
+                </td>
                 <td className={styles.productNameCell}>{request.customer_name || "-"}</td>
                 <td>{request.delivery_suburb || "-"}</td>
                 <td>{formatAdminLabel(request.source || "-")}</td>
@@ -158,35 +214,59 @@ export default function QuoteRequestsManager() {
                   </select>
                 </td>
                 <td>{formatDate(request.created_at)}</td>
-                <td className={styles.quoteRequestActions}>
-                  <button
-                    type="button"
-                    className={`${styles.secondaryButton} ${styles.rowIconButton} ${styles.rowViewIconButton}`}
-                    onClick={() => setPreviewRequest(request)}
-                    aria-label={`Preview quote request from ${request.customer_name || "customer"}`}
-                    title="Preview quote request"
-                  >
-                    Preview
-                  </button>
-                  {request.converted_quote_id ? (
-                    <button
-                      type="button"
-                      className={`${styles.secondaryButton} ${styles.rowIconButton} ${styles.rowOpenIconButton}`}
-                      onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}
-                      aria-label={`Open quote for ${request.customer_name || "quote request"}`}
-                      title="Open quote"
-                    >
-                      Open quote
+                <td className={styles.actionsCol}>
+                  <AdminActionDropdown label={`Open actions for quote request from ${request.customer_name || "customer"}`}>
+                    <button type="button" className={styles.tableActionMenuItem} onClick={() => setPreviewRequest(request)}>
+                      Preview
                     </button>
-                  ) : (
-                    <button type="button" className={styles.primaryButton} onClick={() => convertToQuote(request.id)}>Convert</button>
-                  )}
+                    {request.converted_quote_id ? (
+                      <button type="button" className={styles.tableActionMenuItem} onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}>
+                        Open quote
+                      </button>
+                    ) : (
+                      <button type="button" className={styles.tableActionMenuItem} onClick={() => convertToQuote(request.id)}>Convert</button>
+                    )}
+                    <AdminConfirmDeleteAction disabled={isDeleting} onConfirm={() => deleteQuoteRequests([request.id])} />
+                  </AdminActionDropdown>
                 </td>
               </tr>
             ))}
-            {!visibleQuoteRequests.length && !isLoading ? <tr><td className={styles.emptyCell} colSpan="7">No quote requests match this filter.</td></tr> : null}
+            {!visibleQuoteRequests.length && !isLoading ? <tr><td className={styles.emptyCell} colSpan="8">No quote requests match this filter.</td></tr> : null}
           </tbody>
         </table>
+      </div>
+      <div className={styles.mobileRecordList} aria-label="Quote requests">
+        {quoteRequestPagination.pageItems.map((request) => (
+          <article className={styles.mobileRecordCard} key={request.id}>
+            <div className={styles.mobileRecordMain}>
+              <span className={styles.mobileRecordEyebrow}>Quote request</span>
+              <strong>{request.customer_name || "Unnamed customer"}</strong>
+              <span>{request.delivery_suburb || "No suburb supplied"}</span>
+            </div>
+            <dl className={styles.mobileRecordDetails}>
+              <div><dt>Source</dt><dd>{formatAdminLabel(request.source || "-")}</dd></div>
+              <div><dt>Items</dt><dd>{request.pcd_quote_request_line_items?.length || 0}</dd></div>
+              <div><dt>Received</dt><dd>{formatDate(request.created_at)}</dd></div>
+            </dl>
+            <label className={styles.mobileRecordSelect}>
+              <span>Status</span>
+              <select className={styles.statusSelect} value={request.status || "new"} onChange={(event) => updateStatus(request.id, event.target.value)} disabled={isStatusLocked(request)}>
+                {STATUSES.map((status) => (
+                  <option key={status} value={status}>{formatAdminLabel(status)}</option>
+                ))}
+              </select>
+            </label>
+            <div className={styles.mobileRecordActions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setPreviewRequest(request)}>Preview</button>
+              {request.converted_quote_id ? (
+                <button type="button" className={styles.primaryButton} onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}>Open quote</button>
+              ) : (
+                <button type="button" className={styles.primaryButton} onClick={() => convertToQuote(request.id)}>Convert</button>
+              )}
+            </div>
+          </article>
+        ))}
+        {!visibleQuoteRequests.length && !isLoading ? <div className={styles.mobileEmptyState}>No quote requests match this filter.</div> : null}
       </div>
       <AdminTablePagination
         label="quote requests"
@@ -220,12 +300,12 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
             <h2 id="quote-request-preview-title">{request.customer_name || "Unnamed customer"}</h2>
             <span>{formatDate(request.created_at)} - {formatAdminLabel(request.status || "new")}</span>
           </div>
-          <button type="button" className={styles.rowEditButton} onClick={onClose}>Close</button>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose}>Close</button>
         </div>
 
         <div className={styles.quoteRequestPreviewBody}>
           <section className={styles.quoteRequestPreviewCard}>
-            <h3>Customer</h3>
+            <h3>Order details</h3>
             <dl className={styles.quoteRequestDetailGrid}>
               <div><dt>Name</dt><dd>{cleanValue(request.customer_name)}</dd></div>
               <div><dt>Email</dt><dd>{cleanValue(request.customer_email)}</dd></div>
@@ -233,6 +313,23 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
               <div><dt>Suburb</dt><dd>{cleanValue(request.delivery_suburb)}</dd></div>
               <div><dt>Cabinet brand</dt><dd>{cleanValue(request.cabinet_brand)}</dd></div>
               <div><dt>Source</dt><dd>{request.source ? formatAdminLabel(request.source) : "-"}</dd></div>
+              <div>
+                <dt>Status</dt>
+                <dd>
+                  <select
+                    className={styles.statusSelect}
+                    value={request.status || "new"}
+                    onChange={(event) => onUpdateStatus(request.id, event.target.value)}
+                    disabled={isStatusLocked(request)}
+                  >
+                    {STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {formatAdminLabel(status)}
+                      </option>
+                    ))}
+                  </select>
+                </dd>
+              </div>
             </dl>
           </section>
 
@@ -241,10 +338,10 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
             <p className={styles.quoteRequestNotes}>{request.notes || "No notes supplied."}</p>
           </section>
 
-          <section className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap}`}>
+          <section className={styles.quoteItemsAdminWrap}>
             <h3 className={styles.quoteRequestPreviewSectionTitle}>Line items</h3>
-            <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller}`}>
-              <div className={`${styles.quoteRequestPreviewGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead}`}>
+            <div className={styles.quoteItemsScroller}>
+              <div className={`${styles.quoteRequestPreviewGrid} ${styles.quoteItemHead}`}>
                 <div>#</div>
                 <div>Type</div>
                 <div>Material</div>
@@ -258,17 +355,17 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
                 <div>Hinges</div>
               </div>
               {lineItems.map((line, index) => (
-                <div className={`${styles.quoteRequestPreviewGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`} key={line.id || index}>
-                  <div><span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{index + 1}</span></div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.product_type || line.product_name)}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.material)}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.thickness)}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{sizeText(line)}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.finish)}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.colour)}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{line.qty || 1}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{cleanValue(line.edge_mould)}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell}`}>{[line.profile_type, line.profile].filter(Boolean).join(" / ") || "-"}</div>
+                <div className={`${styles.quoteRequestPreviewGrid} ${styles.quoteItemRow} ${styles.quoteItemRowLocked}`} key={line.id || index}>
+                  <div><span className={styles.quoteItemRowNum}>{index + 1}</span></div>
+                  <div className={styles.quoteReadCell}>{cleanValue(line.product_type || line.product_name)}</div>
+                  <div className={styles.quoteReadCell}>{cleanValue(line.material)}</div>
+                  <div className={styles.quoteReadCell}>{cleanValue(line.thickness)}</div>
+                  <div className={styles.quoteReadCell}>{sizeText(line)}</div>
+                  <div className={styles.quoteReadCell}>{cleanValue(line.finish)}</div>
+                  <div className={styles.quoteReadCell}>{cleanValue(line.colour)}</div>
+                  <div className={styles.quoteReadCell}>{line.qty || 1}</div>
+                  <div className={styles.quoteReadCell}>{cleanValue(line.edge_mould)}</div>
+                  <div className={styles.quoteReadCell}>{[line.profile_type, line.profile].filter(Boolean).join(" / ") || "-"}</div>
                   <div className={styles.quoteRequestHingeCell}>
                     <span><strong>{line.hinge_holes ? "✓" : "×"}</strong> Drill holes</span>
                     <span><strong>{line.hinge_supply ? "✓" : "×"}</strong> Supply hinges</span>
@@ -282,18 +379,6 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
         </div>
 
         <div className={styles.quoteRequestPreviewFooter}>
-          <select
-            className={styles.statusSelect}
-            value={request.status || "new"}
-            onChange={(event) => onUpdateStatus(request.id, event.target.value)}
-            disabled={isStatusLocked(request)}
-          >
-            {STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {formatAdminLabel(status)}
-              </option>
-            ))}
-          </select>
           {request.converted_quote_id ? (
             <button
               type="button"
@@ -312,3 +397,4 @@ function QuoteRequestPreviewModal({ request, onClose, onConvert, onOpenQuote, on
     </div>
   );
 }
+

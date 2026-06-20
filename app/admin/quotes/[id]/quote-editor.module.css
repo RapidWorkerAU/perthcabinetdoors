@@ -3,6 +3,17 @@
   gap: 24px;
 }
 
+.roomPlannerSection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.roomPlannerActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .quoteInfoGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -51,92 +62,309 @@
   align-items: end;
 }
 
-.quoteTotalsSummary {
-  display: grid;
-  gap: 10px;
-}
-
-.quoteGrandTotalPanel {
-  width: min(50%, 760px);
-  justify-self: end;
-}
-
-.quoteFeedbackToast {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 80;
-  max-width: min(420px, calc(100vw - 48px));
-  border: 1px solid #c7d8bf;
-  border-radius: 6px;
-  background: #f5fbf1;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
-  color: #17321f;
-  font-size: 0.82rem;
-  font-weight: 700;
-  line-height: 1.35;
-  padding: 12px 14px;
-}
-
-@media (max-width: 900px) {
-  .quoteGrandTotalPanel {
-    width: 100%;
-  }
-
-  .quoteFeedbackToast {
-    right: 16px;
-    bottom: 16px;
-    max-width: calc(100vw - 32px);
-  }
-}
-
 .quoteItemRow {
-  padding-top: 10px;
-  padding-bottom: 10px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.quoteItemGrid.quoteItemGrid > div {
+  border-bottom: 1px solid rgba(26, 46, 32, 0.34);
+  border-right: 1px solid rgba(26, 46, 32, 0.34);
+  min-width: 0;
+  padding: 10px 8px;
+}
+
+.quoteItemGrid.quoteItemGrid > div:last-child {
+  border-right: 0;
+}
+
+.quoteItemGrid.quoteItemHead > div {
+  align-items: center;
+  border-bottom-color: #1a2e20;
+  border-right-color: rgba(241, 239, 232, 0.24);
+  display: flex;
+  min-height: 38px;
+  overflow: hidden;
+  padding-left: 8px;
+  padding-right: 8px;
+  text-overflow: ellipsis;
+}
+
+.quoteItemGrid.quoteItemHead {
+  padding: 0 !important;
+}
+
+.quoteItemGrid.quoteItemGrid :is(input, select, textarea) {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  min-height: 30px;
+  padding: 4px 6px;
+}
+
+.quoteItemGrid.quoteItemGrid :is(input, select, textarea):focus {
+  background: #ffffff !important;
+  box-shadow: inset 0 0 0 1px #1a2e20 !important;
+}
+
+.quoteItemGrid .quoteMoneyInput,
+.quoteItemGrid .quoteMarkupInput,
+.quoteItemGrid .quoteColourCombo {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  min-height: 0;
+  padding: 0;
+}
+
+.quoteItemGrid .quoteColourComboButton {
+  background: transparent;
+  border-radius: 0;
 }
 
 .quoteItemsAdminWrap {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0;
   padding-right: 0;
 }
 
 .quoteItemsScroller.quoteItemsScroller {
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
+  border-color: #1a2e20;
+  border-radius: 8px;
+  overflow: visible !important;
+  max-width: 100%;
+}
+
+.quoteItemsTable {
+  table-layout: fixed;
+  width: 100%;
+  overflow: visible;
+}
+
+.quoteItemsTable th,
+.quoteItemsTable td {
+  height: 48px;
+  padding: 6px;
+  vertical-align: middle;
+}
+
+.quoteItemsTable th {
+  font-size: 8px;
+  height: 38px;
+  letter-spacing: 0.025em;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.quoteItemsTable td {
+  background: #ffffff;
+}
+
+.quoteItemsTable td.quoteItemField,
+.quoteItemsTable td.quoteItemSize,
+.quoteItemsTable td.quoteTableFieldCell,
+.quoteItemsTable td.quoteTableSizeCell,
+.quoteItemsTable td.quoteConfigCell,
+.quoteItemsTable td.quoteUnitCostControl,
+.quoteItemsTable td.quoteItemActions {
+  display: table-cell !important;
+}
+
+.quoteItemsTable .quoteItemRowLocked td {
+  background: #f4f6f1;
+}
+
+.quoteItemsTable .quoteItemRowEditing td {
+  background: #fffdf8;
+  vertical-align: middle;
+}
+
+.quoteItemsTable :is(input, select, textarea) {
+  font-size: 11px;
+  min-height: 30px;
+  padding-left: 3px;
+  padding-right: 3px;
+}
+
+.quoteTableFieldCell,
+.quoteTableSizeCell {
+  min-width: 0;
+}
+
+.quoteItemsTable .quoteTableSizeCell {
+  white-space: nowrap;
+}
+
+.quoteItemsTable .quoteTableSizeCell input {
+  display: inline-block;
+  width: calc(50% - 3px);
+}
+
+.quoteItemsTable .quoteTableSizeCell input + input {
+  margin-left: 4px;
+}
+
+.quoteItemsTable :is(.quoteMoneyInput, .quoteMarkupInput) {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  min-height: 0;
+  padding: 0;
+}
+
+.quoteItemsTable .quoteColourCombo {
+  background: #ffffff !important;
+  border: 1px solid rgba(26, 46, 32, 0.22) !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  min-height: 30px;
+  padding: 0;
+}
+
+.quoteItemsTable .quoteColourComboButton {
+  background: #ffffff;
+  border-radius: 0 3px 3px 0;
+}
+
+.quoteItemsTable .quoteConfigCell > * {
+  display: block;
+}
+
+.quoteItemsTable .quoteReadCell,
+.quoteItemsTable .quoteItemTotal,
+.quoteItemsTable .quoteColourRead,
+.quoteItemsTable .quoteConfigCell,
+.quoteItemsTable .quoteUnitCostControl {
+  font-size: 11px;
+}
+
+.quoteItemsTable .quoteUnitCostControl,
+.quoteItemsTable .quoteMarkupInput,
+.quoteItemsTable .quoteItemTotal {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.quoteItemsTable .quoteMoneyInput,
+.quoteItemsTable .quoteMarkupInput {
+  align-items: center;
+  justify-content: center;
+}
+
+.quoteItemsTable .quoteMoneyInput input,
+.quoteItemsTable .quoteMarkupInput input {
+  text-align: center;
+}
+
+.quoteItemsColNumber {
+  width: 3.2%;
+}
+
+.quoteItemsColType {
+  width: 6.3%;
+}
+
+.quoteItemsColMaterial {
+  width: 8.6%;
+}
+
+.quoteItemsColThickness {
+  width: 6.3%;
+}
+
+.quoteItemsColSize {
+  width: 7.2%;
+}
+
+.quoteItemsColColour {
+  width: 10.6%;
+}
+
+.quoteItemsColQty {
+  width: 3.8%;
+}
+
+.quoteItemsColEdge {
+  width: 7.8%;
+}
+
+.quoteItemsColConfig {
+  width: 8.2%;
+}
+
+.quoteItemsColMoney {
+  width: 5.5%;
+}
+
+.quoteItemsColMarkup {
+  width: 4.4%;
+}
+
+.quoteItemsColActions {
+  width: 5.1%;
 }
 
 .quoteItemGrid {
-  width: calc(100% - 28px);
+  grid-template-columns:
+    44px
+    minmax(92px, 0.7fr)
+    minmax(128px, 1fr)
+    minmax(92px, 0.7fr)
+    minmax(104px, 0.8fr)
+    minmax(156px, 1.2fr)
+    minmax(64px, 0.45fr)
+    minmax(120px, 0.9fr)
+    minmax(132px, 1fr)
+    minmax(132px, 1fr)
+    minmax(96px, 0.75fr)
+    minmax(86px, 0.65fr)
+    minmax(110px, 0.85fr)
+    minmax(108px, 0.85fr)
+    minmax(104px, 0.8fr) !important;
+  min-width: 1560px !important;
+  width: max(100%, 1560px);
 }
 
 .quoteItemBlock {
   position: relative;
+  background: transparent;
+  border-bottom: 0 !important;
+  border-radius: 0;
+  box-shadow: none;
   overflow: visible;
+}
+
+.quoteItemBlock:last-child .quoteItemGrid > div {
+  border-bottom: 0;
 }
 
 .quoteItemRowEditing {
   align-items: start;
+  background: #fffdf8;
 }
 
 .quoteItemRowLocked {
   align-items: center;
+  background: #f4f6f1;
 }
 
 .quoteItemNumberCell {
   min-height: 34px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  gap: 6px;
+  justify-content: center;
 }
 
 .quoteReorderControls {
-  position: absolute;
-  top: 50%;
-  right: 5px;
-  z-index: 2;
+  position: static;
   width: 18px;
   display: grid;
   gap: 2px;
-  transform: translateY(-50%);
 }
 
 .quoteReorderButton {
@@ -224,58 +452,118 @@
 }
 
 .quoteItemActions.quoteItemActions {
-  display: grid !important;
-  grid-template-columns: repeat(2, 24px);
-  grid-auto-rows: 24px;
-  justify-content: center !important;
   align-content: center;
-  gap: 4px;
-  padding: 4px 0;
+  align-items: center;
+  display: table-cell !important;
+  justify-content: center !important;
+  padding: 8px;
+  position: relative;
+  text-align: center;
 }
 
-.quoteItemActions.quoteItemActions .quoteLineNoteIconButton,
-.quoteItemActions.quoteItemActions :global(.rowIconButton) {
-  width: 24px !important;
-  min-width: 24px !important;
-  height: 24px !important;
-  min-height: 24px !important;
-  flex: 0 0 24px;
+.quoteActionMenuWrap {
+  display: inline-block;
+  position: relative;
+}
+
+.quoteActionMenuButton {
+  background: #ffffff;
+  border: 1px solid rgba(26, 46, 32, 0.28);
+  border-radius: 4px;
+  color: #1a2e20;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  min-height: 26px;
+  padding: 0 18px 0 8px;
+  position: relative;
+}
+
+.quoteActionMenuButton::after {
+  border-color: #1a2e20 transparent transparent;
+  border-style: solid;
+  border-width: 4px 3px 0;
+  content: "";
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-35%);
+}
+
+.quoteActionMenuButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.quoteActionMenu {
+  background: #ffffff;
+  border: 1px solid rgba(26, 46, 32, 0.24);
+  border-radius: 6px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+  display: grid;
+  gap: 3px;
+  min-width: 132px;
+  padding: 5px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 1000;
+}
+
+.quoteActionMenuItem,
+.quoteActionDangerItem {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #1a2e20;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  min-height: 28px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.quoteActionMenuItem:hover {
+  background: #eaf3de;
+  border-color: #c0dd97;
+}
+
+.quoteActionDangerItem {
+  color: #a32d2d;
+}
+
+.quoteActionDangerItem:hover {
+  background: #fcebeb;
+  border-color: #f09595;
+}
+
+.quoteActionConfirmText {
+  color: #5f5e5a;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 8px 2px;
+  text-align: left;
 }
 
 .quoteItemRowLocked.quoteItemRowLocked > div {
   align-self: center;
 }
 
+.quoteConfigCell {
+  align-items: center;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding-right: 8px;
+}
+
 .quoteItemRowLocked.quoteItemRowLocked > .quoteItemTotal {
   align-items: center;
   padding-top: 0;
-}
-
-.quoteMarkupProfitRow {
-  position: relative;
-  margin: 0;
-  border-top: 1px solid #c7d8bf;
-  border-bottom: 0;
-  border-radius: 0 0 5px 5px;
-  background: transparent !important;
-  padding: 9px 0;
-}
-
-.quoteMarkupProfitRow::before {
-  content: "";
-  position: absolute;
-  inset: 0 -12px -12px;
-  z-index: 0;
-  border-radius: 0 0 5px 5px;
-  background: #eef5ea;
-}
-
-.quoteMarkupProfitRow span,
-.quoteMarkupProfitRow strong {
-  position: relative;
-  z-index: 1;
-  color: #17321f !important;
-  font-weight: 800;
 }
 
 .quoteMoneyInput {
@@ -304,6 +592,7 @@
   display: grid;
   gap: 5px;
   align-self: start;
+  min-width: 0;
 }
 
 .quoteUnitCostResetButton {
@@ -445,10 +734,7 @@
 }
 
 .quoteAttachmentsTable {
-  width: 100%;
   table-layout: fixed;
-  border: 0;
-  border-radius: 0;
   margin-top: 0;
 }
 
@@ -475,16 +761,6 @@
 .quoteAttachmentsTable th:nth-child(5),
 .quoteAttachmentsTable td:nth-child(5) {
   width: 12%;
-}
-
-.quoteAttachmentsTable th {
-  border-bottom: 1px solid #e2e8f0;
-  text-align: left;
-}
-
-.quoteAttachmentsTable td {
-  border-bottom: 0;
-  color: #0f172a;
 }
 
 .quoteHingeEditButton,
@@ -536,7 +812,7 @@
   color: #1d3424;
   font: inherit;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.1;
   padding: 0;
   cursor: pointer;
@@ -691,7 +967,7 @@
     color: #667060;
     content: "";
     font-size: 0.72rem;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.04em;
     line-height: 1.2;
     text-transform: uppercase;
@@ -730,7 +1006,7 @@
     content: "Quote line";
     color: #17321f;
     font-size: 0.76rem;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -756,7 +1032,7 @@
     justify-content: start;
     text-align: left;
     font-size: 0.95rem;
-    font-weight: 800;
+    font-weight: 700;
   }
 
   .quoteItemRow.quoteItemRow .quoteItemActions {

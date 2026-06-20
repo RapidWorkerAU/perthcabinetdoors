@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
-import styles from "../admin-shell.module.css";
+import styles from "../admin-content.module.css";
 
 const KIND_OPTIONS = [
   { value: "finish", label: "Finish list" },
@@ -334,3 +334,4 @@ export default function OptionSetsManager({ initialOptionSets }) {
     </div>
   );
 }
+

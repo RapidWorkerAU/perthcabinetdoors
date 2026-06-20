@@ -12,12 +12,16 @@ $$;
 
 create table if not exists public.pcd_business_defaults (
   id uuid primary key default '00000000-0000-0000-0000-000000000001',
+  currency text not null default 'AUD',
+  gst_rate numeric(8,4) not null default 0.1,
   markup_percent numeric(8,2) not null default 40,
   hinge_drilling_unit_cost_ex_gst numeric(12,2) not null default 10,
   hinge_supply_unit_cost_ex_gst numeric(12,2) not null default 15,
   worker_hourly_rate numeric(12,2) not null default 85,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
+  check (char_length(trim(currency)) > 0),
+  check (gst_rate >= 0),
   check (markup_percent >= 0),
   check (hinge_drilling_unit_cost_ex_gst >= 0),
   check (hinge_supply_unit_cost_ex_gst >= 0),
@@ -26,6 +30,8 @@ create table if not exists public.pcd_business_defaults (
 
 insert into public.pcd_business_defaults (
   id,
+  currency,
+  gst_rate,
   markup_percent,
   hinge_drilling_unit_cost_ex_gst,
   hinge_supply_unit_cost_ex_gst,
@@ -33,6 +39,8 @@ insert into public.pcd_business_defaults (
 )
 values (
   '00000000-0000-0000-0000-000000000001',
+  'AUD',
+  0.1,
   40,
   10,
   15,

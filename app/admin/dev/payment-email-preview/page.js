@@ -1,7 +1,7 @@
-import AdminShell from "../../_components/AdminShell";
+﻿import AdminShell from "../../_components/AdminShell";
 import { requireAdminSession } from "../../../../lib/admin-guard";
 import { paymentNotificationHtml } from "../../../../lib/pcd-payment-notifications";
-import styles from "../../admin-shell.module.css";
+import styles from "../../admin-content.module.css";
 
 const sampleOrder = {
   id: "preview-order",
@@ -84,3 +84,4 @@ export default async function PaymentEmailPreviewPage() {
     </AdminShell>
   );
 }
+

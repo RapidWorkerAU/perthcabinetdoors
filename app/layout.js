@@ -5,6 +5,11 @@ import ClearLaunchAccessCookie from "./ClearLaunchAccessCookie";
 export const metadata = {
   title: "Perth Cabinet Doors",
   description: "Custom cabinet doors made in Perth",
+  icons: {
+    icon: "/images/favicon.ico",
+    shortcut: "/images/favicon.ico",
+    apple: "/images/favicon.ico",
+  },
 };
 
 export const viewport = {
@@ -28,7 +33,6 @@ export default function RootLayout({ children }) {
 `,
           }}
         />
-        <link rel="stylesheet" href="/css/styles.css" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link

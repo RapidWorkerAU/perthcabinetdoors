@@ -2,7 +2,7 @@ import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
-import { calculateQuoteTotals, GST_RATE } from "../../../../../lib/pcd-quote-utils";
+import { calculateQuoteTotals } from "../../../../../lib/pcd-quote-utils";
 import { cabinetConfigRow, dbNumber, quoteLineRow } from "./_quote-line-save";
 
 async function quoteIdFromParams(params) {
@@ -47,7 +47,9 @@ async function loadQuoteWithRelations(supabase, id) {
 async function normalizeQuotePayload(supabase, payload = {}) {
   const sourceLines = payload.lines || [];
   const businessDefaults = await getBusinessDefaults(supabase);
-  const totals = calculateQuoteTotals(payload.lines || [], payload.gst_rate ?? GST_RATE, {
+  const quoteCurrency = payload.currency || businessDefaults.currency;
+  const gstRate = payload.gst_rate ?? businessDefaults.gst_rate;
+  const totals = calculateQuoteTotals(payload.lines || [], gstRate, {
     ...payload,
     business_defaults: businessDefaults,
   });
@@ -62,8 +64,8 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       customer_phone: payload.customer_phone || null,
       site_address: payload.site_address || null,
       project_name: payload.project_name || null,
-      currency: payload.currency || "AUD",
-      gst_rate: payload.gst_rate ?? GST_RATE,
+      currency: quoteCurrency,
+      gst_rate: gstRate,
       subtotal_ex_gst: totals.subtotal_ex_gst,
       gst_amount: totals.gst_amount,
       total_inc_gst: totals.total_inc_gst,
@@ -273,5 +275,43 @@ export async function PATCH(request, { params }) {
     return Response.json({ ok: true, quote });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not update quote." }, { status: 500 });
+  }
+}
+
+export async function DELETE(_request, { params }) {
+  const context = await requireAdminApiContext();
+  if (context.error) return context.error;
+
+  try {
+    const id = await quoteIdFromParams(params);
+
+    const { data: lines, error: lineLoadError } = await context.supabase
+      .from("pcd_quote_line_items")
+      .select("id")
+      .eq("quote_id", id);
+    if (lineLoadError) throw lineLoadError;
+
+    const lineIds = (lines || []).map((line) => line.id);
+    if (lineIds.length) {
+      const { error: configError } = await context.supabase
+        .from("pcd_cabinet_configs")
+        .delete()
+        .in("line_item_id", lineIds);
+      if (configError) throw configError;
+    }
+
+    const childDeletes = await Promise.all([
+      context.supabase.from("pcd_quote_attachments").delete().eq("quote_id", id),
+      context.supabase.from("pcd_quote_line_items").delete().eq("quote_id", id),
+    ]);
+    const childError = childDeletes.find((result) => result.error)?.error;
+    if (childError) throw childError;
+
+    const { error } = await context.supabase.from("pcd_quotes").delete().eq("id", id);
+    if (error) throw error;
+
+    return Response.json({ ok: true });
+  } catch (error) {
+    return Response.json({ ok: false, error: error?.message || "Could not delete quote." }, { status: 500 });
   }
 }

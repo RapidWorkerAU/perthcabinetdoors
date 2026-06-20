@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
-import styles from "../../admin-shell.module.css";
+import styles from "../../admin-content.module.css";
+import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
 import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 function prettyCategory(category) {
@@ -35,9 +36,9 @@ function resolveImageSrc(imageUrl) {
 export default function ProductsTable({ initialProducts }) {
   const router = useRouter();
   const [products, setProducts] = useState(initialProducts || []);
-  const [target, setTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
 
   const sorted = useMemo(
     () => [...products].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
@@ -45,33 +46,47 @@ export default function ProductsTable({ initialProducts }) {
   );
   const productPagination = useAdminTablePagination(sorted);
 
-  async function handleDeleteConfirmed() {
-    if (!target) return;
+  async function deleteProducts(ids) {
+    if (!ids.length) return;
 
     setIsDeleting(true);
     setFeedback("");
 
     try {
       const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase.from("products").delete().eq("id", target.id);
+      const { error } = await supabase.from("products").delete().in("id", ids);
 
       if (error) {
         setFeedback(error.message || "Could not delete product.");
         return;
       }
 
-      setProducts((previous) => previous.filter((p) => p.id !== target.id));
-      setTarget(null);
+      setProducts((previous) => previous.filter((p) => !ids.includes(p.id)));
+      setSelectedProductIds((current) => current.filter((id) => !ids.includes(id)));
       router.refresh();
     } finally {
       setIsDeleting(false);
     }
   }
 
+  function toggleSelectedProduct(id) {
+    setSelectedProductIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function toggleSelectedPage(checked) {
+    const pageIds = productPagination.pageItems.map((product) => product.id);
+    setSelectedProductIds((current) => {
+      if (!checked) return current.filter((id) => !pageIds.includes(id));
+      return Array.from(new Set([...current, ...pageIds]));
+    });
+  }
+
   return (
     <section className={styles.productsSection}>
-      <div className={styles.productsHeaderBar}>
-        <span className={styles.tableMeta}>{sorted.length} products</span>
+      <div className={`${styles.productsHeaderBar} ${styles.tableToolbar}`}>
+        <div className={styles.tableToolbarFilters}>
+          <AdminBulkDeleteButton count={selectedProductIds.length} disabled={isDeleting} onConfirm={() => deleteProducts(selectedProductIds)} />
+        </div>
         <Link href="/admin/products/new" className={styles.addProductButton}>
           Add product
         </Link>
@@ -81,6 +96,14 @@ export default function ProductsTable({ initialProducts }) {
         <table className={styles.productsTable}>
           <thead>
             <tr>
+              <th className={styles.rowSelectCol}>
+                <input
+                  type="checkbox"
+                  checked={productPagination.pageItems.length > 0 && productPagination.pageItems.every((product) => selectedProductIds.includes(product.id))}
+                  onChange={(event) => toggleSelectedPage(event.target.checked)}
+                  aria-label="Select all visible products"
+                />
+              </th>
               <th className={styles.imageCol}>Image</th>
               <th>Name</th>
               <th>Status</th>
@@ -106,6 +129,14 @@ export default function ProductsTable({ initialProducts }) {
                   }}
                   tabIndex={0}
                 >
+                  <td className={styles.rowSelectCol} onClick={(event) => event.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedProductIds.includes(product.id)}
+                      onChange={() => toggleSelectedProduct(product.id)}
+                      aria-label={`Select ${product.name}`}
+                    />
+                  </td>
                   <td>
                     {thumbnailSrc ? (
                       <img
@@ -131,44 +162,23 @@ export default function ProductsTable({ initialProducts }) {
                   </td>
                   <td>{product.image_count || 0}</td>
                   <td>{prettyCategory(product.category)}</td>
-                  <td>
-                    <div className={styles.rowActions}>
-                      <Link
-                        href={`/admin/products/${product.id}/edit`}
-                        className={`${styles.rowEditButton} ${styles.rowIconButton} ${styles.rowEditIconButton}`}
-                        onClick={(event) => event.stopPropagation()}
-                        aria-label={`Edit ${product.name}`}
-                        title="Edit"
-                      >
+                  <td className={styles.actionsCol}>
+                    <AdminActionDropdown label={`Open actions for ${product.name}`}>
+                      <Link href={`/admin/products/${product.id}/edit`} className={styles.tableActionMenuItem}>
                         Edit
                       </Link>
-                      <Link
-                        href={`/admin/products/${product.id}/quote`}
-                        className={styles.rowEditButton}
-                        onClick={(event) => event.stopPropagation()}
-                      >
+                      <Link href={`/admin/products/${product.id}/quote`} className={styles.tableActionMenuItem}>
                         Quote
                       </Link>
-                      <button
-                        type="button"
-                        className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setTarget(product);
-                        }}
-                        aria-label={`Delete ${product.name}`}
-                        title="Delete"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                      <AdminConfirmDeleteAction onConfirm={() => deleteProducts([product.id])} />
+                    </AdminActionDropdown>
                   </td>
                 </tr>
               );
             })}
             {!sorted.length ? (
               <tr>
-                <td colSpan={6} className={styles.emptyCell}>
+                <td colSpan={7} className={styles.emptyCell}>
                   No products yet. Click Add product to create your first product.
                 </td>
               </tr>
@@ -185,36 +195,7 @@ export default function ProductsTable({ initialProducts }) {
       />
 
       {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
-
-      {target ? (
-        <div className={styles.fullscreenOverlay} role="dialog" aria-modal="true">
-          <div className={styles.overlayCard}>
-            <h2 className={styles.overlayTitle}>Delete product?</h2>
-            <p className={styles.overlayText}>
-              Are you sure you want to delete <strong>{target.card_title || target.name}</strong>? This will
-              also delete all associated product images and related data.
-            </p>
-            <div className={styles.overlayActions}>
-              <button
-                type="button"
-                className={styles.overlayCancelButton}
-                onClick={() => setTarget(null)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={styles.overlayDeleteButton}
-                onClick={handleDeleteConfirmed}
-                disabled={isDeleting}
-              >
-                {isDeleting ? "Deleting..." : "Delete product"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
+

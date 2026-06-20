@@ -1,0 +1,2723 @@
+﻿/*
+  Admin content design system.
+  This is the canonical source for backend page content: typography, buttons,
+  tables, forms, panels, modals, badges, loading/empty states, and mobile cards.
+  Do not add competing definitions for these primitives in page-specific modules.
+*/
+
+.productsSection,
+.editorWrap,
+.settingsWorkspace,
+.settingsCard,
+.orderDetailPage,
+.quoteBuilderShell,
+.workflowEditor,
+.cabinetConfigurator,
+.portalGrid,
+.paymentLedger,
+.activityLogShell,
+.quoteBuilderFrame,
+.orderDetailFrame,
+.modalOverlay,
+.fullscreenOverlay,
+.mediaModalBackdrop,
+.mobileRecordCard,
+.tableActionMenu,
+.primaryButton,
+.secondaryButton,
+.rowDeleteButton,
+.fieldInput,
+.textareaInput,
+.productsTable,
+.portalPanel,
+.editorCard,
+.statusPill {
+  --pcd-admin-forest-900: #0d1a11;
+  --pcd-admin-forest-800: #1a2e20;
+  --pcd-admin-forest-600: #2c4a34;
+  --pcd-admin-forest-400: #3b6d11;
+  --pcd-admin-forest-200: #c0dd97;
+  --pcd-admin-forest-50: #eaf3de;
+  --pcd-admin-timber-800: #854f0b;
+  --pcd-admin-timber-400: #ef9f27;
+  --pcd-admin-timber-50: #faeeda;
+  --pcd-admin-red-800: #a32d2d;
+  --pcd-admin-red-400: #e24b4a;
+  --pcd-admin-red-200: #f09595;
+  --pcd-admin-red-50: #fcebeb;
+  --pcd-admin-blue-800: #185fa5;
+  --pcd-admin-blue-50: #e6f1fb;
+  --pcd-admin-teal-800: #0f6e56;
+  --pcd-admin-teal-50: #e1f5ee;
+  --pcd-admin-gray-900: #2c2c2a;
+  --pcd-admin-gray-800: #444441;
+  --pcd-admin-gray-600: #5f5e5a;
+  --pcd-admin-gray-400: #888780;
+  --pcd-admin-gray-100: #d3d1c7;
+  --pcd-admin-gray-50: #f1efe8;
+  --pcd-admin-bg: #f7f6f3;
+  --pcd-admin-surface: #ffffff;
+  --pcd-admin-surface-soft: #f1efe8;
+  --pcd-admin-surface-muted: #eeecea;
+  --pcd-admin-text: #1c1c1a;
+  --pcd-admin-text-soft: #5f5e5a;
+  --pcd-admin-text-muted: #888780;
+  --pcd-admin-text-inverse: #f1efe8;
+  --pcd-admin-border-soft: rgba(0, 0, 0, 0.08);
+  --pcd-admin-border: rgba(0, 0, 0, 0.14);
+  --pcd-admin-border-strong: rgba(0, 0, 0, 0.22);
+  --pcd-admin-font: Arial, sans-serif;
+  --pcd-admin-mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+  --pcd-admin-radius-sm: 4px;
+  --pcd-admin-radius-md: 8px;
+  --pcd-admin-radius-lg: 12px;
+  --pcd-admin-radius-xl: 16px;
+  --pcd-admin-radius-pill: 9999px;
+  --pcd-admin-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --pcd-admin-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --pcd-admin-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.14);
+  --pcd-admin-transition: 150ms ease;
+}
+
+.productsSection,
+.editorWrap,
+.settingsWorkspace,
+.orderDetailPage,
+.quoteBuilderShell,
+.workflowEditor,
+.cabinetConfigurator,
+.portalGrid,
+.paymentLedger,
+.activityLogShell {
+  color: var(--pcd-admin-text);
+  font-family: var(--pcd-admin-font);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.quoteBuilderFrame,
+.orderDetailFrame {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  box-shadow: var(--pcd-admin-shadow-sm);
+  display: grid;
+  max-height: calc(100dvh - 48px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.productsHeaderBar,
+.editorTopBar,
+.sectionHeaderRow,
+.portalPanelHeader,
+.settingsDetailHeader,
+.profileCardHeader,
+.activityLogHeader,
+.workflowToolbar,
+.quoteBuilderTopbar,
+.quoteBuilderHeaderTop,
+.paymentToolbar,
+.colourLibraryActionBar,
+.cabinetConfiguratorHeader,
+.cabinetSectionTitleRow,
+.customerToolbar {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.tableToolbar {
+  align-items: flex-end;
+  gap: 14px;
+  width: 100%;
+}
+
+.tableToolbarFilters,
+.tableToolbarActions {
+  align-items: flex-end;
+  display: flex;
+  gap: 8px;
+}
+
+.tableToolbarFilters {
+  flex: 1 1 0;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.tableToolbarFilters .customerSearchInput {
+  flex: 1 1 0;
+  max-width: 480px;
+  min-width: 0;
+  width: auto;
+}
+
+.tableToolbarActions {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.productsHeaderBar h2,
+.editorTopBar h2,
+.sectionHeaderRow h2,
+.portalPanelHeader h2,
+.settingsDetailHeader h2,
+.profileCardHeader h3,
+.activityLogHeader h2,
+.quoteBuilderPanelHeader h2,
+.orderDetailPanelHeader h2,
+.quoteBuilderPanelHeader h1,
+.orderDetailPanelHeader h1,
+.customerModalHeader h2,
+.mediaModalTitle,
+.overlayTitle,
+.sectionTitle,
+.libraryGroupTitle,
+.cabinetHeaderTitle,
+.cabinetSectionTitleRow h2 {
+  color: var(--pcd-admin-text);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.sectionText,
+.editorSubtitle,
+.tableMeta,
+.helperText,
+.placeholderText,
+.emptyCell,
+.overlayText,
+.productEditModalIntro,
+.customerModalHeader p,
+.profileCardHeader p,
+.settingsDetailHeader p,
+.activityLogDescription,
+.activityLogDate,
+.cutListSummaryText,
+.uploadProgressText,
+.mediaUploadHint {
+  color: var(--pcd-admin-text-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.tableMeta,
+.editorSubtitle,
+.activityLogPill,
+.portalPanelBadge {
+  color: var(--pcd-admin-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.quoteBuilderSummaryLine {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.cutListSummaryText {
+  align-content: center;
+  display: grid;
+  gap: 2px;
+  min-height: 38px;
+}
+
+.primaryButton,
+.addProductButton,
+.secondaryButton,
+.rowEditButton,
+.rowDeleteButton,
+.rowIconButton,
+.rowEditIconButton,
+.rowDeleteIconButton,
+.rowDuplicateIconButton,
+.rowOpenIconButton,
+.rowSaveIconButton,
+.overlayCancelButton,
+.overlayDeleteButton,
+.cabinetPromptButton,
+.cabinetPromptPrimaryButton,
+.tablePaginationButton,
+.inlineButtonRow button,
+.cabinetToggle,
+.productEditorToggle,
+.quoteBuilderTab,
+.workflowListItem,
+.mobileRecordMain {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--pcd-admin-radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  justify-content: center;
+  line-height: 1;
+  min-height: 38px;
+  padding: 0 14px;
+  text-decoration: none;
+  transition:
+    background var(--pcd-admin-transition),
+    border-color var(--pcd-admin-transition),
+    color var(--pcd-admin-transition),
+    opacity var(--pcd-admin-transition),
+    transform var(--pcd-admin-transition);
+  white-space: nowrap;
+}
+
+.primaryButton,
+.addProductButton,
+.cabinetPromptPrimaryButton,
+.rowSaveIconButton {
+  background: var(--pcd-admin-forest-800);
+  border-color: var(--pcd-admin-forest-800);
+  color: var(--pcd-admin-text-inverse);
+}
+
+.primaryButton:hover,
+.addProductButton:hover,
+.cabinetPromptPrimaryButton:hover,
+.rowSaveIconButton:hover {
+  background: var(--pcd-admin-forest-600);
+  border-color: var(--pcd-admin-forest-600);
+}
+
+.secondaryButton,
+.rowEditButton,
+.rowIconButton,
+.rowEditIconButton,
+.rowDuplicateIconButton,
+.rowOpenIconButton,
+.overlayCancelButton,
+.cabinetPromptButton,
+.tablePaginationButton,
+.inlineButtonRow button,
+.productEditorToggle,
+.quoteBuilderTab,
+.workflowListItem,
+.mobileRecordMain {
+  background: var(--pcd-admin-surface);
+  border-color: var(--pcd-admin-border);
+  color: var(--pcd-admin-text);
+}
+
+.secondaryButton:hover,
+.rowEditButton:hover,
+.rowIconButton:hover,
+.rowEditIconButton:hover,
+.rowDuplicateIconButton:hover,
+.rowOpenIconButton:hover,
+.overlayCancelButton:hover,
+.cabinetPromptButton:hover,
+.tablePaginationButton:hover,
+.inlineButtonRow button:hover,
+.productEditorToggle:hover,
+.quoteBuilderTab:hover,
+.workflowListItem:hover,
+.mobileRecordMain:hover {
+  background: var(--pcd-admin-surface-soft);
+  border-color: var(--pcd-admin-border-strong);
+  text-decoration: none;
+}
+
+.rowDeleteButton,
+.rowDeleteIconButton,
+.overlayDeleteButton {
+  background: var(--pcd-admin-red-50);
+  border-color: var(--pcd-admin-red-200);
+  color: var(--pcd-admin-red-800);
+}
+
+.rowDeleteButton:hover,
+.rowDeleteIconButton:hover,
+.overlayDeleteButton:hover {
+  background: var(--pcd-admin-red-200);
+}
+
+.primaryButton:active,
+.addProductButton:active,
+.secondaryButton:active,
+.rowEditButton:active,
+.rowDeleteButton:active,
+.rowIconButton:active,
+.overlayCancelButton:active,
+.overlayDeleteButton:active {
+  transform: scale(0.98);
+}
+
+.primaryButton:disabled,
+.addProductButton:disabled,
+.secondaryButton:disabled,
+.rowDeleteButton:disabled,
+.tablePaginationButton:disabled,
+.fieldInput:disabled,
+.textareaInput:disabled,
+.statusSelect:disabled,
+.quoteItemField input:disabled,
+.quoteItemField select:disabled,
+.quoteItemField textarea:disabled,
+.quoteItemSize input:disabled,
+.quoteItemStack input:disabled {
+  background: var(--pcd-admin-surface-soft);
+  color: var(--pcd-admin-text-muted);
+  cursor: not-allowed;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.primaryButton:focus-visible,
+.addProductButton:focus-visible,
+.secondaryButton:focus-visible,
+.rowDeleteButton:focus-visible,
+.rowIconButton:focus-visible,
+.fieldInput:focus,
+.textareaInput:focus,
+.statusSelect:focus,
+.customerSearchInput:focus,
+.moneyFieldInput:focus,
+.quoteItemField input:focus,
+.quoteItemField select:focus,
+.quoteItemField textarea:focus,
+.quoteItemSize input:focus,
+.quoteItemStack input:focus {
+  border-color: var(--pcd-admin-forest-400);
+  box-shadow: 0 0 0 3px rgba(59, 109, 17, 0.14);
+  outline: none;
+}
+
+.productsTableWrap,
+.colourLibraryTableWrap,
+.cabinetCutListWrap,
+.quoteItemsScroller,
+.pricingEditTableWrap,
+.activityLogList {
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-md);
+  overflow-x: auto;
+  width: 100%;
+}
+
+.paymentLedger {
+  display: grid;
+  min-width: 0;
+  width: 100%;
+}
+
+.productsTable,
+.colourLibraryTable,
+.cabinetConfigTable,
+.cabinetCutListTable,
+.pricingEditTable,
+.quoteAttachmentsTable,
+.interactiveTable {
+  background: var(--pcd-admin-surface);
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.colourLibraryTable {
+  table-layout: fixed;
+}
+
+.colourLibraryTable th:first-child,
+.colourLibraryTable td:first-child {
+  width: 42px;
+}
+
+.colourLibraryTable th:nth-child(2),
+.colourLibraryTable td:nth-child(2) {
+  width: 70px;
+}
+
+.colourLibraryTable th:nth-child(3),
+.colourLibraryTable td:nth-child(3),
+.colourLibraryTable th:nth-child(4),
+.colourLibraryTable td:nth-child(4),
+.colourLibraryTable th:nth-child(5),
+.colourLibraryTable td:nth-child(5),
+.colourLibraryTable th:nth-child(6),
+.colourLibraryTable td:nth-child(6),
+.colourLibraryTable th:nth-child(7),
+.colourLibraryTable td:nth-child(7) {
+  width: 120px;
+}
+
+.colourLibraryTable th:nth-child(8),
+.colourLibraryTable td:nth-child(8),
+.colourLibraryTable th:nth-child(11),
+.colourLibraryTable td:nth-child(11) {
+  width: 108px;
+}
+
+.colourLibraryTable th:nth-child(9),
+.colourLibraryTable td:nth-child(9),
+.colourLibraryTable th:nth-child(10),
+.colourLibraryTable td:nth-child(10) {
+  width: 96px;
+}
+
+.colourLibraryTable th:nth-child(12),
+.colourLibraryTable td:nth-child(12) {
+  width: 56px;
+}
+
+.colourLibraryTable th:nth-child(13),
+.colourLibraryTable td:nth-child(13) {
+  width: 80px;
+}
+
+.productsTable th,
+.colourLibraryTable th,
+.cabinetConfigTable th,
+.cabinetCutListTable th,
+.pricingEditTable th,
+.quoteAttachmentsTable th,
+.interactiveTable th,
+.quoteItemHead {
+  background: var(--pcd-admin-forest-800);
+  border-bottom: 1px solid var(--pcd-admin-forest-900);
+  color: var(--pcd-admin-text-inverse);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  padding: 10px 12px;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.productsTable td,
+.colourLibraryTable td,
+.cabinetConfigTable td,
+.cabinetCutListTable td,
+.pricingEditTable td,
+.quoteAttachmentsTable td,
+.interactiveTable td {
+  border-bottom: 1px solid rgba(26, 46, 32, 0.3);
+  color: var(--pcd-admin-text);
+  padding: 12px;
+  vertical-align: middle;
+}
+
+.colourLibraryTable th,
+.colourLibraryTable td {
+  overflow-wrap: anywhere;
+}
+
+.interactiveTable th,
+.interactiveTable td {
+  border-right: 1px solid rgba(26, 46, 32, 0.3);
+}
+
+.interactiveTable th:last-child,
+.interactiveTable td:last-child {
+  border-right: 0;
+}
+
+.interactiveTable th {
+  border-right-color: rgba(241, 239, 232, 0.24);
+}
+
+.productsTable tr:last-child td,
+.colourLibraryTable tr:last-child td,
+.cabinetConfigTable tr:last-child td,
+.cabinetCutListTable tr:last-child td,
+.pricingEditTable tr:last-child td,
+.quoteAttachmentsTable tr:last-child td,
+.interactiveTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.productsTable tbody tr:hover td,
+.colourLibraryTable tbody tr:hover td,
+.cabinetConfigTable tbody tr:hover td,
+.cabinetCutListTable tbody tr:hover td,
+.pricingEditTable tbody tr:hover td,
+.quoteAttachmentsTable tbody tr:hover td,
+.interactiveTable tbody tr:hover td,
+.rowClickable:hover td {
+  background: var(--pcd-admin-bg);
+}
+
+.interactiveTable :is(input, select, textarea) {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--pcd-admin-text);
+  font: inherit;
+  min-height: 30px;
+  padding: 4px 6px;
+  width: 100%;
+}
+
+.interactiveTable :is(input, select, textarea):focus {
+  background: var(--pcd-admin-surface);
+  box-shadow: inset 0 0 0 1px var(--pcd-admin-forest-800);
+  outline: none;
+}
+
+.rowClickable {
+  cursor: pointer;
+}
+
+.actionsCol,
+.pricingEditDeleteCell,
+.pricingEditCheckCell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.accessCodeCell,
+.calculatedCell,
+.moneyFieldInput,
+.quoteMoneyInput,
+.quoteMarkupInput {
+  font-family: var(--pcd-admin-mono);
+}
+
+.emptyCell,
+.emptyState,
+.mobileEmptyState,
+.columnFilterEmpty {
+  color: var(--pcd-admin-text-soft);
+  padding: 28px 18px;
+  text-align: center;
+}
+
+.emptyState,
+.mobileEmptyState {
+  align-items: center;
+  background: var(--pcd-admin-surface-soft);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-height: 132px;
+}
+
+.emptyStateTitle {
+  color: var(--pcd-admin-text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.emptyStateText {
+  color: var(--pcd-admin-text-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 520px;
+}
+
+.fieldLabel,
+.checkboxRow,
+.cabinetCheck,
+.launchToggle,
+.quoteItemField,
+.quoteInfoActionField {
+  color: var(--pcd-admin-text-soft);
+  display: grid;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.fieldInput,
+.textareaInput,
+.statusSelect,
+.customerSearchInput,
+.moneyFieldInput,
+.quoteMoneyInput,
+.quoteMarkupInput,
+.quoteEmailTextarea,
+.quoteColourRead,
+.quoteReadCell,
+.quoteItemField input,
+.quoteItemField select,
+.quoteItemField textarea,
+.quoteItemSize input,
+.quoteItemStack input,
+.inlineInputWithSuffix input {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border);
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 38px;
+  padding: 8px 10px;
+  transition:
+    border-color var(--pcd-admin-transition),
+    box-shadow var(--pcd-admin-transition),
+    background var(--pcd-admin-transition);
+  width: 100%;
+}
+
+.textareaInput,
+.quoteEmailTextarea,
+.quoteItemField textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.fieldInput:hover,
+.textareaInput:hover,
+.statusSelect:hover,
+.customerSearchInput:hover,
+.moneyFieldInput:hover,
+.quoteItemField input:hover,
+.quoteItemField select:hover,
+.quoteItemField textarea:hover,
+.quoteItemSize input:hover,
+.quoteItemStack input:hover {
+  border-color: var(--pcd-admin-border-strong);
+}
+
+.fieldInput::placeholder,
+.textareaInput::placeholder,
+.customerSearchInput::placeholder,
+.quoteItemField input::placeholder,
+.quoteItemField textarea::placeholder {
+  color: var(--pcd-admin-text-muted);
+}
+
+.formGrid,
+.configGrid,
+.customerModalGrid,
+.colourLibraryModalGrid,
+.quoteInfoGrid,
+.quoteNotesGrid,
+.quoteRequestDetailGrid,
+.quoteRequestPreviewGrid,
+.paymentSummaryGrid,
+.profileInfoGrid,
+.profileFormsGrid,
+.settingsGridWide,
+.launchSettingsGrid,
+.launchTextGrid,
+.cabinetCompactGrid,
+.cabinetShelfHeightGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.settingsWorkspace {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.settingsSubnav {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.settingsSubnavEyebrow {
+  color: var(--pcd-admin-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.settingsSubnav h2 {
+  color: var(--pcd-admin-text);
+  font-size: 18px;
+  line-height: 1.25;
+  margin: 0 0 6px;
+}
+
+.settingsSubnavItem {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-text);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 10px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  padding: 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.settingsSubnavItem:hover,
+.settingsSubnavItemActive {
+  background: var(--pcd-admin-forest-50);
+  border-color: var(--pcd-admin-forest-200);
+}
+
+.settingsSubnavItem strong,
+.settingsSubnavItem small {
+  display: block;
+}
+
+.settingsSubnavItem strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.settingsSubnavItem small {
+  color: var(--pcd-admin-text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+.settingsSubnavIcon {
+  align-items: center;
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-forest-400);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.settingsDetail {
+  min-width: 0;
+}
+
+.settingsDetail > .settingsDetailHeader {
+  display: grid;
+  gap: 4px;
+  justify-content: initial;
+  margin-bottom: 16px;
+}
+
+.settingsDetailBody,
+.launchSettingsForm,
+.launchSettingsFields,
+.profileSettingsForm {
+  display: grid;
+  gap: 14px;
+}
+
+.profileSummaryCard {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.profileSummaryCard h3,
+.profileInfoCard h3,
+.profileSettingsForm h4 {
+  color: var(--pcd-admin-text);
+  line-height: 1.25;
+  margin: 0;
+}
+
+.profileSummaryCard h3,
+.profileInfoCard h3 {
+  font-size: 16px;
+}
+
+.profileSettingsForm h4 {
+  font-size: 14px;
+}
+
+.profileSummaryCard p,
+.profileInfoCard p,
+.profileSettingsForm p {
+  color: var(--pcd-admin-text-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.profileCardHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.profileInfoGrid > div {
+  background: var(--pcd-admin-bg);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-md);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.profileInfoGrid span {
+  color: var(--pcd-admin-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profileInfoGrid strong {
+  color: var(--pcd-admin-text);
+  overflow-wrap: anywhere;
+}
+
+.profileFormsGrid {
+  margin-top: 14px;
+}
+
+.profileSettingsForm {
+  background: var(--pcd-admin-bg);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  padding: 14px;
+}
+
+.passwordInline {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.launchHeaderActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.launchSettingsGrid {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.launchTextGrid {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.launchPreviewOverlay {
+  background: var(--pcd-admin-forest-900);
+  inset: 0;
+  overflow: auto;
+  position: fixed;
+  z-index: 5000;
+}
+
+.launchPreviewDialog {
+  min-height: 100dvh;
+}
+
+.launchPreviewCloseButton {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(26, 46, 32, 0.24);
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-forest-800);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 38px;
+  padding: 0 14px;
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  z-index: 2;
+}
+
+.launchPreviewCloseButton:hover {
+  background: #ffffff;
+  border-color: rgba(26, 46, 32, 0.36);
+}
+
+.launchPreviewPage {
+  min-height: 100dvh;
+}
+
+.defaultsForm {
+  display: grid;
+  gap: 18px;
+}
+
+.defaultsPanel .settingsDetailHeader {
+  display: grid;
+  gap: 4px;
+  justify-content: initial;
+  margin-bottom: 16px;
+}
+
+.defaultsGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+}
+
+.defaultsField {
+  background: var(--pcd-admin-bg);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  padding: 14px;
+}
+
+.inlineInputWithSuffix {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.inlineInputWithSuffix > span {
+  color: var(--pcd-admin-text-soft);
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.formStack,
+.quoteBuilderStack,
+.workflowList,
+.workflowSection,
+.libraryGroups,
+.libraryList,
+.cabinetConfigList,
+.adminRepeater {
+  display: grid;
+  gap: 12px;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.checkboxRow,
+.cabinetCheck,
+.launchToggle {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.checkboxRow input,
+.cabinetCheck input,
+.launchToggle input {
+  accent-color: var(--pcd-admin-forest-800);
+  height: 16px;
+  width: 16px;
+}
+
+.portalPanel,
+.editorCard,
+.settingsCard,
+.profileSummaryCard,
+.profileInfoCard,
+.defaultsPanel,
+.quoteBuilderPanel,
+.quoteRequestPreviewCard,
+.orderDetailPanel,
+.projectSummaryCard,
+.projectProgressPanel,
+.paymentSummaryCard,
+.colourLibraryCard,
+.libraryGroup,
+.workflowSection,
+.workflowTotals,
+.customerRecordModal,
+.cabinetConfiguratorSection,
+.cabinetCostPrompt,
+.noticeBox,
+.inlineNotice,
+.activityLogItem,
+.mobileRecordCard,
+.mediaAssetTile,
+.groupConfigCard,
+.quoteItemBlock,
+.quoteLine,
+.colourLibraryModal,
+.quoteRequestPreviewModal,
+.customerModal,
+.confirmModal,
+.paymentModal,
+.publishQuoteModal,
+.productEditModalPanel,
+.mediaModalPanel,
+.cabinetOverlayModal,
+.overlayCard {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  box-shadow: none;
+  color: var(--pcd-admin-text);
+}
+
+.portalPanel,
+.editorCard,
+.settingsCard,
+.profileSummaryCard,
+.profileInfoCard,
+.defaultsPanel,
+.quoteBuilderPanel,
+.orderDetailPanel,
+.projectSummaryCard,
+.projectProgressPanel,
+.paymentSummaryCard,
+.colourLibraryCard,
+.libraryGroup,
+.workflowSection,
+.workflowTotals,
+.customerRecordModal,
+.cabinetConfiguratorSection,
+.noticeBox,
+.inlineNotice,
+.activityLogItem,
+.mobileRecordCard {
+  padding: 16px;
+}
+
+.quoteBuilderPanel,
+.orderDetailPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  max-height: calc(100dvh - 48px);
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.adminTotalsLayout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.adminTotalsStack {
+  display: grid;
+  gap: 10px;
+}
+
+.adminTotalsRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.adminTotalCard {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  color: var(--pcd-admin-text);
+  display: grid;
+  gap: 14px;
+  max-width: 360px;
+  padding: 18px;
+  width: 100%;
+}
+
+.adminTotalCardFull {
+  max-width: none;
+}
+
+.adminTotalCardHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.adminTotalTitle {
+  color: var(--pcd-admin-text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.adminTotalRows {
+  display: grid;
+  gap: 0;
+}
+
+.adminTotalRow {
+  align-items: center;
+  border-bottom: 1px solid var(--pcd-admin-border-soft);
+  color: var(--pcd-admin-text-soft);
+  display: flex;
+  font-size: 13px;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+
+.adminTotalRow:last-child {
+  border-bottom: 0;
+}
+
+.adminTotalRowEmphasis,
+.adminTotalRows .adminTotalRow:last-child {
+  color: var(--pcd-admin-text);
+  font-weight: 700;
+}
+
+.adminBreakdownGroup {
+  background: var(--pcd-admin-surface);
+  border: 1px solid #d9dee5;
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-text);
+  overflow: hidden;
+}
+
+.adminBreakdownSummary {
+  align-items: center;
+  background: #f4f6f8;
+  border-bottom: 1px solid transparent;
+  color: var(--pcd-admin-text);
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 42px;
+  padding: 8px 14px;
+}
+
+.adminBreakdownSummary::-webkit-details-marker {
+  display: none;
+}
+
+.adminBreakdownSummary::after {
+  border-bottom: 2px solid var(--pcd-admin-text-soft);
+  border-right: 2px solid var(--pcd-admin-text-soft);
+  content: "";
+  flex: 0 0 auto;
+  height: 8px;
+  margin-left: 2px;
+  transform: rotate(45deg);
+  transition: transform var(--pcd-admin-transition);
+  width: 8px;
+}
+
+.adminBreakdownGroup[open] .adminBreakdownSummary {
+  border-bottom-color: var(--pcd-admin-border-soft);
+}
+
+.adminBreakdownGroup[open] .adminBreakdownSummary::after {
+  transform: rotate(225deg);
+}
+
+.adminBreakdownSummary span {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.adminBreakdownSummary small {
+  color: var(--pcd-admin-text-soft);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.adminBreakdownSummary strong {
+  color: var(--pcd-admin-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.adminBreakdownSummary > strong {
+  flex: 0 0 auto;
+  font-size: 13px;
+  margin-left: auto;
+  margin-right: 8px;
+  white-space: nowrap;
+}
+
+.adminBreakdownRows {
+  background: #fafbfc;
+  display: grid;
+  gap: 0;
+  padding: 6px 14px;
+}
+
+.portalPanelHeader,
+.quoteBuilderPanelHeader,
+.orderDetailPanelHeader,
+.activityLogHeader {
+  border-bottom: 1px solid var(--pcd-admin-border-soft);
+  margin: -16px -16px 16px;
+  padding: 14px 16px;
+}
+
+.quoteBuilderPanelHeader,
+.orderDetailPanelHeader {
+  background: var(--pcd-admin-forest-50);
+  border-bottom-color: var(--pcd-admin-border);
+  display: grid;
+  gap: 16px;
+  grid-template-rows: auto auto;
+  margin: 0;
+  min-height: 0;
+  padding: 22px 24px 0;
+}
+
+.quoteBuilderHeaderTop {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.editorTopActions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.quoteBuilderTabs {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: -1px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-top: 2px;
+}
+
+.quoteBuilderTab {
+  background: var(--pcd-admin-surface-soft);
+  border: 1px solid var(--pcd-admin-border);
+  border-bottom-color: var(--pcd-admin-border-strong);
+  border-radius: var(--pcd-admin-radius-md) var(--pcd-admin-radius-md) 0 0;
+  color: var(--pcd-admin-text-soft);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 42px;
+  min-width: 132px;
+  padding: 0 16px;
+  position: relative;
+}
+
+.quoteBuilderTab:hover {
+  background: var(--pcd-admin-surface);
+  border-color: var(--pcd-admin-border-strong);
+  color: var(--pcd-admin-text);
+}
+
+.quoteBuilderTabActive,
+.quoteBuilderTabActive:hover {
+  background: var(--pcd-admin-surface);
+  border-color: var(--pcd-admin-border);
+  border-bottom-color: var(--pcd-admin-surface);
+  color: var(--pcd-admin-forest-800);
+  z-index: 2;
+}
+
+.quoteBuilderPanelBody,
+.orderDetailPanelBody,
+.customerModalBody,
+.mediaModalBody,
+.productEditModalBody,
+.quoteRequestPreviewBody,
+.cabinetOverlayBody,
+.overlayBody {
+  padding: 0;
+}
+
+.quoteBuilderPanelBody,
+.orderDetailPanelBody {
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 24px 24px;
+}
+
+.customerModalFooter,
+.mediaModalFooter,
+.quoteRequestPreviewFooter,
+.overlayFooter,
+.formActions,
+.overlayActions,
+.quoteInfoFooter,
+.paymentToolbar,
+.mobileRecordActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.rowActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.tableActionMenuWrap {
+  display: inline-block;
+  position: relative;
+}
+
+.tableActionMenuButton {
+  background: var(--pcd-admin-surface);
+  border: 1px solid rgba(26, 46, 32, 0.28);
+  border-radius: var(--pcd-admin-radius-sm);
+  color: var(--pcd-admin-forest-800);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  min-height: 28px;
+  padding: 0 20px 0 9px;
+  position: relative;
+}
+
+.tableActionMenuButton::after {
+  border-color: currentColor transparent transparent;
+  border-style: solid;
+  border-width: 4px 3px 0;
+  content: "";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-35%);
+}
+
+.tableActionMenuButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.tableActionMenu {
+  background: var(--pcd-admin-surface);
+  border: 1px solid rgba(26, 46, 32, 0.24);
+  border-radius: 6px;
+  box-shadow: var(--pcd-admin-shadow-lg);
+  display: grid;
+  gap: 3px;
+  min-width: 132px;
+  overflow: auto;
+  padding: 5px;
+  z-index: 3000;
+}
+
+.tableActionMenuItem,
+.tableActionDangerItem {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--pcd-admin-radius-sm);
+  color: var(--pcd-admin-forest-800);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  min-height: 28px;
+  padding: 0 8px;
+  text-align: left;
+  text-decoration: none;
+  width: 100%;
+}
+
+.tableActionConfirmText {
+  color: var(--pcd-admin-text-soft);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 8px 2px;
+  text-align: left;
+}
+
+.tableActionMenuItem:hover {
+  background: var(--pcd-admin-forest-50);
+  border-color: var(--pcd-admin-forest-200);
+  text-decoration: none;
+}
+
+.tableActionDangerItem {
+  color: var(--pcd-admin-red-800);
+}
+
+.tableActionDangerItem:hover {
+  background: var(--pcd-admin-red-50);
+  border-color: var(--pcd-admin-red-200);
+}
+
+.bulkDeleteButton {
+  align-items: center;
+  background: var(--pcd-admin-red-50);
+  border: 1px solid var(--pcd-admin-red-200);
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-red-800);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1;
+  min-height: 38px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.bulkDeleteButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.bulkDeleteConfirm {
+  align-items: center;
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-red-200);
+  border-radius: var(--pcd-admin-radius-md);
+  display: flex;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px;
+}
+
+.bulkDeleteConfirm > span {
+  color: var(--pcd-admin-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.bulkDeleteConfirm .tableActionMenuItem,
+.bulkDeleteConfirm .tableActionDangerItem {
+  min-height: 28px;
+  width: auto;
+}
+
+.rowSelectCol {
+  text-align: center;
+  width: 42px;
+}
+
+.rowSelectCol input {
+  accent-color: var(--pcd-admin-forest-800);
+  height: 15px;
+  width: 15px;
+}
+
+.paymentToolbar {
+  justify-content: space-between;
+  margin-top: 18px;
+  width: 100%;
+}
+
+.productsHeaderBar > .secondaryButton,
+.productsHeaderBar > .primaryButton {
+  margin-left: auto;
+}
+
+.paymentToolbar > div {
+  margin-right: auto;
+  text-align: left;
+}
+
+.paymentToolbar .primaryButton {
+  margin-left: auto;
+}
+
+.productsHeaderBar > .rowActions:only-child {
+  margin-left: auto;
+}
+
+.productsHeaderBar > .addProductButton:only-child {
+  margin-left: auto;
+}
+
+.statusFilterBar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.statusFilterButton {
+  align-items: center;
+  background: var(--pcd-admin-surface-soft);
+  border: 1px solid var(--pcd-admin-gray-100);
+  border-radius: var(--pcd-admin-radius-pill);
+  color: var(--pcd-admin-gray-600);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 5px;
+  justify-content: center;
+  line-height: 1;
+  min-height: 32px;
+  padding: 0 14px;
+  text-decoration: none;
+  transition:
+    background var(--pcd-admin-transition),
+    border-color var(--pcd-admin-transition),
+    color var(--pcd-admin-transition),
+    opacity var(--pcd-admin-transition),
+    transform var(--pcd-admin-transition);
+  white-space: nowrap;
+}
+
+.statusFilterButton small {
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.statusFilterButton:hover {
+  background: var(--pcd-admin-surface-soft);
+  border-color: var(--pcd-admin-gray-400);
+  color: var(--pcd-admin-gray-800);
+}
+
+.statusFilterButtonActive,
+.statusFilterButtonActive:hover {
+  background: var(--pcd-admin-forest-50);
+  border-color: var(--pcd-admin-forest-200);
+  color: var(--pcd-admin-forest-400);
+}
+
+.modalOverlay,
+.fullscreenOverlay,
+.mediaModalBackdrop {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 18px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.confirmModal,
+.customerModal,
+.paymentModal,
+.publishQuoteModal,
+.colourLibraryModal,
+.quoteRequestPreviewModal,
+.productEditModalPanel,
+.mediaModalPanel,
+.cabinetOverlayModal,
+.overlayCard {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  box-shadow: var(--pcd-admin-shadow-lg);
+  max-height: calc(100dvh - 36px);
+  max-width: 680px;
+  overflow: hidden;
+  width: min(100%, 680px);
+}
+
+.mediaModalPanel,
+.productEditModalPanel,
+.quoteRequestPreviewModal {
+  max-width: 980px;
+}
+
+.quoteRequestPreviewModal {
+  max-width: 1480px;
+  width: min(calc(100vw - 36px), 1480px);
+}
+
+.cabinetOverlayModal {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cabinetOverlayBody {
+  grid-row: 1;
+}
+
+.customerModalHeader,
+.mediaModalHeader,
+.quoteRequestPreviewHeader,
+.overlayHeader {
+  align-items: flex-start;
+  background: var(--pcd-admin-forest-800);
+  color: var(--pcd-admin-text-inverse);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 18px 20px;
+}
+
+.customerModalHeader > div:not(.customerModalIcon),
+.mediaModalHeader > div:not(.customerModalIcon),
+.quoteRequestPreviewHeader > div:not(.customerModalIcon),
+.overlayHeader > div:not(.customerModalIcon) {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 4px;
+  margin-right: auto;
+  min-width: 0;
+  text-align: left;
+}
+
+.customerModalHeader h2,
+.mediaModalHeader h2,
+.quoteRequestPreviewHeader h2,
+.overlayHeader h2,
+.customerModalHeader .mediaModalTitle,
+.mediaModalHeader .mediaModalTitle,
+.overlayTitle {
+  color: var(--pcd-admin-text-inverse);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.customerModalHeader p,
+.mediaModalHeader p,
+.quoteRequestPreviewHeader p,
+.overlayHeader p,
+.customerModalHeader .tableMeta,
+.quoteRequestPreviewHeader .tableMeta {
+  color: rgba(241, 239, 232, 0.78);
+  text-align: left;
+}
+
+.quoteRequestPreviewHeader span,
+.modalHeaderText,
+.overlayHeaderText {
+  color: rgba(241, 239, 232, 0.78);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.customerModalIcon {
+  background: rgba(241, 239, 232, 0.12);
+  border-color: rgba(241, 239, 232, 0.18);
+  color: var(--pcd-admin-text-inverse);
+  flex: 0 0 42px;
+}
+
+.customerModalBody,
+.mediaModalBody,
+.productEditModalBody,
+.quoteRequestPreviewBody,
+.cabinetOverlayBody,
+.overlayBody {
+  align-content: start;
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 20px;
+}
+
+.customerModalBody > .customerModalGrid,
+.customerModalBody > .colourLibraryModalGrid,
+.quoteRequestPreviewCard {
+  background: var(--pcd-admin-surface-soft);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  padding: 16px;
+}
+
+.quoteRequestPreviewCard {
+  display: grid;
+  gap: 14px;
+}
+
+.quoteRequestPreviewCard h3,
+.quoteRequestPreviewSectionTitle {
+  color: var(--pcd-admin-text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.quoteRequestDetailGrid {
+  gap: 12px 18px;
+}
+
+.quoteRequestDetailGrid > div {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-md);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.quoteRequestDetailGrid dt {
+  color: var(--pcd-admin-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.quoteRequestDetailGrid dd,
+.quoteRequestNotes {
+  color: var(--pcd-admin-text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.quoteRequestDetailGrid .statusSelect {
+  min-height: 34px;
+}
+
+.quoteRequestNotes {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-md);
+  padding: 12px;
+}
+
+.customerModalBody .fieldLabel,
+.mediaModalBody .fieldLabel,
+.productEditModalBody .fieldLabel,
+.quoteRequestPreviewBody .fieldLabel,
+.overlayBody .fieldLabel {
+  color: var(--pcd-admin-text);
+  font-weight: 700;
+}
+
+.customerModalBody :is(.fieldInput, .textareaInput, .statusSelect),
+.mediaModalBody :is(.fieldInput, .textareaInput, .statusSelect),
+.productEditModalBody :is(.fieldInput, .textareaInput, .statusSelect),
+.quoteRequestPreviewBody :is(.fieldInput, .textareaInput, .statusSelect),
+.overlayBody :is(.fieldInput, .textareaInput, .statusSelect) {
+  background: var(--pcd-admin-surface);
+}
+
+.quoteItemsAdminWrap {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.quoteItemsScroller {
+  background: var(--pcd-admin-surface);
+  border-color: var(--pcd-admin-forest-800);
+}
+
+.quoteRequestPreviewBody .quoteItemsScroller {
+  background: var(--pcd-admin-surface);
+  max-height: 360px;
+}
+
+.quoteItemGrid,
+.quoteRequestPreviewGrid {
+  align-items: stretch;
+  display: grid;
+  gap: 0;
+}
+
+.quoteRequestPreviewGrid {
+  grid-template-columns:
+    44px
+    minmax(96px, 0.75fr)
+    minmax(150px, 1.15fr)
+    minmax(86px, 0.62fr)
+    minmax(100px, 0.74fr)
+    minmax(112px, 0.84fr)
+    minmax(150px, 1.15fr)
+    minmax(58px, 0.42fr)
+    minmax(104px, 0.78fr)
+    minmax(145px, 1.05fr)
+    minmax(170px, 1.22fr);
+  min-width: min(1260px, calc(100vw - 76px));
+}
+
+.quoteItemGrid > div,
+.quoteRequestPreviewGrid > div {
+  border-bottom: 1px solid rgba(26, 46, 32, 0.3);
+  border-right: 1px solid rgba(26, 46, 32, 0.3);
+}
+
+.quoteItemGrid > div:last-child,
+.quoteRequestPreviewGrid > div:last-child {
+  border-right: 0;
+}
+
+.quoteRequestPreviewGrid.quoteItemHead {
+  padding: 0;
+}
+
+.quoteRequestPreviewGrid > div {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+  padding: 9px 8px;
+}
+
+.quoteItemGrid.quoteItemHead > div,
+.quoteRequestPreviewGrid.quoteItemHead > div {
+  border-bottom-color: var(--pcd-admin-forest-900);
+  border-right-color: rgba(241, 239, 232, 0.24);
+  color: var(--pcd-admin-text-inverse);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.quoteRequestPreviewGrid.quoteItemRow {
+  background: var(--pcd-admin-surface);
+}
+
+.quoteRequestPreviewGrid.quoteItemRow:last-of-type > div {
+  border-bottom: 0;
+}
+
+.quoteItemGrid :is(input, select, textarea),
+.quoteItemGrid .quoteReadCell,
+.quoteRequestPreviewGrid .quoteReadCell {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--pcd-admin-text);
+  font-size: 12px;
+  line-height: 1.35;
+  min-height: 0;
+  padding: 9px 8px;
+}
+
+.quoteRequestPreviewGrid .quoteItemRowNum {
+  align-items: center;
+  background: var(--pcd-admin-forest-800);
+  border-radius: var(--pcd-admin-radius-pill);
+  color: var(--pcd-admin-text-inverse);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.quoteRequestHingeCell {
+  color: var(--pcd-admin-text);
+  display: grid;
+  font-size: 11px;
+  gap: 3px;
+  line-height: 1.3;
+}
+
+.quoteRequestHingeCell span,
+.quoteRequestHingeCell small {
+  display: block;
+}
+
+.quoteRequestHingeCell strong {
+  color: var(--pcd-admin-forest-400);
+  font-weight: 700;
+}
+
+@media (max-width: 1280px) {
+  .quoteRequestPreviewModal {
+    width: calc(100vw - 24px);
+  }
+
+  .quoteRequestPreviewGrid {
+    grid-template-columns:
+      42px
+      minmax(90px, 0.72fr)
+      minmax(130px, 1fr)
+      minmax(78px, 0.58fr)
+      minmax(90px, 0.68fr)
+      minmax(98px, 0.76fr)
+      minmax(130px, 1fr)
+      minmax(54px, 0.38fr)
+      minmax(92px, 0.68fr)
+      minmax(122px, 0.94fr)
+      minmax(150px, 1.08fr);
+    min-width: 1120px;
+  }
+}
+
+.customerModalFooter,
+.mediaModalFooter,
+.quoteRequestPreviewFooter,
+.overlayFooter {
+  background: var(--pcd-admin-surface);
+  border-top: 1px solid var(--pcd-admin-border-soft);
+  flex: 0 0 auto;
+  padding: 14px 20px;
+}
+
+.modalCloseButton,
+.customerModalHeader > button,
+.mediaModalHeader > button,
+.quoteRequestPreviewHeader > button,
+.overlayHeader > button {
+  align-items: center;
+  background: rgba(241, 239, 232, 0.1);
+  border: 1px solid rgba(241, 239, 232, 0.24);
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-text-inverse);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0 10px;
+}
+
+.modalCloseButton:hover,
+.customerModalHeader > button:hover,
+.mediaModalHeader > button:hover,
+.quoteRequestPreviewHeader > button:hover,
+.overlayHeader > button:hover {
+  background: rgba(241, 239, 232, 0.18);
+  border-color: rgba(241, 239, 232, 0.36);
+}
+
+.modalCloseButton:disabled,
+.customerModalHeader > button:disabled,
+.mediaModalHeader > button:disabled,
+.quoteRequestPreviewHeader > button:disabled,
+.overlayHeader > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.statusPill,
+.portalTileStatus,
+.activityLogEvent,
+.projectStatusSelect {
+  align-items: center;
+  border-radius: var(--pcd-admin-radius-pill);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 4px;
+  line-height: 1;
+  min-height: 24px;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+
+.statusPillDraft {
+  background: var(--pcd-admin-gray-50);
+  color: var(--pcd-admin-gray-600);
+}
+
+.statusPillActive,
+.workflowListItemActive,
+.libraryListItemActive,
+.cabinetToggleActive {
+  background: var(--pcd-admin-forest-50);
+  border-color: var(--pcd-admin-forest-200);
+  color: var(--pcd-admin-forest-400);
+}
+
+.statusPillIssue,
+.feedback[role="alert"] {
+  background: var(--pcd-admin-red-50);
+  border-color: var(--pcd-admin-red-200);
+  color: var(--pcd-admin-red-800);
+}
+
+.feedback,
+.cabinetFeedbackNotice {
+  background: var(--pcd-admin-blue-50);
+  border: 1px solid rgba(24, 95, 165, 0.2);
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-blue-800);
+  font-size: 13px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+}
+
+.feedbackToast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80;
+  max-width: min(420px, calc(100vw - 48px));
+  background: var(--pcd-admin-forest-50);
+  border: 1px solid var(--pcd-admin-forest-200);
+  border-radius: var(--pcd-admin-radius-md);
+  box-shadow: var(--pcd-admin-shadow-lg);
+  color: var(--pcd-admin-forest-800);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 12px 14px;
+}
+
+.mobileRecordList {
+  display: grid;
+  gap: 12px;
+}
+
+.mobileRecordList,
+.mobileEmptyState {
+  display: none;
+}
+
+.mobileRecordCard {
+  display: grid;
+  gap: 12px;
+}
+
+.mobileRecordEyebrow {
+  color: var(--pcd-admin-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.mobileRecordDetails {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mobileRecordDetails dt {
+  color: var(--pcd-admin-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mobileRecordDetails dd {
+  color: var(--pcd-admin-text);
+  margin: 2px 0 0;
+}
+
+.mobileRecordMessage {
+  color: var(--pcd-admin-text-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mobileRecordSelect {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border);
+  border-radius: var(--pcd-admin-radius-md);
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.portalGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.portalTile {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-lg);
+  color: var(--pcd-admin-text);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  text-decoration: none;
+}
+
+.portalTile:hover {
+  border-color: var(--pcd-admin-border-strong);
+  box-shadow: var(--pcd-admin-shadow-md);
+  text-decoration: none;
+}
+
+.portalTileTop {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.portalTileIcon,
+.customerModalIcon,
+.cabinetModalIcon,
+.profileAvatar {
+  align-items: center;
+  background: var(--pcd-admin-forest-50);
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-forest-400);
+  display: inline-flex;
+  font-weight: 700;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.customerModalHeader .customerModalIcon,
+.quoteRequestPreviewHeader .customerModalIcon,
+.mediaModalHeader .customerModalIcon,
+.overlayHeader .customerModalIcon {
+  background: rgba(241, 239, 232, 0.12);
+  border-color: rgba(241, 239, 232, 0.18);
+  color: var(--pcd-admin-text-inverse);
+}
+
+.portalTileCta {
+  color: var(--pcd-admin-forest-400);
+  font-weight: 700;
+}
+
+.portalTileMeta {
+  color: var(--pcd-admin-text-soft);
+}
+
+.productThumb,
+.colourLibraryTableTile,
+.mediaAssetImage,
+.thumbPlaceholder {
+  background: var(--pcd-admin-surface-muted);
+  border: 1px solid var(--pcd-admin-border-soft);
+  border-radius: var(--pcd-admin-radius-md);
+  object-fit: cover;
+}
+
+.colourLibraryTableTile {
+  display: inline-flex;
+  height: 48px;
+  overflow: hidden;
+  width: 48px;
+}
+
+.colourLibraryTableTile img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.productThumb {
+  height: 52px;
+  width: 52px;
+}
+
+.thumbPlaceholder {
+  align-items: center;
+  color: var(--pcd-admin-text-muted);
+  display: inline-flex;
+  height: 52px;
+  justify-content: center;
+  width: 52px;
+}
+
+.productNameCell,
+.orderNameWithUnread {
+  color: var(--pcd-admin-text);
+  font-weight: 700;
+}
+
+.orderUnreadDot {
+  background: var(--pcd-admin-timber-400);
+  border-radius: 50%;
+  display: inline-block;
+  height: 8px;
+  margin-right: 6px;
+  width: 8px;
+}
+
+.tablePagination {
+  align-items: center;
+  border-top: 1px solid var(--pcd-admin-border-soft);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.tablePaginationControls {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.tablePaginationPage {
+  align-items: center;
+  color: var(--pcd-admin-text-soft);
+  display: inline-flex;
+  font-size: 12px;
+  justify-content: center;
+  line-height: 1;
+  min-height: 38px;
+  min-width: 38px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.tablePaginationMeta,
+.tablePaginationMuted {
+  color: var(--pcd-admin-text-soft);
+  font-size: 12px;
+}
+
+.projectProgressTrack,
+.projectProgressTrackLarge,
+.uploadProgressBar {
+  background: var(--pcd-admin-surface-muted);
+  border-radius: var(--pcd-admin-radius-pill);
+  height: 8px;
+  overflow: hidden;
+}
+
+.projectProgressTrackLarge {
+  height: 12px;
+}
+
+.projectProgressFill,
+.uploadProgressFill {
+  background: var(--pcd-admin-forest-800);
+  height: 100%;
+}
+
+.columnFilterWrap {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  min-width: 0;
+  position: relative;
+}
+
+.columnFilterWrap > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.columnFilterMenu,
+.cabinetColourMenu,
+.quoteColourMenu {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border);
+  border-radius: var(--pcd-admin-radius-lg);
+  box-shadow: var(--pcd-admin-shadow-lg);
+  display: grid;
+  gap: 4px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  z-index: 20;
+}
+
+.columnFilterMenu {
+  color: var(--pcd-admin-text);
+  left: 0;
+  min-width: 220px;
+  top: calc(100% + 8px);
+}
+
+.columnFilterMenuHeader {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 4px 6px 6px;
+}
+
+.columnFilterMenuHeader button {
+  background: transparent;
+  border: 0;
+  color: var(--pcd-admin-forest-400);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0;
+}
+
+.columnFilterOptions {
+  display: grid;
+  gap: 2px;
+}
+
+.quoteColourMenu {
+  background: #ffffff;
+  border-color: rgba(26, 46, 32, 0.28);
+  box-shadow: 0 16px 34px rgba(16, 24, 20, 0.18);
+  gap: 6px;
+  padding: 8px;
+  z-index: 3000;
+}
+
+.columnFilterOption,
+.quoteColourOption {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-text);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px;
+  text-align: left;
+  width: 100%;
+}
+
+.quoteColourOption {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  min-height: 48px;
+  padding: 6px 8px;
+}
+
+.columnFilterOption:hover,
+.quoteColourOption:hover {
+  background: var(--pcd-admin-forest-50);
+  border-color: transparent;
+}
+
+.quoteOptionThumb {
+  align-items: center;
+  background: #eef5ea;
+  border: 1px solid #c7d8bf;
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-forest-800);
+  display: inline-flex;
+  flex: 0 0 34px;
+  font-size: 10px;
+  font-weight: 700;
+  height: 34px;
+  justify-content: center;
+  overflow: hidden;
+  width: 34px;
+}
+
+.quoteOptionThumb img {
+  background: #ffffff;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.quoteColourOption strong,
+.quoteColourOption small {
+  display: block;
+}
+
+.quoteColourOption > span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.quoteColourOption strong {
+  color: var(--pcd-admin-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.quoteColourOption small,
+.quoteColourEmpty {
+  color: var(--pcd-admin-text-soft);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.quoteColourEmpty {
+  padding: 10px;
+}
+
+.columnFilterIconButton,
+.cabinetColourComboButton,
+.quoteColourCombo {
+  background: var(--pcd-admin-surface);
+  border: 1px solid var(--pcd-admin-border);
+  border-radius: var(--pcd-admin-radius-md);
+  color: var(--pcd-admin-text);
+  min-height: 34px;
+  padding: 6px 9px;
+}
+
+.columnFilterIconButton {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--pcd-admin-radius-sm);
+  color: currentColor;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  justify-content: center;
+  min-height: 18px;
+  padding: 2px 3px;
+}
+
+.columnFilterIcon {
+  border: solid currentColor;
+  border-width: 0 1.25px 1.25px 0;
+  display: inline-block;
+  height: 6px;
+  margin-top: -3px;
+  transform: rotate(45deg);
+  width: 6px;
+}
+
+.columnFilterCount {
+  align-items: center;
+  background: var(--pcd-admin-text-inverse);
+  border-radius: var(--pcd-admin-radius-pill);
+  color: var(--pcd-admin-forest-800);
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 700;
+  height: 14px;
+  justify-content: center;
+  min-width: 14px;
+  padding: 0 3px;
+}
+
+.quoteColourCombo {
+  align-items: center;
+  display: flex;
+  overflow: hidden;
+  padding: 0 36px 0 10px;
+  position: relative;
+}
+
+.quoteColourCombo input {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: inherit;
+  font: inherit;
+  min-height: 0;
+  outline: none;
+  padding: 0 !important;
+  width: 100%;
+}
+
+.quoteColourCombo input::placeholder {
+  color: var(--pcd-admin-text-muted);
+}
+
+.columnFilterIconButtonActive {
+  background: rgba(241, 239, 232, 0.14);
+  color: var(--pcd-admin-text-inverse);
+}
+
+.srOnly {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+@media (max-width: 768px) {
+  .productsHeaderBar,
+  .editorTopBar,
+  .sectionHeaderRow,
+  .portalPanelHeader,
+  .customerToolbar,
+  .paymentToolbar,
+  .quoteBuilderSummaryLine {
+    display: grid;
+    gap: 12px;
+  }
+
+  .quoteBuilderSummaryLine .secondaryButton {
+    justify-self: start;
+  }
+
+  .settingsWorkspace {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsSubnav {
+    position: static;
+  }
+
+  .settingsSubnavItem {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .settingsSubnavIcon {
+    height: 36px;
+    width: 36px;
+  }
+
+  .profileCardHeader,
+  .launchHeaderActions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .passwordInline,
+  .launchSettingsGrid,
+  .launchTextGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .launchPreviewCloseButton {
+    right: 12px;
+    top: 12px;
+  }
+
+  .tableToolbarFilters,
+  .tableToolbarActions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .tableToolbarActions {
+    justify-content: flex-start;
+  }
+
+  .productsTableWrap,
+  .colourLibraryTableWrap {
+    border: 0;
+    overflow: visible;
+  }
+
+  .productsSection:has(.mobileRecordList) .productsTableWrap {
+    display: none;
+  }
+
+  .mobileRecordList {
+    display: grid;
+  }
+
+  .mobileEmptyState {
+    display: block;
+  }
+
+  .productsTable,
+  .colourLibraryTable {
+    display: block;
+  }
+
+  .productsTable thead,
+  .colourLibraryTable thead {
+    display: none;
+  }
+
+  .productsTable tbody,
+  .productsTable tr,
+  .productsTable td,
+  .colourLibraryTable tbody,
+  .colourLibraryTable tr,
+  .colourLibraryTable td {
+    display: block;
+    width: 100%;
+  }
+
+  .productsTable tr,
+  .colourLibraryTable tr {
+    background: var(--pcd-admin-surface);
+    border: 1px solid var(--pcd-admin-border-soft);
+    border-radius: var(--pcd-admin-radius-lg);
+    margin-bottom: 12px;
+    padding: 12px;
+  }
+
+  .productsTable td,
+  .colourLibraryTable td {
+    border: 0;
+    padding: 6px 0;
+  }
+
+  .formGrid,
+  .configGrid,
+  .customerModalGrid,
+  .colourLibraryModalGrid,
+  .defaultsGrid,
+  .quoteInfoGrid,
+  .quoteNotesGrid,
+  .paymentSummaryGrid,
+  .mobileRecordDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .modalOverlay,
+  .fullscreenOverlay,
+  .mediaModalBackdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .confirmModal,
+  .customerModal,
+  .paymentModal,
+  .publishQuoteModal,
+  .quoteRequestPreviewModal,
+  .productEditModalPanel,
+  .mediaModalPanel,
+  .cabinetOverlayModal,
+  .overlayCard {
+    border-radius: var(--pcd-admin-radius-lg) var(--pcd-admin-radius-lg) 0 0;
+    max-height: 88dvh;
+    max-width: none;
+    width: 100%;
+  }
+
+  .feedbackToast {
+    right: 16px;
+    bottom: 16px;
+    max-width: calc(100vw - 32px);
+  }
+
+  .tablePagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tablePaginationControls {
+    justify-content: flex-end;
+  }
+}
+

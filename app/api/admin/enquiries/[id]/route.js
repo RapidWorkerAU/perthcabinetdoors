@@ -2,6 +2,20 @@ import { requireAdminApiContext } from "../../../../../lib/admin-api";
 
 const allowedStatuses = new Set(["new", "in_progress", "responded", "closed", "not_required"]);
 
+export async function DELETE(_request, { params }) {
+  const context = await requireAdminApiContext();
+  if (context.error) return context.error;
+
+  try {
+    const { id } = await Promise.resolve(params);
+    const { error } = await context.supabase.from("pcd_enquiries").delete().eq("id", id);
+    if (error) throw error;
+    return Response.json({ ok: true });
+  } catch (error) {
+    return Response.json({ ok: false, error: error?.message || "Could not delete enquiry." }, { status: 500 });
+  }
+}
+
 export async function PATCH(request, { params }) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;

@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import styles from "../../app/admin/admin-shell.module.css";
+import styles from "../../app/admin/admin-content.module.css";
 import { COLOUR_MATERIALS, materialTypeForKey, optionsFromColourFamily } from "../../lib/pcd-colour-library";
 import {
   calculateCabinetTotals,
@@ -115,7 +115,7 @@ function ToggleGroup({ value, options, onChange }) {
             onClick={() => onChange(option)}
             aria-pressed={selected}
           >
-            <span aria-hidden="true">{selected ? "✓" : ""}</span>
+            <span aria-hidden="true">{selected ? "âœ“" : ""}</span>
             {option}mm
           </button>
         );
@@ -830,3 +830,4 @@ export default function CabinetConfigurator({
     </section>
   );
 }
+

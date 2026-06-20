@@ -1,0 +1,61 @@
+/* Room Elevation — single-wall SVG drawing */
+
+.roomElevation {
+  --re-text:        var(--pcd-admin-text,        #1c1c1a);
+  --re-text-soft:   var(--pcd-admin-text-soft,   #5f5e5a);
+  --re-text-muted:  var(--pcd-admin-text-muted,  #888780);
+  --re-bg:          var(--pcd-admin-bg,          #f7f6f3);
+  --re-surface:     var(--pcd-admin-surface,     #ffffff);
+  --re-surface-soft:var(--pcd-admin-surface-soft,#f1efe8);
+  --re-border:      var(--pcd-admin-border,      rgba(0,0,0,0.14));
+  --re-border-soft: var(--pcd-admin-border-soft, rgba(0,0,0,0.08));
+  --re-radius-sm:   var(--pcd-admin-radius-sm,   4px);
+  --re-radius-md:   var(--pcd-admin-radius-md,   8px);
+  --re-green:       var(--pcd-admin-forest-800,  #1a2e20);
+  --re-shadow-sm:   var(--pcd-admin-shadow-sm,   0 1px 2px rgba(0,0,0,0.06));
+
+  background: var(--re-surface);
+  border: 1px solid var(--re-border-soft);
+  border-radius: var(--re-radius-md);
+  box-shadow: var(--re-shadow-sm);
+  overflow: hidden;
+}
+
+/* ---- Wall heading ---- */
+
+.wallHeading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 16px 0;
+}
+
+.wallName {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--re-text);
+  margin: 0;
+}
+
+.wallDims {
+  font-size: 11px;
+  color: var(--re-text-muted);
+  margin: 0;
+}
+
+/* ---- SVG ---- */
+
+.elevationSvg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 900 / 500;
+}
+
+/* ---- Empty state ---- */
+
+.emptyState {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--re-text-muted);
+  font-size: 13px;
+}

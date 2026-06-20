@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import styles from "../admin-shell.module.css";
+import styles from "../admin-content.module.css";
 
 export const ADMIN_TABLE_PAGE_SIZE = 7;
 
@@ -69,3 +69,4 @@ export function AdminTablePagination({ label = "records", page, pageCount, total
     </div>
   );
 }
+

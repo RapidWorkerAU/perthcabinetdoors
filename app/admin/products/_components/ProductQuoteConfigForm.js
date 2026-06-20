@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
-import styles from "../../admin-shell.module.css";
+import styles from "../../admin-content.module.css";
 
 const GROUP_KEYS = ["finish", "colour", "profileType", "profile", "edgeMould"];
 
@@ -385,3 +385,4 @@ export default function ProductQuoteConfigForm({
     </section>
   );
 }
+

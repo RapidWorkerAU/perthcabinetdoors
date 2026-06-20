@@ -58,3 +58,25 @@ export async function PATCH(request, { params }) {
     return Response.json({ ok: false, error: error?.message || "Could not update project." }, { status: 500 });
   }
 }
+
+export async function DELETE(_request, { params }) {
+  const context = await requireAdminApiContext();
+  if (context.error) return context.error;
+
+  try {
+    const id = await projectIdFromParams(params);
+
+    const { error: itemError } = await context.supabase
+      .from("pcd_project_line_items")
+      .delete()
+      .eq("project_id", id);
+    if (itemError) throw itemError;
+
+    const { error } = await context.supabase.from("pcd_projects").delete().eq("id", id);
+    if (error) throw error;
+
+    return Response.json({ ok: true });
+  } catch (error) {
+    return Response.json({ ok: false, error: error?.message || "Could not delete project." }, { status: 500 });
+  }
+}

@@ -1,3 +1,200 @@
+.orderOverviewSection {
+  display: grid;
+  gap: 24px;
+}
+
+.orderSectionTitle {
+  color: var(--pcd-admin-text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.orderOverviewGrid {
+  display: grid;
+  align-items: end;
+  gap: 18px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.orderQuoteSummaryLayout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.orderTableWrap {
+  border-color: rgba(26, 46, 32, 0.3);
+}
+
+.orderDataTable {
+  table-layout: auto;
+}
+
+.orderDataTable th {
+  font-size: 10px;
+  padding: 10px 10px;
+}
+
+.orderDataTable td {
+  font-size: 12px;
+  padding: 12px 10px;
+  white-space: nowrap;
+}
+
+.orderQuoteSummaryTable td:nth-child(2),
+.orderQuoteSummaryTable td:nth-child(6),
+.orderQuoteSummaryTable td:nth-child(8),
+.orderQuoteSummaryTable td:nth-child(9),
+.orderQuoteSummaryTable td:nth-child(10) {
+  white-space: normal;
+}
+
+.orderFinancialCell {
+  font-weight: 700;
+  text-align: center;
+}
+
+.orderPaymentSummaryGrid {
+  gap: 14px;
+}
+
+.orderPaymentSummaryCard {
+  display: grid;
+  gap: 6px;
+  min-height: 96px;
+  align-content: center;
+}
+
+.orderPaymentSummaryCard span {
+  color: var(--pcd-admin-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.orderPaymentSummaryCard strong {
+  color: var(--pcd-admin-text);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.orderPaymentsTable {
+  table-layout: fixed;
+}
+
+.orderPlanningTable td:first-child,
+.orderSupplierTable td:first-child,
+.orderInHouseTable td:first-child,
+.orderCutListTable td:nth-child(2) {
+  min-width: 220px;
+}
+
+.orderPlanningTable td:nth-child(2),
+.orderCutListTable td:nth-child(3) {
+  min-width: 150px;
+}
+
+.orderPlanningTable td:nth-child(3),
+.orderCutListTable td:nth-child(4),
+.orderSupplierTable td:nth-child(3),
+.orderInHouseTable td:nth-child(3) {
+  min-width: 180px;
+}
+
+.orderPlanningTable td:nth-child(6),
+.orderCutListTable td:nth-child(8) {
+  min-width: 180px;
+}
+
+.orderSupplierTable td:last-child,
+.orderInHouseTable td:last-child {
+  width: 120px;
+  white-space: nowrap;
+}
+
+.orderPaymentsTable th:nth-child(1),
+.orderPaymentsTable td:nth-child(1) {
+  width: 12%;
+}
+
+.orderPaymentsTable th:nth-child(2),
+.orderPaymentsTable td:nth-child(2) {
+  width: 14%;
+}
+
+.orderPaymentsTable th:nth-child(3),
+.orderPaymentsTable td:nth-child(3) {
+  width: 14%;
+}
+
+.orderPaymentsTable th:nth-child(4),
+.orderPaymentsTable td:nth-child(4) {
+  width: 14%;
+}
+
+.orderPaymentsTable th:nth-child(5),
+.orderPaymentsTable td:nth-child(5) {
+  width: 26%;
+}
+
+.orderPaymentsTable th:nth-child(6),
+.orderPaymentsTable td:nth-child(6) {
+  width: 20%;
+}
+
+.orderPaymentsActionsCell {
+  white-space: nowrap;
+}
+
+.orderPaymentsActionsCell :global(.rowActions) {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+
+.orderActivityTable {
+  table-layout: fixed;
+}
+
+.orderActivityTable th {
+  padding: 8px 10px;
+}
+
+.orderActivityTable td {
+  line-height: 1.45;
+  padding: 8px 10px;
+  white-space: normal;
+}
+
+.orderActivityTable th:nth-child(1),
+.orderActivityTable td:nth-child(1) {
+  width: 22%;
+}
+
+.orderActivityTable th:nth-child(2),
+.orderActivityTable td:nth-child(2) {
+  width: 38%;
+}
+
+.orderActivityTable th:nth-child(3),
+.orderActivityTable td:nth-child(3),
+.orderActivityTable th:nth-child(4),
+.orderActivityTable td:nth-child(4) {
+  width: 13%;
+}
+
+.orderActivityTable th:nth-child(5),
+.orderActivityTable td:nth-child(5) {
+  width: 14%;
+}
+
+.orderActivityEvent {
+  align-items: flex-start;
+  white-space: normal;
+}
+
 .orderQuoteSummaryItems .quoteItemGrid {
   grid-template-columns:
     32px
@@ -17,47 +214,6 @@
     minmax(0, 0.5fr)
     minmax(0, 0.7fr)
     minmax(0, 0.82fr);
-}
-
-.orderQuoteSummaryTotals {
-  width: min(30%, 460px);
-  min-width: 320px;
-  justify-self: end;
-  align-self: start;
-  margin: 12px 12px 12px auto;
-}
-
-.orderQuoteSummaryTotals .quoteTotalGroup {
-  width: 100%;
-  overflow: hidden;
-  border-radius: 4px;
-  box-shadow: none;
-}
-
-.orderQuoteSummaryTotals .quoteTotalGroup header {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid #edf1f6;
-  background: #f5f3ee;
-  color: #001f36;
-  font-size: 0.82rem;
-  font-weight: 800;
-  padding: 0 12px;
-}
-
-.orderQuoteSummaryTotals .quoteTotalGroupBody {
-  border-top: 0;
-  padding: 10px 12px;
-}
-
-.orderQuoteSummaryTotals .quoteTotalGroupBody div {
-  font-size: 0.8rem;
-  padding: 9px 0;
-}
-
-.orderQuoteSummaryTotals .quoteTotalGroupBody div:last-child {
-  font-weight: 800;
 }
 
 .orderPlanningItems .quoteItemGrid {
@@ -128,10 +284,6 @@
   flex-wrap: nowrap;
 }
 
-.orderPaymentItems .rowEditButton {
-  white-space: nowrap;
-}
-
 .orderPlanningItems .quoteItemHead,
 .orderSupplierItems .quoteItemHead,
 .orderInHouseItems .quoteItemHead,
@@ -191,18 +343,6 @@
   line-height: 1.35;
 }
 
-.orderPlanningItems .quoteItemField input,
-.orderPlanningItems .quoteItemField select,
-.orderSupplierItems .quoteItemField input,
-.orderSupplierItems .quoteItemField select,
-.orderInHouseItems .quoteItemField input,
-.orderInHouseItems .quoteItemField select,
-.orderPaymentItems .quoteItemField input,
-.orderPaymentItems .quoteItemField select {
-  min-height: 32px;
-  font-size: 0.74rem;
-}
-
 .orderPlanningItems .quoteItemField,
 .orderSupplierItems .quoteItemField,
 .orderInHouseItems .quoteItemField,
@@ -218,7 +358,7 @@
 
 .orderItemIdentity strong {
   color: var(--admin-text);
-  font-family: Montserrat, Arial, sans-serif;
+  font-family: Arial, sans-serif;
   font-size: 0.86rem;
   line-height: 1.2;
   overflow: hidden;
@@ -240,8 +380,18 @@
 .quoteReadCell,
 .quoteItemField,
 .quoteItemActions,
-.quoteTotalGroup,
-.quoteTotalGroupBody,
 .rowEditButton {
   /* Local hooks for order-specific CSS module descendant selectors. */
 }
+
+@media (max-width: 720px) {
+  .orderOverviewGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .orderPaymentSummaryCard {
+    min-height: 0;
+  }
+
+}
+

@@ -1,0 +1,1470 @@
+/* ============================================================
+   Design Tool — CSS Module
+   Tokens from --pcd-admin-* custom properties
+   ============================================================ */
+
+/* ---- Shared tokens ---- */
+.listPage,
+.designProgram {
+  --dt-text:        var(--pcd-admin-text, #1c1c1a);
+  --dt-text-soft:   var(--pcd-admin-text-soft, #5f5e5a);
+  --dt-text-muted:  var(--pcd-admin-text-muted, #888780);
+  --dt-bg:          var(--pcd-admin-bg, #f7f6f3);
+  --dt-surface:     var(--pcd-admin-surface, #ffffff);
+  --dt-border:      var(--pcd-admin-border, rgba(0,0,0,0.14));
+  --dt-border-soft: var(--pcd-admin-border-soft, rgba(0,0,0,0.08));
+  --dt-radius-sm:   var(--pcd-admin-radius-sm, 4px);
+  --dt-radius-md:   var(--pcd-admin-radius-md, 8px);
+  --dt-radius-lg:   var(--pcd-admin-radius-lg, 12px);
+  --dt-green:       var(--pcd-admin-forest-800, #1a2e20);
+  --dt-green-soft:  var(--pcd-admin-forest-50, #eaf3de);
+  --dt-red:         var(--pcd-admin-red-400, #e24b4a);
+  --dt-red-soft:    var(--pcd-admin-red-50, #fcebeb);
+  --dt-shadow-sm:   var(--pcd-admin-shadow-sm, 0 1px 2px rgba(0,0,0,0.06));
+  --dt-shadow-md:   var(--pcd-admin-shadow-md, 0 4px 12px rgba(0,0,0,0.1));
+  --dt-transition:  var(--pcd-admin-transition, 150ms ease);
+}
+
+/* ============================================================
+   LIST PAGE  (/admin/design)
+   ============================================================ */
+
+.listPage {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.listHeading {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--dt-text);
+  margin: 0;
+}
+
+.projectGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.projectCard {
+  background: var(--dt-surface);
+  border: 1px solid var(--dt-border-soft);
+  border-radius: var(--dt-radius-lg);
+  box-shadow: var(--dt-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: box-shadow var(--dt-transition);
+}
+
+.projectCard:hover {
+  box-shadow: var(--dt-shadow-md);
+}
+
+.projectCardBody {
+  padding: 16px 20px;
+  flex: 1;
+}
+
+.projectCardName {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--dt-text);
+  margin: 0 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.projectCardMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--dt-text-muted);
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--dt-border-soft);
+  color: var(--dt-text-muted);
+}
+
+.statusPillDraft    { background: #fef3c7; color: #92400e; }
+.statusPillReady    { background: #dcfce7; color: #14532d; }
+.statusPillImported { background: #dbeafe; color: #1e3a5f; }
+
+.projectCardFooter {
+  border-top: 1px solid var(--dt-border-soft);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  background: var(--dt-bg);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 60px 24px;
+  color: var(--dt-text-muted);
+  font-size: 14px;
+}
+
+.emptyState p { margin: 0 0 16px; }
+
+/* New project inline form */
+.newProjectForm {
+  background: var(--dt-surface);
+  border: 1px solid var(--dt-border-soft);
+  border-radius: var(--dt-radius-lg);
+  padding: 16px 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  box-shadow: var(--dt-shadow-sm);
+}
+
+.newProjectField {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--dt-text-muted);
+}
+
+.newProjectInput {
+  padding: 7px 10px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--dt-text);
+  background: var(--dt-bg);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.newProjectInput:focus {
+  outline: none;
+  border-color: var(--dt-green);
+}
+
+.newProjectActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-bottom: 1px;
+}
+
+.feedback {
+  width: 100%;
+  font-size: 12px;
+  color: var(--dt-red);
+  background: var(--dt-red-soft);
+  border-radius: var(--dt-radius-sm);
+  padding: 6px 10px;
+  margin: 0;
+}
+
+/* ---- Shared buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 16px;
+  border-radius: var(--dt-radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+  transition: opacity var(--dt-transition), background var(--dt-transition);
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnPrimary {
+  background: var(--dt-green);
+  color: #fff;
+  border: 1px solid var(--dt-green);
+}
+
+.btnPrimary:hover:not(:disabled) { opacity: 0.85; }
+
+.btnSecondary {
+  background: var(--dt-surface);
+  color: var(--dt-text-soft);
+  border: 1px solid var(--dt-border);
+}
+
+.btnSecondary:hover:not(:disabled) { background: var(--dt-bg); color: var(--dt-text); }
+
+.btnDanger {
+  background: none;
+  color: var(--dt-red);
+  border: 1px solid var(--dt-red);
+}
+
+.btnDanger:hover:not(:disabled) { background: var(--dt-red-soft); }
+
+.btnSm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* ============================================================
+   DESIGN PROGRAM  (/admin/design/[projectId])
+   ============================================================ */
+
+.designProgram {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #0f1117;
+  min-width: 1280px;
+  font-family: inherit;
+}
+
+/* ---- Loading / error states ---- */
+.loadingScreen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.5);
+  font-size: 14px;
+}
+
+.errorScreen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: #f87171;
+  font-size: 14px;
+}
+
+/* ============================================================
+   LEFT PANEL
+   ============================================================ */
+
+.leftPanel {
+  width: 260px;
+  flex-shrink: 0;
+  background: #1e2328;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255,255,255,0.07);
+  overflow: hidden;
+}
+
+.leftHeader {
+  padding: 16px 16px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+
+.leftHeaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  text-decoration: none;
+  transition: color var(--dt-transition);
+}
+
+.backLink:hover { color: rgba(255,255,255,0.7); }
+
+.projectName {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.importBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #2d5a3d;
+  border: 1px solid #3d7a53;
+  border-radius: 6px;
+  color: #a8d5b5;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dt-transition);
+}
+
+.importBtn:hover:not(:disabled) { background: #3d7a53; }
+.importBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.leftScroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.leftScroll::-webkit-scrollbar { width: 4px; }
+.leftScroll::-webkit-scrollbar-track { background: transparent; }
+.leftScroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+/* Room section */
+.roomSection {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.roomSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background var(--dt-transition);
+}
+
+.roomSectionHeader:hover { background: rgba(255,255,255,0.04); }
+.roomSectionHeader:hover .roomEditBtn { opacity: 1; }
+
+.roomSectionHeaderActive { background: rgba(255,255,255,0.06); }
+
+/* Edit room button — hidden until hover */
+.roomEditBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0;
+  padding: 0;
+  transition: opacity var(--dt-transition), background var(--dt-transition), color var(--dt-transition);
+}
+.roomEditBtn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
+
+/* Room delete button — appears on hover next to edit button */
+.roomDeleteBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  color: rgba(255,100,100,0.5);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity var(--dt-transition), background var(--dt-transition), color var(--dt-transition);
+}
+.roomSectionHeader:hover .roomDeleteBtn { opacity: 1; }
+.roomDeleteBtn:hover { background: rgba(220,50,50,0.15); color: rgba(255,100,100,0.9); }
+.roomDeleteBtnConfirm { background: rgba(220,50,50,0.2) !important; color: #f87171 !important; opacity: 1 !important; font-size: 10px; }
+
+/* Item delete button inside cut list */
+.itemDeleteBtn {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 8px 8px 4px;
+  padding: 4px 0;
+  background: none;
+  border: 1px solid rgba(255,80,80,0.2);
+  border-radius: 4px;
+  color: rgba(255,100,100,0.45);
+  font-size: 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: background var(--dt-transition), color var(--dt-transition), border-color var(--dt-transition);
+}
+.itemDeleteBtn:hover { background: rgba(220,50,50,0.12); color: rgba(255,100,100,0.8); border-color: rgba(255,80,80,0.4); }
+.itemDeleteBtnConfirm { background: rgba(220,50,50,0.2) !important; color: #f87171 !important; border-color: rgba(255,80,80,0.6) !important; }
+
+/* Inline room dimension editor */
+.roomDimEditor {
+  padding: 10px 14px 12px;
+  background: rgba(0,0,0,0.25);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.roomDimRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.roomDimLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.35);
+}
+
+.roomDimInput {
+  width: 100%;
+  padding: 5px 7px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  font-family: inherit;
+  -moz-appearance: textfield;
+}
+.roomDimInput::-webkit-outer-spin-button,
+.roomDimInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.roomDimInput:focus { outline: none; border-color: rgba(255,255,255,0.35); }
+
+.roomDimActions {
+  display: flex;
+  gap: 6px;
+}
+
+.roomDimSave {
+  flex: 1;
+  padding: 5px 0;
+  background: #2d5a3d;
+  border: 1px solid #3d7a53;
+  border-radius: 4px;
+  color: #a8d5b5;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.roomDimSave:hover { background: #3d7a53; }
+
+.roomDimCancel {
+  padding: 5px 10px;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: rgba(255,255,255,0.4);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.roomDimCancel:hover { border-color: rgba(255,255,255,0.25); color: rgba(255,255,255,0.7); }
+
+.roomSectionChevron {
+  width: 12px;
+  height: 12px;
+  border-right: 1.5px solid rgba(255,255,255,0.3);
+  border-bottom: 1.5px solid rgba(255,255,255,0.3);
+  transform: rotate(45deg);
+  flex-shrink: 0;
+  transition: transform var(--dt-transition);
+  margin-top: -3px;
+}
+
+.roomSectionChevronOpen { transform: rotate(-135deg); margin-top: 3px; }
+
+.roomSectionName {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roomSectionCount {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  flex-shrink: 0;
+}
+
+/* Item row in left panel */
+.leftItemRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px 9px 32px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  transition: background var(--dt-transition);
+}
+
+.leftItemRow:hover { background: rgba(255,255,255,0.04); }
+
+.leftItemRowSelected { background: rgba(255,255,255,0.08) !important; }
+
+.leftItemDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.leftItemLabel {
+  flex: 1;
+  font-size: 12px;
+  color: rgba(255,255,255,0.65);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leftItemType {
+  font-size: 10px;
+  color: rgba(255,255,255,0.3);
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.leftItemQty {
+  font-size: 10px;
+  color: rgba(255,255,255,0.4);
+  font-weight: 400;
+}
+
+/* Expand / collapse button on cabinet items */
+.leftItemExpand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.3);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: color var(--dt-transition), transform var(--dt-transition);
+  transform: rotate(0deg);
+}
+
+.leftItemExpand:hover { color: rgba(255,255,255,0.6); }
+
+.leftItemExpandOpen {
+  transform: rotate(90deg);
+  color: rgba(255,255,255,0.5);
+}
+
+/* Item block wraps the row + optional cut list */
+.leftItemBlock {
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+/* Cut list panel */
+.cutList {
+  padding: 6px 16px 8px 32px;
+  background: rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cutListRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cutListMatDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cutListDim {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cutListAxis {
+  font-size: 9px;
+  color: rgba(255,255,255,0.3);
+}
+
+.cutListName {
+  font-size: 10px;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cutListEmpty {
+  font-size: 11px;
+  color: rgba(255,255,255,0.2);
+  font-style: italic;
+  margin: 0;
+}
+
+/* Freestanding cabinet button */
+.addFreestandingRow {
+  padding: 8px 16px 4px;
+  flex-shrink: 0;
+}
+
+.addFreestandingBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 12px;
+  background: rgba(59,130,246,0.1);
+  border: 1px dashed rgba(59,130,246,0.4);
+  border-radius: 6px;
+  color: rgba(147,197,253,0.8);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dt-transition), border-color var(--dt-transition);
+}
+.addFreestandingBtn:hover:not(:disabled) { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.6); }
+.addFreestandingBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Add room button at bottom */
+.addRoomRow {
+  padding: 6px 16px 10px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+
+.addRoomBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px dashed rgba(255,255,255,0.2);
+  border-radius: 6px;
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dt-transition), color var(--dt-transition);
+}
+
+.addRoomBtn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
+
+/* Add room inline form */
+.addRoomForm {
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.addRoomInputRow {
+  display: flex;
+  gap: 6px;
+}
+
+.addRoomInput {
+  flex: 1;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.addRoomInput:focus { outline: none; border-color: rgba(255,255,255,0.4); }
+.addRoomInput::placeholder { color: rgba(255,255,255,0.25); }
+
+.addRoomFormBtns {
+  display: flex;
+  gap: 6px;
+}
+
+.addRoomSaveBtn {
+  flex: 1;
+  padding: 5px 8px;
+  background: #2d5a3d;
+  border: 1px solid #3d7a53;
+  border-radius: 4px;
+  color: #a8d5b5;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.addRoomSaveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.addRoomCancelBtn {
+  padding: 5px 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  color: rgba(255,255,255,0.4);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* ============================================================
+   CANVAS AREA
+   ============================================================ */
+
+.canvasArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #13171d;
+}
+
+.canvasToolbar {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  background: #1a1e24;
+}
+
+.canvasToolbarLabel {
+  font-size: 12px;
+  color: rgba(255,255,255,0.4);
+}
+
+.canvasToolbarRoomName {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+}
+
+.canvasToolbarHint {
+  font-size: 11px;
+  color: rgba(255,255,255,0.3);
+  margin-left: auto;
+  font-style: italic;
+}
+
+.islandBtn {
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.07);
+  border: 1px dashed rgba(255,255,255,0.25);
+  border-radius: 5px;
+  color: rgba(255,255,255,0.6);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dt-transition), color var(--dt-transition);
+}
+
+.islandBtn:hover {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.9);
+}
+
+.canvasSvgWrap {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.canvasSvg {
+  width: 100%;
+  height: 100%;
+}
+
+/* No room selected state */
+.canvasEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: rgba(255,255,255,0.25);
+  font-size: 14px;
+}
+
+.canvasEmptyHint {
+  font-size: 12px;
+  color: rgba(255,255,255,0.15);
+}
+
+/* ============================================================
+   RIGHT PANEL
+   ============================================================ */
+
+.rightPanel {
+  width: 320px;
+  flex-shrink: 0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.rightPanelHeader {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--dt-border-soft);
+  flex-shrink: 0;
+  background: var(--dt-bg);
+}
+
+.rightPanelTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dt-text);
+  margin: 0 0 2px;
+}
+
+.rightPanelSubtitle {
+  font-size: 11px;
+  color: var(--dt-text-muted);
+  margin: 0;
+}
+
+.rightScroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0;
+}
+
+/* Idle / instructions */
+.rightIdle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--dt-text-muted);
+  font-size: 13px;
+  height: 100%;
+}
+
+.rightIdleHint {
+  font-size: 11px;
+  color: var(--dt-text-muted);
+  opacity: 0.6;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--dt-border-soft);
+  background: var(--dt-bg);
+  flex-shrink: 0;
+}
+
+.tabBtn {
+  flex: 1;
+  padding: 9px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dt-text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  transition: color var(--dt-transition), border-color var(--dt-transition);
+  white-space: nowrap;
+}
+
+.tabBtn:hover { color: var(--dt-text); }
+
+.tabBtnActive {
+  color: var(--dt-green);
+  border-bottom-color: var(--dt-green);
+}
+
+/* Form layout inside right panel */
+.formSection {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--dt-border-soft);
+}
+
+.formSection:last-child { border-bottom: none; }
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fieldRow {
+  display: flex;
+  gap: 8px;
+}
+
+.fieldRow > * { flex: 1 1 0; min-width: 0; }
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--dt-text-muted);
+}
+
+.fieldInput {
+  padding: 6px 8px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--dt-text);
+  background: var(--dt-surface);
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color var(--dt-transition);
+}
+
+.fieldInput:focus { outline: none; border-color: var(--dt-green); }
+
+.fieldTextarea {
+  padding: 6px 8px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--dt-text);
+  background: var(--dt-surface);
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color var(--dt-transition);
+}
+
+.fieldTextarea:focus { outline: none; border-color: var(--dt-green); }
+
+.fieldCheckLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--dt-text);
+  cursor: pointer;
+}
+
+.fieldCheckLabel input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--dt-green);
+  cursor: pointer;
+}
+
+.fieldSelect {
+  padding: 6px 8px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--dt-text);
+  background: var(--dt-surface);
+  width: 100%;
+  box-sizing: border-box;
+  appearance: none;
+  cursor: pointer;
+}
+
+.fieldSelect:focus { outline: none; border-color: var(--dt-green); }
+
+.savingIndicator {
+  font-size: 11px;
+  color: var(--dt-text-muted);
+  font-style: italic;
+  padding: 6px 16px;
+  text-align: right;
+}
+
+/* Delete item button area */
+.rightPanelFooter {
+  padding: 12px 16px;
+  border-top: 1px solid var(--dt-border-soft);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--dt-bg);
+}
+
+.deleteItemBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: none;
+  border: 1px solid var(--dt-red);
+  border-radius: var(--dt-radius-sm);
+  color: var(--dt-red);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dt-transition);
+}
+
+.deleteItemBtn:hover { background: var(--dt-red-soft); }
+.deleteItemBtnConfirm { background: rgba(220,50,50,0.2) !important; color: #f87171 !important; border-color: rgba(255,80,80,0.6) !important; }
+
+/* Add item form (when adding from wall click) */
+.addItemForm {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.addItemActions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* ============================================================
+   IMPORT MODAL
+   ============================================================ */
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 1100;
+}
+
+.modalBox {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1101;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.35);
+  width: 480px;
+  max-width: calc(100vw - 48px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modalHeader {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--dt-border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.modalTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--dt-text);
+  margin: 0;
+}
+
+.modalCloseBtn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--dt-border);
+  border-radius: 6px;
+  color: var(--dt-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background var(--dt-transition);
+}
+
+.modalCloseBtn:hover { background: var(--dt-bg); color: var(--dt-text); }
+
+.modalBody {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modalFooter {
+  padding: 14px 20px;
+  border-top: 1px solid var(--dt-border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  background: var(--dt-bg);
+}
+
+.quoteSelect {
+  padding: 8px 10px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--dt-text);
+  background: var(--dt-surface);
+  width: 100%;
+  box-sizing: border-box;
+  appearance: none;
+  cursor: pointer;
+}
+
+.quoteSelect:focus { outline: none; border-color: var(--dt-green); }
+
+.modalSummary {
+  background: var(--dt-bg);
+  border-radius: var(--dt-radius-md);
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--dt-text-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modalSummaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modalSummaryLabel { color: var(--dt-text-muted); }
+.modalSummaryValue { font-weight: 600; color: var(--dt-text); }
+
+.importSuccess {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  border-radius: var(--dt-radius-md);
+  padding: 12px 14px;
+  color: #14532d;
+  font-size: 13px;
+}
+
+.importError {
+  background: var(--dt-red-soft);
+  border: 1px solid rgba(226,75,74,0.3);
+  border-radius: var(--dt-radius-md);
+  padding: 12px 14px;
+  color: var(--dt-red);
+  font-size: 13px;
+}
+
+.modalSearchInput {
+  padding: 8px 10px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--dt-text);
+  background: var(--dt-surface);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.modalSearchInput:focus { outline: none; border-color: var(--dt-green); }
+
+.modalFieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--dt-text-muted);
+}
+
+/* ---- Material colour picker ---- */
+.pickerSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--dt-border-soft);
+  border-radius: var(--dt-radius-sm);
+}
+
+.pickerLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dt-text-muted);
+  margin: 0 0 2px;
+}
+
+.pickerLoading {
+  font-size: 11px;
+  color: var(--dt-text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.pickerCost {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dt-green);
+  margin: 2px 0 0;
+  padding: 4px 8px;
+  background: var(--dt-green-soft);
+  border-radius: var(--dt-radius-sm);
+}
+
+/* ---- Front elevation view (inline canvas swap) ---- */
+.elevationInline {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #13171d;
+}
+
+.elevationToolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: #1a1e24;
+  flex-shrink: 0;
+}
+
+.elevationBackBtn {
+  background: rgba(255,255,255,0.08);
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.elevationBackBtn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+
+.elevationToolbarInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.elevationToolbarTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+}
+
+.elevationToolbarSub {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+}
+
+.elevationSvgArea {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  background: #13171d;
+  padding: 12px;
+}
+
+/* Wall switcher */
+.elevWallPicker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.elevWallBtn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.55);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.elevWallBtn:hover { background: rgba(255,255,255,0.13); color: rgba(255,255,255,0.85); }
+.elevWallBtnActive {
+  background: rgba(99,179,237,0.2) !important;
+  border-color: rgba(99,179,237,0.5) !important;
+  color: #63b3ed !important;
+}
+.elevWallBtnEmpty { opacity: 0.35; }
+.elevWallBtnCount {
+  font-size: 9px;
+  font-weight: 400;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.elevationLegend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.elevationLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+}
+
+.elevationLegendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.elevationLegendLine {
+  width: 18px;
+  height: 2px;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+/* Item selector strip in elevation */
+.elevItemStrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: rgba(0,0,0,0.25);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.elevItemChip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.55);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.elevItemChip:hover { background: rgba(255,255,255,0.13); color: rgba(255,255,255,0.85); }
+.elevItemChipActive {
+  background: color-mix(in srgb, var(--chip-col, #888) 20%, transparent) !important;
+  border-color: var(--chip-col, #888) !important;
+  color: var(--chip-col, #fff) !important;
+}
+.elevItemChipDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chip-col, #888);
+  flex-shrink: 0;
+}
+

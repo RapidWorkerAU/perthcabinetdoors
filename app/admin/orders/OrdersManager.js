@@ -1,11 +1,14 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMoney } from "../../../lib/pcd-quote-utils";
-import styles from "../admin-shell.module.css";
+import styles from "../admin-content.module.css";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
 import { AdminTablePagination, useAdminTablePagination } from "../_components/AdminTablePagination";
+
+const STATUSES = ["active", "on_hold", "complete", "cancelled"];
+const FILTERS = ["all", ...STATUSES];
 
 function formatDate(value) {
   if (!value) return "-";
@@ -33,21 +36,26 @@ export default function OrdersManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState("");
   const [setupRequired, setSetupRequired] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("active");
 
-  const summary = useMemo(() => {
+  const statusCounts = useMemo(() => {
     return orders.reduce(
-      (acc, order) => {
-        const items = sortedItems(order);
-        return {
-          active: acc.active + (order.status === "active" ? 1 : 0),
-          lineItems: acc.lineItems + items.length,
-          complete: acc.complete + items.filter((item) => item.status === "Complete").length,
-        };
+      (counts, order) => {
+        const status = order.status || "active";
+        counts.all += 1;
+        counts[status] = (counts[status] || 0) + 1;
+        return counts;
       },
-      { active: 0, lineItems: 0, complete: 0 }
+      { all: 0 }
     );
   }, [orders]);
-  const orderPagination = useAdminTablePagination(orders);
+
+  const visibleOrders = useMemo(() => {
+    if (statusFilter === "all") return orders;
+    return orders.filter((order) => (order.status || "active") === statusFilter);
+  }, [orders, statusFilter]);
+
+  const orderPagination = useAdminTablePagination(visibleOrders, statusFilter);
 
   async function loadOrders() {
     setIsLoading(true);
@@ -71,12 +79,20 @@ export default function OrdersManager() {
 
   return (
     <section className={styles.productsSection}>
-      <div className={styles.productsHeaderBar}>
-        <p className={styles.tableMeta}>{isLoading ? "Loading orders" : `${orders.length} orders`}</p>
-        <div className={styles.rowActions}>
-          <span className={styles.projectListMetric}>{summary.active} active</span>
-          <span className={styles.projectListMetric}>{summary.complete}/{summary.lineItems} items complete</span>
-          <button type="button" className={styles.secondaryButton} onClick={loadOrders} disabled={isLoading}>Refresh</button>
+      <div className={`${styles.productsHeaderBar} ${styles.tableToolbar}`}>
+        <div className={styles.tableToolbarFilters} />
+        <div className={styles.statusFilterBar} aria-label="Filter orders by status">
+          {FILTERS.map((status) => (
+            <button
+              key={status}
+              type="button"
+              className={`${styles.statusFilterButton} ${statusFilter === status ? styles.statusFilterButtonActive : ""}`}
+              onClick={() => setStatusFilter(status)}
+            >
+              <span>{status === "all" ? "All" : formatAdminLabel(status)}</span>
+              <small>{statusCounts[status] || 0}</small>
+            </button>
+          ))}
         </div>
       </div>
       {setupRequired ? <div className={styles.inlineNotice}>Run `supabase/pcd_enquiries_quote_requests_orders_setup.sql` before orders can be listed.</div> : null}
@@ -118,10 +134,39 @@ export default function OrdersManager() {
                 </tr>
               );
             })}
-            {!orders.length && !isLoading ? <tr><td colSpan="7" className={styles.emptyCell}>No orders yet. Approved quotes will create orders automatically.</td></tr> : null}
+            {!visibleOrders.length && !isLoading ? <tr><td colSpan="7" className={styles.emptyCell}>No orders match this filter.</td></tr> : null}
             {isLoading ? <tr><td colSpan="7" className={styles.emptyCell}>Loading orders...</td></tr> : null}
           </tbody>
         </table>
+      </div>
+      <div className={styles.mobileRecordList} aria-label="Orders">
+        {orderPagination.pageItems.map((order) => {
+          const items = sortedItems(order);
+          return (
+            <article className={styles.mobileRecordCard} key={order.id}>
+              <button type="button" className={styles.mobileRecordMain} onClick={() => router.push(`/admin/orders/${order.id}`)}>
+                <span className={styles.mobileRecordEyebrow}>Order</span>
+                <strong>
+                  {isNewOrder(order) ? <span className={styles.orderUnreadDot} title="New order" aria-label="New order" /> : null}
+                  {order.order_number}
+                </strong>
+                <span>{order.customer_name || "No customer"}</span>
+              </button>
+              <dl className={styles.mobileRecordDetails}>
+                <div><dt>Job</dt><dd>{order.name || "-"}</dd></div>
+                <div><dt>Items</dt><dd>{items.length}</dd></div>
+                <div><dt>Status</dt><dd><span className={`${styles.statusPill} ${getOrderStatusClass(order.status || "active")}`}>{formatAdminLabel(order.status || "active")}</span></dd></div>
+                <div><dt>Total</dt><dd>{formatMoney(order.total_inc_gst, "AUD")}</dd></div>
+                <div><dt>Accepted</dt><dd>{formatDate(order.accepted_at || order.created_at)}</dd></div>
+              </dl>
+              <div className={styles.mobileRecordActions}>
+                <button type="button" className={styles.primaryButton} onClick={() => router.push(`/admin/orders/${order.id}`)}>Open order</button>
+              </div>
+            </article>
+          );
+        })}
+        {!visibleOrders.length && !isLoading ? <div className={styles.mobileEmptyState}>No orders match this filter.</div> : null}
+        {isLoading ? <div className={styles.mobileEmptyState}>Loading orders...</div> : null}
       </div>
       <AdminTablePagination
         label="orders"
@@ -133,3 +178,4 @@ export default function OrdersManager() {
     </section>
   );
 }
+

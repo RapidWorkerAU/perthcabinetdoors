@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
-import styles from "../admin-shell.module.css";
+import styles from "./admin-shell-layout.module.css";
 
 const primaryItems = [
   {
@@ -34,6 +34,12 @@ const primaryItems = [
     ],
   },
   {
+    key: "design-tool",
+    href: "/admin/design",
+    label: "Design Tool",
+    icon: "✏",
+  },
+  {
     key: "business-admin",
     href: "/admin/customers",
     label: "Business Admin",
@@ -42,7 +48,6 @@ const primaryItems = [
       { href: "/admin/customers", label: "Customers" },
       { href: "/admin/options", label: "Colour library" },
       { href: "/admin/products", label: "Products" },
-      { href: "/admin/defaults", label: "Defaults" },
     ],
   },
 ];
@@ -112,16 +117,16 @@ const pageMeta = [
     subtitle: "Manage colour tile images, finishes, and material assignments used across products and quote forms.",
   },
   {
-    match: "/admin/defaults",
-    eyebrow: "Business Admin",
-    title: "Defaults",
-    subtitle: "Set global calculation defaults for quotes, labour, markup, and hardware costs.",
-  },
-  {
     match: "/admin/settings",
     eyebrow: "Account",
     title: "Settings",
     subtitle: "Manage admin login details and account access.",
+  },
+  {
+    match: "/admin/design",
+    eyebrow: "Design",
+    title: "Design Tool",
+    subtitle: "Build cabinet layouts visually and import them into quotes.",
   },
 ];
 

@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+﻿import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 
@@ -47,7 +47,7 @@ function quoteEmailHtml({ quote, viewUrl, message }) {
             <tr>
               <td style="background:#eef7ed;border-bottom:1px solid #d5e4d1;padding:28px 30px;">
                 <div style="color:#2f6b3b;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;">Perth Cabinet Doors</div>
-                <h1 style="margin:8px 0 0;color:#001f36;font-family:Georgia,serif;font-size:30px;line-height:1.1;font-weight:400;">Your quote is ready</h1>
+                <h1 style="margin:8px 0 0;color:#001f36;font-family:Arial,sans-serif;font-size:30px;line-height:1.1;font-weight:400;">Your quote is ready</h1>
               </td>
             </tr>
             <tr>
@@ -147,3 +147,4 @@ export async function POST(request, { params }) {
     return Response.json({ ok: false, error: error?.message || "Could not send quote." }, { status: 500 });
   }
 }
+

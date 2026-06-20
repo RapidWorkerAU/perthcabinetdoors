@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatMoney, PROJECT_LINE_STATUSES, PROJECT_STATUSES } from "../../../../lib/pcd-quote-utils";
-import styles from "../../admin-shell.module.css";
+import styles from "../../admin-content.module.css";
 import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 function formatDate(value) {
@@ -208,9 +208,6 @@ export default function ProjectDetail({ projectId }) {
               Source quote
             </Link>
           ) : null}
-          <button type="button" className={styles.secondaryButton} onClick={loadProject} disabled={isLoading}>
-            Refresh
-          </button>
         </div>
       </div>
 
@@ -270,9 +267,6 @@ export default function ProjectDetail({ projectId }) {
 
       <section className={styles.productsSection}>
         <div className={styles.productsHeaderBar}>
-          <div>
-            <p className={styles.tableMeta}>{items.length} quote products</p>
-          </div>
           <p className={styles.sectionText}>Update each product as it moves from ordering through install and completion.</p>
         </div>
 
@@ -358,3 +352,4 @@ export default function ProjectDetail({ projectId }) {
     </div>
   );
 }
+

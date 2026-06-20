@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -9,9 +9,10 @@ import {
   ORDER_PRODUCTION_STAGES,
   ORDER_STATUSES,
 } from "../../../../lib/pcd-quote-utils";
-import styles from "../../admin-shell.module.css";
+import styles from "../../admin-content.module.css";
 import workflowStyles from "../../_components/admin-workflow.module.css";
 import orderStyles from "./order-detail.module.css";
+import { AdminActionDropdown, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
 import { ADMIN_TABLE_PAGE_SIZE, AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 
 const sections = [
@@ -79,6 +80,42 @@ function activityActorLabel(actor) {
   if (actor === "customer") return "Customer";
   if (actor === "admin") return "Admin";
   return "System";
+}
+
+function activityDescriptionLabel(label) {
+  return String(label || "")
+    .replace(/\bEx Gst\b/g, "ex GST")
+    .replace(/\bInc Gst\b/g, "inc GST")
+    .replace(/\bGst\b/g, "GST");
+}
+
+function activityDescriptionValue(label, value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed || trimmed.toLowerCase() === "blank") return "blank";
+  if (/(amount|cost|total|subtotal|gst|rate|price|payment|deposit|markup)/i.test(label) && Number.isFinite(Number(trimmed))) {
+    if (/percent/i.test(label)) return `${Number(trimmed).toFixed(2).replace(/\.00$/, "")}%`;
+    return formatMoney(Number(trimmed), "AUD");
+  }
+  return trimmed;
+}
+
+function formatActivityDescription(description) {
+  if (!description) return "-";
+  const parts = String(description)
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const readableParts = parts.map((part) => {
+    const match = part.match(/^([^:]+):\s*(.*?)\s*->\s*(.*)$/);
+    if (!match) return part;
+    const label = activityDescriptionLabel(match[1]);
+    const before = activityDescriptionValue(label, match[2]);
+    const after = activityDescriptionValue(label, match[3]);
+    return `${label} changed from ${before} to ${after}`;
+  });
+
+  return readableParts.join("; ");
 }
 
 function itemMeta(item) {
@@ -334,22 +371,6 @@ export default function OrderDetail({ orderId }) {
   }, [orderId]);
 
   useEffect(() => {
-    if (activeSection !== "payments") return undefined;
-
-    function refreshOrderPayments() {
-      if (document.visibilityState === "visible") loadOrder();
-    }
-
-    window.addEventListener("focus", refreshOrderPayments);
-    document.addEventListener("visibilitychange", refreshOrderPayments);
-    return () => {
-      window.removeEventListener("focus", refreshOrderPayments);
-      document.removeEventListener("visibilitychange", refreshOrderPayments);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, orderId]);
-
-  useEffect(() => {
     if (!items.length) {
       setColourSupplierMap({});
       return;
@@ -540,6 +561,7 @@ export default function OrderDetail({ orderId }) {
     }
   }
 
+
   async function requestPayment(payment) {
     if (!order || !payment?.id) return;
     setSavingPaymentId(payment.id);
@@ -722,105 +744,118 @@ export default function OrderDetail({ orderId }) {
 
   function renderOverview() {
     return (
-      <div className={styles.quoteBuilderGrid}>
-        <label className={styles.fieldLabel}>
-          Job name
-          <input className={styles.fieldInput} value={order.name || ""} onChange={(event) => updateOrderField("name", event.target.value)} onBlur={(event) => saveOrder({ name: event.target.value })} />
-        </label>
-        <label className={styles.fieldLabel}>
-          Order status
-          <select className={styles.fieldInput} value={order.status || "active"} onChange={(event) => saveOrder({ status: event.target.value })} disabled={isSavingOrder}>
-            {ORDER_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}
-          </select>
-        </label>
-        <label className={styles.fieldLabel}>
-          Customer
-          <input className={styles.fieldInput} value={order.customer_name || ""} onChange={(event) => updateOrderField("customer_name", event.target.value)} onBlur={(event) => saveOrder({ customer_name: event.target.value })} />
-        </label>
-        <label className={styles.fieldLabel}>
-          Email
-          <input className={styles.fieldInput} value={order.customer_email || ""} onChange={(event) => updateOrderField("customer_email", event.target.value)} onBlur={(event) => saveOrder({ customer_email: event.target.value })} />
-        </label>
-        <label className={styles.fieldLabel}>
-          Phone
-          <input className={styles.fieldInput} value={order.customer_phone || ""} onChange={(event) => updateOrderField("customer_phone", event.target.value)} onBlur={(event) => saveOrder({ customer_phone: event.target.value })} />
-        </label>
-        <label className={styles.fieldLabel}>
-          Target completion
-          <input className={styles.fieldInput} type="date" value={order.target_completion_date || ""} onChange={(event) => updateOrderField("target_completion_date", event.target.value)} onBlur={(event) => saveOrder({ target_completion_date: event.target.value })} />
-        </label>
-        <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-          Site / delivery address
-          <input className={styles.fieldInput} value={order.site_address || ""} onChange={(event) => updateOrderField("site_address", event.target.value)} onBlur={(event) => saveOrder({ site_address: event.target.value })} />
-        </label>
+      <div className={orderStyles.orderOverviewSection}>
+        <div className={`${styles.quoteInfoGrid} ${orderStyles.orderOverviewGrid}`}>
+          <label className={styles.fieldLabel}>
+            Job name
+            <input className={styles.fieldInput} value={order.name || ""} onChange={(event) => updateOrderField("name", event.target.value)} onBlur={(event) => saveOrder({ name: event.target.value })} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Order status
+            <select className={styles.fieldInput} value={order.status || "active"} onChange={(event) => saveOrder({ status: event.target.value })} disabled={isSavingOrder}>
+              {ORDER_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}
+            </select>
+          </label>
+          <label className={styles.fieldLabel}>
+            Target completion
+            <input className={styles.fieldInput} type="date" value={order.target_completion_date || ""} onChange={(event) => updateOrderField("target_completion_date", event.target.value)} onBlur={(event) => saveOrder({ target_completion_date: event.target.value })} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Customer
+            <input className={styles.fieldInput} value={order.customer_name || ""} onChange={(event) => updateOrderField("customer_name", event.target.value)} onBlur={(event) => saveOrder({ customer_name: event.target.value })} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Email
+            <input className={styles.fieldInput} value={order.customer_email || ""} onChange={(event) => updateOrderField("customer_email", event.target.value)} onBlur={(event) => saveOrder({ customer_email: event.target.value })} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Phone
+            <input className={styles.fieldInput} value={order.customer_phone || ""} onChange={(event) => updateOrderField("customer_phone", event.target.value)} onBlur={(event) => saveOrder({ customer_phone: event.target.value })} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Site / delivery address
+            <input className={styles.fieldInput} value={order.site_address || ""} onChange={(event) => updateOrderField("site_address", event.target.value)} onBlur={(event) => saveOrder({ site_address: event.target.value })} />
+          </label>
+        </div>
       </div>
     );
   }
 
   function renderQuoteSummary() {
     const quote = order.pcd_quote || order;
+    const quoteCurrency = quote.currency || "AUD";
     return (
-      <div className={styles.quoteBuilderStack}>
-        <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderQuoteSummaryItems} ${orderStyles.orderQuoteSummaryItems}`}>
-          <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
-            <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
-              <div>#</div>
-              <div>Type</div>
-              <div>Material</div>
-              <div>Thickness</div>
-              <div>W x H (mm)</div>
-              <div>Colour</div>
-              <div>Qty</div>
-              <div>Edge profile</div>
-              <div>Profile type</div>
-              <div>Profile name</div>
-              <div>Drill holes?</div>
-              <div>Hinge supply?</div>
-              <div>Hinge qty</div>
-              <div>Unit cost</div>
-              <div>Markup %</div>
-              <div>Unit + markup</div>
-              <div>Total ex GST</div>
+      <div className={orderStyles.orderQuoteSummaryLayout}>
+        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
+          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderQuoteSummaryTable}`}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Material</th>
+                <th>Thickness</th>
+                <th>W x H (mm)</th>
+                <th>Colour</th>
+                <th>Qty</th>
+                <th>Edge profile</th>
+                <th>Profile type</th>
+                <th>Profile name</th>
+                <th>Drill holes?</th>
+                <th>Hinge supply?</th>
+                <th>Hinge qty</th>
+                <th className={orderStyles.orderFinancialCell}>Unit cost</th>
+                <th className={orderStyles.orderFinancialCell}>Markup %</th>
+                <th className={orderStyles.orderFinancialCell}>Unit + markup</th>
+                <th className={orderStyles.orderFinancialCell}>Total ex GST</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quoteLines.map((line, index) => {
+                const showProfiles = line.material === "Thermolaminate";
+                const hingesApplicable = line.product_type === "Door";
+                return (
+                  <tr key={line.id || index}>
+                    <td><span className={styles.quoteItemRowNum}>{index + 1}</span></td>
+                    <td>{lineValue(quoteLineTitle(line))}</td>
+                    <td>{lineValue(line.material)}</td>
+                    <td>{lineValue(line.thickness)}</td>
+                    <td>{lineValue(quoteLineSize(line))}</td>
+                    <td>{lineValue(line.colour)}</td>
+                    <td>{line.qty || "1"}</td>
+                    <td>{lineValue(line.edge_mould)}</td>
+                    <td>{showProfiles ? lineValue(line.profile_type) : "N/A"}</td>
+                    <td>{showProfiles ? lineValue(line.profile) : "N/A"}</td>
+                    <td>{hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</td>
+                    <td>{hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</td>
+                    <td>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</td>
+                    <td className={orderStyles.orderFinancialCell}>{formatMoney(line.product_unit_cost_ex_gst || 0, quoteCurrency)}</td>
+                    <td className={orderStyles.orderFinancialCell}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</td>
+                    <td className={orderStyles.orderFinancialCell}>{formatMoney(line.unit_price_ex_gst || 0, quoteCurrency)}</td>
+                    <td className={orderStyles.orderFinancialCell}>{formatMoney(line.line_total_ex_gst || 0, quoteCurrency)}</td>
+                  </tr>
+                );
+              })}
+              {!quoteLines.length ? (
+                <tr>
+                  <td colSpan="17" className={styles.emptyCell}>No quote line items found for this order.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className={styles.adminTotalsRow}>
+          <section className={styles.adminTotalCard}>
+            <div className={styles.adminTotalCardHeader}>
+              <p className={styles.tableMeta}>Quote totals</p>
+              <h2 className={styles.adminTotalTitle}>Totals summary</h2>
             </div>
-            {quoteLines.map((line, index) => {
-              const showProfiles = line.material === "Thermolaminate";
-              const hingesApplicable = line.product_type === "Door";
-              return (
-                <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={line.id || index}>
-                  <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
-                    <div><span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{index + 1}</span></div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(quoteLineTitle(line))}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(line.material)}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(line.thickness)}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(quoteLineSize(line))}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(line.colour)}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{line.qty || "1"}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{lineValue(line.edge_mould)}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{showProfiles ? lineValue(line.profile_type) : "N/A"}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{showProfiles ? lineValue(line.profile) : "N/A"}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{formatMoney(line.product_unit_cost_ex_gst || 0, quote.currency || "AUD")}</div>
-                    <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</div>
-                    <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal}`}>{formatMoney(line.unit_price_ex_gst || 0, quote.currency || "AUD")}</div>
-                    <div className={`${styles.quoteItemTotal} ${workflowStyles.quoteItemTotal}`}>{formatMoney(line.line_total_ex_gst || 0, quote.currency || "AUD")}</div>
-                  </div>
-                </div>
-              );
-            })}
-            {!quoteLines.length ? <div className={styles.emptyState}><p>No quote line items found for this order.</p></div> : null}
-          </div>
-          <div className={`${styles.quoteTotalsLayout} ${styles.orderQuoteSummaryTotals} ${orderStyles.orderQuoteSummaryTotals}`}>
-            <section className={`${styles.quoteTotalGroup} ${workflowStyles.quoteTotalGroup} ${orderStyles.quoteTotalGroup}`}>
-              <header>Quote totals</header>
-              <div className={`${styles.quoteTotalGroupBody} ${workflowStyles.quoteTotalGroupBody} ${orderStyles.quoteTotalGroupBody}`}>
-                <div><span>Subtotal ex GST</span><strong>{formatMoney(quote.subtotal_ex_gst, quote.currency || "AUD")}</strong></div>
-                <div><span>GST</span><strong>{formatMoney(quote.gst_amount, quote.currency || "AUD")}</strong></div>
-                <div><span>Total inc GST</span><strong>{formatMoney(quote.total_inc_gst, quote.currency || "AUD")}</strong></div>
-              </div>
-            </section>
-          </div>
+            <div className={styles.adminTotalRows}>
+              <div className={styles.adminTotalRow}><span>Subtotal ex GST</span><strong>{formatMoney(quote.subtotal_ex_gst, quoteCurrency)}</strong></div>
+              <div className={styles.adminTotalRow}><span>GST</span><strong>{formatMoney(quote.gst_amount, quoteCurrency)}</strong></div>
+              <div className={styles.adminTotalRow}><span>Total inc GST</span><strong>{formatMoney(quote.total_inc_gst, quoteCurrency)}</strong></div>
+            </div>
+          </section>
         </div>
       </div>
     );
@@ -828,46 +863,54 @@ export default function OrderDetail({ orderId }) {
 
   function renderItems() {
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderPlanningItems} ${orderStyles.orderPlanningItems}`}>
-        <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
-          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
-            <div>Item</div>
-            <div>Cabinet</div>
-            <div>Panel / item</div>
-            <div>Qty</div>
-            <div>Size</div>
-            <div>Material / colour</div>
-            <div>Fulfilment</div>
-          </div>
-            {planningPagination.pageItems.map((row) => {
-              const item = row.item;
-              const thermolaminated = isThermolaminatedItem(item);
-              const fulfilmentValue = row.plan.fulfilment_method;
-              return (
-              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={row.key}>
-                <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
-                  <div className={`${styles.orderItemIdentity} ${orderStyles.orderItemIdentity}`}>
-                    <strong>{row.source}</strong>
-                    <span>{itemMeta(item) || "No item details recorded"}</span>
-                  </div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.cabinet || "-"}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.piece}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.qty}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.size}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.material}</div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
-                    <select value={fulfilmentValue} disabled={savingItemId === item.id || thermolaminated} onChange={(event) => updatePanelPlan(row, { fulfilment_method: event.target.value })}>
-                      <option value="in_house">Made in house</option>
-                      <option value="supplier_ready_made">Supplier ready made</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              );
-            })}
-            {!planningRows.length ? (
-              <div className={styles.emptyState}><p>No order items yet.</p></div>
-            ) : null}
+      <div className={styles.quoteItemsAdminWrap}>
+        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
+          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderPlanningTable}`}>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Cabinet</th>
+                <th>Panel / item</th>
+                <th>Qty</th>
+                <th>Size</th>
+                <th>Material / colour</th>
+                <th>Fulfilment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {planningPagination.pageItems.map((row) => {
+                const item = row.item;
+                const thermolaminated = isThermolaminatedItem(item);
+                const fulfilmentValue = row.plan.fulfilment_method;
+                return (
+                  <tr key={row.key}>
+                    <td>
+                      <div className={orderStyles.orderItemIdentity}>
+                        <strong>{row.source}</strong>
+                        <span>{itemMeta(item) || "No item details recorded"}</span>
+                      </div>
+                    </td>
+                    <td>{row.cabinet || "-"}</td>
+                    <td>{row.piece}</td>
+                    <td>{row.qty}</td>
+                    <td>{row.size}</td>
+                    <td>{row.material}</td>
+                    <td>
+                      <select value={fulfilmentValue} disabled={savingItemId === item.id || thermolaminated} onChange={(event) => updatePanelPlan(row, { fulfilment_method: event.target.value })}>
+                        <option value="in_house">Made in house</option>
+                        <option value="supplier_ready_made">Supplier ready made</option>
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!planningRows.length ? (
+                <tr>
+                  <td colSpan="7" className={styles.emptyCell}>No order items yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
         <AdminTablePagination
           label="planning rows"
@@ -882,40 +925,54 @@ export default function OrderDetail({ orderId }) {
 
   function renderSupplierMade() {
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderSupplierItems} ${orderStyles.orderSupplierItems}`}>
-        <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
-          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
-            <div>Item</div>
-            <div>Order status</div>
-            <div>Supplier</div>
-            <div>Supplier ref</div>
-            <div>Ordered</div>
-            <div>ETA</div>
-            <div>Notes</div>
-          </div>
-            {supplierMadePagination.pageItems.map((row) => (
-              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={row.key}>
-                <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
-                  <div className={`${styles.orderItemIdentity} ${orderStyles.orderItemIdentity}`}>
-                    <strong>{row.source}</strong>
-                    <span>{row.piece} | {row.size} | {row.material}</span>
-                  </div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
+      <div className={styles.quoteItemsAdminWrap}>
+        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
+          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderSupplierTable}`}>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Order status</th>
+                <th>Supplier</th>
+                <th>Supplier ref</th>
+                <th>Ordered</th>
+                <th>ETA</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {supplierMadePagination.pageItems.map((row) => (
+                <tr key={row.key}>
+                  <td>
+                    <div className={orderStyles.orderItemIdentity}>
+                      <strong>{row.source}</strong>
+                      <span>{row.piece} | {row.size} | {row.material}</span>
+                    </div>
+                  </td>
+                  <td>
                     <select value={row.plan.status} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { status: event.target.value })}>
                       {ORDER_LINE_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}
                     </select>
-                  </div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input value={row.plan.supplier_name || defaultSupplierForItem(row.item)} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input value={row.plan.supplier_order_ref || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input type="date" value={row.plan.supplier_ordered_at || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input type="date" value={row.plan.supplier_eta || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></div>
-                  <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${orderStyles.quoteItemActions}`}><button type="button" className={`${styles.rowEditButton} ${orderStyles.rowEditButton}`} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button></div>
-                </div>
-              </div>
-            ))}
-            {!supplierMadeRows.length ? (
-              <div className={styles.emptyState}><p>No supplier-made items yet.</p></div>
-            ) : null}
+                  </td>
+                  <td><input value={row.plan.supplier_name || defaultSupplierForItem(row.item)} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></td>
+                  <td><input value={row.plan.supplier_order_ref || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></td>
+                  <td><input type="date" value={row.plan.supplier_ordered_at || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></td>
+                  <td><input type="date" value={row.plan.supplier_eta || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></td>
+                  <td>
+                    <AdminActionDropdown label={`Open actions for ${row.source}`}>
+                      <button type="button" className={styles.tableActionMenuItem} onClick={() => openPanelNotes(row)}>
+                        {row.plan.notes ? "Edit notes" : "Add notes"}
+                      </button>
+                    </AdminActionDropdown>
+                  </td>
+                </tr>
+              ))}
+              {!supplierMadeRows.length ? (
+                <tr>
+                  <td colSpan="7" className={styles.emptyCell}>No supplier-made items yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
         <AdminTablePagination
           label="supplier-made items"
@@ -930,50 +987,64 @@ export default function OrderDetail({ orderId }) {
 
   function renderMadeInHouse() {
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderInHouseItems} ${orderStyles.orderInHouseItems}`}>
-        <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
-          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
-            <div>Item</div>
-            <div>Board required</div>
-            <div>Supplier</div>
-            <div>Supplier ref</div>
-            <div>Ordered</div>
-            <div>ETA</div>
-            <div>Production stage</div>
-            <div>Notes</div>
-          </div>
-            {madeInHousePagination.pageItems.map((row) => {
-              const boardRequired = !!row.plan.board_required;
-              return (
-                <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={row.key}>
-                  <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
-                    <div className={`${styles.orderItemIdentity} ${orderStyles.orderItemIdentity}`}>
-                      <strong>{row.source}</strong>
-                      <span>{row.piece} | {row.size} | {row.material}</span>
-                    </div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
+      <div className={styles.quoteItemsAdminWrap}>
+        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
+          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderInHouseTable}`}>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Board required</th>
+                <th>Supplier</th>
+                <th>Supplier ref</th>
+                <th>Ordered</th>
+                <th>ETA</th>
+                <th>Production stage</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {madeInHousePagination.pageItems.map((row) => {
+                const boardRequired = !!row.plan.board_required;
+                return (
+                  <tr key={row.key}>
+                    <td>
+                      <div className={orderStyles.orderItemIdentity}>
+                        <strong>{row.source}</strong>
+                        <span>{row.piece} | {row.size} | {row.material}</span>
+                      </div>
+                    </td>
+                    <td>
                       <select value={boardRequired ? "yes" : "no"} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { board_required: event.target.value === "yes" })}>
                         <option value="yes">Yes</option>
                         <option value="no">No</option>
                       </select>
-                    </div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input value={boardRequired ? row.plan.supplier_order_ref || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input type="date" value={boardRequired ? row.plan.supplier_ordered_at || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}><input type="date" value={boardRequired ? row.plan.supplier_eta || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></div>
-                    <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
+                    </td>
+                    <td><input value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></td>
+                    <td><input value={boardRequired ? row.plan.supplier_order_ref || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></td>
+                    <td><input type="date" value={boardRequired ? row.plan.supplier_ordered_at || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></td>
+                    <td><input type="date" value={boardRequired ? row.plan.supplier_eta || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></td>
+                    <td>
                       <select value={row.plan.production_stage} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { production_stage: event.target.value })}>
                         {ORDER_PRODUCTION_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
                       </select>
-                    </div>
-                    <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${orderStyles.quoteItemActions}`}><button type="button" className={`${styles.rowEditButton} ${orderStyles.rowEditButton}`} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button></div>
-                  </div>
-                </div>
-              );
-            })}
-            {!madeInHouseRows.length ? (
-              <div className={styles.emptyState}><p>No made-in-house items yet.</p></div>
-            ) : null}
+                    </td>
+                    <td>
+                      <AdminActionDropdown label={`Open actions for ${row.source}`}>
+                        <button type="button" className={styles.tableActionMenuItem} onClick={() => openPanelNotes(row)}>
+                          {row.plan.notes ? "Edit notes" : "Add notes"}
+                        </button>
+                      </AdminActionDropdown>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!madeInHouseRows.length ? (
+                <tr>
+                  <td colSpan="8" className={styles.emptyCell}>No made-in-house items yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
         <AdminTablePagination
           label="made-in-house items"
@@ -990,7 +1061,7 @@ export default function OrderDetail({ orderId }) {
     const totalPieces = cutListRows.reduce((total, row) => total + Number(row.qty || 0), 0);
 
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderCutListItems} ${orderStyles.orderCutListItems}`}>
+      <div className={styles.quoteItemsAdminWrap}>
         <div className={styles.quoteBuilderSummaryLine}>
           <div className={styles.cutListSummaryText}>
             <span><strong>{cutListRows.length}</strong> cut list rows</span>
@@ -1005,38 +1076,44 @@ export default function OrderDetail({ orderId }) {
             {isGeneratingCutListPdf ? "Generating PDF..." : "Generate cut list PDF"}
           </button>
         </div>
-        <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
-          <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
-            <div>#</div>
-            <div>Source item</div>
-            <div>Cabinet size</div>
-            <div>Cut piece</div>
-            <div>Qty</div>
-            <div>Cut size</div>
-            <div>Thickness</div>
-            <div>Material / colour</div>
-            <div>Edging</div>
-            <div>Notes</div>
-          </div>
-            {cutListPagination.pageItems.map((row, index) => (
-              <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={row.key}>
-                <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
-                  <div><span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{(cutListPagination.page - 1) * ADMIN_TABLE_PAGE_SIZE + index + 1}</span></div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.source}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.cabinet || "-"}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.piece}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.qty}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{formatCutSize(row.width_mm, row.height_mm)}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.thickness}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.material}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.edging}</div>
-                  <div className={`${styles.quoteReadCell} ${workflowStyles.quoteReadCell} ${orderStyles.quoteReadCell}`}>{row.notes || "-"}</div>
-                </div>
-              </div>
-            ))}
-            {!cutListRows.length ? (
-              <div className={styles.emptyState}><p>No made-in-house items are ready for the cut list yet. Set items to Made in house on Item Planning.</p></div>
-            ) : null}
+        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
+          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderCutListTable}`}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Source item</th>
+                <th>Cabinet size</th>
+                <th>Cut piece</th>
+                <th>Qty</th>
+                <th>Cut size</th>
+                <th>Thickness</th>
+                <th>Material / colour</th>
+                <th>Edging</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cutListPagination.pageItems.map((row, index) => (
+                <tr key={row.key}>
+                  <td><span className={styles.quoteItemRowNum}>{(cutListPagination.page - 1) * ADMIN_TABLE_PAGE_SIZE + index + 1}</span></td>
+                  <td>{row.source}</td>
+                  <td>{row.cabinet || "-"}</td>
+                  <td>{row.piece}</td>
+                  <td>{row.qty}</td>
+                  <td>{formatCutSize(row.width_mm, row.height_mm)}</td>
+                  <td>{row.thickness}</td>
+                  <td>{row.material}</td>
+                  <td>{row.edging}</td>
+                  <td>{row.notes || "-"}</td>
+                </tr>
+              ))}
+              {!cutListRows.length ? (
+                <tr>
+                  <td colSpan="10" className={styles.emptyCell}>No made-in-house items are ready for the cut list yet. Set items to Made in house on Item Planning.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
         <AdminTablePagination
           label="cut list rows"
@@ -1050,24 +1127,25 @@ export default function OrderDetail({ orderId }) {
   }
 
   function renderPayments() {
+    const paymentCurrency = order?.pcd_quote?.currency || "AUD";
     return (
       <div className={styles.paymentLedger}>
-        <div className={styles.paymentSummaryGrid}>
-          <div className={styles.paymentSummaryCard}>
+        <div className={`${styles.paymentSummaryGrid} ${orderStyles.orderPaymentSummaryGrid}`}>
+          <div className={`${styles.paymentSummaryCard} ${orderStyles.orderPaymentSummaryCard}`}>
             <span>Order Total</span>
-            <strong>{formatMoney(paymentTotals.orderTotal, "AUD")}</strong>
+            <strong>{formatMoney(paymentTotals.orderTotal, paymentCurrency)}</strong>
           </div>
-          <div className={styles.paymentSummaryCard}>
+          <div className={`${styles.paymentSummaryCard} ${orderStyles.orderPaymentSummaryCard}`}>
             <span>Pending Payment</span>
-            <strong>{formatMoney(paymentTotals.pending, "AUD")}</strong>
+            <strong>{formatMoney(paymentTotals.pending, paymentCurrency)}</strong>
           </div>
-          <div className={styles.paymentSummaryCard}>
+          <div className={`${styles.paymentSummaryCard} ${orderStyles.orderPaymentSummaryCard}`}>
             <span>Confirmed Paid</span>
-            <strong>{formatMoney(paymentTotals.confirmed, "AUD")}</strong>
+            <strong>{formatMoney(paymentTotals.confirmed, paymentCurrency)}</strong>
           </div>
-          <div className={styles.paymentSummaryCard}>
+          <div className={`${styles.paymentSummaryCard} ${orderStyles.orderPaymentSummaryCard}`}>
             <span>Left To Pay</span>
-            <strong>{formatMoney(paymentTotals.remaining, "AUD")}</strong>
+            <strong>{formatMoney(paymentTotals.remaining, paymentCurrency)}</strong>
           </div>
         </div>
 
@@ -1094,93 +1172,92 @@ export default function OrderDetail({ orderId }) {
         </div>
 
         <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderPaymentItems} ${orderStyles.orderPaymentItems}`}>
-          <div className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${orderStyles.quoteItemsScroller}`}>
-            <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemHead} ${workflowStyles.quoteItemHead} ${orderStyles.quoteItemHead}`}>
-              <div>Type</div>
-              <div>Amount</div>
-              <div>Status</div>
-              <div>Date paid</div>
-              <div>Notes</div>
-              <div>Actions</div>
-            </div>
-              {paymentPagination.pageItems.map((payment) => (
-                <div className={`${styles.quoteItemBlock} ${workflowStyles.quoteItemBlock}`} key={payment.id}>
-                  <div className={`${styles.quoteItemGrid} ${workflowStyles.quoteItemGrid} ${orderStyles.quoteItemGrid} ${styles.quoteItemRow} ${workflowStyles.quoteItemRow} ${orderStyles.quoteItemRow} ${styles.quoteItemRowLocked} ${workflowStyles.quoteItemRowLocked}`}>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
-                    <select
-                      value={payment.payment_type || "progress"}
-                      disabled={savingPaymentId === payment.id}
-                      onChange={(event) => updatePayment(payment, { payment_type: event.target.value })}
-                    >
-                      {paymentTypes.map((type) => (
-                        <option key={type.value} value={type.value}>{type.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={payment.amount ?? ""}
-                      disabled={savingPaymentId === payment.id}
-                      onChange={(event) => updatePaymentLocal(payment.id, { amount: event.target.value })}
-                      onBlur={(event) => updatePayment(payment, { amount: event.target.value || 0 })}
-                    />
-                  </div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
-                    <select
-                      value={payment.is_paid ? "paid" : "pending"}
-                      disabled={savingPaymentId === payment.id}
-                      onChange={(event) => updatePayment(payment, { is_paid: event.target.value === "paid" })}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="paid">Paid</option>
-                    </select>
-                  </div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
-                    <input
-                      type="date"
-                      value={payment.paid_at || ""}
-                      disabled={savingPaymentId === payment.id || !payment.is_paid}
-                      onChange={(event) => updatePaymentLocal(payment.id, { paid_at: event.target.value })}
-                      onBlur={(event) => updatePayment(payment, { paid_at: event.target.value })}
-                    />
-                  </div>
-                  <div className={`${styles.quoteItemField} ${workflowStyles.quoteItemField} ${orderStyles.quoteItemField}`}>
-                    <input
-                      value={payment.notes || ""}
-                      disabled={savingPaymentId === payment.id}
-                      onChange={(event) => updatePaymentLocal(payment.id, { notes: event.target.value })}
-                      onBlur={(event) => updatePayment(payment, { notes: event.target.value })}
-                    />
-                  </div>
-                  <div className={`${styles.quoteItemActions} ${workflowStyles.quoteItemActions} ${orderStyles.quoteItemActions}`}>
-                    <button
-                      type="button"
-                      className={`${styles.rowEditButton} ${orderStyles.rowEditButton}`}
-                      disabled={savingPaymentId === payment.id || payment.is_paid || Number(payment.amount || 0) <= 0}
-                      onClick={() => requestPayment(payment)}
-                    >
-                      {payment.is_paid ? "Paid" : "Request payment"}
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.rowDeleteButton} ${styles.rowIconButton} ${styles.rowDeleteIconButton}`}
-                      aria-label="Delete payment line"
-                      title="Delete payment line"
-                      disabled={savingPaymentId === payment.id}
-                      onClick={() => deletePayment(payment)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  </div>
-                </div>
-              ))}
-              {!payments.length ? (
-                <div className={styles.emptyState}><p>No payment lines yet.</p></div>
-              ) : null}
+          <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
+            <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderPaymentsTable}`}>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Date paid</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentPagination.pageItems.map((payment) => (
+                  <tr key={payment.id}>
+                    <td>
+                      <select
+                        value={payment.payment_type || "progress"}
+                        disabled={savingPaymentId === payment.id}
+                        onChange={(event) => updatePayment(payment, { payment_type: event.target.value })}
+                      >
+                        {paymentTypes.map((type) => (
+                          <option key={type.value} value={type.value}>{type.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={payment.amount ?? ""}
+                        disabled={savingPaymentId === payment.id}
+                        onChange={(event) => updatePaymentLocal(payment.id, { amount: event.target.value })}
+                        onBlur={(event) => updatePayment(payment, { amount: event.target.value || 0 })}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        value={payment.is_paid ? "paid" : "pending"}
+                        disabled={savingPaymentId === payment.id}
+                        onChange={(event) => updatePayment(payment, { is_paid: event.target.value === "paid" })}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="paid">Paid</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="date"
+                        value={payment.paid_at || ""}
+                        disabled={savingPaymentId === payment.id || !payment.is_paid}
+                        onChange={(event) => updatePaymentLocal(payment.id, { paid_at: event.target.value })}
+                        onBlur={(event) => updatePayment(payment, { paid_at: event.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={payment.notes || ""}
+                        disabled={savingPaymentId === payment.id}
+                        onChange={(event) => updatePaymentLocal(payment.id, { notes: event.target.value })}
+                        onBlur={(event) => updatePayment(payment, { notes: event.target.value })}
+                      />
+                    </td>
+                    <td className={`${styles.actionsCol} ${orderStyles.orderPaymentsActionsCell}`}>
+                      <AdminActionDropdown disabled={savingPaymentId === payment.id} label="Open payment actions">
+                        <button
+                          type="button"
+                          className={styles.tableActionMenuItem}
+                          disabled={savingPaymentId === payment.id || payment.is_paid || Number(payment.amount || 0) <= 0}
+                          onClick={() => requestPayment(payment)}
+                        >
+                          {payment.is_paid ? "Paid" : "Request payment"}
+                        </button>
+                        <AdminConfirmDeleteAction disabled={savingPaymentId === payment.id} onConfirm={() => deletePayment(payment)} />
+                      </AdminActionDropdown>
+                    </td>
+                  </tr>
+                ))}
+                {!payments.length ? (
+                  <tr>
+                    <td colSpan="7" className={styles.emptyCell}>No payment lines yet.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
           <AdminTablePagination
             label="payments"
@@ -1208,6 +1285,9 @@ export default function OrderDetail({ orderId }) {
               <p className={styles.tableMeta}>{isDeposit ? "Deposit required" : "Payment line"}</p>
               <h2>{isDeposit ? "Add Deposit Line" : "Add Payment Line"}</h2>
             </div>
+            <button type="button" className={styles.modalCloseButton} onClick={() => setPaymentModal(null)} disabled={savingPaymentId === "new"}>
+              Close
+            </button>
           </header>
           <div className={styles.customerModalBody}>
             <div className={styles.customerModalGrid}>
@@ -1298,6 +1378,9 @@ export default function OrderDetail({ orderId }) {
               <p className={styles.tableMeta}>{row.source}</p>
               <h2>{row.piece}</h2>
             </div>
+            <button type="button" className={styles.modalCloseButton} onClick={() => setPanelNotesModal(null)} disabled={savingItemId === row.item.id}>
+              Close
+            </button>
           </header>
           <div className={styles.customerModalBody}>
             <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
@@ -1342,33 +1425,43 @@ export default function OrderDetail({ orderId }) {
           <span className={styles.projectListMetric}>{activity.length} entries</span>
         </div>
 
-        <div className={styles.activityLogList}>
-          <div className={styles.activityLogTableHead}>
-            <span>Event</span>
-            <span>Details</span>
-            <span>Source</span>
-            <span>Activity</span>
-            <span>Date</span>
-          </div>
-          {activityPagination.pageItems.map((entry) => (
-            <article className={styles.activityLogItem} key={entry.id}>
-              <div className={styles.activityLogEvent}>
-                <span className={styles.activityLogMarker} aria-hidden="true" />
-                <strong>{entry.title}</strong>
-              </div>
-              <p className={styles.activityLogDescription}>{entry.description || "-"}</p>
-              <span className={styles.activityLogPill}>{activityActorLabel(entry.actor_type)}</span>
-              <span className={styles.activityLogPill}>{titleCaseStatus(entry.action_type)}</span>
-              <time className={styles.activityLogDate} dateTime={entry.created_at || undefined}>
-                {formatDateTime(entry.created_at)}
-              </time>
-            </article>
-          ))}
-          {!activity.length ? (
-            <div className={styles.emptyState}>
-              <p>No activity has been recorded for this order yet.</p>
-            </div>
-          ) : null}
+        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
+          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderActivityTable}`}>
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Details</th>
+                <th>Source</th>
+                <th>Activity</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activityPagination.pageItems.map((entry) => (
+                <tr key={entry.id}>
+                  <td>
+                    <div className={`${styles.activityLogEvent} ${orderStyles.orderActivityEvent}`}>
+                      <span className={styles.activityLogMarker} aria-hidden="true" />
+                      <strong>{entry.title}</strong>
+                    </div>
+                  </td>
+                  <td>{formatActivityDescription(entry.description)}</td>
+                  <td><span className={styles.activityLogPill}>{activityActorLabel(entry.actor_type)}</span></td>
+                  <td><span className={styles.activityLogPill}>{titleCaseStatus(entry.action_type)}</span></td>
+                  <td>
+                    <time className={styles.activityLogDate} dateTime={entry.created_at || undefined}>
+                      {formatDateTime(entry.created_at)}
+                    </time>
+                  </td>
+                </tr>
+              ))}
+              {!activity.length ? (
+                <tr>
+                  <td colSpan="5" className={styles.emptyCell}>No activity has been recorded for this order yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
         <AdminTablePagination
           label="activity entries"
@@ -1447,4 +1540,5 @@ export default function OrderDetail({ orderId }) {
     </div>
   );
 }
+
 

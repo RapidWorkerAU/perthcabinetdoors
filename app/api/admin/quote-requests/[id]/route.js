@@ -53,3 +53,25 @@ export async function PATCH(request, { params }) {
     return Response.json({ ok: false, error: error?.message || "Could not update quote request." }, { status: 500 });
   }
 }
+
+export async function DELETE(_request, { params }) {
+  const context = await requireAdminApiContext();
+  if (context.error) return context.error;
+
+  try {
+    const { id } = await Promise.resolve(params);
+
+    const { error: lineError } = await context.supabase
+      .from("pcd_quote_request_line_items")
+      .delete()
+      .eq("quote_request_id", id);
+    if (lineError) throw lineError;
+
+    const { error } = await context.supabase.from("pcd_quote_requests").delete().eq("id", id);
+    if (error) throw error;
+
+    return Response.json({ ok: true });
+  } catch (error) {
+    return Response.json({ ok: false, error: error?.message || "Could not delete quote request." }, { status: 500 });
+  }
+}
