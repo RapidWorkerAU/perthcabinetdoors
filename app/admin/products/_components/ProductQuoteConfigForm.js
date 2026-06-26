@@ -141,17 +141,24 @@ export default function ProductQuoteConfigForm({
   }
 
   return (
-    <section className={styles.editorWrap}>
+    <div className="relative p-4 md:p-6 max-w-[1400px]">
       <form onSubmit={handleSave}>
-        <div className={styles.editorTopBar}>
+        <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
           <div>
-            <p className={styles.editorSubtitle}>{product.card_title || product.name}</p>
+            <p className="text-[12px] font-medium text-[#8b8a81] mb-[2px]">{product.card_title || product.name}</p>
           </div>
-          <div className={styles.editorTopActions}>
-            <Link href={`/admin/products/${product.id}/edit`} className={styles.secondaryButton}>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/admin/products/${product.id}/edit`}
+              className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors flex items-center"
+            >
               Product details
             </Link>
-            <button type="submit" className={styles.primaryButton} disabled={isSaving}>
+            <button
+              type="submit"
+              className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
+              disabled={isSaving}
+            >
               {isSaving ? "Saving..." : "Save"}
             </button>
           </div>
@@ -382,7 +389,7 @@ export default function ProductQuoteConfigForm({
 
         {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
       </form>
-    </section>
+    </div>
   );
 }
 

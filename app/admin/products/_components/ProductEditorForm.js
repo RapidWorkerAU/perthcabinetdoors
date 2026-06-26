@@ -1469,11 +1469,11 @@ export default function ProductEditorForm({
   }
 
   return (
-    <section className={styles.editorWrap}>
+    <div className="relative p-4 md:p-6 max-w-[1400px]">
       <form onSubmit={handleSubmit}>
-        <div className={styles.editorTopBar}>
+        <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
           <div>
-            <p className={styles.editorSubtitle}>{name || "Product details"}</p>
+            <p className="text-[12px] font-medium text-[#8b8a81] mb-[2px]">{name || "Product details"}</p>
           </div>
           <div className={productClass("productEditorModeToggle")} role="radiogroup" aria-label="Product editor preview mode">
             <button
@@ -1495,15 +1495,19 @@ export default function ProductEditorForm({
               Product library tile
             </button>
           </div>
-          <div className={styles.editorTopActions}>
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              className={styles.secondaryButton}
+              className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
               onClick={() => router.push("/admin/products")}
             >
               Back
             </button>
-            <button type="submit" className={styles.primaryButton} disabled={isSaving || isApplyingMedia}>
+            <button
+              type="submit"
+              className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
+              disabled={isSaving || isApplyingMedia}
+            >
               {isSaving ? "Saving..." : "Save"}
             </button>
           </div>
@@ -1778,7 +1782,7 @@ export default function ProductEditorForm({
           </div>
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }
 
