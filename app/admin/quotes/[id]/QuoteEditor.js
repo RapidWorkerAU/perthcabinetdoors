@@ -26,6 +26,7 @@ import quoteStyles from "./quote-editor.module.css";
 import workflowStyles from "../../_components/admin-workflow.module.css";
 import { AdminActionDropdown, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
 import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
+import { AdminPagination } from "../../_components/AdminPagination";
 
 const sections = [
   { key: "details", label: "Information & Contacts" },
@@ -365,6 +366,28 @@ function applyCalculatedUnitCost(line, { forceAuto = false } = {}) {
   return next;
 }
 
+const tw = {
+  card: "bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden mb-3",
+  cardHeader: "px-4 py-3 border-b border-[#edf4eb] flex items-center justify-between",
+  cardTitle: "text-[13px] font-semibold text-[#1a1a18]",
+  cardBody: "px-4 py-4",
+  fieldLabel: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
+  fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
+  textarea: "w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-none",
+  grid2: "grid grid-cols-2 gap-3",
+  grid3: "grid grid-cols-3 gap-3",
+  wide: "col-span-2",
+  primaryBtn: "h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors",
+  secondaryBtn: "h-[34px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
+  smBtn: "h-[28px] px-3 text-[12px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
+  dangerBtn: "h-[28px] px-3 text-[12px] font-medium rounded-[6px] border border-[#fca5a5] bg-white text-[#991b1b] hover:bg-[#fef2f2] disabled:opacity-50 transition-colors",
+  muted: "text-[11px] text-[#8b8a81]",
+  mono: "font-mono text-[12px]",
+  pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium border",
+  sectionLabel: "text-[10px] font-semibold uppercase tracking-[0.07em] text-[#8b8a81] mb-3",
+  saveBar: "flex justify-end pt-3 border-t border-[#edf4eb] mt-3",
+};
+
 const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, placeholder, value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value || "");
@@ -531,6 +554,8 @@ function QuoteLineActionDropdown({ children, disabled = false, index, isOpen, on
 
   useEffect(() => {
     if (!isOpen || !buttonRef.current) return;
+    // If the button is inside a display:none container, close immediately and bail out.
+    if (buttonRef.current.offsetParent === null) { onClose(); return; }
 
     function closeOtherDropdowns(event) {
       if (event.detail !== dropdownIdRef.current) onClose();
@@ -801,6 +826,17 @@ export default function QuoteEditor({ quoteId }) {
     const timeout = window.setTimeout(() => setFeedback(""), 3000);
     return () => window.clearTimeout(timeout);
   }, [feedback]);
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === 'Escape' && editableLineIndex !== null) {
+        setEditableLineIndex(null);
+        setEditableLineDraft(null);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [editableLineIndex]);
 
   async function loadBusinessDefaults() {
     try {
@@ -1702,55 +1738,89 @@ export default function QuoteEditor({ quoteId }) {
 
   function renderDetails() {
     return (
-      <div className={quoteStyles.quoteInfoSection}>
-        <div className={`${styles.quoteInfoGrid} ${quoteStyles.quoteInfoGrid}`}>
-          <Field label="Quote title">
-            <input className={styles.fieldInput} value={form.title} onChange={(event) => updateForm("title", event.target.value)} />
-          </Field>
-          <Field label="Status">
-            <select className={styles.fieldInput} value={form.status} onChange={(event) => updateForm("status", event.target.value)}>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="viewed">Viewed</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </Field>
-          <div className={`${styles.quoteInfoActionField} ${quoteStyles.quoteInfoActionField}`}>
-            <Field label="Customer">
-              <select className={styles.fieldInput} value={form.customer_id || ""} onChange={(event) => applyCustomer(event.target.value)}>
+      <div>
+        {/* Quote details card */}
+        <div className={tw.card}>
+          <div className={tw.cardHeader}>
+            <span className={tw.cardTitle}>Quote details</span>
+            {form.status && (
+              <span className={tw.pill + " bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]"}>
+                {form.status.replace(/^./, c => c.toUpperCase())}
+              </span>
+            )}
+          </div>
+          <div className={tw.cardBody}>
+            <div className={tw.grid2}>
+              <label className={tw.fieldLabel}>
+                Quote title
+                <input className={tw.fieldInput} value={form.title} onChange={e => updateForm("title", e.target.value)} />
+              </label>
+              <label className={tw.fieldLabel}>
+                Status
+                <select className={tw.fieldInput} value={form.status} onChange={e => updateForm("status", e.target.value)}>
+                  <option value="draft">Draft</option>
+                  <option value="sent">Sent</option>
+                  <option value="viewed">Viewed</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </label>
+              <label className={tw.fieldLabel}>
+                Job / order reference
+                <input className={tw.fieldInput} value={form.project_name} onChange={e => updateForm("project_name", e.target.value)} />
+              </label>
+              <label className={tw.fieldLabel}>
+                Currency
+                <input className={tw.fieldInput} value={form.currency} onChange={e => updateForm("currency", e.target.value)} />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Customer card */}
+        <div className={tw.card}>
+          <div className={tw.cardHeader}>
+            <span className={tw.cardTitle}>Customer</span>
+            <button type="button" className={tw.smBtn} onClick={openCustomerModal}>
+              + Create new customer
+            </button>
+          </div>
+          <div className={tw.cardBody}>
+            <label className={tw.fieldLabel + " mb-3"}>
+              Select existing customer
+              <select className={tw.fieldInput} value={form.customer_id || ""} onChange={e => applyCustomer(e.target.value)}>
                 <option value="">Manual / new customer</option>
-                {customers.map((customer) => (
+                {customers.map(customer => (
                   <option key={customer.id} value={customer.id}>
                     {customer.name}{customer.email ? ` - ${customer.email}` : ""}
                   </option>
                 ))}
               </select>
-            </Field>
-            <button type="button" className={styles.secondaryButton} onClick={openCustomerModal}>
-              Create new customer
-            </button>
+            </label>
+            <div className={tw.grid2}>
+              <label className={tw.fieldLabel}>
+                Contact name
+                <input className={tw.fieldInput} value={form.customer_name} onChange={e => updateForm("customer_name", e.target.value)} />
+              </label>
+              <label className={tw.fieldLabel}>
+                Contact email
+                <input className={tw.fieldInput} type="email" value={form.customer_email} onChange={e => updateForm("customer_email", e.target.value)} />
+              </label>
+              <label className={tw.fieldLabel}>
+                Contact phone
+                <input className={tw.fieldInput} value={form.customer_phone} onChange={e => updateForm("customer_phone", e.target.value)} />
+              </label>
+              <label className={tw.fieldLabel}>
+                Site / delivery address
+                <input className={tw.fieldInput} value={form.site_address} onChange={e => updateForm("site_address", e.target.value)} />
+              </label>
+            </div>
+            <div className={tw.saveBar}>
+              <button type="submit" className={tw.primaryBtn} disabled={isSaving || isLoading}>
+                {isSaving ? "Saving..." : "Save information"}
+              </button>
+            </div>
           </div>
-          <Field label="Job / order reference">
-            <input className={styles.fieldInput} value={form.project_name} onChange={(event) => updateForm("project_name", event.target.value)} />
-          </Field>
-          <Field label="Contact name">
-            <input className={styles.fieldInput} value={form.customer_name} onChange={(event) => updateForm("customer_name", event.target.value)} />
-          </Field>
-          <Field label="Contact email">
-            <input className={styles.fieldInput} type="email" value={form.customer_email} onChange={(event) => updateForm("customer_email", event.target.value)} />
-          </Field>
-          <Field label="Contact phone">
-            <input className={styles.fieldInput} value={form.customer_phone} onChange={(event) => updateForm("customer_phone", event.target.value)} />
-          </Field>
-          <Field label="Site / delivery address">
-            <input className={styles.fieldInput} value={form.site_address} onChange={(event) => updateForm("site_address", event.target.value)} />
-          </Field>
-        </div>
-        <div className={`${styles.quoteInfoFooter} ${quoteStyles.quoteInfoFooter}`}>
-          <button type="submit" className={styles.primaryButton} disabled={isSaving || isLoading}>
-            {isSaving ? "Saving..." : "Save information"}
-          </button>
         </div>
       </div>
     );
@@ -1832,380 +1902,647 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   function renderItems() {
+    const td = 'px-2 py-[7px] border-b border-[#edf4eb] align-top text-[#1a1a18]'
+    const v1 = 'text-[12px] font-medium text-[#1a1a18] leading-[1.25] block'
+    const v2 = 'text-[11px] text-[#5a5a52] leading-[1.25] block mt-[1px]'
+    const v3 = 'text-[10px] text-[#8b8a81] leading-[1.25] block mt-[1px]'
+    const naText = 'text-[11px] text-[#c5cdd8] italic block'
+    const monoClass = 'font-mono'
+    const fl = 'text-[9px] font-semibold uppercase tracking-[0.05em] text-[#8b8a81] block mb-[2px]'
+    const fi = 'w-full h-[22px] text-[11px] border border-[#a8c5a0] rounded-[3px] bg-white px-[5px] font-[inherit] block mb-[3px] last:mb-0 focus:outline-none focus:border-[#6b9e61]'
+    const fiMono = 'font-mono'
+
     return (
-      <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${quoteStyles.quoteItemsAdminWrap}`}>
-        <div className={`${styles.quoteSectionActions} ${quoteStyles.quoteSectionActions}`}>
-          <button type="button" className={styles.secondaryButton} onClick={addLine}>+ Add line item</button>
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[12px] text-[#8b8a81]">
+            {form.lines.length} line {form.lines.length === 1 ? 'item' : 'items'}
+          </span>
+          <button
+            type="button"
+            className="h-[32px] px-4 bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors"
+            onClick={addLine}
+          >
+            + Add line item
+          </button>
         </div>
-        <div ref={quoteItemsScrollerRef} className={`${styles.quoteItemsScroller} ${workflowStyles.quoteItemsScroller} ${quoteStyles.quoteItemsScroller}`}>
-          <table className={`${styles.interactiveTable} ${quoteStyles.quoteItemsTable}`}>
-            <colgroup>
-              <col className={quoteStyles.quoteItemsColNumber} />
-              <col className={quoteStyles.quoteItemsColType} />
-              <col className={quoteStyles.quoteItemsColMaterial} />
-              <col className={quoteStyles.quoteItemsColThickness} />
-              <col className={quoteStyles.quoteItemsColSize} />
-              <col className={quoteStyles.quoteItemsColColour} />
-              <col className={quoteStyles.quoteItemsColQty} />
-              <col className={quoteStyles.quoteItemsColEdge} />
-              <col className={quoteStyles.quoteItemsColConfig} />
-              <col className={quoteStyles.quoteItemsColConfig} />
-              <col className={quoteStyles.quoteItemsColMoney} />
-              <col className={quoteStyles.quoteItemsColMarkup} />
-              <col className={quoteStyles.quoteItemsColMoney} />
-              <col className={quoteStyles.quoteItemsColMoney} />
-              <col className={quoteStyles.quoteItemsColActions} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Type</th>
-                <th>Material</th>
-                <th>Thickness</th>
-                <th>W x H (mm)</th>
-                <th>Colour</th>
-                <th>Qty</th>
-                <th>Edge profile</th>
-                <th>Profile config</th>
-                <th>Hinge config</th>
-                <th>Unit cost</th>
-                <th>Markup %</th>
-                <th>Unit + markup</th>
-                <th>Total ex GST</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {form.lines.map((savedLine, index) => {
-                const isEditable = editableLineIndex === index;
-                const line = isEditable && editableLineDraft ? editableLineDraft : savedLine;
-                const {
-                  calculated,
-                  materialOptions,
-                  thicknessOptions,
-                  showEdges,
-                  showProfiles,
-                  edgeOptions,
-                  hingesApplicable,
-                  colourSrc,
-                  isBaseCabinet,
-                } = lineViewModel(line);
-                const isBaseCabinetEditable = isEditable && isBaseCabinet;
-                const isLineSaving = savingLineIndex === index;
-                const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id;
-                const canResetUnitCost =
-                  isEditable &&
-                  !isBaseCabinetEditable &&
-                  line.unit_cost_mode === "manual" &&
-                  Number(line.calculated_unit_cost_ex_gst || 0) > 0;
-                return (
-                  <tr
-                    className={`${quoteStyles.quoteItemRow} ${
-                      isEditable ? quoteStyles.quoteItemRowEditing : quoteStyles.quoteItemRowLocked
-                    }`}
-                    key={savedLine.id || index}
-                  >
-                    <td className={quoteStyles.quoteItemNumberCell}>
-                      <span className={styles.quoteItemRowNum}>{index + 1}</span>
-                      <span className={quoteStyles.quoteReorderControls} aria-label={`Reorder quote line ${index + 1}`}>
-                        <button
-                          type="button"
-                          className={quoteStyles.quoteReorderButton}
-                          onClick={() => moveLine(index, -1)}
-                          disabled={!canMoveLines || index === 0}
-                          aria-label={`Move quote line ${index + 1} up`}
-                          title="Move up"
-                        >
-                          Up
-                        </button>
-                        <button
-                          type="button"
-                          className={quoteStyles.quoteReorderButton}
-                          onClick={() => moveLine(index, 1)}
-                          disabled={!canMoveLines || index === form.lines.length - 1}
-                          aria-label={`Move quote line ${index + 1} down`}
-                          title="Move down"
-                        >
-                          Down
-                        </button>
-                      </span>
-                    </td>
-                    {isEditable ? (
-                      <>
-                        <td className={quoteStyles.quoteTableFieldCell}>
-                          <QuoteTileCombobox
-                            placeholder="Type"
-                            value={displayProductType(line.product_type)}
-                            options={quoteProductTypes.map((type) => ({ label: type.label, name: type.label, value: type.value, meta: "Product type" }))}
-                            onChange={(option) => updateProductLine(index, { product_type: option.value || option.name || option.label })}
-                          />
-                        </td>
-                        <td className={quoteStyles.quoteTableFieldCell}>
-                          <QuoteTileCombobox
-                            placeholder="Material"
-                            value={line.material}
-                            options={materialOptions.map((material) => ({ label: material, name: material, meta: "Material" }))}
-                            onChange={(option) => updateProductLine(index, { material: option.name || option.label })}
-                          />
-                        </td>
-                        <td className={quoteStyles.quoteTableFieldCell}>
-                          <QuoteTileCombobox
-                            disabled={!line.material || isBaseCabinetEditable}
-                            placeholder={line.material ? "Thickness" : "Select material first"}
-                            value={line.thickness}
-                            options={thicknessOptions.map((thickness) => ({ label: thickness, name: thickness, meta: "Thickness" }))}
-                            onChange={(option) => updateProductLine(index, { thickness: option.name || option.label })}
-                          />
-                        </td>
-                        <td className={quoteStyles.quoteTableSizeCell}>
-                          <input disabled={isBaseCabinetEditable} min="1" type="number" placeholder="W" value={line.width_mm} onChange={(event) => updateLine(index, "width_mm", event.target.value)} />
-                          <input disabled={isBaseCabinetEditable} min="1" type="number" placeholder="H" value={line.height_mm} onChange={(event) => updateLine(index, "height_mm", event.target.value)} />
-                        </td>
-                        <td className={quoteStyles.quoteTableFieldCell}>
-                          <QuoteColourCombobox line={line} onChange={(patch) => updateProductLine(index, patch)} />
-                        </td>
-                        <td className={quoteStyles.quoteTableFieldCell}>
-                          <input min="1" type="number" value={line.qty} onChange={(event) => updateLine(index, "qty", event.target.value)} />
-                        </td>
-                        <td className={quoteStyles.quoteTableFieldCell}>
-                          {isBaseCabinetEditable ? <span className={styles.notApplicable}>Configured in cabinet tab</span> : showEdges ? (
-                            <QuoteImageCombobox
-                              placeholder="Edge"
-                              value={line.edge_mould}
-                              options={edgeOptions}
-                              onChange={(option) => updateLine(index, "edge_mould", option.name || option.label)}
-                            />
-                          ) : <span className={styles.notApplicable}>N/A</span>}
-                        </td>
-                        <td className={`${styles.quoteProfileConfigCell} ${quoteStyles.quoteConfigCell}`}>
-                          {showProfiles && hasProfileConfig(line) ? (
-                            <>
-                              <span className={quoteStyles.quoteProfileSummary}>
-                                {profileConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
-                              </span>
-                              <button type="button" className={quoteStyles.quoteProfileBareEditButton} onClick={() => openProfileModal(index)} disabled={isBaseCabinetEditable} aria-label={`Edit profile for quote line ${index + 1}`} title="Edit profile">
-                                Edit
-                              </button>
-                            </>
-                          ) : (
-                            <button type="button" className={quoteStyles.quoteProfileEditButton} onClick={() => openProfileModal(index)} disabled={isBaseCabinetEditable || !showProfiles}>
-                              Edit Profile
-                            </button>
-                          )}
-                        </td>
-                        <td className={`${styles.quoteHingeConfigCell} ${quoteStyles.quoteConfigCell}`}>
-                          {hingesApplicable && hasHingeConfig(line) ? (
-                            <>
-                              <span className={quoteStyles.quoteHingeSummary}>
-                                {hingeConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
-                              </span>
-                              <button type="button" className={quoteStyles.quoteHingeBareEditButton} onClick={() => openHingeModal(index)} disabled={isBaseCabinetEditable} aria-label={`Edit hinges for quote line ${index + 1}`} title="Edit hinges">
-                                Edit
-                              </button>
-                            </>
-                          ) : (
-                            <button type="button" className={quoteStyles.quoteHingeEditButton} onClick={() => openHingeModal(index)} disabled={isBaseCabinetEditable || !hingesApplicable}>
-                              Edit Hinges
-                            </button>
-                          )}
-                        </td>
-                        <td className={quoteStyles.quoteUnitCostControl}>
-                          <div className={`${quoteStyles.quoteTableFieldCell} ${styles.quoteMoneyInput} ${quoteStyles.quoteMoneyInput}`}>
-                            <span>$</span>
-                            <input disabled={isBaseCabinetEditable} type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={(event) => updateLine(index, "product_unit_cost_ex_gst", event.target.value)} />
-                          </div>
-                          {canResetUnitCost ? (
-                            <button type="button" className={quoteStyles.quoteUnitCostResetButton} onClick={() => resetLineUnitCost(index)} aria-label={`Reset quote line ${index + 1} unit cost to calculated cost`} title={`Reset to calculated cost (${formatMoney(line.calculated_unit_cost_ex_gst, form.currency)})`}>
-                              Reset
-                            </button>
-                          ) : null}
-                        </td>
-                        <td className={`${quoteStyles.quoteTableFieldCell} ${styles.quoteMarkupInput} ${quoteStyles.quoteMarkupInput}`}>
-                          <input type="number" min="0" step="0.01" value={line.markup_percent} onChange={(event) => updateLine(index, "markup_percent", event.target.value)} />
-                          <span>%</span>
-                        </td>
-                        <td className={styles.quoteItemTotal}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</td>
-                        <td className={styles.quoteItemTotal}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</td>
-                        <td className={`${styles.quoteItemActions} ${quoteStyles.quoteItemActions}`}>
-                          <QuoteLineActionDropdown
-                            disabled={isLineSaving}
-                            index={index}
-                            isOpen={openLineActionIndex === index}
-                            onClose={closeLineActions}
-                            onToggle={() => {
-                              setOpenLineActionIndex((current) => (current === index ? null : index));
-                              setDeleteLineConfirmIndex(null);
-                            }}
-                          >
-                            {deleteLineConfirmIndex === index ? (
-                              <>
-                                <span className={quoteStyles.quoteActionConfirmText}>Delete line?</span>
-                                <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => runLineAction(() => removeLine(index))}>
-                                  Confirm delete
-                                </button>
-                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => setDeleteLineConfirmIndex(null)}>
-                                  Cancel
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(saveLine)}>
-                                  {isLineSaving ? "Saving..." : "Save"}
-                                </button>
-                                <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => setDeleteLineConfirmIndex(index)}>
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                          </QuoteLineActionDropdown>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className={styles.quoteReadCell}>{lineValue(displayProductType(line.product_type))}</td>
-                        <td className={styles.quoteReadCell}>{lineValue(line.material)}</td>
-                        <td className={styles.quoteReadCell}>{lineValue(line.thickness)}</td>
-                        <td className={styles.quoteReadCell}>{lineValue(quoteLineSizeText(line))}</td>
-                        <td>
-                          <span className={`${styles.quoteColourRead} ${quoteStyles.quoteColourRead}`}>
-                            {colourSrc ? <img alt="" src={colourSrc} /> : null}
-                            <span className={quoteStyles.quoteColourReadText}>
-                              <strong>{lineValue(line.colour)}</strong>
-                              {line.finish ? <small>{line.finish}</small> : null}
+
+        <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
+          <div className="overflow-x-auto" ref={quoteItemsScrollerRef}>
+            <table className="w-full border-collapse" style={{minWidth: '960px', tableLayout: 'fixed'}}>
+              <colgroup>
+                <col style={{width: '24px'}} />
+                <col style={{width: '15%'}} />
+                <col style={{width: '14%'}} />
+                <col style={{width: '9%'}} />
+                <col style={{width: '12%'}} />
+                <col style={{width: '10%'}} />
+                <col style={{width: '5%'}} />
+                <col style={{width: '11%'}} />
+                <col style={{width: '12%'}} />
+                <col style={{width: '56px'}} />
+              </colgroup>
+              <thead>
+                <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                  {['#', 'Product', 'Spec', 'Size', 'Edge & profile', 'Hinges', 'Qty', 'Cost & markup', 'Price & total', ''].map((h, i) => (
+                    <th
+                      key={i}
+                      className="px-2 py-[7px] text-left text-[9px] font-semibold uppercase tracking-[0.07em] text-[#8b8a81] whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {form.lines.map((savedLine, index) => {
+                  const isEditable = editableLineIndex === index
+                  const line = isEditable && editableLineDraft ? editableLineDraft : savedLine
+                  const {
+                    calculated,
+                    materialOptions,
+                    thicknessOptions,
+                    showEdges,
+                    showProfiles,
+                    edgeOptions,
+                    hingesApplicable,
+                    colourSrc,
+                    isBaseCabinet,
+                  } = lineViewModel(line)
+                  const isBaseCabinetEditable = isEditable && isBaseCabinet
+                  const isLineSaving = savingLineIndex === index
+                  const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id
+                  const canResetUnitCost =
+                    isEditable &&
+                    !isBaseCabinetEditable &&
+                    line.unit_cost_mode === 'manual' &&
+                    Number(line.calculated_unit_cost_ex_gst || 0) > 0
+
+                  const hintText = isBaseCabinetEditable
+                    ? 'Base cabinet — dimensions configured in the Base Cabinets tab'
+                    : 'Edge, profile and hinge config open in modals'
+
+                  return (
+                    <React.Fragment key={savedLine.id || index}>
+                      <tr
+                        className={`group transition-colors ${
+                          isEditable
+                            ? 'bg-[#fafffe] shadow-[inset_3px_0_0_#6b9e61]'
+                            : 'hover:bg-[#f5f8f4]'
+                        } ${isLineSaving ? 'opacity-60' : ''}`}
+                      >
+
+                        {/* # */}
+                        <td className={td}>
+                          <div className="flex flex-col items-center gap-[1px]">
+                            <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[17px] h-[17px] rounded-[3px] flex items-center justify-center flex-shrink-0">
+                              {index + 1}
                             </span>
-                          </span>
-                        </td>
-                        <td className={styles.quoteReadCell}>{line.qty || "1"}</td>
-                        <td className={styles.quoteReadCell}>{lineValue(line.edge_mould)}</td>
-                        <td className={`${styles.quoteProfileConfigCell} ${quoteStyles.quoteConfigCell}`}>
-                          {showProfiles && hasProfileConfig(line) ? (
-                            <>
-                              <span className={quoteStyles.quoteProfileSummary}>
-                                {profileConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
-                              </span>
-                              <button type="button" className={quoteStyles.quoteProfileBareEditButton} onClick={() => openProfileModal(index)} aria-label={`Edit profile for quote line ${index + 1}`} title="Edit profile">
-                                Edit
-                              </button>
-                            </>
-                          ) : (
-                            <button type="button" className={quoteStyles.quoteProfileEditButton} onClick={() => openProfileModal(index)} disabled={!showProfiles}>
-                              Edit Profile
-                            </button>
-                          )}
-                        </td>
-                        <td className={`${styles.quoteHingeConfigCell} ${quoteStyles.quoteConfigCell}`}>
-                          {hingesApplicable && hasHingeConfig(line) ? (
-                            <>
-                              <span className={quoteStyles.quoteHingeSummary}>
-                                {hingeConfigLines(line).map((detail) => <small key={detail}>{detail}</small>)}
-                              </span>
-                              <button type="button" className={quoteStyles.quoteHingeBareEditButton} onClick={() => openHingeModal(index)} aria-label={`Edit hinges for quote line ${index + 1}`} title="Edit hinges">
-                                Edit
-                              </button>
-                            </>
-                          ) : (
-                            <button type="button" className={quoteStyles.quoteHingeEditButton} onClick={() => openHingeModal(index)} disabled={!hingesApplicable}>
-                              Edit Hinges
-                            </button>
-                          )}
-                        </td>
-                        <td className={styles.quoteReadCell}>{formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}</td>
-                        <td className={styles.quoteReadCell}>{line.markup_percent ?? businessDefaults.markup_percent}%</td>
-                        <td className={styles.quoteItemTotal}>{formatMoney(calculated.unit_price_ex_gst, form.currency)}</td>
-                        <td className={styles.quoteItemTotal}>{formatMoney(calculated.line_total_ex_gst, form.currency)}</td>
-                        <td className={`${styles.quoteItemActions} ${quoteStyles.quoteItemActions}`}>
-                          <QuoteLineActionDropdown
-                            disabled={isLineSaving || savingLineIndex !== null}
-                            index={index}
-                            isOpen={openLineActionIndex === index}
-                            onClose={closeLineActions}
-                            onToggle={() => {
-                              setOpenLineActionIndex((current) => (current === index ? null : index));
-                              setDeleteLineConfirmIndex(null);
-                            }}
-                          >
-                            {deleteLineConfirmIndex === index ? (
-                              <>
-                                <span className={quoteStyles.quoteActionConfirmText}>Delete line?</span>
-                                <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => runLineAction(() => removeLine(index))}>
-                                  Confirm delete
-                                </button>
-                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => setDeleteLineConfirmIndex(null)}>
-                                  Cancel
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => openLineNoteModal(index))}>
-                                  {line.client_note ? "Edit note" : "Add note"}
-                                </button>
-                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => editLine(index))}>
-                                  Edit
-                                </button>
-                                <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => duplicateLine(index))}>
-                                  Duplicate
-                                </button>
-                                <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => setDeleteLineConfirmIndex(index)}>
-                                  Delete
-                                </button>
-                              </>
+                            {canMoveLines && (
+                              <div className="flex flex-col gap-[1px] opacity-0 group-hover:opacity-100 transition-opacity mt-[1px]">
+                                <button
+                                  type="button"
+                                  onClick={() => moveLine(index, -1)}
+                                  disabled={index === 0}
+                                  className="w-[14px] h-[11px] flex items-center justify-center text-[#c5cdd8] hover:text-[#5a5a52] disabled:opacity-30 text-[9px] leading-none"
+                                  aria-label={`Move line ${index + 1} up`}
+                                >▲</button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveLine(index, 1)}
+                                  disabled={index === form.lines.length - 1}
+                                  className="w-[14px] h-[11px] flex items-center justify-center text-[#c5cdd8] hover:text-[#5a5a52] disabled:opacity-30 text-[9px] leading-none"
+                                  aria-label={`Move line ${index + 1} down`}
+                                >▼</button>
+                              </div>
                             )}
-                          </QuoteLineActionDropdown>
+                          </div>
                         </td>
-                      </>
-                    )}
+
+                        {/* Product & material */}
+                        <td className={td}>
+                          {isEditable ? (
+                            <>
+                              <span className={fl}>Type</span>
+                              <QuoteTileCombobox
+                                placeholder="Select type"
+                                value={displayProductType(line.product_type)}
+                                options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
+                                onChange={option => updateProductLine(index, { product_type: option.value || option.name || option.label })}
+                              />
+                              <span className={fl} style={{marginTop: '3px'}}>Material</span>
+                              <QuoteTileCombobox
+                                placeholder="Select material"
+                                value={line.material}
+                                options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
+                                onChange={option => updateProductLine(index, { material: option.name || option.label })}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <span className={v1}>{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">—</span>}</span>
+                              <span className={v2}>{line.material || <span className="text-[#c5cdd8]">—</span>}</span>
+                            </>
+                          )}
+                        </td>
+
+                        {/* Spec: thickness, finish, colour */}
+                        <td className={td}>
+                          {isEditable ? (
+                            <>
+                              <span className={fl}>Thickness</span>
+                              <QuoteTileCombobox
+                                disabled={!line.material || isBaseCabinetEditable}
+                                placeholder={line.material ? 'Thickness' : '—'}
+                                value={line.thickness}
+                                options={thicknessOptions.map(t => ({ label: t, name: t, meta: 'Thickness' }))}
+                                onChange={option => updateProductLine(index, { thickness: option.name || option.label })}
+                              />
+                              <span className={fl} style={{marginTop: '3px'}}>Finish &amp; colour</span>
+                              <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
+                            </>
+                          ) : (
+                            <>
+                              <span className={v1}>{line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
+                              <span className={v2}>{line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
+                              <span className={v3}>
+                                {colourSrc && (
+                                  <img src={colourSrc} alt="" className="w-[10px] h-[10px] rounded-[2px] object-cover border border-[#dbd8cc] inline-block mr-[3px] align-middle" />
+                                )}
+                                {line.colour || ''}
+                              </span>
+                            </>
+                          )}
+                        </td>
+
+                        {/* Size: W × H */}
+                        <td className={td}>
+                          {isEditable && !isBaseCabinetEditable ? (
+                            <>
+                              <span className={fl}>Width mm</span>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="W"
+                                value={line.width_mm}
+                                onChange={e => updateLine(index, 'width_mm', e.target.value)}
+                                className={`${fi} ${fiMono}`}
+                              />
+                              <span className={fl}>Height mm</span>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="H"
+                                value={line.height_mm}
+                                onChange={e => updateLine(index, 'height_mm', e.target.value)}
+                                className={`${fi} ${fiMono}`}
+                              />
+                            </>
+                          ) : isBaseCabinetEditable ? (
+                            <span className={naText}>Via cabinet tab</span>
+                          ) : (
+                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
+                              {line.width_mm && line.height_mm
+                                ? `${line.width_mm} × ${line.height_mm}`
+                                : <span className="text-[#c5cdd8]">—</span>}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Edge & profile */}
+                        <td className={td}>
+                          {isEditable && !isBaseCabinetEditable ? (
+                            <>
+                              <span className={fl}>Edge</span>
+                              {showEdges ? (
+                                <QuoteImageCombobox
+                                  placeholder="Edge profile"
+                                  value={line.edge_mould}
+                                  options={edgeOptions}
+                                  onChange={option => updateLine(index, 'edge_mould', option.name || option.label)}
+                                />
+                              ) : (
+                                <span className={naText}>N/A for material</span>
+                              )}
+                              <span className={fl} style={{marginTop: '3px'}}>Profile</span>
+                              {showProfiles ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openProfileModal(index)}
+                                  className="inline-flex items-center gap-[3px] text-[10px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[3px] px-[5px] py-[2px] bg-white hover:bg-[#edf4eb] transition-colors leading-none w-full justify-between"
+                                >
+                                  <span>{hasProfileConfig(line) ? profileConfigLines(line)[0] : 'Configure profile'}</span>
+                                  <span>↗</span>
+                                </button>
+                              ) : (
+                                <span className={naText}>N/A for material</span>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {showEdges ? (
+                                <div className="flex items-center justify-between gap-1 mb-[3px]">
+                                  <span className="text-[11px] text-[#1a1a18] leading-[1.25]">
+                                    {line.edge_mould || <span className="text-[#c5cdd8]">No edge</span>}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => runLineAction(() => editLine(index))}
+                                    className="inline-flex items-center gap-[2px] text-[9px] font-medium text-[#8b8a81] hover:text-[#6b9e61] leading-none flex-shrink-0"
+                                  >
+                                    <i className="ti ti-pencil" style={{fontSize:'9px'}} aria-hidden="true" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className={naText}>Edge N/A</span>
+                              )}
+                              {showProfiles ? (
+                                <div className="flex items-center justify-between gap-1 mt-[3px]">
+                                  <span className="text-[11px] text-[#1a1a18] leading-[1.25]">
+                                    {hasProfileConfig(line)
+                                      ? profileConfigLines(line).join(' · ')
+                                      : <span className="text-[#c5cdd8]">No profile</span>}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => openProfileModal(index)}
+                                    className="inline-flex items-center gap-[2px] text-[9px] font-medium text-[#8b8a81] hover:text-[#6b9e61] leading-none flex-shrink-0"
+                                  >
+                                    <i className="ti ti-pencil" style={{fontSize:'9px'}} aria-hidden="true" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className={naText + ' mt-[3px]'}>Profile N/A</span>
+                              )}
+                            </>
+                          )}
+                        </td>
+
+                        {/* Hinges */}
+                        <td className={td}>
+                          {isEditable && !isBaseCabinetEditable ? (
+                            hingesApplicable ? (
+                              <button
+                                type="button"
+                                onClick={() => openHingeModal(index)}
+                                className="inline-flex items-center gap-[3px] text-[10px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[3px] px-[5px] py-[2px] bg-white hover:bg-[#edf4eb] transition-colors leading-none w-full justify-between"
+                              >
+                                <span>{hasHingeConfig(line) ? hingeConfigLines(line).join(' · ') : 'Configure hinges'}</span>
+                                <span>↗</span>
+                              </button>
+                            ) : (
+                              <span className={naText}>N/A</span>
+                            )
+                          ) : hingesApplicable ? (
+                            <div className="flex items-start justify-between gap-1">
+                              <div>
+                                {hasHingeConfig(line) ? (
+                                  <>
+                                    <div className="flex items-center gap-[4px] mb-[1px]">
+                                      <span className={line.hinge_holes ? 'text-[#2d5e28] text-[11px] font-medium leading-none' : 'text-[#c5cdd8] text-[11px] leading-none'}>
+                                        {line.hinge_holes ? '✓' : '✕'}
+                                      </span>
+                                      <span className="text-[10px] text-[#5a5a52]">Drill</span>
+                                    </div>
+                                    <div className="flex items-center gap-[4px] mb-[2px]">
+                                      <span className={line.hinge_supply ? 'text-[#2d5e28] text-[11px] font-medium leading-none' : 'text-[#c5cdd8] text-[11px] leading-none'}>
+                                        {line.hinge_supply ? '✓' : '✕'}
+                                      </span>
+                                      <span className="text-[10px] text-[#5a5a52]">Supply</span>
+                                    </div>
+                                    {line.hinge_qty && (
+                                      <span className="text-[10px] text-[#8b8a81] block">{line.hinge_qty}</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-[#c5cdd8] text-[11px]">Not set</span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openHingeModal(index)}
+                                className="inline-flex items-center gap-[2px] text-[9px] font-medium text-[#8b8a81] hover:text-[#6b9e61] leading-none flex-shrink-0 mt-[1px]"
+                              >
+                                <i className="ti ti-pencil" style={{fontSize:'9px'}} aria-hidden="true" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className={naText}>N/A</span>
+                          )}
+                        </td>
+
+                        {/* Qty */}
+                        <td className={td}>
+                          {isEditable ? (
+                            <>
+                              <span className={fl}>Qty</span>
+                              <input
+                                type="number"
+                                min="1"
+                                value={line.qty}
+                                onChange={e => updateLine(index, 'qty', e.target.value)}
+                                className={`${fi} ${fiMono}`}
+                              />
+                            </>
+                          ) : (
+                            <span className="text-[12px] font-medium text-[#1a1a18]">{line.qty || 1}</span>
+                          )}
+                        </td>
+
+                        {/* Cost & markup */}
+                        <td className={td}>
+                          {isEditable && !isBaseCabinetEditable ? (
+                            <>
+                              <span className={fl}>Unit cost</span>
+                              <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden mb-[3px] bg-white">
+                                <span className="px-[4px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0">$</span>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0.00"
+                                  value={line.product_unit_cost_ex_gst}
+                                  onChange={e => updateLine(index, 'product_unit_cost_ex_gst', e.target.value)}
+                                  className="flex-1 h-full px-[4px] text-[11px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none"
+                                />
+                              </div>
+                              {canResetUnitCost && (
+                                <button
+                                  type="button"
+                                  onClick={() => resetLineUnitCost(index)}
+                                  className="text-[9px] text-[#6b9e61] hover:underline block mb-[3px]"
+                                >
+                                  Reset to {formatMoney(line.calculated_unit_cost_ex_gst, form.currency)}
+                                </button>
+                              )}
+                              <span className={fl}>Markup</span>
+                              <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={line.markup_percent}
+                                  onChange={e => updateLine(index, 'markup_percent', e.target.value)}
+                                  className="flex-1 h-full px-[4px] text-[11px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none"
+                                />
+                                <span className="px-[4px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
+                                {formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}
+                              </span>
+                              <span className="text-[11px] text-[#5a5a52] font-mono block mt-[1px] leading-[1.25]">
+                                {line.markup_percent ?? businessDefaults.markup_percent}%
+                              </span>
+                            </>
+                          )}
+                        </td>
+
+                        {/* Price & total */}
+                        <td className={td}>
+                          {isEditable ? (
+                            <>
+                              <span className={fl}>Unit price</span>
+                              <span className="text-[12px] font-medium font-mono text-[#1a1a18] block mb-[4px]">
+                                {formatMoney(calculated.unit_price_ex_gst, form.currency)}
+                              </span>
+                              <span className={fl}>Line total</span>
+                              <span className="text-[14px] font-semibold font-mono text-[#1a1a18] block">
+                                {formatMoney(calculated.line_total_ex_gst, form.currency)}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
+                                {formatMoney(calculated.unit_price_ex_gst, form.currency)}
+                              </span>
+                              <span className="text-[12px] font-semibold text-[#1a1a18] font-mono block mt-[1px] leading-[1.25]">
+                                {formatMoney(calculated.line_total_ex_gst, form.currency)}
+                              </span>
+                            </>
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        <td className={td}>
+                          {isEditable ? (
+                            <div className="flex flex-col gap-[3px]">
+                              <button
+                                type="button"
+                                onClick={() => runLineAction(saveLine)}
+                                disabled={isLineSaving}
+                                className="h-[22px] w-full text-[10px] font-medium rounded-[3px] bg-[#1c2b1e] text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
+                              >
+                                {isLineSaving ? '...' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setEditableLineIndex(null); setEditableLineDraft(null) }}
+                                disabled={isLineSaving}
+                                className="h-[22px] w-full text-[10px] font-medium rounded-[3px] border border-[#dbd8cc] bg-white text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-[2px] opacity-0 group-hover:opacity-100 transition-opacity">
+                              <QuoteLineActionDropdown
+                                disabled={isLineSaving || savingLineIndex !== null}
+                                index={index}
+                                isOpen={openLineActionIndex === index}
+                                onClose={closeLineActions}
+                                onToggle={() => {
+                                  setOpenLineActionIndex(current => current === index ? null : index)
+                                  setDeleteLineConfirmIndex(null)
+                                }}
+                              >
+                                {deleteLineConfirmIndex === index ? (
+                                  <>
+                                    <span className={quoteStyles.quoteActionConfirmText}>Delete line?</span>
+                                    <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => runLineAction(() => removeLine(index))}>
+                                      Confirm delete
+                                    </button>
+                                    <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => setDeleteLineConfirmIndex(null)}>
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => openLineNoteModal(index))}>
+                                      {line.client_note ? 'Edit note' : 'Add note'}
+                                    </button>
+                                    <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => editLine(index))}>
+                                      Edit
+                                    </button>
+                                    <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => duplicateLine(index))}>
+                                      Duplicate
+                                    </button>
+                                    <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => setDeleteLineConfirmIndex(index)}>
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                              </QuoteLineActionDropdown>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Info bar below editing row */}
+                      {isEditable && (
+                        <tr>
+                          <td
+                            colSpan={10}
+                            className="px-3 py-[5px] bg-[#edf4eb] border-b border-[#a8c5a0] text-[10px] text-[#2d5e28] border-l-[3px] border-l-[#6b9e61]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span>{hintText}</span>
+                              <span className="text-[#5a5a52]">
+                                <kbd className="font-mono bg-white border border-[#dbd8cc] rounded-[2px] px-[3px] text-[9px]">Esc</kbd> to cancel
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+
+                      {/* Client note row */}
+                      {!isEditable && line.client_note && (
+                        <tr>
+                          <td colSpan={10} className="px-3 py-[4px] bg-[#f5f8f4] border-b border-[#edf4eb] text-[10px] text-[#5a5a52] italic">
+                            Note: {line.client_note}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+
+                {form.lines.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="py-10 text-center">
+                      <p className="text-[13px] font-medium text-[#1a1a18] mb-1">No line items yet</p>
+                      <p className="text-[11px] text-[#8b8a81] mb-3">Add your first line to start building this quote.</p>
+                      <button
+                        type="button"
+                        onClick={addLine}
+                        className="h-[32px] px-4 bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors"
+                      >
+                        + Add line item
+                      </button>
+                    </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    );
+    )
   }
 
   function renderNotes() {
     return (
-      <div className={`${styles.quoteNotesGrid} ${quoteStyles.quoteNotesGrid}`}>
-        <Field label="Client notes"><textarea className={styles.textareaInput} rows={5} value={form.client_notes} onChange={(event) => updateForm("client_notes", event.target.value)} /></Field>
-        <Field label="Internal / quote notes"><textarea className={styles.textareaInput} rows={5} value={form.notes} onChange={(event) => updateForm("notes", event.target.value)} /></Field>
-        <Field label="Assumptions"><textarea className={styles.textareaInput} rows={4} value={form.assumptions} onChange={(event) => updateForm("assumptions", event.target.value)} /></Field>
-        <Field label="Exclusions"><textarea className={styles.textareaInput} rows={4} value={form.exclusions} onChange={(event) => updateForm("exclusions", event.target.value)} /></Field>
-        <Field label="Terms" wide><textarea className={styles.textareaInput} rows={4} value={form.terms} onChange={(event) => updateForm("terms", event.target.value)} /></Field>
+      <div className={tw.card}>
+        <div className={tw.cardHeader}><span className={tw.cardTitle}>Notes and terms</span></div>
+        <div className={tw.cardBody}>
+          <div className={tw.grid2}>
+            <label className={tw.fieldLabel}>
+              Client notes (visible on quote)
+              <textarea className={tw.textarea} rows={5} value={form.client_notes} onChange={e => updateForm("client_notes", e.target.value)} placeholder="Notes the customer will see on the published quote." />
+            </label>
+            <label className={tw.fieldLabel}>
+              Internal notes (admin only)
+              <textarea className={tw.textarea} rows={5} value={form.notes} onChange={e => updateForm("notes", e.target.value)} placeholder="Internal production, sourcing, or risk notes." />
+            </label>
+            <label className={tw.fieldLabel}>
+              Assumptions
+              <textarea className={tw.textarea} rows={4} value={form.assumptions} onChange={e => updateForm("assumptions", e.target.value)} placeholder="e.g. standard ceiling height, no obstacles." />
+            </label>
+            <label className={tw.fieldLabel}>
+              Exclusions
+              <textarea className={tw.textarea} rows={4} value={form.exclusions} onChange={e => updateForm("exclusions", e.target.value)} placeholder="e.g. installation, handles, plumbing." />
+            </label>
+            <label className={tw.fieldLabel + " col-span-2"}>
+              Terms
+              <textarea className={tw.textarea} rows={3} value={form.terms} onChange={e => updateForm("terms", e.target.value)} />
+            </label>
+          </div>
+          <div className={tw.saveBar}>
+            <button type="submit" className={tw.primaryBtn} disabled={isSaving || isLoading}>
+              {isSaving ? "Saving..." : "Save notes"}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
   function renderCosts() {
     return (
-      <div className={`${styles.quoteCostsLayout} ${quoteStyles.quoteCostsLayout}`}>
-        <div className={`${styles.quoteBuilderGrid} ${quoteStyles.quoteBuilderGrid}`}>
-          <Field label="Labour hours">
-            <input className={styles.fieldInput} type="number" step="0.01" value={form.labour_hours} onChange={(event) => updateForm("labour_hours", event.target.value)} />
-          </Field>
-          <Field label="Worker hourly rate">
-            <input className={styles.fieldInput} type="number" step="0.01" value={form.worker_hourly_rate} onChange={(event) => updateForm("worker_hourly_rate", event.target.value)} />
-          </Field>
-          <Field label="Travel cost ex GST">
-            <input className={styles.fieldInput} type="number" step="0.01" value={form.travel_cost_ex_gst} onChange={(event) => updateForm("travel_cost_ex_gst", event.target.value)} />
-          </Field>
-          <Field label="Delivery cost ex GST">
-            <input className={styles.fieldInput} type="number" step="0.01" value={form.delivery_cost_ex_gst} onChange={(event) => updateForm("delivery_cost_ex_gst", event.target.value)} />
-          </Field>
-          <Field label="Consumables ex GST">
-            <input className={styles.fieldInput} type="number" step="0.01" value={form.installation_cost_ex_gst} onChange={(event) => updateForm("installation_cost_ex_gst", event.target.value)} />
-          </Field>
+      <div className="grid grid-cols-2 gap-4">
+        {/* Left: input cards */}
+        <div className="flex flex-col gap-3">
+          <div className={tw.card}>
+            <div className={tw.cardHeader}><span className={tw.cardTitle}>Labour</span></div>
+            <div className={tw.cardBody}>
+              <div className={tw.grid2}>
+                <label className={tw.fieldLabel}>
+                  Hours
+                  <input className={tw.fieldInput + " font-mono"} type="number" step="0.01" value={form.labour_hours} onChange={e => updateForm("labour_hours", e.target.value)} />
+                </label>
+                <label className={tw.fieldLabel}>
+                  Hourly rate ex GST
+                  <div className="flex items-center h-[34px] border border-[#dbd8cc] rounded-[6px] overflow-hidden">
+                    <span className="px-3 h-full flex items-center text-[13px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#dbd8cc]">$</span>
+                    <input type="number" step="0.01" value={form.worker_hourly_rate} onChange={e => updateForm("worker_hourly_rate", e.target.value)} className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono" />
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div className={tw.card}>
+            <div className={tw.cardHeader}><span className={tw.cardTitle}>Logistics</span></div>
+            <div className={tw.cardBody}>
+              <div className="flex flex-col gap-3">
+                {[
+                  ["Travel cost ex GST", "travel_cost_ex_gst"],
+                  ["Delivery cost ex GST", "delivery_cost_ex_gst"],
+                  ["Consumables ex GST", "installation_cost_ex_gst"],
+                ].map(([label, field]) => (
+                  <label key={field} className={tw.fieldLabel}>
+                    {label}
+                    <div className="flex items-center h-[34px] border border-[#dbd8cc] rounded-[6px] overflow-hidden">
+                      <span className="px-3 h-full flex items-center text-[13px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#dbd8cc]">$</span>
+                      <input type="number" step="0.01" value={form[field]} onChange={e => updateForm(field, e.target.value)} className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono" />
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className={`${styles.adminTotalCard} ${styles.adminTotalCardFull}`}>
-          <div className={styles.adminTotalRows}>
-            <div className={styles.adminTotalRow}><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
-            <div className={styles.adminTotalRow}><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
-            <div className={styles.adminTotalRow}><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
-            <div className={styles.adminTotalRow}><span>Labour</span><strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong></div>
-            <div className={styles.adminTotalRow}><span>Travel</span><strong>{formatMoney(totals.travel_cost_ex_gst, form.currency)}</strong></div>
-            <div className={styles.adminTotalRow}><span>Delivery</span><strong>{formatMoney(totals.delivery_cost_ex_gst, form.currency)}</strong></div>
-            <div className={styles.adminTotalRow}><span>Consumables</span><strong>{formatMoney(totals.installation_cost_ex_gst, form.currency)}</strong></div>
-            <div className={`${styles.adminTotalRow} ${styles.adminTotalRowEmphasis}`}><span>Line markups (Profit)</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
+
+        {/* Right: live breakdown summary */}
+        <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[#8b8a81] mb-3">Live cost breakdown</p>
+          {[
+            ["Product lines", totals.product_lines_cost_ex_gst],
+            [`Hinge drilling (${totals.hinge_drilling_qty || 0})`, totals.hinge_drilling_cost_ex_gst],
+            [`Hinge supply (${totals.hinge_supply_qty || 0})`, totals.hinge_supply_cost_ex_gst],
+            ["Labour", totals.labour_cost_ex_gst],
+            ["Travel", totals.travel_cost_ex_gst],
+            ["Delivery", totals.delivery_cost_ex_gst],
+            ["Consumables", totals.installation_cost_ex_gst],
+          ].map(([label, value]) => (
+            <div key={label} className="flex justify-between items-center py-[6px] border-b border-[#edf4eb] text-[12px]">
+              <span className="text-[#5a5a52]">{label}</span>
+              <strong className="text-[#1a1a18] font-mono font-medium">{formatMoney(value, form.currency)}</strong>
+            </div>
+          ))}
+          <div className="flex justify-between items-center py-[6px] text-[13px] font-semibold mt-1">
+            <span className="text-[#5a5a52]">Line markups (profit)</span>
+            <strong className="text-[#1a1a18] font-mono">{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong>
           </div>
         </div>
       </div>
@@ -2213,51 +2550,80 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   function renderTotals() {
+    const groups = [
+      {
+        label: "Products and hardware",
+        desc: "Product lines, per-line markup, drilling, and hinge supply",
+        total: totals.material_cost_ex_gst,
+        rows: [
+          ["Product lines", totals.product_lines_cost_ex_gst],
+          ["Line markups", totals.markup_amount_ex_gst],
+          [`Hinge drilling (${totals.hinge_drilling_qty || 0})`, totals.hinge_drilling_cost_ex_gst],
+          [`Hinge supply (${totals.hinge_supply_qty || 0})`, totals.hinge_supply_cost_ex_gst],
+        ],
+      },
+      {
+        label: "Labour",
+        desc: "Workshop labour from hours and hourly rate",
+        total: totals.labour_cost_ex_gst,
+        rows: [
+          ["Labour hours", totals.labour_hours || 0],
+          ["Hourly rate", formatMoney(totals.worker_hourly_rate, form.currency)],
+          ["Labour total", formatMoney(totals.labour_cost_ex_gst, form.currency)],
+        ],
+      },
+      {
+        label: "Logistics and consumables",
+        desc: "Travel, delivery, and small materials",
+        total: (totals.travel_cost_ex_gst || 0) + (totals.delivery_cost_ex_gst || 0) + (totals.installation_cost_ex_gst || 0),
+        rows: [
+          ["Travel", totals.travel_cost_ex_gst],
+          ["Delivery", totals.delivery_cost_ex_gst],
+          ["Consumables", totals.installation_cost_ex_gst],
+        ],
+      },
+    ];
+
     return (
-      <div className={styles.adminTotalsLayout}>
-        <div className={styles.adminTotalsStack}>
-          <details className={styles.adminBreakdownGroup}>
-            <summary className={styles.adminBreakdownSummary}>
-              <span><strong>Products and hardware</strong><small>Product lines, per-line markup, drilling, and hinge supply.</small></span>
-              <strong>{formatMoney(totals.material_cost_ex_gst, form.currency)}</strong>
-            </summary>
-            <div className={styles.adminBreakdownRows}>
-              <div className={styles.adminTotalRow}><span>Product lines</span><strong>{formatMoney(totals.product_lines_cost_ex_gst, form.currency)}</strong></div>
-              <div className={styles.adminTotalRow}><span>Line markups</span><strong>{formatMoney(totals.markup_amount_ex_gst, form.currency)}</strong></div>
-              <div className={styles.adminTotalRow}><span>Hinge hole drilling ({totals.hinge_drilling_qty || 0})</span><strong>{formatMoney(totals.hinge_drilling_cost_ex_gst, form.currency)}</strong></div>
-              <div className={styles.adminTotalRow}><span>Hinge supply ({totals.hinge_supply_qty || 0})</span><strong>{formatMoney(totals.hinge_supply_cost_ex_gst, form.currency)}</strong></div>
-            </div>
-          </details>
-          <details className={styles.adminBreakdownGroup}>
-            <summary className={styles.adminBreakdownSummary}>
-              <span><strong>Labour</strong><small>Workshop or job labour calculated from hours and hourly rate.</small></span>
-              <strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong>
-            </summary>
-            <div className={styles.adminBreakdownRows}>
-              <div className={styles.adminTotalRow}><span>Labour hours</span><strong>{totals.labour_hours || 0}</strong></div>
-              <div className={styles.adminTotalRow}><span>Hourly rate</span><strong>{formatMoney(totals.worker_hourly_rate, form.currency)}</strong></div>
-              <div className={styles.adminTotalRow}><span>Labour total</span><strong>{formatMoney(totals.labour_cost_ex_gst, form.currency)}</strong></div>
-            </div>
-          </details>
-          <details className={styles.adminBreakdownGroup}>
-            <summary className={styles.adminBreakdownSummary}>
-              <span><strong>Logistics and consumables</strong><small>Travel, delivery, and small materials such as glue or screws.</small></span>
-              <strong>{formatMoney(totals.travel_cost_ex_gst + totals.delivery_cost_ex_gst + totals.installation_cost_ex_gst, form.currency)}</strong>
-            </summary>
-            <div className={styles.adminBreakdownRows}>
-              <div className={styles.adminTotalRow}><span>Travel</span><strong>{formatMoney(totals.travel_cost_ex_gst, form.currency)}</strong></div>
-              <div className={styles.adminTotalRow}><span>Delivery</span><strong>{formatMoney(totals.delivery_cost_ex_gst, form.currency)}</strong></div>
-              <div className={styles.adminTotalRow}><span>Consumables</span><strong>{formatMoney(totals.installation_cost_ex_gst, form.currency)}</strong></div>
-            </div>
-          </details>
-          <div className={styles.adminTotalsRow}>
-            <div className={styles.adminTotalCard}>
-              <div className={styles.adminTotalRows}>
-                <div className={styles.adminTotalRow}><span>Subtotal ex GST</span><strong>{formatMoney(totals.subtotal_ex_gst, form.currency)}</strong></div>
-                <div className={styles.adminTotalRow}><span>GST</span><strong>{formatMoney(totals.gst_amount, form.currency)}</strong></div>
-                <div className={styles.adminTotalRow}><span>Total inc GST</span><strong>{formatMoney(totals.total_inc_gst, form.currency)}</strong></div>
+      <div>
+        {groups.map(group => (
+          <details key={group.label} className="border border-[#dbd8cc] rounded-[8px] mb-3 overflow-hidden" open>
+            <summary className="px-4 py-3 flex items-center justify-between cursor-pointer bg-white hover:bg-[#f5f8f4] transition-colors list-none">
+              <div>
+                <p className="text-[13px] font-semibold text-[#1a1a18]">{group.label}</p>
+                <p className={tw.muted}>{group.desc}</p>
               </div>
+              <strong className="text-[14px] font-semibold text-[#1a1a18] font-mono flex-shrink-0 ml-4">
+                {typeof group.total === "number" ? formatMoney(group.total, form.currency) : group.total}
+              </strong>
+            </summary>
+            <div className="px-4 py-3 bg-[#f5f8f4] border-t border-[#edf4eb]">
+              {group.rows.map(([label, value]) => (
+                <div key={label} className="flex justify-between items-center py-[5px] border-b border-[#edf4eb] last:border-0 text-[12px]">
+                  <span className="text-[#5a5a52]">{label}</span>
+                  <strong className="text-[#1a1a18] font-mono font-medium">
+                    {typeof value === "number" ? formatMoney(value, form.currency) : value}
+                  </strong>
+                </div>
+              ))}
             </div>
+          </details>
+        ))}
+
+        {/* Final total card */}
+        <div className="bg-[#edf4eb] border border-[#a8c5a0] rounded-[8px] p-4 mt-4">
+          {[
+            ["Subtotal ex GST", formatMoney(totals.subtotal_ex_gst, form.currency)],
+            [`GST (${Math.round((form.gst_rate || 0.1) * 100)}%)`, formatMoney(totals.gst_amount, form.currency)],
+          ].map(([label, value]) => (
+            <div key={label} className="flex justify-between items-center py-[5px] border-b border-[#a8c5a0] text-[13px]">
+              <span className="text-[#2d5e28]">{label}</span>
+              <strong className="text-[#1a1a18] font-mono font-medium">{value}</strong>
+            </div>
+          ))}
+          <div className="flex justify-between items-center pt-3 mt-1">
+            <span className="text-[15px] font-semibold text-[#2d5e28]">Total inc GST</span>
+            <strong className="text-[20px] font-semibold text-[#1a1a18] font-mono">{formatMoney(totals.total_inc_gst, form.currency)}</strong>
           </div>
         </div>
       </div>
@@ -2266,50 +2632,57 @@ export default function QuoteEditor({ quoteId }) {
 
   function renderAttachments() {
     return (
-      <div className={`${styles.quoteAttachmentsSection} ${quoteStyles.quoteAttachmentsSection}`}>
-        <div className={`${styles.quoteSectionActions} ${quoteStyles.quoteSectionActions}`}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={generateCabinetDrawingsAttachment}
-            disabled={isGeneratingCabinetPdf || isUploading}
-          >
-            {isGeneratingCabinetPdf ? "Generating cabinet PDF..." : "Generate cabinet PDF"}
+      <div className={tw.card}>
+        <div className={tw.cardHeader}>
+          <span className={tw.cardTitle}>Files and attachments</span>
+          <button type="button" className={tw.smBtn} onClick={generateCabinetDrawingsAttachment} disabled={isGeneratingCabinetPdf || isUploading}>
+            {isGeneratingCabinetPdf ? "Generating..." : "Generate cabinet PDF"}
           </button>
         </div>
-        <label className={styles.fieldLabel}>
-          Upload attachments
-          <div className={`${styles.attachmentUploadRow} ${quoteStyles.attachmentUploadRow}`}>
-            <input ref={fileInputRef} className={styles.fieldInput} type="file" multiple onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))} />
-            <button type="button" className={styles.primaryButton} onClick={uploadAttachments} disabled={isUploading}>
-              {isUploading ? "Uploading..." : "Upload attachments"}
+        <div className={tw.cardBody}>
+          {/* Upload area */}
+          <div className="flex items-center gap-3 p-3 bg-[#f5f8f4] border border-dashed border-[#dbd8cc] rounded-[6px] mb-4">
+            <div className="flex-1 min-w-0">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={e => setSelectedFiles(Array.from(e.target.files || []))}
+                className="text-[12px] text-[#5a5a52] w-full"
+              />
+            </div>
+            <button type="button" className={tw.primaryBtn} onClick={uploadAttachments} disabled={isUploading}>
+              {isUploading ? "Uploading..." : "Upload"}
             </button>
           </div>
-        </label>
-        <div className={styles.productsTableWrap}>
-          <table className={`${styles.productsTable} ${styles.quoteAttachmentsTable} ${quoteStyles.quoteAttachmentsTable}`}>
-            <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th>Actions</th></tr></thead>
-            <tbody>
-              {attachmentPagination.pageItems.map((attachment) => (
-                <tr key={attachment.id}>
-                  <td>{attachment.file_name}</td>
-                  <td>{attachment.file_type || "File"}</td>
-                  <td>{formatFileSize(attachment.file_size)}</td>
-                  <td>{attachment.created_at ? new Date(attachment.created_at).toLocaleString("en-AU") : "-"}</td>
-                  <td className={styles.actionsCol}>
-                    <AdminActionDropdown label={`Open actions for ${attachment.file_name || "attachment"}`}>
-                    <a className={styles.tableActionMenuItem} href={attachment.file_url} target="_blank" rel="noreferrer">
-                      View
-                    </a>
-                    <AdminConfirmDeleteAction disabled={isUploading} onConfirm={() => deleteAttachment(attachment)} />
-                    </AdminActionDropdown>
-                  </td>
-                </tr>
+
+          {/* File list */}
+          {form.attachments.length === 0 ? (
+            <p className={tw.muted + " text-center py-6"}>No attachments yet.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-[#edf4eb]">
+              {attachmentPagination.pageItems.map(attachment => (
+                <div key={attachment.id} className="flex items-center gap-3 py-3">
+                  <div className="w-[32px] h-[32px] rounded-[6px] bg-[#edf4eb] flex items-center justify-center flex-shrink-0 text-[#6b9e61] text-[11px] font-bold">
+                    {(attachment.file_type || "FILE").slice(0, 3).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-[#1a1a18] truncate">{attachment.file_name}</p>
+                    <p className={tw.muted}>
+                      {attachment.file_type || "File"} · {formatFileSize(attachment.file_size)} · {attachment.created_at ? new Date(attachment.created_at).toLocaleDateString("en-AU") : "-"}
+                    </p>
+                  </div>
+                  <a href={attachment.file_url} target="_blank" rel="noreferrer" className="text-[12px] font-medium text-[#6b9e61] hover:underline flex-shrink-0">
+                    View
+                  </a>
+                  <button type="button" onClick={() => deleteAttachment(attachment)} disabled={isUploading} className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50 flex-shrink-0">
+                    Delete
+                  </button>
+                </div>
               ))}
-              {!form.attachments.length ? <tr><td colSpan="5" className={styles.emptyCell}>No attachments yet.</td></tr> : null}
-            </tbody>
-          </table>
-          <AdminTablePagination
+            </div>
+          )}
+          <AdminPagination
             label="attachments"
             page={attachmentPagination.page}
             pageCount={attachmentPagination.pageCount}

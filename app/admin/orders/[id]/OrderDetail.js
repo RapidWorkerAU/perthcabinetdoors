@@ -10,10 +10,7 @@ import {
   ORDER_STATUSES,
 } from "../../../../lib/pcd-quote-utils";
 import styles from "../../admin-content.module.css";
-import workflowStyles from "../../_components/admin-workflow.module.css";
-import orderStyles from "./order-detail.module.css";
-import { AdminActionDropdown, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
-import { ADMIN_TABLE_PAGE_SIZE, AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
+import { AdminPagination, useAdminPagination } from "../../_components/AdminPagination";
 
 const sections = [
   { key: "overview", label: "Overview" },
@@ -329,12 +326,12 @@ export default function OrderDetail({ orderId }) {
   const quoteLines = useMemo(() => sortedQuoteLines(order), [order]);
   const payments = useMemo(() => sortedPayments(order), [order]);
   const activity = useMemo(() => sortedActivity(order), [order]);
-  const planningPagination = useAdminTablePagination(planningRows);
-  const supplierMadePagination = useAdminTablePagination(supplierMadeRows);
-  const madeInHousePagination = useAdminTablePagination(madeInHouseRows);
-  const cutListPagination = useAdminTablePagination(cutListRows);
-  const paymentPagination = useAdminTablePagination(payments);
-  const activityPagination = useAdminTablePagination(activity);
+  const planningPagination = useAdminPagination(planningRows);
+  const supplierMadePagination = useAdminPagination(supplierMadeRows);
+  const madeInHousePagination = useAdminPagination(madeInHouseRows);
+  const cutListPagination = useAdminPagination(cutListRows);
+  const paymentPagination = useAdminPagination(payments);
+  const activityPagination = useAdminPagination(activity);
   const paymentTotals = useMemo(() => {
     const orderTotal = Number(order?.total_inc_gst || 0);
     const pending = payments.reduce((total, payment) => total + (!payment.is_paid ? Number(payment.amount || 0) : 0), 0);
@@ -346,6 +343,32 @@ export default function OrderDetail({ orderId }) {
       remaining: Math.max(orderTotal - confirmed, 0),
     };
   }, [order?.total_inc_gst, payments]);
+
+  const tw = {
+    card: "bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden mb-3",
+    cardHeader: "px-4 py-3 border-b border-[#edf4eb] flex items-center justify-between",
+    cardTitle: "text-[13px] font-semibold text-[#1a1a18]",
+    cardBody: "px-4 py-4",
+    grid2: "grid grid-cols-2 gap-3",
+    fieldLabel: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
+    fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
+    primaryBtn: "h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors",
+    secondaryBtn: "h-[34px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
+    smBtn: "h-[26px] px-3 text-[11px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
+    dangerBtn: "h-[26px] px-3 text-[11px] font-medium rounded-[6px] border border-[#fca5a5] bg-white text-[#991b1b] hover:bg-[#fef2f2] disabled:opacity-50 transition-colors",
+    muted: "text-[11px] text-[#8b8a81]",
+    mono: "font-mono",
+    pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border",
+    tableWrap: "overflow-x-auto",
+    table: "w-full text-[12px] border-collapse",
+    th: "text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] px-3 py-[8px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
+    td: "px-3 py-[9px] border-b border-[#edf4eb] text-[#1a1a18] align-middle",
+    tdLast: "px-3 py-[9px] text-[#1a1a18] align-middle",
+    inlineInput: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
+    inlineSelect: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
+    totalRow: "flex justify-between items-center py-[5px] border-b border-[#edf4eb] text-[12px] last:border-0",
+    saveBar: "flex justify-end pt-3 border-t border-[#edf4eb] mt-3",
+  }
 
   async function loadOrder() {
     setIsLoading(true);
@@ -744,38 +767,81 @@ export default function OrderDetail({ orderId }) {
 
   function renderOverview() {
     return (
-      <div className={orderStyles.orderOverviewSection}>
-        <div className={`${styles.quoteInfoGrid} ${orderStyles.orderOverviewGrid}`}>
-          <label className={styles.fieldLabel}>
-            Job name
-            <input className={styles.fieldInput} value={order.name || ""} onChange={(event) => updateOrderField("name", event.target.value)} onBlur={(event) => saveOrder({ name: event.target.value })} />
-          </label>
-          <label className={styles.fieldLabel}>
-            Order status
-            <select className={styles.fieldInput} value={order.status || "active"} onChange={(event) => saveOrder({ status: event.target.value })} disabled={isSavingOrder}>
-              {ORDER_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}
-            </select>
-          </label>
-          <label className={styles.fieldLabel}>
-            Target completion
-            <input className={styles.fieldInput} type="date" value={order.target_completion_date || ""} onChange={(event) => updateOrderField("target_completion_date", event.target.value)} onBlur={(event) => saveOrder({ target_completion_date: event.target.value })} />
-          </label>
-          <label className={styles.fieldLabel}>
-            Customer
-            <input className={styles.fieldInput} value={order.customer_name || ""} onChange={(event) => updateOrderField("customer_name", event.target.value)} onBlur={(event) => saveOrder({ customer_name: event.target.value })} />
-          </label>
-          <label className={styles.fieldLabel}>
-            Email
-            <input className={styles.fieldInput} value={order.customer_email || ""} onChange={(event) => updateOrderField("customer_email", event.target.value)} onBlur={(event) => saveOrder({ customer_email: event.target.value })} />
-          </label>
-          <label className={styles.fieldLabel}>
-            Phone
-            <input className={styles.fieldInput} value={order.customer_phone || ""} onChange={(event) => updateOrderField("customer_phone", event.target.value)} onBlur={(event) => saveOrder({ customer_phone: event.target.value })} />
-          </label>
-          <label className={styles.fieldLabel}>
-            Site / delivery address
-            <input className={styles.fieldInput} value={order.site_address || ""} onChange={(event) => updateOrderField("site_address", event.target.value)} onBlur={(event) => saveOrder({ site_address: event.target.value })} />
-          </label>
+      <div>
+        <div className={tw.card}>
+          <div className={tw.cardHeader}>
+            <span className={tw.cardTitle}>Order details</span>
+            {order.status && (
+              <span className={`${tw.pill} ${
+                order.status === 'active' || order.status === 'complete'
+                  ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
+                  : order.status === 'on_hold'
+                  ? 'bg-[#fff8df] text-[#5c4200] border-[#f0d060]'
+                  : 'bg-[#fef2f2] text-[#991b1b] border-[#fca5a5]'
+              }`}>
+                {titleCaseStatus(order.status)}
+              </span>
+            )}
+          </div>
+          <div className={tw.cardBody}>
+            <div className={tw.grid2}>
+              <label className={tw.fieldLabel}>
+                Job name
+                <input
+                  className={tw.fieldInput}
+                  value={order.name || ""}
+                  onChange={e => updateOrderField("name", e.target.value)}
+                  onBlur={e => saveOrder({ name: e.target.value })}
+                />
+              </label>
+              <label className={tw.fieldLabel}>
+                Order status
+                <select
+                  className={tw.fieldInput}
+                  value={order.status || "active"}
+                  onChange={e => saveOrder({ status: e.target.value })}
+                  disabled={isSavingOrder}
+                >
+                  {ORDER_STATUSES.map(s => <option key={s} value={s}>{titleCaseStatus(s)}</option>)}
+                </select>
+              </label>
+              <label className={tw.fieldLabel}>
+                Target completion
+                <input
+                  className={tw.fieldInput}
+                  type="date"
+                  value={order.target_completion_date || ""}
+                  onChange={e => updateOrderField("target_completion_date", e.target.value)}
+                  onBlur={e => saveOrder({ target_completion_date: e.target.value })}
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className={tw.card}>
+          <div className={tw.cardHeader}><span className={tw.cardTitle}>Customer contact</span></div>
+          <div className={tw.cardBody}>
+            <div className={tw.grid2}>
+              <label className={tw.fieldLabel}>
+                Customer name
+                <input className={tw.fieldInput} value={order.customer_name || ""} onChange={e => updateOrderField("customer_name", e.target.value)} onBlur={e => saveOrder({ customer_name: e.target.value })} />
+              </label>
+              <label className={tw.fieldLabel}>
+                Email
+                <input className={tw.fieldInput} type="email" value={order.customer_email || ""} onChange={e => updateOrderField("customer_email", e.target.value)} onBlur={e => saveOrder({ customer_email: e.target.value })} />
+              </label>
+              <label className={tw.fieldLabel}>
+                Phone
+                <input className={tw.fieldInput} value={order.customer_phone || ""} onChange={e => updateOrderField("customer_phone", e.target.value)} onBlur={e => saveOrder({ customer_phone: e.target.value })} />
+              </label>
+              <label className={tw.fieldLabel}>
+                Site / delivery address
+                <input className={tw.fieldInput} value={order.site_address || ""} onChange={e => updateOrderField("site_address", e.target.value)} onBlur={e => saveOrder({ site_address: e.target.value })} />
+              </label>
+            </div>
+            <p className={tw.muted + " mt-3"}>Fields save automatically when you leave them.</p>
+          </div>
         </div>
       </div>
     );
@@ -785,77 +851,63 @@ export default function OrderDetail({ orderId }) {
     const quote = order.pcd_quote || order;
     const quoteCurrency = quote.currency || "AUD";
     return (
-      <div className={orderStyles.orderQuoteSummaryLayout}>
-        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
-          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderQuoteSummaryTable}`}>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Type</th>
-                <th>Material</th>
-                <th>Thickness</th>
-                <th>W x H (mm)</th>
-                <th>Colour</th>
-                <th>Qty</th>
-                <th>Edge profile</th>
-                <th>Profile type</th>
-                <th>Profile name</th>
-                <th>Drill holes?</th>
-                <th>Hinge supply?</th>
-                <th>Hinge qty</th>
-                <th className={orderStyles.orderFinancialCell}>Unit cost</th>
-                <th className={orderStyles.orderFinancialCell}>Markup %</th>
-                <th className={orderStyles.orderFinancialCell}>Unit + markup</th>
-                <th className={orderStyles.orderFinancialCell}>Total ex GST</th>
-              </tr>
-            </thead>
-            <tbody>
-              {quoteLines.map((line, index) => {
-                const showProfiles = line.material === "Thermolaminate";
-                const hingesApplicable = line.product_type === "Door";
-                return (
-                  <tr key={line.id || index}>
-                    <td><span className={styles.quoteItemRowNum}>{index + 1}</span></td>
-                    <td>{lineValue(quoteLineTitle(line))}</td>
-                    <td>{lineValue(line.material)}</td>
-                    <td>{lineValue(line.thickness)}</td>
-                    <td>{lineValue(quoteLineSize(line))}</td>
-                    <td>{lineValue(line.colour)}</td>
-                    <td>{line.qty || "1"}</td>
-                    <td>{lineValue(line.edge_mould)}</td>
-                    <td>{showProfiles ? lineValue(line.profile_type) : "N/A"}</td>
-                    <td>{showProfiles ? lineValue(line.profile) : "N/A"}</td>
-                    <td>{hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</td>
-                    <td>{hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</td>
-                    <td>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</td>
-                    <td className={orderStyles.orderFinancialCell}>{formatMoney(line.product_unit_cost_ex_gst || 0, quoteCurrency)}</td>
-                    <td className={orderStyles.orderFinancialCell}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</td>
-                    <td className={orderStyles.orderFinancialCell}>{formatMoney(line.unit_price_ex_gst || 0, quoteCurrency)}</td>
-                    <td className={orderStyles.orderFinancialCell}>{formatMoney(line.line_total_ex_gst || 0, quoteCurrency)}</td>
-                  </tr>
-                );
-              })}
-              {!quoteLines.length ? (
-                <tr>
-                  <td colSpan="17" className={styles.emptyCell}>No quote line items found for this order.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+      <div>
+        <div className="mb-3 px-3 py-2 bg-[#edf4eb] border border-[#a8c5a0] rounded-[6px] text-[12px] text-[#2d5e28]">
+          Read only — edit line items in the original quote.
         </div>
 
-        <div className={styles.adminTotalsRow}>
-          <section className={styles.adminTotalCard}>
-            <div className={styles.adminTotalCardHeader}>
-              <p className={styles.tableMeta}>Quote totals</p>
-              <h2 className={styles.adminTotalTitle}>Totals summary</h2>
-            </div>
-            <div className={styles.adminTotalRows}>
-              <div className={styles.adminTotalRow}><span>Subtotal ex GST</span><strong>{formatMoney(quote.subtotal_ex_gst, quoteCurrency)}</strong></div>
-              <div className={styles.adminTotalRow}><span>GST</span><strong>{formatMoney(quote.gst_amount, quoteCurrency)}</strong></div>
-              <div className={styles.adminTotalRow}><span>Total inc GST</span><strong>{formatMoney(quote.total_inc_gst, quoteCurrency)}</strong></div>
-            </div>
-          </section>
+        <div className={tw.card}>
+          <div className={tw.cardHeader}>
+            <span className={tw.cardTitle}>Line items</span>
+            <span className={tw.muted}>{quoteLines.length} {quoteLines.length === 1 ? "line" : "lines"}</span>
+          </div>
+          <div className={tw.tableWrap}>
+            <table className={tw.table}>
+              <thead>
+                <tr>
+                  {["#","Type","Material / colour","Size","Qty","Edge","Drill?","Supply?","Hinge qty","Unit cost","Markup","Unit price","Total ex GST"].map(h => (
+                    <th key={h} className={tw.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {quoteLines.map((line, index) => {
+                  const showProfiles = line.material === "Thermolaminate";
+                  const hingesApplicable = line.product_type === "Door";
+                  return (
+                    <tr key={line.id || index}>
+                      <td className={tw.td}>{index + 1}</td>
+                      <td className={tw.td}>{lineValue(quoteLineTitle(line))}</td>
+                      <td className={tw.td}>{[lineValue(line.material), lineValue(line.colour)].filter(v => v !== "-").join(" — ") || "—"}</td>
+                      <td className={tw.td + " whitespace-nowrap"}>{lineValue(quoteLineSize(line))}</td>
+                      <td className={tw.td}>{line.qty || 1}</td>
+                      <td className={tw.td}>{lineValue(line.edge_mould)}</td>
+                      <td className={tw.td}>{hingesApplicable ? (line.hinge_holes ? "Yes" : "No") : "N/A"}</td>
+                      <td className={tw.td}>{hingesApplicable ? (line.hinge_supply ? "Yes" : "No") : "N/A"}</td>
+                      <td className={tw.td}>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</td>
+                      <td className={tw.td + " " + tw.mono}>{formatMoney(line.product_unit_cost_ex_gst || 0, quoteCurrency)}</td>
+                      <td className={tw.td + " " + tw.mono}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</td>
+                      <td className={tw.td + " " + tw.mono}>{formatMoney(line.unit_price_ex_gst || 0, quoteCurrency)}</td>
+                      <td className={tw.tdLast + " " + tw.mono + " font-semibold"}>{formatMoney(line.line_total_ex_gst || 0, quoteCurrency)}</td>
+                    </tr>
+                  );
+                })}
+                {!quoteLines.length && (
+                  <tr><td colSpan={13} className="py-8 text-center text-[12px] text-[#8b8a81]">No quote line items found for this order.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bg-[#edf4eb] border border-[#a8c5a0] rounded-[8px] p-4 max-w-xs">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6b9e61] mb-2">Quote totals</p>
+          <div className={tw.totalRow}><span className="text-[#5a5a52]">Subtotal ex GST</span><strong className={tw.mono}>{formatMoney(quote.subtotal_ex_gst, quoteCurrency)}</strong></div>
+          <div className={tw.totalRow}><span className="text-[#5a5a52]">GST</span><strong className={tw.mono}>{formatMoney(quote.gst_amount, quoteCurrency)}</strong></div>
+          <div className="flex justify-between items-center pt-2 mt-1">
+            <span className="text-[14px] font-semibold text-[#2d5e28]">Total inc GST</span>
+            <strong className="text-[18px] font-semibold text-[#1a1a18] font-mono">{formatMoney(quote.total_inc_gst, quoteCurrency)}</strong>
+          </div>
         </div>
       </div>
     );
@@ -863,409 +915,701 @@ export default function OrderDetail({ orderId }) {
 
   function renderItems() {
     return (
-      <div className={styles.quoteItemsAdminWrap}>
-        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
-          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderPlanningTable}`}>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Cabinet</th>
-                <th>Panel / item</th>
-                <th>Qty</th>
-                <th>Size</th>
-                <th>Material / colour</th>
-                <th>Fulfilment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {planningPagination.pageItems.map((row) => {
-                const item = row.item;
-                const thermolaminated = isThermolaminatedItem(item);
-                const fulfilmentValue = row.plan.fulfilment_method;
-                return (
-                  <tr key={row.key}>
-                    <td>
-                      <div className={orderStyles.orderItemIdentity}>
-                        <strong>{row.source}</strong>
-                        <span>{itemMeta(item) || "No item details recorded"}</span>
-                      </div>
-                    </td>
-                    <td>{row.cabinet || "-"}</td>
-                    <td>{row.piece}</td>
-                    <td>{row.qty}</td>
-                    <td>{row.size}</td>
-                    <td>{row.material}</td>
-                    <td>
-                      <select value={fulfilmentValue} disabled={savingItemId === item.id || thermolaminated} onChange={(event) => updatePanelPlan(row, { fulfilment_method: event.target.value })}>
-                        <option value="in_house">Made in house</option>
-                        <option value="supplier_ready_made">Supplier ready made</option>
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!planningRows.length ? (
+      <div className={tw.card}>
+        <div className="hidden md:block">
+          <div className={tw.tableWrap}>
+            <table className={tw.table}>
+              <thead>
                 <tr>
-                  <td colSpan="7" className={styles.emptyCell}>No order items yet.</td>
+                  {["Item","Cabinet","Panel / piece","Qty","Size","Material","Fulfilment"].map(h => (
+                    <th key={h} className={tw.th}>{h}</th>
+                  ))}
                 </tr>
-              ) : null}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {planningPagination.pageItems.map(row => {
+                  const item = row.item;
+                  const thermolaminated = isThermolaminatedItem(item);
+                  return (
+                    <tr key={row.key}>
+                      <td className={tw.td}>
+                        <p className="text-[12px] font-semibold text-[#1a1a18]">{row.source}</p>
+                        <p className={tw.muted}>{itemMeta(item) || "No item details recorded"}</p>
+                      </td>
+                      <td className={tw.td + " whitespace-nowrap"}>{row.cabinet || "—"}</td>
+                      <td className={tw.td}>{row.piece}</td>
+                      <td className={tw.td}>{row.qty}</td>
+                      <td className={tw.td + " whitespace-nowrap"}>{row.size}</td>
+                      <td className={tw.td}>{row.material}</td>
+                      <td className={tw.tdLast}>
+                        <select
+                          className={tw.inlineSelect}
+                          style={{minWidth: "160px"}}
+                          value={row.plan.fulfilment_method}
+                          disabled={savingItemId === item.id || thermolaminated}
+                          onChange={e => updatePanelPlan(row, { fulfilment_method: e.target.value })}
+                        >
+                          <option value="in_house">Made in house</option>
+                          <option value="supplier_ready_made">Supplier ready made</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!planningRows.length && (
+                  <tr><td colSpan={7} className="py-8 text-center text-[12px] text-[#8b8a81]">No order items yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <AdminPagination
+            label="planning rows"
+            page={planningPagination.page}
+            pageCount={planningPagination.pageCount}
+            totalItems={planningPagination.totalItems}
+            onPageChange={planningPagination.setPage}
+          />
         </div>
-        <AdminTablePagination
-          label="planning rows"
-          page={planningPagination.page}
-          pageCount={planningPagination.pageCount}
-          totalItems={planningPagination.totalItems}
-          onPageChange={planningPagination.setPage}
-        />
+        <div className="md:hidden flex flex-col gap-3 p-3">
+          {planningPagination.pageItems.map(row => {
+            const item = row.item;
+            const thermolaminated = isThermolaminatedItem(item);
+            return (
+              <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+                <div className="mb-2">
+                  <p className="text-[13px] font-semibold text-[#1a1a18]">{row.source}</p>
+                  <p className="text-[11px] text-[#8b8a81]">{itemMeta(item) || "No item details recorded"}</p>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                  <div><dt className="text-[#8b8a81]">Cabinet</dt><dd className="text-[#1a1a18]">{row.cabinet || "—"}</dd></div>
+                  <div><dt className="text-[#8b8a81]">Panel / piece</dt><dd className="text-[#1a1a18]">{row.piece}</dd></div>
+                  <div><dt className="text-[#8b8a81]">Qty</dt><dd className="text-[#1a1a18]">{row.qty}</dd></div>
+                  <div><dt className="text-[#8b8a81]">Size</dt><dd className="text-[#1a1a18]">{row.size}</dd></div>
+                  <div className="col-span-2"><dt className="text-[#8b8a81]">Material</dt><dd className="text-[#1a1a18]">{row.material}</dd></div>
+                </dl>
+                <div className="pt-3 mt-3 border-t border-[#edf4eb]">
+                  <select
+                    className={tw.inlineSelect}
+                    value={row.plan.fulfilment_method}
+                    disabled={savingItemId === item.id || thermolaminated}
+                    onChange={e => updatePanelPlan(row, { fulfilment_method: e.target.value })}
+                  >
+                    <option value="in_house">Made in house</option>
+                    <option value="supplier_ready_made">Supplier ready made</option>
+                  </select>
+                </div>
+              </article>
+            );
+          })}
+          {!planningRows.length && (
+            <p className="py-8 text-center text-[12px] text-[#8b8a81]">No order items yet.</p>
+          )}
+          <AdminPagination label="planning rows" page={planningPagination.page} pageCount={planningPagination.pageCount} totalItems={planningPagination.totalItems} onPageChange={planningPagination.setPage} />
+        </div>
       </div>
     );
   }
 
   function renderSupplierMade() {
     return (
-      <div className={styles.quoteItemsAdminWrap}>
-        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
-          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderSupplierTable}`}>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Order status</th>
-                <th>Supplier</th>
-                <th>Supplier ref</th>
-                <th>Ordered</th>
-                <th>ETA</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {supplierMadePagination.pageItems.map((row) => (
-                <tr key={row.key}>
-                  <td>
-                    <div className={orderStyles.orderItemIdentity}>
-                      <strong>{row.source}</strong>
-                      <span>{row.piece} | {row.size} | {row.material}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <select value={row.plan.status} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { status: event.target.value })}>
-                      {ORDER_LINE_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}
-                    </select>
-                  </td>
-                  <td><input value={row.plan.supplier_name || defaultSupplierForItem(row.item)} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></td>
-                  <td><input value={row.plan.supplier_order_ref || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></td>
-                  <td><input type="date" value={row.plan.supplier_ordered_at || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></td>
-                  <td><input type="date" value={row.plan.supplier_eta || ""} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></td>
-                  <td>
-                    <AdminActionDropdown label={`Open actions for ${row.source}`}>
-                      <button type="button" className={styles.tableActionMenuItem} onClick={() => openPanelNotes(row)}>
+      <div className={tw.card}>
+        <div className="hidden md:block">
+          <div className={tw.tableWrap}>
+            <table className={tw.table}>
+              <thead>
+                <tr>
+                  {["Item","Order status","Supplier","Ref","Ordered","ETA","Notes"].map(h => (
+                    <th key={h} className={tw.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {supplierMadePagination.pageItems.map(row => (
+                  <tr key={row.key}>
+                    <td className={tw.td}>
+                      <p className="text-[12px] font-semibold text-[#1a1a18]">{row.source}</p>
+                      <p className={tw.muted}>{row.piece} · {row.size} · {row.material}</p>
+                    </td>
+                    <td className={tw.td}>
+                      <select
+                        className={tw.inlineSelect}
+                        style={{minWidth: "120px"}}
+                        value={row.plan.status}
+                        disabled={savingItemId === row.item.id}
+                        onChange={e => updatePanelPlan(row, { status: e.target.value })}
+                      >
+                        {ORDER_LINE_STATUSES.map(s => <option key={s} value={s}>{titleCaseStatus(s)}</option>)}
+                      </select>
+                    </td>
+                    <td className={tw.td}>
+                      <input
+                        className={tw.inlineInput}
+                        style={{minWidth: "100px"}}
+                        value={row.plan.supplier_name || defaultSupplierForItem(row.item)}
+                        disabled={savingItemId === row.item.id}
+                        onChange={e => updatePanelPlanLocal(row, { supplier_name: e.target.value })}
+                        onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })}
+                      />
+                    </td>
+                    <td className={tw.td}>
+                      <input
+                        className={tw.inlineInput}
+                        style={{minWidth: "100px"}}
+                        value={row.plan.supplier_order_ref || ""}
+                        disabled={savingItemId === row.item.id}
+                        onChange={e => updatePanelPlanLocal(row, { supplier_order_ref: e.target.value })}
+                        onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })}
+                      />
+                    </td>
+                    <td className={tw.td}>
+                      <input
+                        className={tw.inlineInput}
+                        type="date"
+                        style={{minWidth: "130px"}}
+                        value={row.plan.supplier_ordered_at || ""}
+                        disabled={savingItemId === row.item.id}
+                        onChange={e => updatePanelPlanLocal(row, { supplier_ordered_at: e.target.value })}
+                        onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })}
+                      />
+                    </td>
+                    <td className={tw.td}>
+                      <input
+                        className={tw.inlineInput}
+                        type="date"
+                        style={{minWidth: "130px"}}
+                        value={row.plan.supplier_eta || ""}
+                        disabled={savingItemId === row.item.id}
+                        onChange={e => updatePanelPlanLocal(row, { supplier_eta: e.target.value })}
+                        onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })}
+                      />
+                    </td>
+                    <td className={tw.tdLast}>
+                      <button
+                        type="button"
+                        className={tw.smBtn}
+                        onClick={() => openPanelNotes(row)}
+                      >
                         {row.plan.notes ? "Edit notes" : "Add notes"}
                       </button>
-                    </AdminActionDropdown>
-                  </td>
-                </tr>
-              ))}
-              {!supplierMadeRows.length ? (
-                <tr>
-                  <td colSpan="7" className={styles.emptyCell}>No supplier-made items yet.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+                    </td>
+                  </tr>
+                ))}
+                {!supplierMadeRows.length && (
+                  <tr><td colSpan={7} className="py-8 text-center text-[12px] text-[#8b8a81]">No supplier-made items yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <AdminPagination
+            label="supplier-made items"
+            page={supplierMadePagination.page}
+            pageCount={supplierMadePagination.pageCount}
+            totalItems={supplierMadePagination.totalItems}
+            onPageChange={supplierMadePagination.setPage}
+          />
         </div>
-        <AdminTablePagination
-          label="supplier-made items"
-          page={supplierMadePagination.page}
-          pageCount={supplierMadePagination.pageCount}
-          totalItems={supplierMadePagination.totalItems}
-          onPageChange={supplierMadePagination.setPage}
-        />
+        <div className="md:hidden flex flex-col gap-3 p-3">
+          {supplierMadePagination.pageItems.map(row => (
+            <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+              <div className="mb-3">
+                <p className="text-[13px] font-semibold text-[#1a1a18]">{row.source}</p>
+                <p className="text-[11px] text-[#8b8a81]">{row.piece} · {row.size} · {row.material}</p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className={tw.fieldLabel}>
+                  Order status
+                  <select className={tw.inlineSelect} value={row.plan.status} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlan(row, { status: e.target.value })}>
+                    {ORDER_LINE_STATUSES.map(s => <option key={s} value={s}>{titleCaseStatus(s)}</option>)}
+                  </select>
+                </label>
+                <label className={tw.fieldLabel}>
+                  Supplier
+                  <input className={tw.inlineInput} value={row.plan.supplier_name || defaultSupplierForItem(row.item)} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlanLocal(row, { supplier_name: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })} />
+                </label>
+                <label className={tw.fieldLabel}>
+                  Ref
+                  <input className={tw.inlineInput} value={row.plan.supplier_order_ref || ""} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlanLocal(row, { supplier_order_ref: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })} />
+                </label>
+                <label className={tw.fieldLabel}>
+                  Ordered date
+                  <input className={tw.inlineInput} type="date" value={row.plan.supplier_ordered_at || ""} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlanLocal(row, { supplier_ordered_at: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })} />
+                </label>
+                <label className={tw.fieldLabel}>
+                  ETA
+                  <input className={tw.inlineInput} type="date" value={row.plan.supplier_eta || ""} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlanLocal(row, { supplier_eta: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })} />
+                </label>
+              </div>
+              <div className="pt-3 mt-3 border-t border-[#edf4eb]">
+                <button type="button" className={tw.smBtn} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button>
+              </div>
+            </article>
+          ))}
+          {!supplierMadeRows.length && (
+            <p className="py-8 text-center text-[12px] text-[#8b8a81]">No supplier-made items yet.</p>
+          )}
+          <AdminPagination label="supplier-made items" page={supplierMadePagination.page} pageCount={supplierMadePagination.pageCount} totalItems={supplierMadePagination.totalItems} onPageChange={supplierMadePagination.setPage} />
+        </div>
       </div>
     );
   }
 
   function renderMadeInHouse() {
     return (
-      <div className={styles.quoteItemsAdminWrap}>
-        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
-          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderInHouseTable}`}>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Board required</th>
-                <th>Supplier</th>
-                <th>Supplier ref</th>
-                <th>Ordered</th>
-                <th>ETA</th>
-                <th>Production stage</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {madeInHousePagination.pageItems.map((row) => {
-                const boardRequired = !!row.plan.board_required;
-                return (
-                  <tr key={row.key}>
-                    <td>
-                      <div className={orderStyles.orderItemIdentity}>
-                        <strong>{row.source}</strong>
-                        <span>{row.piece} | {row.size} | {row.material}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <select value={boardRequired ? "yes" : "no"} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { board_required: event.target.value === "yes" })}>
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
-                      </select>
-                    </td>
-                    <td><input value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_name: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_name: event.target.value })} /></td>
-                    <td><input value={boardRequired ? row.plan.supplier_order_ref || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_order_ref: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_order_ref: event.target.value })} /></td>
-                    <td><input type="date" value={boardRequired ? row.plan.supplier_ordered_at || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_ordered_at: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_ordered_at: event.target.value })} /></td>
-                    <td><input type="date" value={boardRequired ? row.plan.supplier_eta || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={(event) => updatePanelPlanLocal(row, { supplier_eta: event.target.value })} onBlur={(event) => updatePanelPlan(row, { supplier_eta: event.target.value })} /></td>
-                    <td>
-                      <select value={row.plan.production_stage} disabled={savingItemId === row.item.id} onChange={(event) => updatePanelPlan(row, { production_stage: event.target.value })}>
-                        {ORDER_PRODUCTION_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
-                      </select>
-                    </td>
-                    <td>
-                      <AdminActionDropdown label={`Open actions for ${row.source}`}>
-                        <button type="button" className={styles.tableActionMenuItem} onClick={() => openPanelNotes(row)}>
+      <div className={tw.card}>
+        <div className="hidden md:block">
+          <div className={tw.tableWrap}>
+            <table className={tw.table}>
+              <thead>
+                <tr>
+                  {["Item","Board required","Supplier","Ref","Ordered","ETA","Production stage","Notes"].map(h => (
+                    <th key={h} className={tw.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {madeInHousePagination.pageItems.map(row => {
+                  const boardRequired = !!row.plan.board_required;
+                  return (
+                    <tr key={row.key}>
+                      <td className={tw.td}>
+                        <p className="text-[12px] font-semibold text-[#1a1a18]">{row.source}</p>
+                        <p className={tw.muted}>{row.piece} · {row.size} · {row.material}</p>
+                      </td>
+                      <td className={tw.td}>
+                        <select
+                          className={tw.inlineSelect}
+                          style={{minWidth: "70px"}}
+                          value={boardRequired ? "yes" : "no"}
+                          disabled={savingItemId === row.item.id}
+                          onChange={e => updatePanelPlan(row, { board_required: e.target.value === "yes" })}
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </td>
+                      <td className={tw.td}>
+                        <input
+                          className={tw.inlineInput}
+                          style={{minWidth: "90px"}}
+                          value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""}
+                          disabled={savingItemId === row.item.id || !boardRequired}
+                          onChange={e => updatePanelPlanLocal(row, { supplier_name: e.target.value })}
+                          onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })}
+                        />
+                      </td>
+                      <td className={tw.td}>
+                        <input
+                          className={tw.inlineInput}
+                          style={{minWidth: "90px"}}
+                          value={boardRequired ? row.plan.supplier_order_ref || "" : ""}
+                          disabled={savingItemId === row.item.id || !boardRequired}
+                          onChange={e => updatePanelPlanLocal(row, { supplier_order_ref: e.target.value })}
+                          onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })}
+                        />
+                      </td>
+                      <td className={tw.td}>
+                        <input
+                          className={tw.inlineInput}
+                          type="date"
+                          style={{minWidth: "130px"}}
+                          value={boardRequired ? row.plan.supplier_ordered_at || "" : ""}
+                          disabled={savingItemId === row.item.id || !boardRequired}
+                          onChange={e => updatePanelPlanLocal(row, { supplier_ordered_at: e.target.value })}
+                          onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })}
+                        />
+                      </td>
+                      <td className={tw.td}>
+                        <input
+                          className={tw.inlineInput}
+                          type="date"
+                          style={{minWidth: "130px"}}
+                          value={boardRequired ? row.plan.supplier_eta || "" : ""}
+                          disabled={savingItemId === row.item.id || !boardRequired}
+                          onChange={e => updatePanelPlanLocal(row, { supplier_eta: e.target.value })}
+                          onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })}
+                        />
+                      </td>
+                      <td className={tw.td}>
+                        <select
+                          className={tw.inlineSelect}
+                          style={{minWidth: "140px"}}
+                          value={row.plan.production_stage}
+                          disabled={savingItemId === row.item.id}
+                          onChange={e => updatePanelPlan(row, { production_stage: e.target.value })}
+                        >
+                          {ORDER_PRODUCTION_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                        </select>
+                      </td>
+                      <td className={tw.tdLast}>
+                        <button
+                          type="button"
+                          className={tw.smBtn}
+                          onClick={() => openPanelNotes(row)}
+                        >
                           {row.plan.notes ? "Edit notes" : "Add notes"}
                         </button>
-                      </AdminActionDropdown>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!madeInHouseRows.length ? (
-                <tr>
-                  <td colSpan="8" className={styles.emptyCell}>No made-in-house items yet.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!madeInHouseRows.length && (
+                  <tr><td colSpan={8} className="py-8 text-center text-[12px] text-[#8b8a81]">No made-in-house items yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <AdminPagination
+            label="made-in-house items"
+            page={madeInHousePagination.page}
+            pageCount={madeInHousePagination.pageCount}
+            totalItems={madeInHousePagination.totalItems}
+            onPageChange={madeInHousePagination.setPage}
+          />
         </div>
-        <AdminTablePagination
-          label="made-in-house items"
-          page={madeInHousePagination.page}
-          pageCount={madeInHousePagination.pageCount}
-          totalItems={madeInHousePagination.totalItems}
-          onPageChange={madeInHousePagination.setPage}
-        />
+        <div className="md:hidden flex flex-col gap-3 p-3">
+          {madeInHousePagination.pageItems.map(row => {
+            const boardRequired = !!row.plan.board_required;
+            return (
+              <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+                <div className="mb-3">
+                  <p className="text-[13px] font-semibold text-[#1a1a18]">{row.source}</p>
+                  <p className="text-[11px] text-[#8b8a81]">{row.piece} · {row.size} · {row.material}</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className={tw.fieldLabel}>
+                    Board required
+                    <select className={tw.inlineSelect} value={boardRequired ? "yes" : "no"} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlan(row, { board_required: e.target.value === "yes" })}>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                  <label className={tw.fieldLabel}>
+                    Supplier
+                    <input className={tw.inlineInput} value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={e => updatePanelPlanLocal(row, { supplier_name: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })} />
+                  </label>
+                  <label className={tw.fieldLabel}>
+                    Ref
+                    <input className={tw.inlineInput} value={boardRequired ? row.plan.supplier_order_ref || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={e => updatePanelPlanLocal(row, { supplier_order_ref: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })} />
+                  </label>
+                  <label className={tw.fieldLabel}>
+                    Ordered date
+                    <input className={tw.inlineInput} type="date" value={boardRequired ? row.plan.supplier_ordered_at || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={e => updatePanelPlanLocal(row, { supplier_ordered_at: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })} />
+                  </label>
+                  <label className={tw.fieldLabel}>
+                    ETA
+                    <input className={tw.inlineInput} type="date" value={boardRequired ? row.plan.supplier_eta || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={e => updatePanelPlanLocal(row, { supplier_eta: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })} />
+                  </label>
+                  <label className={tw.fieldLabel}>
+                    Production stage
+                    <select className={tw.inlineSelect} value={row.plan.production_stage} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlan(row, { production_stage: e.target.value })}>
+                      {ORDER_PRODUCTION_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="pt-3 mt-3 border-t border-[#edf4eb]">
+                  <button type="button" className={tw.smBtn} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button>
+                </div>
+              </article>
+            );
+          })}
+          {!madeInHouseRows.length && (
+            <p className="py-8 text-center text-[12px] text-[#8b8a81]">No made-in-house items yet.</p>
+          )}
+          <AdminPagination label="made-in-house items" page={madeInHousePagination.page} pageCount={madeInHousePagination.pageCount} totalItems={madeInHousePagination.totalItems} onPageChange={madeInHousePagination.setPage} />
+        </div>
       </div>
     );
   }
 
   function renderCutList() {
     const totalPieces = cutListRows.reduce((total, row) => total + Number(row.qty || 0), 0);
-
     return (
-      <div className={styles.quoteItemsAdminWrap}>
-        <div className={styles.quoteBuilderSummaryLine}>
-          <div className={styles.cutListSummaryText}>
-            <span><strong>{cutListRows.length}</strong> cut list rows</span>
-            <span><strong>{totalPieces}</strong> total pieces</span>
+      <div className={tw.card}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#edf4eb] bg-[#f5f8f4]">
+          <div className="flex items-center gap-4">
+            <div>
+              <span className="text-[18px] font-semibold text-[#1a1a18] font-mono">{cutListRows.length}</span>
+              <span className={tw.muted + " ml-1"}>rows</span>
+            </div>
+            <div>
+              <span className="text-[18px] font-semibold text-[#1a1a18] font-mono">{totalPieces}</span>
+              <span className={tw.muted + " ml-1"}>total pieces</span>
+            </div>
           </div>
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={tw.secondaryBtn}
             disabled={isGeneratingCutListPdf || !cutListRows.length}
             onClick={generateCutListPdf}
           >
             {isGeneratingCutListPdf ? "Generating PDF..." : "Generate cut list PDF"}
           </button>
         </div>
-        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
-          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderCutListTable}`}>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Source item</th>
-                <th>Cabinet size</th>
-                <th>Cut piece</th>
-                <th>Qty</th>
-                <th>Cut size</th>
-                <th>Thickness</th>
-                <th>Material / colour</th>
-                <th>Edging</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cutListPagination.pageItems.map((row, index) => (
-                <tr key={row.key}>
-                  <td><span className={styles.quoteItemRowNum}>{(cutListPagination.page - 1) * ADMIN_TABLE_PAGE_SIZE + index + 1}</span></td>
-                  <td>{row.source}</td>
-                  <td>{row.cabinet || "-"}</td>
-                  <td>{row.piece}</td>
-                  <td>{row.qty}</td>
-                  <td>{formatCutSize(row.width_mm, row.height_mm)}</td>
-                  <td>{row.thickness}</td>
-                  <td>{row.material}</td>
-                  <td>{row.edging}</td>
-                  <td>{row.notes || "-"}</td>
-                </tr>
-              ))}
-              {!cutListRows.length ? (
+        <div className="hidden md:block">
+          <div className={tw.tableWrap}>
+            <table className={tw.table}>
+              <thead>
                 <tr>
-                  <td colSpan="10" className={styles.emptyCell}>No made-in-house items are ready for the cut list yet. Set items to Made in house on Item Planning.</td>
+                  {["#","Source item","Cabinet size","Cut piece","Qty","Cut size","Thickness","Material","Edging","Notes"].map(h => (
+                    <th key={h} className={tw.th}>{h}</th>
+                  ))}
                 </tr>
-              ) : null}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {cutListPagination.pageItems.map((row, index) => (
+                  <tr key={row.key}>
+                    <td className={tw.td + " text-[#8b8a81] font-mono text-[11px]"}>
+                      {(cutListPagination.page - 1) * 20 + index + 1}
+                    </td>
+                    <td className={tw.td}>{row.source}</td>
+                    <td className={tw.td + " whitespace-nowrap text-[#5a5a52]"}>{row.cabinet || "—"}</td>
+                    <td className={tw.td + " font-medium"}>{row.piece}</td>
+                    <td className={tw.td}>{row.qty}</td>
+                    <td className={tw.td + " whitespace-nowrap font-mono text-[11px]"}>{row.size}</td>
+                    <td className={tw.td}>{row.thickness}</td>
+                    <td className={tw.td}>{row.material}</td>
+                    <td className={tw.td}>{row.edging}</td>
+                    <td className={tw.tdLast + " text-[#5a5a52] italic text-[11px]"}>{row.notes || "—"}</td>
+                  </tr>
+                ))}
+                {!cutListRows.length && (
+                  <tr><td colSpan={10} className="py-8 text-center text-[12px] text-[#8b8a81]">No cut list rows yet. Assign items to Made in house in Item Planning first.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <AdminPagination
+            label="cut list rows"
+            page={cutListPagination.page}
+            pageCount={cutListPagination.pageCount}
+            totalItems={cutListPagination.totalItems}
+            onPageChange={cutListPagination.setPage}
+          />
         </div>
-        <AdminTablePagination
-          label="cut list rows"
-          page={cutListPagination.page}
-          pageCount={cutListPagination.pageCount}
-          totalItems={cutListPagination.totalItems}
-          onPageChange={cutListPagination.setPage}
-        />
+        <div className="md:hidden flex flex-col gap-3 p-3">
+          {cutListPagination.pageItems.map(row => (
+            <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+              <div className="mb-2">
+                <p className="text-[13px] font-semibold text-[#1a1a18]">{row.piece}</p>
+                <p className="text-[11px] text-[#8b8a81]">{row.source}</p>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                <div><dt className="text-[#8b8a81]">Cabinet</dt><dd className="text-[#1a1a18]">{row.cabinet || "—"}</dd></div>
+                <div><dt className="text-[#8b8a81]">Qty</dt><dd className="text-[#1a1a18]">{row.qty}</dd></div>
+                <div><dt className="text-[#8b8a81]">Cut size</dt><dd className="text-[#1a1a18] font-mono text-[11px]">{row.size}</dd></div>
+                <div><dt className="text-[#8b8a81]">Thickness</dt><dd className="text-[#1a1a18]">{row.thickness}</dd></div>
+                <div className="col-span-2"><dt className="text-[#8b8a81]">Material</dt><dd className="text-[#1a1a18]">{row.material}</dd></div>
+                <div className="col-span-2"><dt className="text-[#8b8a81]">Edging</dt><dd className="text-[#1a1a18]">{row.edging}</dd></div>
+              </dl>
+              {row.notes && (
+                <div className="pt-3 mt-3 border-t border-[#edf4eb]">
+                  <p className="text-[11px] text-[#5a5a52] italic">{row.notes}</p>
+                </div>
+              )}
+            </article>
+          ))}
+          {!cutListRows.length && (
+            <p className="py-8 text-center text-[12px] text-[#8b8a81]">No cut list rows yet. Assign items to Made in house in Item Planning first.</p>
+          )}
+          <AdminPagination label="cut list rows" page={cutListPagination.page} pageCount={cutListPagination.pageCount} totalItems={cutListPagination.totalItems} onPageChange={cutListPagination.setPage} />
+        </div>
       </div>
     );
   }
 
   function renderPayments() {
-    const paymentCurrency = order?.pcd_quote?.currency || "AUD";
     return (
-      <div className={styles.paymentLedger}>
-        <div className={`${styles.paymentSummaryGrid} ${orderStyles.orderPaymentSummaryGrid}`}>
-          <div className={`${styles.paymentSummaryCard} ${orderStyles.orderPaymentSummaryCard}`}>
-            <span>Order Total</span>
-            <strong>{formatMoney(paymentTotals.orderTotal, paymentCurrency)}</strong>
-          </div>
-          <div className={`${styles.paymentSummaryCard} ${orderStyles.orderPaymentSummaryCard}`}>
-            <span>Pending Payment</span>
-            <strong>{formatMoney(paymentTotals.pending, paymentCurrency)}</strong>
-          </div>
-          <div className={`${styles.paymentSummaryCard} ${orderStyles.orderPaymentSummaryCard}`}>
-            <span>Confirmed Paid</span>
-            <strong>{formatMoney(paymentTotals.confirmed, paymentCurrency)}</strong>
-          </div>
-          <div className={`${styles.paymentSummaryCard} ${orderStyles.orderPaymentSummaryCard}`}>
-            <span>Left To Pay</span>
-            <strong>{formatMoney(paymentTotals.remaining, paymentCurrency)}</strong>
-          </div>
+      <div>
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          {[
+            ["Order total", formatMoney(paymentTotals.orderTotal, order.currency || "AUD"), ""],
+            ["Confirmed paid", formatMoney(paymentTotals.confirmed, order.currency || "AUD"), "text-[#2d5e28]"],
+            ["Pending", formatMoney(paymentTotals.pending, order.currency || "AUD"), "text-[#5c4200]"],
+            ["Remaining", formatMoney(paymentTotals.remaining, order.currency || "AUD"), ""],
+          ].map(([label, value, valueClass]) => (
+            <div key={label} className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-1">{label}</p>
+              <p className={`text-[18px] font-semibold font-mono text-[#1a1a18] ${valueClass}`}>{value}</p>
+            </div>
+          ))}
         </div>
 
-        <div className={styles.paymentToolbar}>
-          <div>
-            <p className={styles.tableMeta}>Payment lines</p>
-            <p className={styles.helperText}>Add deposits, progress payments, final payments, and manual paid records.</p>
+        <div className={tw.card}>
+          <div className={tw.cardHeader}>
+            <span className={tw.cardTitle}>Payment lines</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={tw.smBtn}
+                onClick={() => setPaymentModal({ payment_type: "deposit", amount: "", is_paid: false, paid_at: "", notes: "" })}
+              >
+                Add deposit
+              </button>
+              <button
+                type="button"
+                className="h-[26px] px-3 text-[11px] font-medium rounded-[6px] bg-[#1c2b1e] text-white hover:bg-[#2d3f2f] transition-colors"
+                onClick={() => setPaymentModal({ payment_type: "progress", amount: "", is_paid: false, paid_at: "", notes: "" })}
+              >
+                Add payment
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() =>
-              setPaymentModal({
-                payment_type: "progress",
-                amount: "",
-                is_paid: false,
-                paid_at: "",
-                notes: "",
-              })
-            }
-          >
-            Add payment line
-          </button>
-        </div>
-
-        <div className={`${styles.quoteItemsAdminWrap} ${workflowStyles.quoteItemsAdminWrap} ${styles.orderPaymentItems} ${orderStyles.orderPaymentItems}`}>
-          <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
-            <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderPaymentsTable}`}>
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Date paid</th>
-                  <th>Notes</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paymentPagination.pageItems.map((payment) => (
-                  <tr key={payment.id}>
-                    <td>
-                      <select
-                        value={payment.payment_type || "progress"}
-                        disabled={savingPaymentId === payment.id}
-                        onChange={(event) => updatePayment(payment, { payment_type: event.target.value })}
-                      >
-                        {paymentTypes.map((type) => (
-                          <option key={type.value} value={type.value}>{type.label}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={payment.amount ?? ""}
-                        disabled={savingPaymentId === payment.id}
-                        onChange={(event) => updatePaymentLocal(payment.id, { amount: event.target.value })}
-                        onBlur={(event) => updatePayment(payment, { amount: event.target.value || 0 })}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={payment.is_paid ? "paid" : "pending"}
-                        disabled={savingPaymentId === payment.id}
-                        onChange={(event) => updatePayment(payment, { is_paid: event.target.value === "paid" })}
-                      >
+          <div className="hidden md:block">
+            <div className={tw.tableWrap}>
+              <table className={tw.table}>
+                <thead>
+                  <tr>
+                    {["Type","Amount","Status","Date paid","Notes","Actions"].map(h => (
+                      <th key={h} className={tw.th}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentPagination.pageItems.map(payment => (
+                    <tr key={payment.id}>
+                      <td className={tw.td}>
+                        <select
+                          className={tw.inlineSelect}
+                          style={{minWidth: "120px"}}
+                          value={payment.payment_type || "progress"}
+                          disabled={savingPaymentId === payment.id}
+                          onChange={e => updatePayment(payment, { payment_type: e.target.value })}
+                        >
+                          {paymentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                        </select>
+                      </td>
+                      <td className={tw.td}>
+                        <input
+                          className={tw.inlineInput + " font-mono"}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          style={{minWidth: "100px"}}
+                          value={payment.amount ?? ""}
+                          disabled={savingPaymentId === payment.id}
+                          onChange={e => updatePaymentLocal(payment.id, { amount: e.target.value })}
+                          onBlur={e => updatePayment(payment, { amount: e.target.value || 0 })}
+                        />
+                      </td>
+                      <td className={tw.td}>
+                        <select
+                          className={tw.inlineSelect}
+                          style={{minWidth: "90px"}}
+                          value={payment.is_paid ? "paid" : "pending"}
+                          disabled={savingPaymentId === payment.id}
+                          onChange={e => updatePayment(payment, { is_paid: e.target.value === "paid" })}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="paid">Paid</option>
+                        </select>
+                      </td>
+                      <td className={tw.td}>
+                        <input
+                          className={tw.inlineInput}
+                          type="date"
+                          style={{minWidth: "130px"}}
+                          value={payment.paid_at || ""}
+                          disabled={savingPaymentId === payment.id || !payment.is_paid}
+                          onChange={e => updatePaymentLocal(payment.id, { paid_at: e.target.value })}
+                          onBlur={e => updatePayment(payment, { paid_at: e.target.value })}
+                        />
+                      </td>
+                      <td className={tw.td}>
+                        <input
+                          className={tw.inlineInput}
+                          style={{minWidth: "160px"}}
+                          value={payment.notes || ""}
+                          disabled={savingPaymentId === payment.id}
+                          onChange={e => updatePaymentLocal(payment.id, { notes: e.target.value })}
+                          onBlur={e => updatePayment(payment, { notes: e.target.value })}
+                        />
+                      </td>
+                      <td className={tw.tdLast}>
+                        <div className="flex items-center gap-2">
+                          {!payment.is_paid && Number(payment.amount || 0) > 0 && (
+                            <button
+                              type="button"
+                              className={tw.smBtn}
+                              disabled={savingPaymentId === payment.id}
+                              onClick={() => requestPayment(payment)}
+                            >
+                              Request
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className={tw.dangerBtn}
+                            disabled={savingPaymentId === payment.id}
+                            onClick={() => deletePayment(payment)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!payments.length && (
+                    <tr><td colSpan={6} className="py-8 text-center text-[12px] text-[#8b8a81]">No payment lines yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <AdminPagination
+              label="payments"
+              page={paymentPagination.page}
+              pageCount={paymentPagination.pageCount}
+              totalItems={paymentPagination.totalItems}
+              onPageChange={paymentPagination.setPage}
+            />
+          </div>
+          <div className="md:hidden flex flex-col gap-3 p-3">
+            {paymentPagination.pageItems.map(payment => (
+              <article key={payment.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+                <div className="mb-3">
+                  <select
+                    className={tw.inlineSelect}
+                    value={payment.payment_type || "progress"}
+                    disabled={savingPaymentId === payment.id}
+                    onChange={e => updatePayment(payment, { payment_type: e.target.value })}
+                  >
+                    {paymentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                  </select>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px] mb-3">
+                  <div>
+                    <dt className="text-[#8b8a81] mb-1">Amount</dt>
+                    <dd><input className={tw.inlineInput + " font-mono"} type="number" min="0" step="0.01" value={payment.amount ?? ""} disabled={savingPaymentId === payment.id} onChange={e => updatePaymentLocal(payment.id, { amount: e.target.value })} onBlur={e => updatePayment(payment, { amount: e.target.value || 0 })} /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-[#8b8a81] mb-1">Status</dt>
+                    <dd>
+                      <select className={tw.inlineSelect} value={payment.is_paid ? "paid" : "pending"} disabled={savingPaymentId === payment.id} onChange={e => updatePayment(payment, { is_paid: e.target.value === "paid" })}>
                         <option value="pending">Pending</option>
                         <option value="paid">Paid</option>
                       </select>
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        value={payment.paid_at || ""}
-                        disabled={savingPaymentId === payment.id || !payment.is_paid}
-                        onChange={(event) => updatePaymentLocal(payment.id, { paid_at: event.target.value })}
-                        onBlur={(event) => updatePayment(payment, { paid_at: event.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={payment.notes || ""}
-                        disabled={savingPaymentId === payment.id}
-                        onChange={(event) => updatePaymentLocal(payment.id, { notes: event.target.value })}
-                        onBlur={(event) => updatePayment(payment, { notes: event.target.value })}
-                      />
-                    </td>
-                    <td className={`${styles.actionsCol} ${orderStyles.orderPaymentsActionsCell}`}>
-                      <AdminActionDropdown disabled={savingPaymentId === payment.id} label="Open payment actions">
-                        <button
-                          type="button"
-                          className={styles.tableActionMenuItem}
-                          disabled={savingPaymentId === payment.id || payment.is_paid || Number(payment.amount || 0) <= 0}
-                          onClick={() => requestPayment(payment)}
-                        >
-                          {payment.is_paid ? "Paid" : "Request payment"}
-                        </button>
-                        <AdminConfirmDeleteAction disabled={savingPaymentId === payment.id} onConfirm={() => deletePayment(payment)} />
-                      </AdminActionDropdown>
-                    </td>
-                  </tr>
-                ))}
-                {!payments.length ? (
-                  <tr>
-                    <td colSpan="7" className={styles.emptyCell}>No payment lines yet.</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+                    </dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-[#8b8a81] mb-1">Date paid</dt>
+                    <dd><input className={tw.inlineInput} type="date" value={payment.paid_at || ""} disabled={savingPaymentId === payment.id || !payment.is_paid} onChange={e => updatePaymentLocal(payment.id, { paid_at: e.target.value })} onBlur={e => updatePayment(payment, { paid_at: e.target.value })} /></dd>
+                  </div>
+                </dl>
+                <div className="mb-3">
+                  <input className={tw.inlineInput} placeholder="Notes" value={payment.notes || ""} disabled={savingPaymentId === payment.id} onChange={e => updatePaymentLocal(payment.id, { notes: e.target.value })} onBlur={e => updatePayment(payment, { notes: e.target.value })} />
+                </div>
+                <div className="pt-3 mt-3 border-t border-[#edf4eb] flex flex-wrap gap-2">
+                  {!payment.is_paid && Number(payment.amount || 0) > 0 && (
+                    <button type="button" className={tw.smBtn} disabled={savingPaymentId === payment.id} onClick={() => requestPayment(payment)}>Request</button>
+                  )}
+                  <button type="button" className={tw.dangerBtn} disabled={savingPaymentId === payment.id} onClick={() => deletePayment(payment)}>Delete</button>
+                </div>
+              </article>
+            ))}
+            {!payments.length && (
+              <p className="py-8 text-center text-[12px] text-[#8b8a81]">No payment lines yet.</p>
+            )}
+            <AdminPagination label="payments" page={paymentPagination.page} pageCount={paymentPagination.pageCount} totalItems={paymentPagination.totalItems} onPageChange={paymentPagination.setPage} />
           </div>
-          <AdminTablePagination
-            label="payments"
-            page={paymentPagination.page}
-            pageCount={paymentPagination.pageCount}
-            totalItems={paymentPagination.totalItems}
-            onPageChange={paymentPagination.setPage}
-          />
         </div>
       </div>
     );
@@ -1416,70 +1760,118 @@ export default function OrderDetail({ orderId }) {
 
   function renderActivity() {
     return (
-      <section className={styles.activityLogShell}>
-        <div className={styles.activityLogHeader}>
-          <div>
-            <p className={styles.tableMeta}>Order history</p>
-            <h2>Activity log</h2>
-          </div>
-          <span className={styles.projectListMetric}>{activity.length} entries</span>
+      <div className={tw.card}>
+        <div className={tw.cardHeader}>
+          <span className={tw.cardTitle}>Order history</span>
+          <span className={tw.muted}>{activity.length} {activity.length === 1 ? "entry" : "entries"}</span>
         </div>
-
-        <div className={`${styles.productsTableWrap} ${orderStyles.orderTableWrap}`}>
-          <table className={`${styles.interactiveTable} ${orderStyles.orderDataTable} ${orderStyles.orderActivityTable}`}>
-            <thead>
-              <tr>
-                <th>Event</th>
-                <th>Details</th>
-                <th>Source</th>
-                <th>Activity</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activityPagination.pageItems.map((entry) => (
-                <tr key={entry.id}>
-                  <td>
-                    <div className={`${styles.activityLogEvent} ${orderStyles.orderActivityEvent}`}>
-                      <span className={styles.activityLogMarker} aria-hidden="true" />
-                      <strong>{entry.title}</strong>
+        <div className="hidden md:block">
+          <div className={tw.cardBody}>
+            {!activity.length && (
+              <p className="text-center text-[12px] text-[#8b8a81] py-6">No activity recorded for this order yet.</p>
+            )}
+            <div className="flex flex-col">
+              {activityPagination.pageItems.map((entry, index) => (
+                <div key={entry.id} className={`flex gap-3 py-3 ${index < activityPagination.pageItems.length - 1 ? "border-b border-[#edf4eb]" : ""}`}>
+                  <div className="flex flex-col items-center flex-shrink-0 mt-1">
+                    <div className={`w-[8px] h-[8px] rounded-full flex-shrink-0 ${
+                      entry.action_type === "create" ? "bg-[#6b9e61]" :
+                      entry.action_type === "update" ? "bg-[#6b9e61]/50" :
+                      "bg-[#dbd8cc]"
+                    }`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-[#1a1a18]">{entry.title}</p>
+                    {entry.description && (
+                      <p className="text-[11px] text-[#5a5a52] mt-[2px] leading-relaxed">
+                        {formatActivityDescription(entry.description)}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 mt-[4px] flex-wrap">
+                      <span className={`${tw.pill} ${
+                        entry.actor_type === "admin"
+                          ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
+                          : entry.actor_type === "customer"
+                          ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
+                          : "bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]"
+                      }`}>
+                        {activityActorLabel(entry.actor_type)}
+                      </span>
+                      <span className={`${tw.pill} bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]`}>
+                        {titleCaseStatus(entry.action_type)}
+                      </span>
+                      <time className={tw.muted} dateTime={entry.created_at || undefined}>
+                        {formatDateTime(entry.created_at)}
+                      </time>
                     </div>
-                  </td>
-                  <td>{formatActivityDescription(entry.description)}</td>
-                  <td><span className={styles.activityLogPill}>{activityActorLabel(entry.actor_type)}</span></td>
-                  <td><span className={styles.activityLogPill}>{titleCaseStatus(entry.action_type)}</span></td>
-                  <td>
-                    <time className={styles.activityLogDate} dateTime={entry.created_at || undefined}>
-                      {formatDateTime(entry.created_at)}
-                    </time>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-              {!activity.length ? (
-                <tr>
-                  <td colSpan="5" className={styles.emptyCell}>No activity has been recorded for this order yet.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+            </div>
+          </div>
+          <AdminPagination
+            label="activity entries"
+            page={activityPagination.page}
+            pageCount={activityPagination.pageCount}
+            totalItems={activityPagination.totalItems}
+            onPageChange={activityPagination.setPage}
+          />
         </div>
-        <AdminTablePagination
-          label="activity entries"
-          page={activityPagination.page}
-          pageCount={activityPagination.pageCount}
-          totalItems={activityPagination.totalItems}
-          onPageChange={activityPagination.setPage}
-        />
-      </section>
+        <div className="md:hidden flex flex-col gap-3 p-3">
+          {activityPagination.pageItems.map(entry => (
+            <article key={entry.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+              <div className="mb-2">
+                <p className="text-[13px] font-semibold text-[#1a1a18]">{entry.title}</p>
+                {entry.description && <p className="text-[11px] text-[#8b8a81] mt-[2px] leading-relaxed">{formatActivityDescription(entry.description)}</p>}
+              </div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                <div>
+                  <dt className="text-[#8b8a81]">Actor</dt>
+                  <dd>
+                    <span className={`${tw.pill} ${entry.actor_type === "admin" || entry.actor_type === "customer" ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]" : "bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]"}`}>
+                      {activityActorLabel(entry.actor_type)}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">Action</dt>
+                  <dd><span className={`${tw.pill} bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]`}>{titleCaseStatus(entry.action_type)}</span></dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-[#8b8a81]">Date</dt>
+                  <dd className={tw.muted}><time dateTime={entry.created_at || undefined}>{formatDateTime(entry.created_at)}</time></dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+          {!activity.length && (
+            <p className="py-8 text-center text-[12px] text-[#8b8a81]">No activity recorded for this order yet.</p>
+          )}
+          <AdminPagination label="activity entries" page={activityPagination.page} pageCount={activityPagination.pageCount} totalItems={activityPagination.totalItems} onPageChange={activityPagination.setPage} />
+        </div>
+      </div>
     );
   }
 
   function renderNotes() {
     return (
-      <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-        Internal notes
-        <textarea className={styles.textareaInput} rows={10} value={order.internal_notes || ""} onChange={(event) => updateOrderField("internal_notes", event.target.value)} onBlur={(event) => saveOrder({ internal_notes: event.target.value })} placeholder="Internal production, purchasing, install, or risk notes." />
-      </label>
+      <div className={tw.card}>
+        <div className={tw.cardHeader}><span className={tw.cardTitle}>Internal notes</span></div>
+        <div className={tw.cardBody}>
+          <label className={tw.fieldLabel}>
+            Production, purchasing, install, or risk notes (admin only)
+            <textarea
+              className="w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-y min-h-[120px] mt-1"
+              rows={6}
+              value={order.internal_notes || ""}
+              onChange={e => updateOrderField("internal_notes", e.target.value)}
+              onBlur={e => saveOrder({ internal_notes: e.target.value })}
+              placeholder="Internal production, purchasing, install, or risk notes…"
+            />
+          </label>
+          <p className={tw.muted + " mt-2"}>Saves automatically when you leave the field.</p>
+        </div>
+      </div>
     );
   }
 
