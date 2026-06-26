@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
@@ -2351,53 +2351,111 @@ export default function QuoteEditor({ quoteId }) {
 
   return (
     <>
-      <form className={`${styles.quoteBuilderFrame} ${workflowStyles.quoteBuilderFrame}`} onSubmit={saveQuote}>
-        <section className={`${styles.quoteBuilderPanel} ${workflowStyles.quoteBuilderPanel}`}>
-          <header className={`${styles.quoteBuilderPanelHeader} ${workflowStyles.quoteBuilderPanelHeader}`}>
-            <div className={`${styles.quoteBuilderHeaderTop} ${workflowStyles.quoteBuilderHeaderTop}`}>
-              <div>
-                <p className={styles.tableMeta}>Quote section</p>
-                <h1>{activeLabel}</h1>
-                <p className={styles.helperText}>
-                  <Link href="/admin/quotes">Quotes</Link> / {form.quote_number || "Draft quote"}
-                </p>
+      <div className="flex flex-col md:flex-row min-h-full">
+
+        {/* Desktop left sidebar nav */}
+        <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 border-r border-[#edf4eb] bg-white">
+          <div className="px-4 py-4 border-b border-[#edf4eb]">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">Quote</p>
+            <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{form.quote_number || "Draft quote"}</p>
+            <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Quotes</Link>
+          </div>
+          <div className="px-3 py-3 border-b border-[#edf4eb] flex flex-col gap-2">
+            {publicUrl ? (
+              <a href={publicUrl} target="_blank" rel="noreferrer" className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors">
+                View public quote
+              </a>
+            ) : null}
+            <button type="button" onClick={generateQuotePdf} disabled={isSaving || isLoading || isGeneratingQuotePdf} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+              {isGeneratingQuotePdf ? "Generating..." : "Generate PDF"}
+            </button>
+            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
+              Publish quote
+            </button>
+            <button type="button" onClick={saveQuote} disabled={isSaving || isLoading} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+          <nav className="p-3 flex flex-col gap-[2px] overflow-y-auto flex-1" aria-label="Quote builder sections">
+            {sections.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                onClick={() => setActiveSection(section.key)}
+                className={`flex items-center px-3 py-[9px] rounded-[6px] w-full text-left text-[13px] font-medium transition-colors ${
+                  activeSection === section.key
+                    ? "bg-[#edf4eb] text-[#1c2b1e]"
+                    : "text-[#5a5a52] hover:bg-[#f5f8f4]"
+                }`}
+              >
+                {section.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Mobile: section list or section content */}
+        <div className="md:hidden w-full">
+          {activeSection === "" ? (
+            <div className="flex flex-col">
+              <div className="px-4 py-4 bg-white border-b border-[#edf4eb]">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[1px]">Quote</p>
+                <p className="text-[15px] font-semibold text-[#1a1a18]">{form.quote_number || "Draft quote"}</p>
+                <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Quotes</Link>
               </div>
-              <div className={styles.editorTopActions}>
-                {publicUrl ? <a className={styles.secondaryButton} href={publicUrl} target="_blank" rel="noreferrer">View public quote</a> : null}
-                <button type="button" className={styles.secondaryButton} onClick={generateQuotePdf} disabled={isSaving || isLoading || isGeneratingQuotePdf}>
-                  {isGeneratingQuotePdf ? "Generating PDF..." : "Generate quote PDF"}
-                </button>
-                <button type="button" className={styles.primaryButton} onClick={publishQuote} disabled={isSaving || isLoading}>
-                  Publish quote
-                </button>
-                <button type="submit" className={styles.secondaryButton} disabled={isSaving || isLoading}>
-                  {isSaving ? "Saving..." : "Save"}
-                </button>
+              <div className="px-4 py-3 bg-white border-b border-[#edf4eb] flex flex-wrap gap-2">
+                {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] flex items-center">View public</a>}
+                <button type="button" onClick={publishQuote} disabled={isSaving || isLoading} className="h-[32px] px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white disabled:opacity-50">Publish</button>
+                <button type="button" onClick={saveQuote} disabled={isSaving || isLoading} className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] disabled:opacity-50">{isSaving ? "Saving..." : "Save"}</button>
               </div>
-            </div>
-            <nav className={`${styles.quoteBuilderTabs} ${workflowStyles.quoteBuilderTabs}`} aria-label="Quote builder sections">
               {sections.map((section) => (
                 <button
                   key={section.key}
                   type="button"
-                  className={`${styles.quoteBuilderTab} ${workflowStyles.quoteBuilderTab} ${
-                    activeSection === section.key ? `${styles.quoteBuilderTabActive} ${workflowStyles.quoteBuilderTabActive}` : ""
-                  }`}
                   onClick={() => setActiveSection(section.key)}
+                  className="w-full flex items-center justify-between px-4 py-[14px] text-[14px] font-medium text-[#1a1a18] bg-white border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors"
                 >
                   {section.label}
+                  <span className="text-[#c5cdd8]">›</span>
                 </button>
               ))}
-            </nav>
-          </header>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 px-4 py-3 bg-white border-b border-[#edf4eb] flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveSection("")}
+                  className="w-[32px] h-[32px] flex items-center justify-center text-[#5a5a52] hover:text-[#1a1a18] transition-colors -ml-1"
+                  aria-label="Back to sections"
+                >
+                  ←
+                </button>
+                <span className="text-[15px] font-semibold text-[#1a1a18]">
+                  {sections.find((s) => s.key === activeSection)?.label}
+                </span>
+              </div>
+              <div className="p-4 bg-[#f5f8f4]">
+                <form onSubmit={saveQuote}>
+                  {isLoading ? <div className="text-[13px] text-[#8b8a81] py-8 text-center">Loading quote...</div> : renderActiveSection()}
+                  {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order.</div> : null}
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
 
-          <div className={`${styles.quoteBuilderPanelBody} ${workflowStyles.quoteBuilderPanelBody}`}>
-            {isLoading ? <div className={styles.placeholderText}>Loading quote...</div> : renderActiveSection()}
-            {form.order_id ? <div className={styles.inlineNotice}>This quote has been approved and converted to an order.</div> : null}
-          </div>
-        </section>
-      </form>
-      {feedback && !isFeedbackInModal ? <div className={styles.feedbackToast} role="status">{feedback}</div> : null}
+        {/* Desktop right content panel */}
+        <main className="hidden md:flex flex-1 flex-col min-w-0 bg-[#f5f8f4]">
+          <form onSubmit={saveQuote} className="flex-1 p-6">
+            {isLoading ? <div className="text-[13px] text-[#8b8a81] py-8 text-center">Loading quote...</div> : renderActiveSection()}
+            {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order.</div> : null}
+          </form>
+        </main>
+
+      </div>
+
+      {feedback && !isFeedbackInModal ? <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-white border border-[#dbd8cc] rounded-[8px] shadow-lg text-[13px] font-medium text-[#1a1a18]" role="status">{feedback}</div> : null}
       {publishEmail && typeof document !== "undefined"
         ? createPortal(
             <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="publish-quote-email-title">

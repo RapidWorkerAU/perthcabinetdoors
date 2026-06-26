@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   DEFAULT_BUSINESS_DEFAULTS,
@@ -1498,46 +1498,91 @@ export default function OrderDetail({ orderId }) {
   const activeLabel = sections.find((section) => section.key === activeSection)?.label || "Overview";
 
   return (
-    <div className={styles.orderDetailPage}>
-      <div className={`${styles.quoteBuilderFrame} ${workflowStyles.quoteBuilderFrame} ${styles.orderDetailFrame}`}>
-        <section className={`${styles.quoteBuilderPanel} ${workflowStyles.quoteBuilderPanel} ${styles.orderDetailPanel}`}>
-          <header className={`${styles.quoteBuilderPanelHeader} ${workflowStyles.quoteBuilderPanelHeader} ${styles.orderDetailPanelHeader}`}>
-            <div className={`${styles.quoteBuilderHeaderTop} ${workflowStyles.quoteBuilderHeaderTop}`}>
-              <div>
-                <p className={styles.tableMeta}>Order section</p>
-                <h1>{activeLabel}</h1>
-                <p className={styles.helperText}>
-                  <Link href="/admin/orders">Orders</Link> / {order.order_number}
-                </p>
-              </div>
-            </div>
+    <>
+      <div className="flex flex-col md:flex-row min-h-full">
 
-            <nav className={`${styles.quoteBuilderTabs} ${workflowStyles.quoteBuilderTabs}`} aria-label="Order sections">
+        {/* Desktop left sidebar nav */}
+        <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 border-r border-[#edf4eb] bg-white">
+          <div className="px-4 py-4 border-b border-[#edf4eb]">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">Order</p>
+            <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{order.order_number || "Order"}</p>
+            <Link href="/admin/orders" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Orders</Link>
+          </div>
+          <nav className="p-3 flex flex-col gap-[2px] overflow-y-auto flex-1" aria-label="Order sections">
+            {sections.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                onClick={() => setActiveSection(section.key)}
+                className={`flex items-center px-3 py-[9px] rounded-[6px] w-full text-left text-[13px] font-medium transition-colors ${
+                  activeSection === section.key
+                    ? "bg-[#edf4eb] text-[#1c2b1e]"
+                    : "text-[#5a5a52] hover:bg-[#f5f8f4]"
+                }`}
+              >
+                {section.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Mobile section list or content */}
+        <div className="md:hidden w-full">
+          {activeSection === "" ? (
+            <div className="flex flex-col">
+              <div className="px-4 py-4 bg-white border-b border-[#edf4eb]">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[1px]">Order</p>
+                <p className="text-[15px] font-semibold text-[#1a1a18]">{order.order_number || "Order"}</p>
+                <Link href="/admin/orders" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Orders</Link>
+              </div>
               {sections.map((section) => (
                 <button
                   key={section.key}
                   type="button"
-                  className={`${styles.quoteBuilderTab} ${workflowStyles.quoteBuilderTab} ${
-                    activeSection === section.key ? `${styles.quoteBuilderTabActive} ${workflowStyles.quoteBuilderTabActive}` : ""
-                  }`}
                   onClick={() => setActiveSection(section.key)}
+                  className="w-full flex items-center justify-between px-4 py-[14px] text-[14px] font-medium text-[#1a1a18] bg-white border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors"
                 >
                   {section.label}
+                  <span className="text-[#c5cdd8]">›</span>
                 </button>
               ))}
-            </nav>
-          </header>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 px-4 py-3 bg-white border-b border-[#edf4eb] flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveSection("")}
+                  className="w-[32px] h-[32px] flex items-center justify-center text-[#5a5a52] hover:text-[#1a1a18] transition-colors -ml-1"
+                  aria-label="Back to sections"
+                >
+                  ←
+                </button>
+                <span className="text-[15px] font-semibold text-[#1a1a18]">
+                  {sections.find((s) => s.key === activeSection)?.label}
+                </span>
+              </div>
+              <div className="p-4 bg-[#f5f8f4]">
+                {renderSection()}
+                {feedback ? <p className="mt-3 text-[13px] text-[#991b1b]">{feedback}</p> : null}
+              </div>
+            </div>
+          )}
+        </div>
 
-          <div className={`${styles.quoteBuilderPanelBody} ${workflowStyles.quoteBuilderPanelBody} ${styles.orderDetailPanelBody}`}>
+        {/* Desktop right content panel */}
+        <main className="hidden md:flex flex-1 flex-col min-w-0 bg-[#f5f8f4]">
+          <div className="p-6">
             {renderSection()}
-            {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
+            {feedback ? <p className="mt-3 text-[13px] text-[#991b1b]">{feedback}</p> : null}
           </div>
-        </section>
-        {renderPaymentModal()}
-        {renderPanelNotesModal()}
+        </main>
+
       </div>
-      <div className={styles.orderDetailBottomSpacer} aria-hidden="true" />
-    </div>
+
+      {renderPaymentModal()}
+      {renderPanelNotesModal()}
+    </>
   );
 }
 
