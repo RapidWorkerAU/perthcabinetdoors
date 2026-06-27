@@ -2602,146 +2602,9 @@ export default function QuoteEditor({ quoteId }) {
             </div>
           )}
           {form.lines.map((savedLine, index) => {
-            const isEditable = editableLineIndex === index
-            const line = isEditable && editableLineDraft ? editableLineDraft : savedLine
-            const { calculated, materialOptions, thicknessOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, colourSrc, isBaseCabinet } = lineViewModel(line)
-            const isBaseCabinetEditable = isEditable && isBaseCabinet
             const isLineSaving = savingLineIndex === index
-            const canResetUnitCost = isEditable && !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
-
-            if (isEditable) {
-              return (
-                <div key={savedLine.id || index} className={`bg-[#fafffe] border border-[#6b9e61] rounded-[8px] p-3 shadow-[inset_3px_0_0_#6b9e61] ${isLineSaving ? 'opacity-60' : ''}`}>
-                  <p className="text-[11px] font-semibold text-[#2d5e28] mb-3">Editing line {index + 1}{isBaseCabinetEditable ? ' · Base cabinet' : ''}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <span className={fl}>Type</span>
-                      <QuoteTileCombobox
-                        placeholder="Select type"
-                        value={displayProductType(line.product_type)}
-                        options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
-                        onChange={option => updateProductLine(index, { product_type: option.value || option.name || option.label })}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <span className={fl}>Material</span>
-                      <QuoteTileCombobox
-                        placeholder="Select material"
-                        value={line.material}
-                        options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
-                        onChange={option => updateProductLine(index, { material: option.name || option.label })}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <span className={fl}>Thickness</span>
-                      <QuoteTileCombobox
-                        disabled={!line.material || isBaseCabinetEditable}
-                        placeholder={line.material ? 'Thickness' : 'N/A – select material'}
-                        value={line.thickness}
-                        options={thicknessOptions.map(t => ({ label: t, name: t, meta: 'Thickness' }))}
-                        onChange={option => updateProductLine(index, { thickness: option.name || option.label })}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <span className={fl}>Finish & Colour</span>
-                      <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
-                    </div>
-                    {!isBaseCabinetEditable ? (
-                      <>
-                        <div>
-                          <span className={fl}>W mm</span>
-                          <div className="flex items-center h-[28px] border border-[#a8c5a0] rounded-[4px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
-                            <span className="px-2 h-full flex items-center text-[11px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">W</span>
-                            <input type="text" inputMode="numeric" placeholder="mm" value={line.width_mm} onChange={e => updateLine(index, 'width_mm', e.target.value)} className="flex-1 h-full px-2 text-[12px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
-                          </div>
-                        </div>
-                        <div>
-                          <span className={fl}>H mm</span>
-                          <div className="flex items-center h-[28px] border border-[#a8c5a0] rounded-[4px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
-                            <span className="px-2 h-full flex items-center text-[11px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">H</span>
-                            <input type="text" inputMode="numeric" placeholder="mm" value={line.height_mm} onChange={e => updateLine(index, 'height_mm', e.target.value)} className="flex-1 h-full px-2 text-[12px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
-                          </div>
-                        </div>
-                        <div>
-                          <span className={fl}>Qty</span>
-                          <input type="text" inputMode="numeric" value={line.qty} onChange={e => updateLine(index, 'qty', e.target.value)} className="w-full h-[28px] text-[12px] font-mono text-center border border-[#a8c5a0] rounded-[4px] bg-white focus:outline-none focus:border-[#6b9e61]" />
-                        </div>
-                        <div>
-                          <span className={fl}>Unit cost</span>
-                          <div className="flex items-center h-[28px] border border-[#a8c5a0] rounded-[4px] overflow-hidden bg-white">
-                            <span className="px-2 h-full flex items-center text-[11px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 font-mono">$</span>
-                            <input type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={e => updateLine(index, 'product_unit_cost_ex_gst', e.target.value)} className="flex-1 h-full px-2 text-[12px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none" />
-                          </div>
-                          {canResetUnitCost && (
-                            <button type="button" onClick={() => resetLineUnitCost(index)} className="text-[10px] text-[#6b9e61] hover:underline mt-[2px] block">
-                              Reset to {formatMoney(line.calculated_unit_cost_ex_gst, form.currency)}
-                            </button>
-                          )}
-                        </div>
-                        <div>
-                          <span className={fl}>Markup %</span>
-                          <div className="flex items-center h-[28px] border border-[#a8c5a0] rounded-[4px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
-                            <input type="text" inputMode="decimal" value={line.markup_percent} onChange={e => updateLine(index, 'markup_percent', e.target.value)} className="flex-1 h-full px-2 text-[12px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
-                            <span className="px-2 h-full flex items-center text-[11px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
-                          </div>
-                        </div>
-                        <div>
-                          <span className={fl}>Total</span>
-                          <span className="text-[14px] font-semibold font-mono text-[#1a1a18] block pt-1">{formatMoney(calculated.line_total_ex_gst, form.currency)}</span>
-                        </div>
-                        {showEdges && (
-                          <div className="col-span-2">
-                            <span className={fl}>Edge profile</span>
-                            <QuoteImageCombobox
-                              placeholder="Edge profile"
-                              value={line.edge_mould}
-                              options={edgeOptions}
-                              onChange={option => updateLine(index, 'edge_mould', option.name || option.label)}
-                            />
-                          </div>
-                        )}
-                        {showProfiles && (
-                          <div className="col-span-2">
-                            <span className={fl}>Profile</span>
-                            <button
-                              type="button"
-                              onClick={() => openProfileModal(index)}
-                              className="inline-flex items-center gap-1 text-[11px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[4px] px-3 py-[5px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
-                            >
-                              <span>{hasProfileConfig(line) ? profileConfigLines(line)[0] : 'Configure profile'}</span>
-                              <span>↗</span>
-                            </button>
-                          </div>
-                        )}
-                        {hingesApplicable && (
-                          <div className="col-span-2">
-                            <span className={fl}>Hinges</span>
-                            <button
-                              type="button"
-                              onClick={() => openHingeModal(index)}
-                              className="inline-flex items-center gap-1 text-[11px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[4px] px-3 py-[5px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
-                            >
-                              <span>{hasHingeConfig(line) ? `Drill: ${line.hinge_holes ? 'yes' : 'no'} · Supply: ${line.hinge_supply ? 'yes' : 'no'}` : 'Configure hinges'}</span>
-                              <span>↗</span>
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="col-span-2 text-[11px] text-[#8b8a81] italic">Dimensions are configured in the Base Cabinets tab.</p>
-                    )}
-                  </div>
-                  <div className="flex gap-2 mt-3 pt-3 border-t border-[#edf4eb]">
-                    <button type="button" onClick={() => runLineAction(saveLine)} disabled={isLineSaving} className="flex-1 h-[34px] bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
-                      {isLineSaving ? 'Saving...' : 'Save line'}
-                    </button>
-                    <button type="button" onClick={() => { setEditableLineIndex(null); setEditableLineDraft(null) }} disabled={isLineSaving} className="h-[34px] px-4 text-[12px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )
-            }
+            const line = savedLine
+            const { calculated, colourSrc } = lineViewModel(line)
 
             return (
               <div key={savedLine.id || index} className={`bg-white border border-[#dbd8cc] rounded-[8px] p-3 ${isLineSaving ? 'opacity-60' : ''}`}>
@@ -3445,6 +3308,179 @@ export default function QuoteEditor({ quoteId }) {
           onSaved={handlePlannerSaved}
         />
       )}
+      {editableLineIndex !== null && typeof document !== 'undefined' ? createPortal(
+        (() => {
+          const idx = editableLineIndex
+          const line = editableLineDraft || form.lines[idx] || emptyLineWithDefaults(businessDefaults)
+          const { calculated, materialOptions, thicknessOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isBaseCabinet } = lineViewModel(line)
+          const isBaseCabinetEditable = isBaseCabinet
+          const isLineSaving = savingLineIndex === idx
+          const canResetUnitCost = !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
+          const mfl = 'text-[10px] font-semibold uppercase tracking-[0.05em] text-[#8b8a81] block mb-[3px]'
+          return (
+            <div className="fixed inset-0 z-[39] flex flex-col bg-white md:hidden" role="dialog" aria-modal="true" aria-label={`Edit line ${idx + 1}`}>
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 pt-[max(env(safe-area-inset-top),16px)] pb-3 flex-shrink-0 border-b border-[#eef0f4] bg-white">
+                <button
+                  type="button"
+                  onClick={() => { setEditableLineIndex(null); setEditableLineDraft(null) }}
+                  aria-label="Go back"
+                  className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0"
+                >←</button>
+                <span className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
+                  {isBaseCabinetEditable ? `Base cabinet ${idx + 1}` : `Edit line ${idx + 1}`}
+                </span>
+                <div className="w-[28px]" aria-hidden="true" />
+              </div>
+              {/* Scrollable form body */}
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <span className={mfl}>Type</span>
+                    <QuoteTileCombobox
+                      placeholder="Select type"
+                      value={displayProductType(line.product_type)}
+                      options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
+                      onChange={option => updateProductLine(idx, { product_type: option.value || option.name || option.label })}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <span className={mfl}>Material</span>
+                    <QuoteTileCombobox
+                      placeholder="Select material"
+                      value={line.material}
+                      options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
+                      onChange={option => updateProductLine(idx, { material: option.name || option.label })}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <span className={mfl}>Thickness</span>
+                    <QuoteTileCombobox
+                      disabled={!line.material || isBaseCabinetEditable}
+                      placeholder={line.material ? 'Thickness' : 'N/A – select material'}
+                      value={line.thickness}
+                      options={thicknessOptions.map(t => ({ label: t, name: t, meta: 'Thickness' }))}
+                      onChange={option => updateProductLine(idx, { thickness: option.name || option.label })}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <span className={mfl}>Finish &amp; Colour</span>
+                    <QuoteColourCombobox line={line} onChange={patch => updateProductLine(idx, patch)} />
+                  </div>
+                  {!isBaseCabinetEditable ? (
+                    <>
+                      <div>
+                        <span className={mfl}>W mm</span>
+                        <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                          <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">W</span>
+                          <input type="text" inputMode="numeric" placeholder="mm" value={line.width_mm}
+                            onChange={e => updateLine(idx, 'width_mm', e.target.value)}
+                            className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
+                        </div>
+                      </div>
+                      <div>
+                        <span className={mfl}>H mm</span>
+                        <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                          <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">H</span>
+                          <input type="text" inputMode="numeric" placeholder="mm" value={line.height_mm}
+                            onChange={e => updateLine(idx, 'height_mm', e.target.value)}
+                            className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
+                        </div>
+                      </div>
+                      <div>
+                        <span className={mfl}>Qty</span>
+                        <input type="text" inputMode="numeric" value={line.qty}
+                          onChange={e => updateLine(idx, 'qty', e.target.value)}
+                          className="w-full h-[44px] text-[14px] font-mono text-center border border-[#a8c5a0] rounded-[6px] bg-white focus:outline-none focus:border-[#6b9e61]" />
+                      </div>
+                      <div>
+                        <span className={mfl}>Unit cost</span>
+                        <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white">
+                          <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 font-mono">$</span>
+                          <input type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst}
+                            onChange={e => updateLine(idx, 'product_unit_cost_ex_gst', e.target.value)}
+                            className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none" />
+                        </div>
+                        {canResetUnitCost && (
+                          <button type="button" onClick={() => resetLineUnitCost(idx)} className="text-[11px] text-[#6b9e61] hover:underline mt-[3px] block">
+                            Reset to {formatMoney(line.calculated_unit_cost_ex_gst, form.currency)}
+                          </button>
+                        )}
+                      </div>
+                      <div>
+                        <span className={mfl}>Markup %</span>
+                        <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                          <input type="text" inputMode="decimal" value={line.markup_percent}
+                            onChange={e => updateLine(idx, 'markup_percent', e.target.value)}
+                            className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
+                          <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
+                        </div>
+                      </div>
+                      <div>
+                        <span className={mfl}>Line total</span>
+                        <div className="h-[44px] flex items-center px-3 bg-[#f5f8f4] rounded-[6px] border border-[#dbd8cc]">
+                          <span className="text-[16px] font-semibold font-mono text-[#1a1a18]">{formatMoney(calculated.line_total_ex_gst, form.currency)}</span>
+                        </div>
+                      </div>
+                      {showEdges && (
+                        <div className="col-span-2">
+                          <span className={mfl}>Edge profile</span>
+                          <QuoteImageCombobox
+                            placeholder="Edge profile"
+                            value={line.edge_mould}
+                            options={edgeOptions}
+                            onChange={option => updateLine(idx, 'edge_mould', option.name || option.label)}
+                          />
+                        </div>
+                      )}
+                      {showProfiles && (
+                        <div className="col-span-2">
+                          <span className={mfl}>Profile</span>
+                          <button type="button" onClick={() => openProfileModal(idx)}
+                            className="inline-flex items-center gap-2 text-[13px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[6px] px-3 h-[44px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
+                          >
+                            <span>{hasProfileConfig(line) ? profileConfigLines(line)[0] : 'Configure profile'}</span>
+                            <span>↗</span>
+                          </button>
+                        </div>
+                      )}
+                      {hingesApplicable && (
+                        <div className="col-span-2">
+                          <span className={mfl}>Hinges</span>
+                          <button type="button" onClick={() => openHingeModal(idx)}
+                            className="inline-flex items-center gap-2 text-[13px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[6px] px-3 h-[44px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
+                          >
+                            <span>{hasHingeConfig(line) ? `Drill: ${line.hinge_holes ? 'yes' : 'no'} · Supply: ${line.hinge_supply ? 'yes' : 'no'}` : 'Configure hinges'}</span>
+                            <span>↗</span>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="col-span-2 text-[13px] text-[#8b8a81] italic py-2">Dimensions are configured in the Base Cabinets tab.</p>
+                  )}
+                </div>
+              </div>
+              {/* Footer */}
+              <div className="flex flex-col gap-2 px-4 pt-3 border-t border-[#eef0f4] pb-[max(env(safe-area-inset-bottom),20px)] flex-shrink-0 bg-white">
+                <button type="button" onClick={() => runLineAction(saveLine)} disabled={isLineSaving}
+                  className="h-[44px] w-full bg-[#2d9692] !text-white text-[14px] font-semibold rounded-[8px] hover:bg-[#268785] disabled:opacity-50 transition-colors"
+                >
+                  {isLineSaving ? 'Saving...' : 'Save line'}
+                </button>
+                <button type="button"
+                  onClick={() => { setEditableLineIndex(null); setEditableLineDraft(null) }}
+                  disabled={isLineSaving}
+                  className="h-[44px] w-full bg-[#eef0f4] border border-[#dde1e9] text-[14px] font-medium text-[#3d4d5f] rounded-[8px] hover:bg-[#dde1e9] disabled:opacity-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )
+        })(),
+        document.body
+      ) : null}
       {activeCabinetLine && isBaseCabinetLine(activeCabinetLine) && typeof document !== "undefined"
         ? createPortal(
             <div
