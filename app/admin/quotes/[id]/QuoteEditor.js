@@ -374,9 +374,9 @@ const tw = {
   fieldLabel: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
   fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
   textarea: "w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-none",
-  grid2: "grid grid-cols-2 gap-3",
-  grid3: "grid grid-cols-3 gap-3",
-  wide: "col-span-2",
+  grid2: "grid grid-cols-1 md:grid-cols-2 gap-3",
+  grid3: "grid grid-cols-2 md:grid-cols-3 gap-3",
+  wide: "md:col-span-2",
   primaryBtn: "h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors",
   secondaryBtn: "h-[34px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
   smBtn: "h-[28px] px-3 text-[12px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
@@ -388,7 +388,7 @@ const tw = {
   saveBar: "flex justify-end pt-3 border-t border-[#edf4eb] mt-3",
 };
 
-const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, placeholder, value, options, onChange }) {
+const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, placeholder, value, options, onChange, disablePortal = false }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value || "");
   const [menuStyle, setMenuStyle] = useState({});
@@ -447,6 +447,7 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
         bottom: openAbove ? `${window.innerHeight - rect.top + 4}px` : "auto",
         left: `${left}px`,
         maxHeight: `${maxHeight}px`,
+        position: "fixed",
         top: openAbove ? "auto" : `${rect.bottom + 4}px`,
         width: `${width}px`,
       });
@@ -504,31 +505,33 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
         }}
       />
       {open && !disabled && typeof document !== "undefined"
-        ? createPortal(
-            <div className={styles.quoteColourMenu} ref={menuRef} style={menuStyle}>
-              {visibleOptions.length ? (
-                visibleOptions.map((option) => (
-                  <button
-                    className={styles.quoteColourOption}
-                    key={`${option.label}-${option.src}`}
-                    type="button"
-                    onMouseDown={() => choose(option)}
-                  >
-                    <span className={styles.quoteOptionThumb}>
-                      {option.src ? <img alt="" src={option.src} /> : <span>{String(option.name || option.label || "?").slice(0, 2).toUpperCase()}</span>}
-                    </span>
-                    <span>
-                      <strong>{option.name || option.label}</strong>
-                      <small>{optionMetaLabel(option)}</small>
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div className={styles.quoteColourEmpty}>No match</div>
-              )}
-            </div>,
-            document.body
-          )
+        ? (() => {
+            const menu = (
+              <div className={styles.quoteColourMenu} ref={menuRef} style={menuStyle}>
+                {visibleOptions.length ? (
+                  visibleOptions.map((option) => (
+                    <button
+                      className={styles.quoteColourOption}
+                      key={`${option.label}-${option.src}`}
+                      type="button"
+                      onMouseDown={() => choose(option)}
+                    >
+                      <span className={styles.quoteOptionThumb}>
+                        {option.src ? <img alt="" src={option.src} /> : <span>{String(option.name || option.label || "?").slice(0, 2).toUpperCase()}</span>}
+                      </span>
+                      <span>
+                        <strong>{option.name || option.label}</strong>
+                        <small>{optionMetaLabel(option)}</small>
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className={styles.quoteColourEmpty}>No match</div>
+                )}
+              </div>
+            );
+            return disablePortal ? menu : createPortal(menu, document.body);
+          })()
         : null}
     </div>
   );
@@ -1873,51 +1876,93 @@ export default function QuoteEditor({ quoteId }) {
           </button>
         </div>
         {cabinets.length ? (
-          <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-[13px]">
-                <thead>
-                  <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                    {['#', 'Cabinet', 'Material', 'Colour', 'Qty', 'Configuration', 'Total ex GST', 'Actions'].map(h => (
-                      <th key={h} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {cabinets.map(({ line, index }) => {
-                    const config = line.cabinet_config;
-                    const isConfigured = Boolean(config?.calculated_cut_list?.length);
-                    return (
-                      <tr key={line.id || index} className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0">
-                        <td className="px-4 py-[11px] text-[#8b8a81] text-[12px] font-medium">{index + 1}</td>
-                        <td className="px-4 py-[11px]">
-                          <span className="text-[13px] font-medium text-[#1a1a18] block">{config?.label || line.product_name || "Base cabinet"}</span>
-                          <span className="text-[11px] text-[#8b8a81] block mt-[1px]">{line.description || "Configure cabinet dimensions, cut list, pricing and schematic."}</span>
-                        </td>
-                        <td className="px-4 py-[11px] text-[#1a1a18]">{lineValue(line.material)}</td>
-                        <td className="px-4 py-[11px] text-[#1a1a18]">{lineValue(line.colour)}</td>
-                        <td className="px-4 py-[11px] text-[#1a1a18]">{line.qty || 1}</td>
-                        <td className="px-4 py-[11px]">
-                          <span className={`inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border ${isConfigured ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]' : 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'}`}>
-                            {isConfigured ? "Configured" : "Needs configuration"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-[11px] text-[#1a1a18] font-mono">{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
-                        <td className="px-4 py-[11px]">
-                          <AdminActionDropdown label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
-                            <button type="button" className={styles.tableActionMenuItem} onClick={() => setActiveCabinetLineIndex(index)}>
-                              Configure
-                            </button>
-                            <AdminConfirmDeleteAction onConfirm={() => removeLine(index)} />
-                          </AdminActionDropdown>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <>
+            {/* Desktop table */}
+            <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                      {['#', 'Cabinet', 'Material', 'Colour', 'Qty', 'Configuration', 'Total ex GST', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cabinets.map(({ line, index }) => {
+                      const config = line.cabinet_config;
+                      const isConfigured = Boolean(config?.calculated_cut_list?.length);
+                      return (
+                        <tr key={line.id || index} className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0">
+                          <td className="px-4 py-[11px] text-[#8b8a81] text-[12px] font-medium">{index + 1}</td>
+                          <td className="px-4 py-[11px]">
+                            <span className="text-[13px] font-medium text-[#1a1a18] block">{config?.label || line.product_name || "Base cabinet"}</span>
+                            <span className="text-[11px] text-[#8b8a81] block mt-[1px]">{line.description || "Configure cabinet dimensions, cut list, pricing and schematic."}</span>
+                          </td>
+                          <td className="px-4 py-[11px] text-[#1a1a18]">{lineValue(line.material)}</td>
+                          <td className="px-4 py-[11px] text-[#1a1a18]">{lineValue(line.colour)}</td>
+                          <td className="px-4 py-[11px] text-[#1a1a18]">{line.qty || 1}</td>
+                          <td className="px-4 py-[11px]">
+                            <span className={`inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border ${isConfigured ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]' : 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'}`}>
+                              {isConfigured ? "Configured" : "Needs configuration"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-[11px] text-[#1a1a18] font-mono">{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
+                          <td className="px-4 py-[11px]">
+                            <AdminActionDropdown label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
+                              <button type="button" className={styles.tableActionMenuItem} onClick={() => setActiveCabinetLineIndex(index)}>
+                                Configure
+                              </button>
+                              <AdminConfirmDeleteAction onConfirm={() => removeLine(index)} />
+                            </AdminActionDropdown>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+
+            {/* Mobile cards */}
+            <div className="md:hidden flex flex-col gap-2">
+              {cabinets.map(({ line, index }) => {
+                const config = line.cabinet_config;
+                const isConfigured = Boolean(config?.calculated_cut_list?.length);
+                return (
+                  <div key={line.id || index} className="bg-white border border-[#dbd8cc] rounded-[8px] p-3">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="min-w-0">
+                        <span className="text-[13px] font-semibold text-[#1a1a18] block">{config?.label || line.product_name || "Base cabinet"}</span>
+                        <span className="text-[11px] text-[#8b8a81] block mt-[1px]">{line.description || "Configure cabinet dimensions, cut list, pricing and schematic."}</span>
+                      </div>
+                      <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[18px] h-[18px] rounded-[3px] flex items-center justify-center flex-shrink-0">{index + 1}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[#5a5a52] mb-3">
+                      {line.material && <span>{line.material}</span>}
+                      {line.colour && <span>{line.colour}</span>}
+                      {line.qty && line.qty !== 1 && <span>Qty {line.qty}</span>}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border ${isConfigured ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]' : 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'}`}>
+                        {isConfigured ? "Configured" : "Needs configuration"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-semibold font-mono text-[#1a1a18]">{formatMoney(line.line_total_ex_gst || 0, form.currency)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveCabinetLineIndex(index)}
+                          className="h-[28px] px-3 text-[12px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors"
+                        >
+                          Configure
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <div className={styles.emptyState}>
             <p className={styles.emptyStateTitle}>No base cabinets yet</p>
@@ -1954,7 +1999,7 @@ export default function QuoteEditor({ quoteId }) {
           </button>
         </div>
 
-        <div className={`bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden ${quoteStyles.quoteItemsTable}`}>
+        <div className={`hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden ${quoteStyles.quoteItemsTable}`}>
           <div className="overflow-x-auto" ref={quoteItemsScrollerRef}>
             <table className="w-full border-collapse" style={{minWidth: `${QUOTE_COL_TOTAL}px`, tableLayout: 'fixed'}}>
               <colgroup>
@@ -2508,6 +2553,214 @@ export default function QuoteEditor({ quoteId }) {
             </table>
           </div>
         </div>
+
+        {/* Mobile card list */}
+        <div className="md:hidden flex flex-col gap-2">
+          {form.lines.length === 0 && (
+            <div className="bg-white border border-[#dbd8cc] rounded-[8px] py-10 text-center">
+              <p className="text-[13px] font-medium text-[#1a1a18] mb-1">No line items yet</p>
+              <p className="text-[11px] text-[#8b8a81] mb-3">Add your first line to start building this quote.</p>
+              <button type="button" onClick={addLine} className="h-[32px] px-4 bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors">
+                + Add line item
+              </button>
+            </div>
+          )}
+          {form.lines.map((savedLine, index) => {
+            const isEditable = editableLineIndex === index
+            const line = isEditable && editableLineDraft ? editableLineDraft : savedLine
+            const { calculated, materialOptions, thicknessOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, colourSrc, isBaseCabinet } = lineViewModel(line)
+            const isBaseCabinetEditable = isEditable && isBaseCabinet
+            const isLineSaving = savingLineIndex === index
+            const canResetUnitCost = isEditable && !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
+
+            if (isEditable) {
+              return (
+                <div key={savedLine.id || index} className={`bg-[#fafffe] border border-[#6b9e61] rounded-[8px] p-3 shadow-[inset_3px_0_0_#6b9e61] ${isLineSaving ? 'opacity-60' : ''}`}>
+                  <p className="text-[11px] font-semibold text-[#2d5e28] mb-3">Editing line {index + 1}{isBaseCabinetEditable ? ' · Base cabinet' : ''}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="col-span-2">
+                      <span className={fl}>Type</span>
+                      <QuoteTileCombobox
+                        placeholder="Select type"
+                        value={displayProductType(line.product_type)}
+                        options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
+                        onChange={option => updateProductLine(index, { product_type: option.value || option.name || option.label })}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <span className={fl}>Material</span>
+                      <QuoteTileCombobox
+                        placeholder="Select material"
+                        value={line.material}
+                        options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
+                        onChange={option => updateProductLine(index, { material: option.name || option.label })}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <span className={fl}>Thickness</span>
+                      <QuoteTileCombobox
+                        disabled={!line.material || isBaseCabinetEditable}
+                        placeholder={line.material ? 'Thickness' : 'N/A – select material'}
+                        value={line.thickness}
+                        options={thicknessOptions.map(t => ({ label: t, name: t, meta: 'Thickness' }))}
+                        onChange={option => updateProductLine(index, { thickness: option.name || option.label })}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <span className={fl}>Finish & Colour</span>
+                      <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
+                    </div>
+                    {!isBaseCabinetEditable ? (
+                      <>
+                        <div>
+                          <span className={fl}>W mm</span>
+                          <div className="flex items-center h-[28px] border border-[#a8c5a0] rounded-[4px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                            <span className="px-2 h-full flex items-center text-[11px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">W</span>
+                            <input type="text" inputMode="numeric" placeholder="mm" value={line.width_mm} onChange={e => updateLine(index, 'width_mm', e.target.value)} className="flex-1 h-full px-2 text-[12px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
+                          </div>
+                        </div>
+                        <div>
+                          <span className={fl}>H mm</span>
+                          <div className="flex items-center h-[28px] border border-[#a8c5a0] rounded-[4px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                            <span className="px-2 h-full flex items-center text-[11px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">H</span>
+                            <input type="text" inputMode="numeric" placeholder="mm" value={line.height_mm} onChange={e => updateLine(index, 'height_mm', e.target.value)} className="flex-1 h-full px-2 text-[12px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
+                          </div>
+                        </div>
+                        <div>
+                          <span className={fl}>Qty</span>
+                          <input type="text" inputMode="numeric" value={line.qty} onChange={e => updateLine(index, 'qty', e.target.value)} className="w-full h-[28px] text-[12px] font-mono text-center border border-[#a8c5a0] rounded-[4px] bg-white focus:outline-none focus:border-[#6b9e61]" />
+                        </div>
+                        <div>
+                          <span className={fl}>Unit cost</span>
+                          <div className="flex items-center h-[28px] border border-[#a8c5a0] rounded-[4px] overflow-hidden bg-white">
+                            <span className="px-2 h-full flex items-center text-[11px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 font-mono">$</span>
+                            <input type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst} onChange={e => updateLine(index, 'product_unit_cost_ex_gst', e.target.value)} className="flex-1 h-full px-2 text-[12px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none" />
+                          </div>
+                          {canResetUnitCost && (
+                            <button type="button" onClick={() => resetLineUnitCost(index)} className="text-[10px] text-[#6b9e61] hover:underline mt-[2px] block">
+                              Reset to {formatMoney(line.calculated_unit_cost_ex_gst, form.currency)}
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <span className={fl}>Markup %</span>
+                          <div className="flex items-center h-[28px] border border-[#a8c5a0] rounded-[4px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                            <input type="text" inputMode="decimal" value={line.markup_percent} onChange={e => updateLine(index, 'markup_percent', e.target.value)} className="flex-1 h-full px-2 text-[12px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
+                            <span className="px-2 h-full flex items-center text-[11px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
+                          </div>
+                        </div>
+                        <div>
+                          <span className={fl}>Total</span>
+                          <span className="text-[14px] font-semibold font-mono text-[#1a1a18] block pt-1">{formatMoney(calculated.line_total_ex_gst, form.currency)}</span>
+                        </div>
+                        {showEdges && (
+                          <div className="col-span-2">
+                            <span className={fl}>Edge profile</span>
+                            <QuoteImageCombobox
+                              placeholder="Edge profile"
+                              value={line.edge_mould}
+                              options={edgeOptions}
+                              onChange={option => updateLine(index, 'edge_mould', option.name || option.label)}
+                            />
+                          </div>
+                        )}
+                        {showProfiles && (
+                          <div className="col-span-2">
+                            <span className={fl}>Profile</span>
+                            <button
+                              type="button"
+                              onClick={() => openProfileModal(index)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[4px] px-3 py-[5px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
+                            >
+                              <span>{hasProfileConfig(line) ? profileConfigLines(line)[0] : 'Configure profile'}</span>
+                              <span>↗</span>
+                            </button>
+                          </div>
+                        )}
+                        {hingesApplicable && (
+                          <div className="col-span-2">
+                            <span className={fl}>Hinges</span>
+                            <button
+                              type="button"
+                              onClick={() => openHingeModal(index)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[4px] px-3 py-[5px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
+                            >
+                              <span>{hasHingeConfig(line) ? `Drill: ${line.hinge_holes ? 'yes' : 'no'} · Supply: ${line.hinge_supply ? 'yes' : 'no'}` : 'Configure hinges'}</span>
+                              <span>↗</span>
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="col-span-2 text-[11px] text-[#8b8a81] italic">Dimensions are configured in the Base Cabinets tab.</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-[#edf4eb]">
+                    <button type="button" onClick={() => runLineAction(saveLine)} disabled={isLineSaving} className="flex-1 h-[34px] bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
+                      {isLineSaving ? 'Saving...' : 'Save line'}
+                    </button>
+                    <button type="button" onClick={() => { setEditableLineIndex(null); setEditableLineDraft(null) }} disabled={isLineSaving} className="h-[34px] px-4 text-[12px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <div key={savedLine.id || index} className={`bg-white border border-[#dbd8cc] rounded-[8px] p-3 ${isLineSaving ? 'opacity-60' : ''}`}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[18px] h-[18px] rounded-[3px] flex items-center justify-center flex-shrink-0">{index + 1}</span>
+                    <span className="text-[13px] font-semibold text-[#1a1a18] truncate">{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">No type</span>}</span>
+                  </div>
+                  <QuoteLineActionDropdown
+                    disabled={isLineSaving || savingLineIndex !== null}
+                    index={index}
+                    isOpen={openLineActionIndex === index}
+                    onClose={closeLineActions}
+                    onToggle={() => {
+                      setOpenLineActionIndex(current => current === index ? null : index)
+                      setDeleteLineConfirmIndex(null)
+                    }}
+                  >
+                    {deleteLineConfirmIndex === index ? (
+                      <>
+                        <span className={quoteStyles.quoteActionConfirmText}>Delete line?</span>
+                        <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => runLineAction(() => removeLine(index))}>Confirm delete</button>
+                        <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => setDeleteLineConfirmIndex(null)}>Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => openLineNoteModal(index))}>{line.client_note ? 'Edit note' : 'Add note'}</button>
+                        <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => editLine(index))}>Edit</button>
+                        <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => duplicateLine(index))}>Duplicate</button>
+                        <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => setDeleteLineConfirmIndex(index)}>Delete</button>
+                      </>
+                    )}
+                  </QuoteLineActionDropdown>
+                </div>
+                <div className="flex flex-col gap-[4px] text-[12px] text-[#5a5a52]">
+                  {(line.material || line.thickness) && <span>{[line.material, line.thickness].filter(Boolean).join(' · ')}</span>}
+                  {(line.finish || line.colour) && (
+                    <span className="flex items-center gap-1">
+                      {colourSrc && <img src={colourSrc} alt="" className="w-[10px] h-[10px] rounded-[2px] object-cover border border-[#dbd8cc] flex-shrink-0" />}
+                      {[line.finish, line.colour].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                  {(line.width_mm || line.height_mm) && <span className="font-mono text-[11px]">{line.width_mm || '—'} × {line.height_mm || '—'} mm</span>}
+                  <div className="flex items-center justify-between mt-1 pt-1 border-t border-[#f5f5f4]">
+                    <span>Qty {line.qty || 1} · {formatMoney(calculated.unit_price_ex_gst, form.currency)} ea</span>
+                    <span className="font-semibold text-[#1a1a18] font-mono">{formatMoney(calculated.line_total_ex_gst, form.currency)}</span>
+                  </div>
+                </div>
+                {line.client_note && (
+                  <p className="mt-2 text-[11px] text-[#5a5a52] italic border-t border-[#edf4eb] pt-2">Note: {line.client_note}</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
     )
   }
@@ -2551,7 +2804,7 @@ export default function QuoteEditor({ quoteId }) {
 
   function renderCosts() {
     return (
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Left: input cards */}
         <div className="flex flex-col gap-3">
           <div className={tw.card}>
@@ -3062,6 +3315,7 @@ export default function QuoteEditor({ quoteId }) {
             <label className={styles.fieldLabel}>
               Profile name
               <QuoteImageCombobox
+                disablePortal
                 disabled={!profileModal.profile_type}
                 placeholder={profileModal.profile_type ? "Profile name" : "Select profile type first"}
                 value={profileModal.profile}

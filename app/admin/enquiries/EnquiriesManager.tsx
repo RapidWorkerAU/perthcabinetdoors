@@ -43,7 +43,8 @@ function EnquiryPreviewModal({ enquiry, onClose, onUpdateStatus }: {
       onClose={onClose}
       title={enquiry.customer_name || 'Enquiry'}
       subtitle={formatDateTime(enquiry.created_at)}
-      size="lg"
+      size="md"
+      className="md:max-w-[720px]"
       footer={
         <button
           type="button"
