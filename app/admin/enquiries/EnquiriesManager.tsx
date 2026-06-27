@@ -58,10 +58,10 @@ function EnquiryPreviewModal({ enquiry, onClose, onUpdateStatus }: {
       <div className="flex flex-col gap-4">
 
         {/* Customer + Status row */}
-        <div className="grid grid-cols-[1fr_180px] gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3">
           <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-3">Customer</p>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
               {([
                 { label: 'Name',     value: enquiry.customer_name  || '-' },
                 { label: 'Email',    value: enquiry.customer_email || '-' },

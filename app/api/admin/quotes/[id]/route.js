@@ -15,8 +15,13 @@ async function loadQuoteWithRelations(supabase, id) {
     .from("pcd_quotes")
     .select("*")
     .eq("id", id)
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!quote) {
+    const error = new Error("Quote not found.");
+    error.status = 404;
+    throw error;
+  }
 
   const [
     { data: lines, error: linesError },
@@ -30,7 +35,7 @@ async function loadQuoteWithRelations(supabase, id) {
 
   if (linesError) throw linesError;
   if (attachmentsError) throw attachmentsError;
-  if (cabinetConfigsError) throw cabinetConfigsError;
+  if (cabinetConfigsError && cabinetConfigsError.code !== "42P01") throw cabinetConfigsError;
 
   const configsByLineId = new Map((cabinetConfigs || []).map((config) => [config.line_item_id, config]));
 
@@ -104,7 +109,10 @@ export async function GET(_request, { params }) {
     const quote = await loadQuoteWithRelations(context.supabase, id);
     return Response.json({ ok: true, quote });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not load quote." }, { status: 404 });
+    return Response.json(
+      { ok: false, error: error?.message || "Could not load quote." },
+      { status: error?.status || 500 }
+    );
   }
 }
 

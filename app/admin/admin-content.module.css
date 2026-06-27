@@ -2707,6 +2707,18 @@
     width: 100%;
   }
 
+  .cabinetOverlayModal {
+    border-radius: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    width: 100%;
+  }
+
+  .cabinetOverlayBody {
+    overflow: hidden;
+    padding: 0;
+  }
+
   .feedbackToast {
     right: 16px;
     bottom: 16px;

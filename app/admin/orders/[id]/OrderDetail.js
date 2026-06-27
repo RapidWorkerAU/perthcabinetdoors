@@ -1421,16 +1421,16 @@ export default function OrderDetail({ orderId }) {
   function renderPayments() {
     return (
       <div>
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-4 gap-2 mb-4">
           {[
-            ["Order total", formatMoney(paymentTotals.orderTotal, order.currency || "AUD"), ""],
-            ["Confirmed paid", formatMoney(paymentTotals.confirmed, order.currency || "AUD"), "text-[#2d5e28]"],
+            ["Total", formatMoney(paymentTotals.orderTotal, order.currency || "AUD"), ""],
+            ["Paid", formatMoney(paymentTotals.confirmed, order.currency || "AUD"), "text-[#2d5e28]"],
             ["Pending", formatMoney(paymentTotals.pending, order.currency || "AUD"), "text-[#5c4200]"],
             ["Remaining", formatMoney(paymentTotals.remaining, order.currency || "AUD"), ""],
           ].map(([label, value, valueClass]) => (
-            <div key={label} className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-1">{label}</p>
-              <p className={`text-[18px] font-semibold font-mono text-[#1a1a18] ${valueClass}`}>{value}</p>
+            <div key={label} className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-2 md:p-3">
+              <p className="text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-1 truncate">{label}</p>
+              <p className={`text-[13px] md:text-[18px] font-semibold font-mono text-[#1a1a18] truncate ${valueClass}`}>{value}</p>
             </div>
           ))}
         </div>
@@ -2056,7 +2056,6 @@ export default function OrderDetail({ orderId }) {
         <main className="hidden md:flex flex-1 flex-col min-w-0 bg-[#f5f8f4]">
           <div className="p-6">
             {renderSection()}
-            {feedback ? <p className="mt-3 text-[13px] text-[#991b1b]">{feedback}</p> : null}
           </div>
         </main>
 

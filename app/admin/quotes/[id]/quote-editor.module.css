@@ -865,20 +865,33 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+  overflow: visible;
 }
 
-.profileConfigForm .quoteColourCombo {
+.profileConfigForm .profileNameCombo {
   background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  border-radius: 8px;
+  border: 1px solid #dbd8cc;
+  border-radius: 6px;
   font-size: 13px;
-  min-height: 38px;
+  min-height: 36px;
+  overflow: visible;
+  padding-left: 12px;
+  padding-right: 36px;
 }
 
-.profileConfigForm .quoteColourCombo input {
+.profileConfigForm .profileNameCombo:focus-within {
+  border-color: #6b9e61;
+}
+
+.profileConfigForm .profileNameCombo input {
   font-size: 13px;
-  min-height: 38px;
-  padding: 8px 32px 8px 10px;
+  min-height: 34px;
+  padding: 0 !important;
+}
+
+.profileConfigForm .profileNameCombo .quoteColourComboButton {
+  background: transparent;
+  border-radius: 0 5px 5px 0;
 }
 
 .hingeConfigForm {

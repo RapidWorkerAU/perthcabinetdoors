@@ -16,7 +16,10 @@ export async function PATCH(request, { params }) {
 
     return Response.json({ ok: true, ...result });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not save quote line." }, { status: 500 });
+    return Response.json(
+      { ok: false, error: error?.message || "Could not save quote line." },
+      { status: error?.status || 500 }
+    );
   }
 }
 
@@ -31,6 +34,9 @@ export async function DELETE(_request, { params }) {
 
     return Response.json({ ok: true, ...result });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not delete quote line." }, { status: 500 });
+    return Response.json(
+      { ok: false, error: error?.message || "Could not delete quote line." },
+      { status: error?.status || 500 }
+    );
   }
 }

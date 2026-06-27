@@ -1454,6 +1454,25 @@ export default function ProductEditorForm({
 
   return (
     <div className="relative p-4 md:p-6 max-w-[1400px]">
+
+      {/* Mobile — desktop-only gate */}
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white px-8 text-center md:hidden">
+        <div className="w-[48px] h-[48px] rounded-[12px] bg-[#1c2b1e] text-white text-[11px] font-bold flex items-center justify-center mb-5">
+          PCD
+        </div>
+        <h2 className="text-[18px] font-semibold text-[#1a1a18] mb-2">Desktop only</h2>
+        <p className="text-[14px] text-[#5a5a52] leading-relaxed mb-8">
+          The product editor requires a larger screen. Please open this page on a desktop or laptop to continue.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="h-[44px] w-full max-w-[280px] bg-[#eef0f4] border border-[#dde1e9] rounded-[8px] text-[14px] font-medium text-[#3d4d5f] hover:bg-[#dde1e9] transition-colors"
+        >
+          ← Go back
+        </button>
+      </div>
+
       <form onSubmit={handleSubmit}>
         <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
           <div>

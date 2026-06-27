@@ -540,25 +540,42 @@ export default function ColourLibraryManager({
     isModalOpen && typeof document !== 'undefined'
       ? createPortal(
           <div
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
             role="dialog"
             aria-modal="true"
             aria-labelledby="colour-line-modal-title"
             onMouseDown={closeModal}
           >
             <form
-              className="bg-white rounded-[12px] shadow-xl w-full max-w-[640px] max-h-[90vh] overflow-y-auto flex flex-col"
+              className="bg-white flex flex-col w-full h-[100dvh] rounded-none overflow-hidden md:h-auto md:max-h-[90vh] md:rounded-[12px] md:shadow-xl md:max-w-[640px]"
               onSubmit={saveRow}
               onMouseDown={e => e.stopPropagation()}
             >
-              {/* Header */}
-              <div className="flex items-center gap-3 px-6 py-4 border-b border-[#edf4eb] flex-shrink-0">
+              {/* Mobile header */}
+              <div className="flex md:hidden items-center gap-3 px-4 pt-4 pb-3 flex-shrink-0 border-b border-[#eef0f4]">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={isSaving}
+                  aria-label="Go back"
+                  className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0 disabled:opacity-50"
+                >
+                  ←
+                </button>
+                <h2 id="colour-line-modal-title" className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
+                  {draft.id ? 'Edit colour line' : 'Add colour line'}
+                </h2>
+                <div className="w-[28px]" aria-hidden="true" />
+              </div>
+
+              {/* Desktop header */}
+              <div className="hidden md:flex items-center gap-3 px-6 py-4 border-b border-[#edf4eb] flex-shrink-0">
                 <div className="w-[36px] h-[36px] rounded-[8px] bg-[#1c2b1e] text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
                   PCD
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] uppercase tracking-[0.07em] text-[#8b8a81] font-semibold">Colour library</p>
-                  <h2 id="colour-line-modal-title" className="text-[16px] font-bold text-[#1a1a18]">
+                  <h2 className="text-[16px] font-bold text-[#1a1a18]">
                     {draft.id ? 'Edit colour line' : 'Add colour line'}
                   </h2>
                 </div>
@@ -573,7 +590,7 @@ export default function ColourLibraryManager({
               </div>
 
               {/* Body */}
-              <div className="flex-1 px-6 py-5 grid grid-cols-2 gap-4">
+              <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
                   Colour name
                   <input className={inputClass} value={draft.name} onChange={e => updateDraft('name', e.target.value)} />
@@ -667,7 +684,7 @@ export default function ColourLibraryManager({
                     onChange={e => updateDraft('cost_per_sqm_ex_gst', e.target.value)}
                   />
                 </label>
-                <div className="col-span-2 flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
+                <div className="md:col-span-2 flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
                   <span>Upload tile image</span>
                   <div className="flex items-center gap-3">
                     <button
@@ -689,7 +706,7 @@ export default function ColourLibraryManager({
                     />
                   </div>
                 </div>
-                <label className="col-span-2 flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
+                <label className="md:col-span-2 flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
                   Or image URL
                   <input
                     className={inputClass}
@@ -697,7 +714,7 @@ export default function ColourLibraryManager({
                     onChange={e => updateDraft('image_url', e.target.value)}
                   />
                 </label>
-                <label className="col-span-2 flex items-center gap-2 cursor-pointer text-[13px] text-[#1a1a18] font-normal">
+                <label className="md:col-span-2 flex items-center gap-2 cursor-pointer text-[13px] text-[#1a1a18] font-normal">
                   <input
                     type="checkbox"
                     checked={draft.is_active}
@@ -709,13 +726,15 @@ export default function ColourLibraryManager({
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#edf4eb] flex-shrink-0">
-                <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50" onClick={closeModal}>
-                  Cancel
-                </button>
-                <button type="submit" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" disabled={isSaving}>
-                  {isSaving ? 'Saving...' : draft.id ? 'Update colour line' : 'Save colour line'}
-                </button>
+              <div className="flex-shrink-0 border-t border-[#eef0f4] px-4 pt-3 pb-[max(env(safe-area-inset-bottom),20px)] md:px-6 md:pt-4 md:pb-5">
+                <div className="flex flex-col gap-2 w-full md:flex-row md:justify-end md:w-auto md:gap-3">
+                  <button type="submit" className="h-[44px] md:h-[36px] w-full md:w-auto px-4 bg-[#2d9692] !text-white text-[13px] font-medium rounded-[8px] md:rounded-[6px] hover:bg-[#237775] disabled:opacity-50 transition-colors order-first md:order-last" disabled={isSaving}>
+                    {isSaving ? 'Saving...' : draft.id ? 'Update colour line' : 'Save colour line'}
+                  </button>
+                  <button type="button" className="h-[44px] md:h-[36px] w-full md:w-auto px-4 bg-[#eef0f4] border border-[#dde1e9] text-[13px] font-medium rounded-[8px] md:rounded-[6px] text-[#3d4d5f] hover:bg-[#dde1e9] disabled:opacity-50 transition-colors" onClick={closeModal}>
+                    Cancel
+                  </button>
+                </div>
               </div>
             </form>
           </div>,

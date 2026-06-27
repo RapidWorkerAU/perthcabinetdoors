@@ -388,7 +388,7 @@ const tw = {
   saveBar: "flex justify-end pt-3 border-t border-[#edf4eb] mt-3",
 };
 
-const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, placeholder, value, options, onChange, disablePortal = false }) {
+const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", disabled = false, placeholder, value, options, onChange, disablePortal = false }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value || "");
   const [menuStyle, setMenuStyle] = useState({});
@@ -419,10 +419,10 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
     }
 
     window.addEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("mousedown", closeOnOutsidePointer);
     return () => {
       window.removeEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("mousedown", closeOnOutsidePointer);
     };
   }, [open]);
 
@@ -432,6 +432,28 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
     function positionMenu() {
       const rect = wrapRef.current.getBoundingClientRect();
       const viewportPadding = 12;
+
+      if (disablePortal) {
+        // Rendered inline (no portal) — position relative to the wrapper via `absolute`.
+        // `position: fixed` would be offset by Dialog.Content's CSS transform.
+        const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+        const spaceAbove = rect.top - viewportPadding;
+        const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
+        const availableHeight = openAbove ? spaceAbove : spaceBelow;
+        const maxHeight = Math.max(160, Math.min(360, availableHeight - 4));
+        setMenuStyle({
+          bottom: openAbove ? "calc(100% + 4px)" : "auto",
+          left: 0,
+          maxHeight: `${maxHeight}px`,
+          minWidth: "320px",
+          position: "absolute",
+          top: openAbove ? "auto" : "calc(100% + 4px)",
+          width: "100%",
+          zIndex: 9999,
+        });
+        return;
+      }
+
       const preferredWidth = Math.max(rect.width, 320);
       const width = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2);
       const left = Math.min(
@@ -460,7 +482,7 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
       window.removeEventListener("resize", positionMenu);
       window.removeEventListener("scroll", positionMenu, true);
     };
-  }, [open]);
+  }, [open, disablePortal]);
 
   function choose(option) {
     setQuery(option.name || option.label);
@@ -475,7 +497,7 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
   }
 
   return (
-    <div className={`${styles.quoteColourCombo} ${quoteStyles.quoteColourCombo}`} ref={wrapRef}>
+    <div className={`${styles.quoteColourCombo} ${quoteStyles.quoteColourCombo} ${className}`} ref={wrapRef}>
       <input
         disabled={disabled}
         placeholder={placeholder}
@@ -514,7 +536,7 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ disabled = false, 
                       className={styles.quoteColourOption}
                       key={`${option.label}-${option.src}`}
                       type="button"
-                      onMouseDown={() => choose(option)}
+                      onClick={() => choose(option)}
                     >
                       <span className={styles.quoteOptionThumb}>
                         {option.src ? <img alt="" src={option.src} /> : <span>{String(option.name || option.label || "?").slice(0, 2).toUpperCase()}</span>}
@@ -718,6 +740,7 @@ export default function QuoteEditor({ quoteId }) {
   const [profileModal, setProfileModal] = useState(null);
   const [lineNoteModal, setLineNoteModal] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [savingLineIndex, setSavingLineIndex] = useState(null);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
@@ -822,11 +845,14 @@ export default function QuoteEditor({ quoteId }) {
 
   async function loadQuote() {
     setIsLoading(true);
+    setLoadError("");
     try {
       const response = await fetch(`/api/admin/quotes/${quoteId}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        toast({ title: payload.error || "Could not load quote.", variant: "error" });
+        const message = payload.error || "Could not load quote.";
+        setLoadError(message);
+        toast({ title: message, variant: "error" });
         return;
       }
       setForm(formFromQuote(payload.quote));
@@ -834,7 +860,9 @@ export default function QuoteEditor({ quoteId }) {
       setEditableLineDraft(null);
       setActiveCabinetLineIndex(null);
     } catch (error) {
-      toast({ title: error?.message || "Could not load quote.", variant: "error" });
+      const message = error?.message || "Could not load quote.";
+      setLoadError(message);
+      toast({ title: message, variant: "error" });
     } finally {
       setIsLoading(false);
     }
@@ -1441,6 +1469,10 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   async function saveLineAtIndex(index, nextLine = form.lines[index], { updateDraft = true } = {}) {
+    if (loadError) {
+      toast({ title: loadError, variant: "error" });
+      return false;
+    }
     if (!nextLine) return false;
     setSavingLineIndex(index);
     try {
@@ -1478,6 +1510,10 @@ export default function QuoteEditor({ quoteId }) {
     const nextForm = eventOrForm && typeof eventOrForm.preventDefault === "function" ? form : eventOrForm || form;
     if (eventOrForm && typeof eventOrForm.preventDefault === "function") {
       eventOrForm.preventDefault();
+    }
+    if (loadError) {
+      toast({ title: loadError, variant: "error" });
+      return false;
     }
     if (editableLineIndex !== null && (editableLineDraft || nextForm.lines?.[editableLineIndex])) {
       const savedLine = await saveLineAtIndex(editableLineIndex, editableLineDraft || nextForm.lines[editableLineIndex]);
@@ -2787,7 +2823,7 @@ export default function QuoteEditor({ quoteId }) {
               Exclusions
               <textarea className={tw.textarea} rows={4} value={form.exclusions} onChange={e => updateForm("exclusions", e.target.value)} placeholder="e.g. installation, handles, plumbing." />
             </label>
-            <label className={tw.fieldLabel + " col-span-2"}>
+            <label className={`${tw.fieldLabel} ${tw.wide}`}>
               Terms
               <textarea className={tw.textarea} rows={3} value={form.terms} onChange={e => updateForm("terms", e.target.value)} />
             </label>
@@ -3043,6 +3079,19 @@ export default function QuoteEditor({ quoteId }) {
     meta: profileModal?.profile_type || "Profile",
     src: profileOptionSrc(profileModal?.profile_type, profile),
   }));
+  const contentPanel = isLoading ? (
+    <div className="text-[13px] text-[#8b8a81] py-8 text-center">Loading quote...</div>
+  ) : loadError ? (
+    <div className="bg-white border border-[#dbd8cc] rounded-[8px] p-6 text-center">
+      <p className="text-[15px] font-semibold text-[#1a1a18]">Quote could not be loaded</p>
+      <p className="text-[13px] text-[#6f6d64] mt-2">{loadError}</p>
+      <Link href="/admin/quotes" className="inline-flex items-center justify-center h-[34px] px-4 mt-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f]">
+        Back to quotes
+      </Link>
+    </div>
+  ) : (
+    renderActiveSection()
+  );
   return (
     <>
       <div className="flex flex-col md:flex-row min-h-full">
@@ -3060,13 +3109,13 @@ export default function QuoteEditor({ quoteId }) {
                 View public quote
               </a>
             ) : null}
-            <button type="button" onClick={generateQuotePdf} disabled={isSaving || isLoading || isGeneratingQuotePdf} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+            <button type="button" onClick={generateQuotePdf} disabled={isSaving || isLoading || Boolean(loadError) || isGeneratingQuotePdf} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
               {isGeneratingQuotePdf ? "Generating..." : "Generate PDF"}
             </button>
-            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
+            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
               Publish quote
             </button>
-            <button type="button" onClick={saveQuote} disabled={isSaving || isLoading} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+            <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
               {isSaving ? "Saving..." : "Save"}
             </button>
           </div>
@@ -3099,8 +3148,8 @@ export default function QuoteEditor({ quoteId }) {
               </div>
               <div className="px-4 py-3 bg-white border-b border-[#edf4eb] flex flex-wrap gap-2">
                 {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] flex items-center">View public</a>}
-                <button type="button" onClick={publishQuote} disabled={isSaving || isLoading} className="h-[32px] px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white disabled:opacity-50">Publish</button>
-                <button type="button" onClick={saveQuote} disabled={isSaving || isLoading} className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] disabled:opacity-50">{isSaving ? "Saving..." : "Save"}</button>
+                <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || Boolean(loadError)} className="h-[32px] px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white disabled:opacity-50">Publish</button>
+                <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || Boolean(loadError)} className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] disabled:opacity-50">{isSaving ? "Saving..." : "Save"}</button>
               </div>
               {sections.map((section) => (
                 <button
@@ -3131,7 +3180,7 @@ export default function QuoteEditor({ quoteId }) {
               </div>
               <div className="p-4 bg-[#f5f8f4]">
                 <form onSubmit={saveQuote}>
-                  {isLoading ? <div className="text-[13px] text-[#8b8a81] py-8 text-center">Loading quote...</div> : renderActiveSection()}
+                  {contentPanel}
                   {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order.</div> : null}
                 </form>
               </div>
@@ -3142,7 +3191,7 @@ export default function QuoteEditor({ quoteId }) {
         {/* Desktop right content panel */}
         <main className="hidden md:flex flex-1 flex-col min-w-0 bg-[#f5f8f4]">
           <form onSubmit={saveQuote} className="flex-1 p-6">
-            {isLoading ? <div className="text-[13px] text-[#8b8a81] py-8 text-center">Loading quote...</div> : renderActiveSection()}
+            {contentPanel}
             {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order.</div> : null}
           </form>
         </main>
@@ -3289,6 +3338,7 @@ export default function QuoteEditor({ quoteId }) {
           title="Edit Profile"
           subtitle="Line item profile"
           size="md"
+          contentFit
           footer={
             <>
               <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setProfileModal(null)}>
@@ -3301,20 +3351,21 @@ export default function QuoteEditor({ quoteId }) {
           }
         >
           <div className={quoteStyles.profileConfigForm}>
-            <label className={styles.fieldLabel}>
-              Profile type
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-[#5a5a52]">Profile type</span>
               <select
-                className={styles.fieldInput}
+                className="h-[36px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]"
                 value={profileModal.profile_type}
                 onChange={(event) => updateProfileModal("profile_type", event.target.value)}
               >
-                <option value="">Profile type</option>
+                <option value="">Select profile type</option>
                 {profileModalTypes.map((type) => <option key={type}>{type}</option>)}
               </select>
             </label>
-            <label className={styles.fieldLabel}>
-              Profile name
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-[#5a5a52]">Profile name</span>
               <QuoteImageCombobox
+                className={quoteStyles.profileNameCombo}
                 disablePortal
                 disabled={!profileModal.profile_type}
                 placeholder={profileModal.profile_type ? "Profile name" : "Select profile type first"}
@@ -3397,14 +3448,17 @@ export default function QuoteEditor({ quoteId }) {
       {activeCabinetLine && isBaseCabinetLine(activeCabinetLine) && typeof document !== "undefined"
         ? createPortal(
             <div
-              className={styles.modalOverlay}
+              className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center md:p-5"
               role="dialog"
               aria-modal="true"
               aria-labelledby="cabinet-configurator-title"
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <div className={styles.cabinetOverlayModal} onMouseDown={(event) => event.stopPropagation()}>
-                <div className={styles.cabinetOverlayBody} onMouseDown={(event) => event.stopPropagation()}>
+              <div
+                className="bg-white flex flex-col overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.18)] w-full h-[100dvh] rounded-none md:w-[70vw] md:max-w-[70vw] md:h-auto md:max-h-[calc(100dvh-36px)] md:rounded-[12px]"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="flex-1 min-h-0 overflow-hidden" onMouseDown={(event) => event.stopPropagation()}>
                   <CabinetConfigurator
                     lineItemId={activeCabinetLine.id}
                     quoteId={form.id || quoteId}

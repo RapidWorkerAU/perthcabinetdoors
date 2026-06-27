@@ -114,7 +114,7 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
         </div>
         <Link
           href="/admin/products/new"
-          className="h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors inline-flex items-center"
+          className="h-[34px] px-4 bg-[#1c2b1e] !text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors inline-flex items-center"
         >
           Add product
         </Link>

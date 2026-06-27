@@ -104,12 +104,12 @@ function QuoteRequestPreviewModal({
       <div className="flex flex-col gap-4">
 
         {/* Top section — two column: customer left, status + notes right */}
-        <div className="grid grid-cols-[1fr_200px] gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-3">
 
           {/* Customer contact card */}
           <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-3">Customer</p>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
               {([
                 { label: 'Name',          value: cleanValue(request.customer_name)   },
                 { label: 'Email',         value: cleanValue(request.customer_email)  },

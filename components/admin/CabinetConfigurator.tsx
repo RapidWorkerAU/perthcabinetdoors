@@ -393,6 +393,7 @@ export default function CabinetConfigurator({
   const [feedback, setFeedback]           = useState("")
   const [isSavingCost, setIsSavingCost]   = useState(false)
   const [activeTab, setActiveTab]         = useState("dimensions")
+  const [mobileSectionOpen, setMobileSectionOpen] = useState<string | null>(null)
   const [shelfColourOptions, setShelfColourOptions] = useState<ColourOption[]>([])
 
   const normalizedConfig = useMemo(
@@ -631,6 +632,244 @@ export default function CabinetConfigurator({
   const carcassCostId = fieldId(lineItemId || "cabinet", "carcass-cost")
   const shelfCostId   = fieldId(lineItemId || "cabinet", "shelf-cost")
 
+  function renderTabContent(overrideTab?: string) {
+    const tab = overrideTab ?? activeTab
+
+    if (tab === "dimensions") {
+      return (
+        <div>
+          <p className={tw.sectionTitle}>Cabinet dimensions</p>
+          <div className={tw.card}>
+            <div className={tw.grid2}>
+              <Field label="Label" wide>
+                <input className={tw.input} value={config.label} onChange={e => updateConfig("label", e.target.value)} />
+              </Field>
+              <Field label="Height mm">
+                <input className={tw.input} type="number" min="1" value={config.height_mm} onChange={e => updateConfig("height_mm", e.target.value)} />
+              </Field>
+              <Field label="Width mm">
+                <input className={tw.input} type="number" min="1" value={config.width_mm} onChange={e => updateConfig("width_mm", e.target.value)} />
+              </Field>
+              <Field label="Depth mm">
+                <input className={tw.input} type="number" min="1" value={config.depth_mm} onChange={e => updateConfig("depth_mm", e.target.value)} />
+              </Field>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    if (tab === "boards") {
+      return (
+        <div>
+          <p className={tw.sectionTitle}>Boards and labour</p>
+          <div className={tw.card}>
+            <div className={tw.grid2}>
+              <Field label="Carcass material" wide>
+                <div className="flex gap-2">
+                  <input className={tw.inputRo} value={materialDisplay({ material: normalizedConfig.carcass_material, finish: quoteFinish, colour: quoteColour })} readOnly />
+                  <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("carcass")}>Lookup</button>
+                </div>
+              </Field>
+              <Field label="Carcass thickness">
+                <ToggleGroup value={numberValue(config.carcass_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("carcass_thickness_mm", v)} />
+              </Field>
+              <Field label="Cost per sqm ex GST">
+                <input id={carcassCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_carcass} onChange={e => updateConfig("cost_per_sqm_carcass", e.target.value)} />
+              </Field>
+              <Field label="Labour hours">
+                <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? config.labour_cost} onChange={e => updateConfig("labour_hours", e.target.value)} />
+              </Field>
+            </div>
+            <MaterialCostPrompt
+              prompt={costPrompt?.role === "carcass" ? costPrompt : null}
+              onUseOnce={usePromptCostOnce}
+              onSaveFuture={savePromptCostFuture}
+              onCancel={() => setCostPrompt(null)}
+            />
+          </div>
+        </div>
+      )
+    }
+
+    if (tab === "backShelves") {
+      return (
+        <div>
+          <p className={tw.sectionTitle}>Back panel and shelves</p>
+          <div className={tw.card}>
+            <label className="flex items-center gap-2 text-[12px] text-[#1a1a18] mb-3 cursor-pointer">
+              <input type="checkbox" checked={Boolean(config.back_panel_included)} onChange={e => updateConfig("back_panel_included", e.target.checked)} className="accent-[#6b9e61]" />
+              Include back panel
+            </label>
+            {config.back_panel_included && (
+              <div className={`${tw.grid2} mb-3`}>
+                <Field label="Back material" wide>
+                  <input className={tw.inputRo} value={materialDisplay({ material: normalizedConfig.back_panel_material, finish: quoteFinish, colour: quoteColour })} readOnly />
+                </Field>
+                <Field label="Back thickness">
+                  <ToggleGroup value={numberValue(config.back_panel_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("back_panel_thickness_mm", v)} />
+                </Field>
+              </div>
+            )}
+            <div className={tw.grid2}>
+              <Field label="Shelf qty">
+                <input className={tw.input} type="number" min="0" value={config.shelf_qty} onChange={e => updateConfig("shelf_qty", e.target.value)} />
+              </Field>
+            </div>
+            <label className="flex items-center gap-2 text-[12px] text-[#1a1a18] mt-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sameShelfMaterial}
+                className="accent-[#6b9e61]"
+                onChange={e => {
+                  setSameShelfMaterial(e.target.checked)
+                  if (e.target.checked) {
+                    setConfig(current => ({
+                      ...current,
+                      shelf_material:     normalizedConfig.carcass_material,
+                      shelf_finish:       quoteFinish,
+                      shelf_colour:       quoteColour,
+                      shelf_thickness_mm: current.carcass_thickness_mm,
+                      cost_per_sqm_shelf: current.cost_per_sqm_carcass,
+                    }))
+                  }
+                }}
+              />
+              Shelves same as carcass board and thickness
+            </label>
+            {Number(config.shelf_qty) > 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {normalizeShelfHeights(config.shelf_heights_mm, shelfCount(config.shelf_qty), config.height_mm).map((height, index) => (
+                  <Field key={`shelf-height-${index}`} label={`Shelf ${index + 1} height from bottom`}>
+                    <input className={tw.input} type="number" min="0" max={numberValue(config.height_mm)} value={height} onChange={e => updateShelfHeight(index, e.target.value)} />
+                  </Field>
+                ))}
+              </div>
+            )}
+            {Number(config.shelf_qty) > 0 && !sameShelfMaterial && (
+              <div className="mt-3">
+                <div className={tw.grid2}>
+                  <Field label="Shelf material type">
+                    <select className={tw.input} value={materialTypeForKey(String(config.shelf_material))} onChange={e => updateShelfMaterialType(e.target.value)}>
+                      {COLOUR_MATERIALS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Shelf thickness">
+                    <ToggleGroup value={numberValue(config.shelf_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("shelf_thickness_mm", v)} />
+                  </Field>
+                  <Field label="Shelf finish and colour" wide>
+                    <div className="flex gap-2">
+                      <ColourLibraryCombobox
+                        disabled={!config.shelf_material || !config.shelf_thickness_mm}
+                        placeholder={config.shelf_material && config.shelf_thickness_mm ? "Select shelf finish and colour" : "Select type and thickness first"}
+                        value={shelfMaterialLabel}
+                        options={shelfColourOptions}
+                        onChange={selectShelfColour}
+                      />
+                      <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("shelf")}>Lookup</button>
+                    </div>
+                  </Field>
+                  <Field label="Shelf cost per sqm">
+                    <input id={shelfCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_shelf} onChange={e => updateConfig("cost_per_sqm_shelf", e.target.value)} />
+                  </Field>
+                </div>
+                <MaterialCostPrompt
+                  prompt={costPrompt?.role === "shelf" ? costPrompt : null}
+                  onUseOnce={usePromptCostOnce}
+                  onSaveFuture={savePromptCostFuture}
+                  onCancel={() => setCostPrompt(null)}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    if (tab === "summary") {
+      return (
+        <div>
+          <p className={tw.sectionTitle}>Calculated summary</p>
+          <div className="flex gap-4 mb-3 p-3 bg-white border border-[#dbd8cc] rounded-[8px]">
+            {[
+              ["Materials",    money(totals.calculated_material_cost_ex_gst)],
+              ["Labour hours", String(totals.labour_hours)],
+              ["Total ex GST", money(totals.total_cabinet_cost_ex_gst)],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <p className="text-[10px] font-medium text-[#8b8a81] uppercase tracking-[0.05em]">{label}</p>
+                <p className="text-[13px] font-medium font-mono text-[#1a1a18]">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto rounded-[8px] border border-[#dbd8cc]">
+            <table className="w-full border-collapse text-[11px]">
+              <thead>
+                <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                  {["Piece", "Qty", "Size", "Material", "Area/unit", "Cost/unit", "Total area", "Total cost"].map(h => (
+                    <th key={h} className="px-2 py-[6px] text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {totals.cut_list.map((piece: CabinetConfig) => {
+                  const rate      = isShelfPiece(piece) ? normalizedConfig.cost_per_sqm_shelf || normalizedConfig.cost_per_sqm_carcass : normalizedConfig.cost_per_sqm_carcass
+                  const unitArea  = numberValue(piece.area_sqm)
+                  const qty       = numberValue(piece.qty)
+                  const unitCost  = unitArea * numberValue(rate)
+                  const totalArea = unitArea * qty
+                  const rowCost   = totalArea * numberValue(rate)
+                  return (
+                    <tr key={`${piece.label}-${piece.material}`} className="border-b border-[#edf4eb] last:border-b-0">
+                      <td className="px-2 py-[6px] font-medium text-[#1a1a18]">{piece.label}</td>
+                      <td className="px-2 py-[6px] text-[#1a1a18]">{piece.qty}</td>
+                      <td className="px-2 py-[6px] font-mono text-[10px] whitespace-nowrap">{piece.width_mm} x {piece.height_mm}mm</td>
+                      <td className="px-2 py-[6px] text-[#5a5a52]">{piece.material || "-"}</td>
+                      <td className="px-2 py-[6px] font-mono text-[10px]">{unitArea.toFixed(4)} sqm</td>
+                      <td className="px-2 py-[6px] font-mono text-[10px]">{money(unitCost)}</td>
+                      <td className="px-2 py-[6px] font-mono text-[10px]">{totalArea.toFixed(4)} sqm</td>
+                      <td className="px-2 py-[6px] font-mono text-[10px] font-medium">{money(rowCost)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )
+    }
+
+    if (tab === "notes") {
+      return (
+        <div>
+          <p className={tw.sectionTitle}>Notes</p>
+          <div className={tw.card}>
+            <textarea
+              className="w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-y min-h-[80px] font-[inherit]"
+              rows={4}
+              value={config.notes}
+              onChange={e => updateConfig("notes", e.target.value)}
+            />
+          </div>
+        </div>
+      )
+    }
+
+    return null
+  }
+
+  function renderMobileSchematic() {
+    return (
+      <div className="grid grid-cols-3 gap-2 min-w-0 overflow-hidden">
+        {["front", "side", "top"].map(view => (
+          <div key={view} className="min-w-0 overflow-hidden">
+            <CabinetSchematic config={{ ...normalizedConfig, label: config.label }} view={view} />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -638,8 +877,8 @@ export default function CabinetConfigurator({
   return (
     <div className="flex flex-col h-full">
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#edf4eb] bg-white flex-shrink-0">
+      {/* Header — desktop only */}
+      <div className="hidden md:flex items-center justify-between px-4 py-3 border-b border-[#edf4eb] bg-white flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-[32px] h-[32px] bg-[#1c2b1e] text-white text-[10px] font-bold rounded-[6px] flex items-center justify-center flex-shrink-0">
             PCD
@@ -659,6 +898,22 @@ export default function CabinetConfigurator({
         </div>
       </div>
 
+      {/* Header — mobile only */}
+      <div className="flex md:hidden items-center gap-3 px-4 pt-4 pb-3 flex-shrink-0 border-b border-[#eef0f4] bg-white">
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Go back"
+          className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0"
+        >
+          ←
+        </button>
+        <span className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
+          Cabinet configurator
+        </span>
+        <div className="w-[28px]" aria-hidden="true" />
+      </div>
+
       {/* Feedback */}
       {feedback && (
         <div className="mx-4 mt-2 px-3 py-2 bg-[#edf4eb] border border-[#a8c5a0] rounded-[6px] text-[11px] text-[#2d5e28]">
@@ -667,7 +922,7 @@ export default function CabinetConfigurator({
       )}
 
       {/* Two-column body */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="hidden md:flex flex-1 min-h-0 overflow-hidden">
 
         {/* Left column: nav + cost summary */}
         <aside className="w-[20%] flex-shrink-0 border-r border-[#edf4eb] bg-white flex flex-col">
@@ -938,6 +1193,115 @@ export default function CabinetConfigurator({
 
         </div>{/* end right column */}
 
+      </div>
+
+      {/* Mobile body */}
+      <div className="flex md:hidden flex-col flex-1 min-h-0 overflow-hidden">
+        {mobileSectionOpen === null ? (
+          <div className="flex flex-col flex-1 overflow-y-auto bg-[#f5f8f4]">
+            <div className="bg-white mb-2">
+              {CONFIG_TABS.map(tab => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setMobileSectionOpen(tab.key)}
+                  className="w-full flex items-center justify-between px-4 py-[14px] border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4] transition-colors"
+                >
+                  <span className="text-[14px] font-medium text-[#1a1a18]">{tab.label}</span>
+                  <span className="text-[#c5cdd8] text-[16px]">&gt;</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="px-4 pb-4 flex flex-col gap-3">
+              <div className="bg-white border border-[#dbd8cc] rounded-[8px] p-3">
+                <p className="text-[10px] font-medium text-[#8b8a81] uppercase tracking-[0.06em] mb-2">Live schematic</p>
+                {renderMobileSchematic()}
+                <div className="h-[0.5px] bg-[#edf4eb] my-2" />
+                <p className="text-[10px] font-medium text-[#8b8a81] uppercase tracking-[0.06em] mb-2">Cost summary</p>
+                {[
+                  ["Materials", money(totals.calculated_material_cost_ex_gst)],
+                  ["Labour", `${totals.labour_hours}h`],
+                  ["Total ex GST", money(totals.total_cabinet_cost_ex_gst)],
+                ].map(([label, value], i) => (
+                  <div key={label} className={`flex justify-between items-center py-[5px] text-[12px] ${i < 2 ? "border-b border-[#edf4eb]" : "font-medium pt-[7px]"}`}>
+                    <span className="text-[#5a5a52]">{label}</span>
+                    <strong className="font-mono text-[#1a1a18]">{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex items-center gap-3 px-4 pt-4 pb-3 bg-white border-b border-[#eef0f4] flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setMobileSectionOpen(null)}
+                className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0"
+                aria-label="Back to sections"
+              >
+                ←
+              </button>
+              <span className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
+                {CONFIG_TABS.find(t => t.key === mobileSectionOpen)?.label}
+              </span>
+              <div className="w-[28px]" aria-hidden="true" />
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 bg-[#f5f8f4]">
+              {renderTabContent(mobileSectionOpen)}
+
+              <div className="bg-white border border-[#dbd8cc] rounded-[8px] p-3 mt-3">
+                <p className="text-[10px] font-medium text-[#8b8a81] uppercase tracking-[0.06em] mb-2">Live schematic</p>
+                {renderMobileSchematic()}
+                <div className="h-[0.5px] bg-[#edf4eb] my-2" />
+                <div className="flex justify-between items-center text-[12px] font-medium">
+                  <span className="text-[#5a5a52]">Total ex GST</span>
+                  <strong className="font-mono text-[#1a1a18]">{money(totals.total_cabinet_cost_ex_gst)}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),20px)] border-t border-[#eef0f4] bg-white flex-shrink-0">
+              <button
+                type="button"
+                onClick={saveCabinet}
+                disabled={isSavingCost}
+                className="h-[44px] w-full bg-[#2d9692] rounded-[8px] text-[14px] font-medium text-white hover:bg-[#237775] disabled:opacity-50 transition-colors"
+              >
+                Save cabinet
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileSectionOpen(null)}
+                className="h-[44px] w-full bg-[#eef0f4] border border-[#dde1e9] rounded-[8px] text-[14px] font-medium text-[#3d4d5f] hover:bg-[#dde1e9] transition-colors"
+              >
+                ← Back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mobileSectionOpen === null && (
+          <div className="flex flex-col gap-2 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),20px)] border-t border-[#eef0f4] bg-white flex-shrink-0">
+            <button
+              type="button"
+              onClick={saveCabinet}
+              disabled={isSavingCost}
+              className="h-[44px] w-full bg-[#2d9692] rounded-[8px] text-[14px] font-medium text-white hover:bg-[#237775] disabled:opacity-50 transition-colors"
+            >
+              Save cabinet
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="h-[44px] w-full bg-[#eef0f4] border border-[#dde1e9] rounded-[8px] text-[14px] font-medium text-[#3d4d5f] hover:bg-[#dde1e9] transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

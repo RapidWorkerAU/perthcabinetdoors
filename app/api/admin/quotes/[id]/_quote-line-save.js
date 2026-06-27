@@ -158,8 +158,13 @@ function quoteTotalsPatchWithNewLine(quote, line) {
 }
 
 async function loadQuote(supabase, quoteId) {
-  const { data: quote, error } = await supabase.from("pcd_quotes").select("*").eq("id", quoteId).single();
+  const { data: quote, error } = await supabase.from("pcd_quotes").select("*").eq("id", quoteId).maybeSingle();
   if (error) throw error;
+  if (!quote) {
+    const error = new Error("Quote not found.");
+    error.status = 404;
+    throw error;
+  }
   return quote;
 }
 
@@ -219,6 +224,7 @@ async function lineWithConfig(supabase, line) {
 
 export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id, sortOrder = 0 } = {}) {
   const businessDefaults = await getBusinessDefaults(supabase);
+  await loadQuote(supabase, quoteId);
   const calculatedLine = {
     ...calculateQuoteLine(line, businessDefaults),
     id: lineId || null,
