@@ -6,6 +6,7 @@ import { formatMoney } from '../../../lib/pcd-quote-utils'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/Toast'
 
 const STATUSES = ['active', 'on_hold', 'complete', 'cancelled']
 const FILTERS  = ['all', ...STATUSES]
@@ -50,9 +51,9 @@ function isNewOrder(order: Order) {
 
 export default function OrdersManager() {
   const router = useRouter()
+  const { toast } = useToast()
   const [orders,       setOrders]       = useState<Order[]>([])
   const [isLoading,    setIsLoading]    = useState(true)
-  const [feedback,     setFeedback]     = useState('')
   const [setupRequired, setSetupRequired] = useState(false)
   const [statusFilter, setStatusFilter] = useState('active')
 
@@ -77,15 +78,14 @@ export default function OrdersManager() {
 
   async function loadOrders() {
     setIsLoading(true)
-    setFeedback('')
     try {
       const res     = await fetch('/api/admin/orders', { cache: 'no-store' })
       const payload = await res.json()
       setSetupRequired(!!payload.setupRequired)
       setOrders(payload.orders || [])
-      if (payload.error) setFeedback(payload.error)
+      if (payload.error) toast({ title: payload.error, variant: 'error' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not load orders.')
+      toast({ title: err instanceof Error ? err.message : 'Could not load orders.', variant: 'error' })
     } finally {
       setIsLoading(false)
     }
@@ -94,7 +94,7 @@ export default function OrdersManager() {
   useEffect(() => { loadOrders() }, [])
 
   return (
-    <div className="p-4 md:p-6 max-w-[1400px]">
+    <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Orders</h1>
@@ -132,12 +132,6 @@ export default function OrdersManager() {
           Run <code className="font-mono text-[12px]">supabase/pcd_enquiries_quote_requests_orders_setup.sql</code> before orders can be listed.
         </div>
       )}
-      {feedback && (
-        <div className="mb-4 px-4 py-3 rounded-[6px] bg-[#fef2f2] border border-[#fca5a5] text-[13px] text-[#991b1b]">
-          {feedback}
-        </div>
-      )}
-
       {/* Desktop table */}
       <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
         <table className="w-full text-[13px]">

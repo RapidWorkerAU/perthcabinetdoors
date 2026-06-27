@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import {
   IconCircleCheck,
   IconAlertCircle,
@@ -23,6 +24,62 @@ export interface ToastProps {
   duration?:    number
   action?:      { label: string; onClick: () => void }
   onDismiss:    (id: string) => void
+}
+
+// ── Context ────────────────────────────────────────────────────────────────────
+
+export interface ToastOptions {
+  title:        string
+  description?: string
+  variant?:     ToastVariant
+  duration?:    number
+  action?:      { label: string; onClick: () => void }
+}
+
+interface ToastContextValue {
+  toast: (opts: ToastOptions) => void
+}
+
+const ToastContext = React.createContext<ToastContextValue>({ toast: () => {} })
+
+export function useToast(): ToastContextValue {
+  return React.useContext(ToastContext)
+}
+
+// ── Provider ───────────────────────────────────────────────────────────────────
+
+interface ToastItem extends ToastOptions {
+  id: string
+}
+
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toasts,  setToasts]  = React.useState<ToastItem[]>([])
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => { setMounted(true) }, [])
+
+  function toast(opts: ToastOptions) {
+    const id = Math.random().toString(36).slice(2)
+    setToasts(prev => [...prev, { ...opts, id }])
+  }
+
+  function dismiss(id: string) {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }
+
+  return (
+    <ToastContext.Provider value={{ toast }}>
+      {children}
+      {mounted && toasts.length > 0 && createPortal(
+        <div className="fixed top-4 left-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+          {toasts.map(t => (
+            <Toast key={t.id} {...t} onDismiss={dismiss} />
+          ))}
+        </div>,
+        document.body
+      )}
+    </ToastContext.Provider>
+  )
 }
 
 // ── Style maps ─────────────────────────────────────────────────────────────────

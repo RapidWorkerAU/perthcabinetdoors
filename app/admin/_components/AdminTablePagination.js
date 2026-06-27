@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import styles from "../admin-content.module.css";
 
-export const ADMIN_TABLE_PAGE_SIZE = 7;
+export const ADMIN_TABLE_PAGE_SIZE = 8;
 
 export function useAdminTablePagination(items, resetKey = "") {
   const [page, setPage] = useState(1);

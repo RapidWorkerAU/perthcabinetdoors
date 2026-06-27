@@ -2,8 +2,10 @@
 
 import * as React from 'react'
 import { cn } from '@/lib/utils'
+import { Modal } from '@/components/ui/Modal'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
+import { useToast } from '@/components/ui/Toast'
 
 const STATUSES = ['new', 'in_progress', 'responded', 'closed', 'not_required']
 const FILTERS  = ['all', ...STATUSES]
@@ -25,13 +27,95 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value))
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return '-'
+  return new Intl.DateTimeFormat('en-AU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
+}
+
+function EnquiryPreviewModal({ enquiry, onClose, onUpdateStatus }: {
+  enquiry: Enquiry
+  onClose: () => void
+  onUpdateStatus: (id: string, status: string) => void
+}) {
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={enquiry.customer_name || 'Enquiry'}
+      subtitle={formatDateTime(enquiry.created_at)}
+      size="lg"
+      footer={
+        <button
+          type="button"
+          className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors"
+          onClick={onClose}
+        >
+          Close
+        </button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+
+        {/* Customer + Status row */}
+        <div className="grid grid-cols-[1fr_180px] gap-3">
+          <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-3">Customer</p>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+              {([
+                { label: 'Name',     value: enquiry.customer_name  || '-' },
+                { label: 'Email',    value: enquiry.customer_email || '-' },
+                { label: 'Phone',    value: enquiry.customer_phone || '-' },
+                { label: 'Postcode', value: enquiry.postcode       || '-' },
+              ] as { label: string; value: string }[]).map(({ label, value }) => (
+                <div key={label}>
+                  <dt className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[#8b8a81] mb-[2px]">{label}</dt>
+                  <dd className="text-[13px] text-[#1a1a18]">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-2">Status</p>
+              <select
+                value={enquiry.status || 'new'}
+                onChange={e => onUpdateStatus(enquiry.id, e.target.value)}
+                className="w-full h-[32px] border border-[#dbd8cc] rounded-[6px] bg-white text-[13px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer"
+              >
+                {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
+              </select>
+            </div>
+            {enquiry.topic ? (
+              <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-1">Topic</p>
+                <p className="text-[13px] text-[#1a1a18]">{enquiry.topic}</p>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Message */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-2">Message</p>
+          <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4 text-[13px] text-[#1a1a18] leading-relaxed whitespace-pre-wrap min-h-[80px]">
+            {enquiry.message || <span className="italic text-[#8b8a81]">No message provided.</span>}
+          </div>
+        </div>
+
+      </div>
+    </Modal>
+  )
+}
+
 export default function EnquiriesManager() {
-  const [enquiries,    setEnquiries]    = React.useState<Enquiry[]>([])
-  const [isLoading,    setIsLoading]    = React.useState(true)
-  const [isSaving,     setIsSaving]     = React.useState(false)
-  const [feedback,     setFeedback]     = React.useState('')
-  const [statusFilter, setStatusFilter] = React.useState('new')
-  const [selectedIds,  setSelectedIds]  = React.useState<string[]>([])
+  const { toast } = useToast()
+  const [enquiries,      setEnquiries]      = React.useState<Enquiry[]>([])
+  const [isLoading,      setIsLoading]      = React.useState(true)
+  const [isSaving,       setIsSaving]       = React.useState(false)
+  const [statusFilter,   setStatusFilter]   = React.useState('new')
+  const [selectedIds,    setSelectedIds]    = React.useState<string[]>([])
+  const [previewEnquiry, setPreviewEnquiry] = React.useState<Enquiry | null>(null)
 
   const statusCounts = React.useMemo(() => {
     return enquiries.reduce<Record<string, number>>(
@@ -58,7 +142,7 @@ export default function EnquiriesManager() {
       const res     = await fetch('/api/admin/enquiries', { cache: 'no-store' })
       const payload = await res.json()
       setEnquiries(payload.enquiries || [])
-      if (payload.error) setFeedback(payload.error)
+      if (payload.error) toast({ title: payload.error, variant: 'error' })
     } finally {
       setIsLoading(false)
     }
@@ -75,15 +159,15 @@ export default function EnquiriesManager() {
     const payload = await res.json()
     if (res.ok && payload.ok) {
       setEnquiries(current => current.map(item => item.id === id ? payload.enquiry : item))
+      setPreviewEnquiry(current => current?.id === id ? payload.enquiry : current)
     } else {
-      setFeedback(payload.error || 'Could not update enquiry.')
+      toast({ title: payload.error || 'Could not update enquiry.', variant: 'error' })
     }
   }
 
   async function deleteEnquiries(ids: string[]) {
     if (!ids.length) return
     setIsSaving(true)
-    setFeedback('')
     try {
       for (const id of ids) {
         const res     = await fetch(`/api/admin/enquiries/${id}`, { method: 'DELETE' })
@@ -92,9 +176,10 @@ export default function EnquiriesManager() {
       }
       setEnquiries(current => current.filter(item => !ids.includes(item.id)))
       setSelectedIds(current => current.filter(id => !ids.includes(id)))
-      setFeedback(`${ids.length} enquir${ids.length === 1 ? 'y' : 'ies'} deleted.`)
+      setPreviewEnquiry(current => (current && ids.includes(current.id) ? null : current))
+      toast({ title: `${ids.length} enquir${ids.length === 1 ? 'y' : 'ies'} deleted.`, variant: 'success' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not delete selected enquiries.')
+      toast({ title: err instanceof Error ? err.message : 'Could not delete selected enquiries.', variant: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -115,7 +200,7 @@ export default function EnquiriesManager() {
   const allPageSelected = pageItems.length > 0 && pageItems.every(e => selectedIds.includes(e.id))
 
   return (
-    <div className="p-4 md:p-6 max-w-[1400px]">
+    <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Enquiries</h1>
@@ -147,12 +232,6 @@ export default function EnquiriesManager() {
           </button>
         ))}
       </div>
-
-      {feedback && (
-        <div className="mb-4 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">
-          {feedback}
-        </div>
-      )}
 
       {/* Desktop table */}
       <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
@@ -221,14 +300,23 @@ export default function EnquiriesManager() {
                 </td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] whitespace-nowrap">{formatDate(enquiry.created_at)}</td>
                 <td className="px-4 py-[11px] text-right">
-                  <button
-                    type="button"
-                    onClick={() => deleteEnquiries([enquiry.id])}
-                    disabled={isSaving}
-                    className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewEnquiry(enquiry)}
+                      className="text-[12px] font-medium text-[#1c2b1e] hover:underline"
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteEnquiries([enquiry.id])}
+                      disabled={isSaving}
+                      className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -272,7 +360,14 @@ export default function EnquiriesManager() {
               <div><span className="text-[#8b8a81]">Received</span><p className="text-[#1a1a18]">{formatDate(enquiry.created_at)}</p></div>
             </div>
             {enquiry.message && <p className="text-[12px] text-[#5a5a52] leading-relaxed border-t border-[#edf4eb] pt-3">{enquiry.message}</p>}
-            <div className="flex justify-end pt-3 border-t border-[#edf4eb] mt-3">
+            <div className="flex items-center justify-between pt-3 border-t border-[#edf4eb] mt-3">
+              <button
+                type="button"
+                onClick={() => setPreviewEnquiry(enquiry)}
+                className="text-[12px] font-medium text-[#1c2b1e] hover:underline"
+              >
+                Preview
+              </button>
               <button
                 type="button"
                 onClick={() => deleteEnquiries([enquiry.id])}
@@ -295,6 +390,14 @@ export default function EnquiriesManager() {
           />
         )}
       </div>
+
+      {previewEnquiry && (
+        <EnquiryPreviewModal
+          enquiry={previewEnquiry}
+          onClose={() => setPreviewEnquiry(null)}
+          onUpdateStatus={updateStatus}
+        />
+      )}
     </div>
   )
 }

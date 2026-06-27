@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
+import { useToast } from '@/components/ui/Toast'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ function QuoteRequestPreviewModal({
       open={true}
       onClose={onClose}
       title={request.customer_name || 'Quote request'}
+      size="xl"
       footer={
         request.converted_quote_id ? (
           <Button variant="secondary" onClick={() => onOpenQuote(request.converted_quote_id!)}>Open quote</Button>
@@ -99,79 +101,97 @@ function QuoteRequestPreviewModal({
         )
       }
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
 
-        {/* Order details */}
-        <section>
-          <h3 className="text-[13px] font-semibold text-[#1a1a18] mb-3">Order details</h3>
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-[13px]">
-            {([
-              { label: 'Name',          value: cleanValue(request.customer_name)   },
-              { label: 'Email',         value: cleanValue(request.customer_email)  },
-              { label: 'Phone',         value: cleanValue(request.customer_phone)  },
-              { label: 'Suburb',        value: cleanValue(request.delivery_suburb) },
-              { label: 'Cabinet brand', value: cleanValue(request.cabinet_brand)   },
-              { label: 'Source',        value: request.source ? formatAdminLabel(request.source) : '-' },
-            ] as { label: string; value: string }[]).map(({ label, value }) => (
-              <div key={label}>
-                <dt className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">{label}</dt>
-                <dd className="text-[#1a1a18]">{value}</dd>
-              </div>
-            ))}
-            <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">Status</dt>
-              <dd>
-                <select
-                  value={request.status || 'new'}
-                  onChange={e => onUpdateStatus(request.id, e.target.value)}
-                  disabled={isStatusLocked(request)}
-                  className="h-[30px] border border-[#dbd8cc] rounded-[4px] bg-white text-[12px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer"
-                >
-                  {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
-                </select>
-              </dd>
+        {/* Top section — two column: customer left, status + notes right */}
+        <div className="grid grid-cols-[1fr_200px] gap-3">
+
+          {/* Customer contact card */}
+          <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-3">Customer</p>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+              {([
+                { label: 'Name',          value: cleanValue(request.customer_name)   },
+                { label: 'Email',         value: cleanValue(request.customer_email)  },
+                { label: 'Phone',         value: cleanValue(request.customer_phone)  },
+                { label: 'Suburb',        value: cleanValue(request.delivery_suburb) },
+                { label: 'Cabinet brand', value: cleanValue(request.cabinet_brand)   },
+                { label: 'Source',        value: request.source ? formatAdminLabel(request.source) : '-' },
+              ] as { label: string; value: string }[]).map(({ label, value }) => (
+                <div key={label}>
+                  <dt className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[#8b8a81] mb-[2px]">{label}</dt>
+                  <dd className="text-[13px] text-[#1a1a18]">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          {/* Right column — status + notes stacked */}
+          <div className="flex flex-col gap-3">
+            <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-2">Status</p>
+              <select
+                value={request.status || 'new'}
+                onChange={e => onUpdateStatus(request.id, e.target.value)}
+                disabled={isStatusLocked(request)}
+                className="w-full h-[32px] border border-[#dbd8cc] rounded-[6px] bg-white text-[13px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer disabled:opacity-50 disabled:cursor-default"
+              >
+                {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
+              </select>
             </div>
-          </dl>
-        </section>
+            <div className="bg-[#f5f8f4] border border-[#dbd8cc] rounded-[8px] p-4 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-2">Request notes</p>
+              <p className="text-[12px] text-[#5a5a52] leading-relaxed">
+                {request.notes || <span className="italic text-[#8b8a81]">No notes supplied.</span>}
+              </p>
+            </div>
+          </div>
+        </div>
 
-        {/* Notes */}
-        <section>
-          <h3 className="text-[13px] font-semibold text-[#1a1a18] mb-2">Request notes</h3>
-          <p className="text-[13px] text-[#5a5a52] leading-relaxed">{request.notes || 'No notes supplied.'}</p>
-        </section>
-
-        {/* Line items */}
-        <section>
-          <h3 className="text-[13px] font-semibold text-[#1a1a18] mb-2">Line items</h3>
+        {/* Line items table */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-2">Line items</p>
           <div className="overflow-x-auto rounded-[6px] border border-[#dbd8cc]">
-            <table className="w-full text-[12px] min-w-[820px]">
+            <table className="w-full text-[12px] min-w-[820px] border-collapse">
               <thead>
                 <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
                   {['#', 'Type', 'Material', 'Thickness', 'W × H', 'Finish', 'Colour', 'Qty', 'Edge', 'Profile', 'Hinges'].map(col => (
-                    <th key={col} className="px-2 py-[7px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{col}</th>
+                    <th key={col} className="px-2 py-[7px] text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] whitespace-nowrap">{col}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {lineItems.length === 0 ? (
-                  <tr><td colSpan={11} className="px-3 py-6 text-center text-[13px] text-[#8b8a81]">No line items were submitted with this request.</td></tr>
+                  <tr>
+                    <td colSpan={11} className="px-3 py-8 text-center text-[12px] text-[#8b8a81]">
+                      No line items were submitted with this request.
+                    </td>
+                  </tr>
                 ) : lineItems.map((line, i) => (
-                  <tr key={line.id || i} className="border-b border-[#edf4eb] last:border-b-0">
-                    <td className="px-2 py-[7px] text-[#8b8a81]">{i + 1}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap">{cleanValue(line.product_type || line.product_name)}</td>
+                  <tr key={line.id || i} className="border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4] transition-colors">
+                    <td className="px-2 py-[7px] text-[#8b8a81] text-[11px]">{i + 1}</td>
+                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap font-medium">{cleanValue(line.product_type || line.product_name)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.material)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.thickness)}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap">{sizeText(line)}</td>
+                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap font-mono text-[11px]">{sizeText(line)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.finish)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.colour)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{line.qty || 1}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.edge_mould)}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap">{[line.profile_type, line.profile].filter(Boolean).join(' / ') || '-'}</td>
+                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap">
+                      {[line.profile_type, line.profile].filter(Boolean).join(' / ') || '-'}
+                    </td>
                     <td className="px-2 py-[7px]">
                       <div className="flex flex-col gap-[2px] text-[11px]">
-                        <span className={line.hinge_holes ? 'text-[#2d5e28]' : 'text-[#8b8a81]'}>{line.hinge_holes ? '✓' : '×'} Drill holes</span>
-                        <span className={line.hinge_supply ? 'text-[#2d5e28]' : 'text-[#8b8a81]'}>{line.hinge_supply ? '✓' : '×'} Supply hinges</span>
-                        {line.hinge_qty ? <span className="text-[#8b8a81]">Qty {line.hinge_qty}</span> : null}
+                        <span className={line.hinge_holes ? 'text-[#2d5e28] font-medium' : 'text-[#8b8a81]'}>
+                          {line.hinge_holes ? '✓' : '✕'} Drill
+                        </span>
+                        <span className={line.hinge_supply ? 'text-[#2d5e28] font-medium' : 'text-[#8b8a81]'}>
+                          {line.hinge_supply ? '✓' : '✕'} Supply
+                        </span>
+                        {line.hinge_qty ? (
+                          <span className="text-[#8b8a81]">{line.hinge_qty} hinges</span>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -179,7 +199,7 @@ function QuoteRequestPreviewModal({
               </tbody>
             </table>
           </div>
-        </section>
+        </div>
 
       </div>
     </Modal>
@@ -193,9 +213,9 @@ export default function QuoteRequestsManager() {
 
   const [quoteRequests,            setQuoteRequests]            = React.useState<QuoteRequest[]>([])
   const [previewRequest,           setPreviewRequest]           = React.useState<QuoteRequest | null>(null)
+  const { toast } = useToast()
   const [isLoading,                setIsLoading]                = React.useState(true)
   const [isDeleting,               setIsDeleting]               = React.useState(false)
-  const [feedback,                 setFeedback]                 = React.useState('')
   const [statusFilter,             setStatusFilter]             = React.useState('new')
   const [selectedQuoteRequestIds,  setSelectedQuoteRequestIds]  = React.useState<string[]>([])
 
@@ -224,7 +244,7 @@ export default function QuoteRequestsManager() {
       const res     = await fetch('/api/admin/quote-requests', { cache: 'no-store' })
       const payload = await res.json()
       setQuoteRequests(payload.quoteRequests || [])
-      if (payload.error) setFeedback(payload.error)
+      if (payload.error) toast({ title: payload.error, variant: 'error' })
     } finally {
       setIsLoading(false)
     }
@@ -243,7 +263,7 @@ export default function QuoteRequestsManager() {
       setQuoteRequests(current => current.map(item => item.id === id ? payload.quoteRequest : item))
       setPreviewRequest(current => current?.id === id ? payload.quoteRequest : current)
     } else {
-      setFeedback(payload.error || 'Could not update quote request.')
+      toast({ title: payload.error || 'Could not update quote request.', variant: 'error' })
     }
   }
 
@@ -257,14 +277,13 @@ export default function QuoteRequestsManager() {
     if (res.ok && payload.ok) {
       router.push(`/admin/quotes/${payload.quoteId}`)
     } else {
-      setFeedback(payload.error || 'Could not convert quote request.')
+      toast({ title: payload.error || 'Could not convert quote request.', variant: 'error' })
     }
   }
 
   async function deleteQuoteRequests(ids: string[]) {
     if (!ids.length) return
     setIsDeleting(true)
-    setFeedback('')
     try {
       for (const id of ids) {
         const res     = await fetch(`/api/admin/quote-requests/${id}`, { method: 'DELETE' })
@@ -274,9 +293,9 @@ export default function QuoteRequestsManager() {
       setQuoteRequests(current => current.filter(r => !ids.includes(r.id)))
       setSelectedQuoteRequestIds(current => current.filter(id => !ids.includes(id)))
       setPreviewRequest(current => (current && ids.includes(current.id) ? null : current))
-      setFeedback(`${ids.length} quote request${ids.length === 1 ? '' : 's'} deleted.`)
+      toast({ title: `${ids.length} quote request${ids.length === 1 ? '' : 's'} deleted.`, variant: 'success' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not delete selected quote requests.')
+      toast({ title: err instanceof Error ? err.message : 'Could not delete selected quote requests.', variant: 'error' })
     } finally {
       setIsDeleting(false)
     }
@@ -297,7 +316,7 @@ export default function QuoteRequestsManager() {
   const allPageSelected = pageItems.length > 0 && pageItems.every(r => selectedQuoteRequestIds.includes(r.id))
 
   return (
-    <div className="p-4 md:p-6 max-w-[1400px]">
+    <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Quote Requests</h1>
@@ -329,12 +348,6 @@ export default function QuoteRequestsManager() {
           </button>
         ))}
       </div>
-
-      {feedback && (
-        <div className="mb-4 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">
-          {feedback}
-        </div>
-      )}
 
       {/* Desktop table */}
       <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">

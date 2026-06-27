@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney } from "../../../lib/pcd-quote-utils";
 import styles from "../admin-content.module.css";
+import { useToast } from "@/components/ui/Toast";
 
 const emptyLine = {
   product_name: "",
@@ -80,11 +81,11 @@ function formFromQuote(quote, defaults = DEFAULT_BUSINESS_DEFAULTS) {
 }
 
 export default function QuotesManager() {
+  const { toast } = useToast();
   const [quotes, setQuotes] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [feedback, setFeedback] = useState("");
   const [setupRequired, setSetupRequired] = useState(false);
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
 
@@ -109,10 +110,10 @@ export default function QuotesManager() {
         setForm(formFromQuote(payload.quotes[0], businessDefaults));
       }
       if (payload.error) {
-        setFeedback(payload.error);
+        toast({ title: payload.error, variant: "error" });
       }
     } catch (error) {
-      setFeedback(error?.message || "Could not load quotes.");
+      toast({ title: error?.message || "Could not load quotes.", variant: "error" });
     } finally {
       setIsLoading(false);
     }
@@ -183,7 +184,6 @@ export default function QuotesManager() {
   async function saveQuote(event) {
     event.preventDefault();
     setIsSaving(true);
-    setFeedback("");
 
     const endpoint = form.id ? `/api/admin/quotes/${form.id}` : "/api/admin/quotes";
     const method = form.id ? "PUT" : "POST";
@@ -196,14 +196,14 @@ export default function QuotesManager() {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not save quote.");
+        toast({ title: payload.error || "Could not save quote.", variant: "error" });
         return;
       }
       setForm(formFromQuote(payload.quote));
-      setFeedback("Quote saved.");
+      toast({ title: "Quote saved.", variant: "success" });
       await loadQuotes();
     } catch (error) {
-      setFeedback(error?.message || "Could not save quote.");
+      toast({ title: error?.message || "Could not save quote.", variant: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -211,23 +211,22 @@ export default function QuotesManager() {
 
   async function sendQuote() {
     if (!form.id) {
-      setFeedback("Save the quote before sending it.");
+      toast({ title: "Save the quote before sending it.", variant: "error" });
       return;
     }
 
     setIsSaving(true);
-    setFeedback("");
     try {
       const response = await fetch(`/api/admin/quotes/${form.id}/send`, { method: "POST" });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not send quote.");
+        toast({ title: payload.error || "Could not send quote.", variant: "error" });
         return;
       }
-      setFeedback(payload.emailSent ? "Quote sent to customer." : `Quote marked as sent. Resend is not configured, so use: ${payload.viewUrl}`);
+      toast({ title: payload.emailSent ? "Quote sent to customer." : `Quote marked as sent. Resend is not configured, so use: ${payload.viewUrl}`, variant: "success" });
       await loadQuotes();
     } catch (error) {
-      setFeedback(error?.message || "Could not send quote.");
+      toast({ title: error?.message || "Could not send quote.", variant: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -378,7 +377,6 @@ export default function QuotesManager() {
           </label>
         </section>
 
-        {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
         {selectedQuote?.order_id ? <p className={styles.noticeBox}>Approved quote has been converted to an order.</p> : null}
       </form>
     </div>

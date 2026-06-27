@@ -13,6 +13,7 @@ import {
 } from '../../../lib/pcd-colour-library'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/Toast'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -180,10 +181,10 @@ export default function ColourLibraryManager({
   initialRows?:  ColourRow[]
   initialError?: string
 }) {
+  const { toast } = useToast()
   const fileInputRef   = useRef<HTMLInputElement>(null)
   const [rows,         setRows]         = useState<ColourRow[]>(initialRows)
   const [draft,        setDraft]        = useState<Draft>(emptyDraft)
-  const [feedback,     setFeedback]     = useState(initialError)
   const [isSaving,     setIsSaving]     = useState(false)
   const [isModalOpen,  setIsModalOpen]  = useState(false)
   const [rowToDelete,  setRowToDelete]  = useState<ColourRow | null>(null)
@@ -295,7 +296,6 @@ export default function ColourLibraryManager({
     setDraft(emptyDraft)
     if (fileInputRef.current) fileInputRef.current.value = ''
     setSelectedFileName('')
-    setFeedback('')
     setIsModalOpen(true)
   }
 
@@ -324,7 +324,6 @@ export default function ColourLibraryManager({
     })
     if (fileInputRef.current) fileInputRef.current.value = ''
     setSelectedFileName('')
-    setFeedback('')
     setIsModalOpen(true)
   }
 
@@ -403,11 +402,10 @@ export default function ColourLibraryManager({
 
   async function saveRow(event: React.FormEvent) {
     event.preventDefault()
-    if (!draft.name.trim())        { setFeedback('Enter a colour name.');   return }
-    if (!draft.finish_type.trim()) { setFeedback('Enter a finish type.');   return }
-    if (!draft.material_type)      { setFeedback('Choose a material type.'); return }
+    if (!draft.name.trim())        { toast({ title: 'Enter a colour name.',    variant: 'error' }); return }
+    if (!draft.finish_type.trim()) { toast({ title: 'Enter a finish type.',    variant: 'error' }); return }
+    if (!draft.material_type)      { toast({ title: 'Choose a material type.', variant: 'error' }); return }
     setIsSaving(true)
-    setFeedback('')
     try {
       const supabase = createSupabaseBrowserClient()
       const image    = await uploadImage(fileInputRef.current?.files?.[0] || null)
@@ -426,9 +424,9 @@ export default function ColourLibraryManager({
       if (fileInputRef.current) fileInputRef.current.value = ''
       setSelectedFileName('')
       setIsModalOpen(false)
-      setFeedback(draft.id ? 'Colour line updated.' : 'Colour line saved.')
+      toast({ title: draft.id ? 'Colour line updated.' : 'Colour line saved.', variant: 'success' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not save colour line.')
+      toast({ title: err instanceof Error ? err.message : 'Could not save colour line.', variant: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -436,16 +434,15 @@ export default function ColourLibraryManager({
 
   async function deleteRow(row: ColourRow) {
     setIsSaving(true)
-    setFeedback('')
     try {
       const supabase = createSupabaseBrowserClient()
       const { error } = await supabase.from('pcd_colour_library').delete().eq('id', row.id)
       if (error) throw error
       setRows(cur => cur.filter(r => r.id !== row.id))
       setRowToDelete(null)
-      setFeedback('Colour line deleted. Image storage was left untouched.')
+      toast({ title: 'Colour line deleted.', variant: 'success' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not delete colour line.')
+      toast({ title: err instanceof Error ? err.message : 'Could not delete colour line.', variant: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -454,16 +451,15 @@ export default function ColourLibraryManager({
   async function deleteSelectedRows() {
     if (!selectedRowIds.length) return
     setIsSaving(true)
-    setFeedback('')
     try {
       const supabase = createSupabaseBrowserClient()
       const { error } = await supabase.from('pcd_colour_library').delete().in('id', selectedRowIds)
       if (error) throw error
       setRows(cur => cur.filter(r => !selectedRowIds.includes(r.id)))
       setSelectedRowIds([])
-      setFeedback('Selected colour lines deleted. Image storage was left untouched.')
+      toast({ title: 'Selected colour lines deleted.', variant: 'success' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not delete selected colour lines.')
+      toast({ title: err instanceof Error ? err.message : 'Could not delete selected colour lines.', variant: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -710,9 +706,6 @@ export default function ColourLibraryManager({
                   />
                   Active
                 </label>
-                {feedback && (
-                  <p className="col-span-2 text-[13px] text-[#991b1b]">{feedback}</p>
-                )}
               </div>
 
               {/* Footer */}
@@ -798,7 +791,7 @@ export default function ColourLibraryManager({
 
   return (
     <>
-      <div className="p-4 md:p-6 max-w-[1600px]">
+      <div className="p-4 md:p-6">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-[20px] font-bold text-[#1a1a18]">Colour Library</h1>
@@ -840,12 +833,6 @@ export default function ColourLibraryManager({
             Add colour line
           </button>
         </div>
-
-        {feedback && !isModalOpen && (
-          <div className="mb-4 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">
-            {feedback}
-          </div>
-        )}
 
         {/* Table */}
         <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">

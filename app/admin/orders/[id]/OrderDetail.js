@@ -9,6 +9,8 @@ import {
   ORDER_PRODUCTION_STAGES,
   ORDER_STATUSES,
 } from "../../../../lib/pcd-quote-utils";
+import { Modal } from '@/components/ui/Modal';
+import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
 import { AdminPagination, useAdminPagination } from "../../_components/AdminPagination";
 
@@ -313,9 +315,10 @@ export default function OrderDetail({ orderId }) {
   const [savingItemId, setSavingItemId] = useState("");
   const [savingPaymentId, setSavingPaymentId] = useState("");
   const [isGeneratingCutListPdf, setIsGeneratingCutListPdf] = useState(false);
-  const [feedback, setFeedback] = useState("");
+  const { toast } = useToast();
   const [colourSupplierMap, setColourSupplierMap] = useState({});
   const [paymentModal, setPaymentModal] = useState(null);
+  const [paymentRequestModal, setPaymentRequestModal] = useState(null);
   const [panelNotesModal, setPanelNotesModal] = useState(null);
 
   const items = useMemo(() => sortedItems(order), [order]);
@@ -360,10 +363,10 @@ export default function OrderDetail({ orderId }) {
     mono: "font-mono",
     pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border",
     tableWrap: "overflow-x-auto",
-    table: "w-full text-[12px] border-collapse",
-    th: "text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] px-3 py-[8px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
-    td: "px-3 py-[9px] border-b border-[#edf4eb] text-[#1a1a18] align-middle",
-    tdLast: "px-3 py-[9px] text-[#1a1a18] align-middle",
+    table: "w-full text-[13px] border-collapse",
+    th: "text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] px-4 py-[9px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
+    td: "px-4 py-[11px] border-b border-[#edf4eb] text-[#1a1a18] align-middle",
+    tdLast: "px-4 py-[11px] text-[#1a1a18] align-middle",
     inlineInput: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
     inlineSelect: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
     totalRow: "flex justify-between items-center py-[5px] border-b border-[#edf4eb] text-[12px] last:border-0",
@@ -372,17 +375,16 @@ export default function OrderDetail({ orderId }) {
 
   async function loadOrder() {
     setIsLoading(true);
-    setFeedback("");
     try {
       const response = await fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not load order.");
+        toast({ title: payload.error || "Could not load order.", variant: "error" });
         return;
       }
       setOrder(payload.order);
     } catch (error) {
-      setFeedback(error?.message || "Could not load order.");
+      toast({ title: error?.message || "Could not load order.", variant: "error" });
     } finally {
       setIsLoading(false);
     }
@@ -440,7 +442,6 @@ export default function OrderDetail({ orderId }) {
   async function saveOrder(fields) {
     if (!order) return;
     setIsSavingOrder(true);
-    setFeedback("");
     try {
       const response = await fetch(`/api/admin/orders/${orderId}`, {
         method: "PATCH",
@@ -449,13 +450,13 @@ export default function OrderDetail({ orderId }) {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not update order.");
+        toast({ title: payload.error || "Could not update order.", variant: "error" });
         return;
       }
       setOrder(payload.order);
-      setFeedback("Order updated.");
+      toast({ title: "Order updated.", variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not update order.");
+      toast({ title: error?.message || "Could not update order.", variant: "error" });
     } finally {
       setIsSavingOrder(false);
     }
@@ -493,7 +494,6 @@ export default function OrderDetail({ orderId }) {
   async function addPayment(payment) {
     if (!order) return;
     setSavingPaymentId("new");
-    setFeedback("");
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/payments`, {
         method: "POST",
@@ -502,7 +502,7 @@ export default function OrderDetail({ orderId }) {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not add payment.");
+        toast({ title: payload.error || "Could not add payment.", variant: "error" });
         return;
       }
       setOrder((current) => {
@@ -511,9 +511,9 @@ export default function OrderDetail({ orderId }) {
         return withSyncedDepositFields(current, nextPayments);
       });
       setPaymentModal(null);
-      setFeedback("Payment line added.");
+      toast({ title: "Payment line added.", variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not add payment.");
+      toast({ title: error?.message || "Could not add payment.", variant: "error" });
     } finally {
       setSavingPaymentId("");
     }
@@ -523,7 +523,6 @@ export default function OrderDetail({ orderId }) {
     if (!order) return;
     const previousOrder = order;
     setSavingPaymentId(payment.id);
-    setFeedback("");
     updatePaymentLocal(payment.id, changes);
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/payments/${payment.id}`, {
@@ -534,7 +533,7 @@ export default function OrderDetail({ orderId }) {
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
         setOrder(previousOrder);
-        setFeedback(payload.error || "Could not update payment.");
+        toast({ title: payload.error || "Could not update payment.", variant: "error" });
         return;
       }
       setOrder((current) => {
@@ -544,10 +543,10 @@ export default function OrderDetail({ orderId }) {
         );
         return withSyncedDepositFields(current, nextPayments);
       });
-      setFeedback("Payment line updated.");
+      toast({ title: "Payment line updated.", variant: "success" });
     } catch (error) {
       setOrder(previousOrder);
-      setFeedback(error?.message || "Could not update payment.");
+      toast({ title: error?.message || "Could not update payment.", variant: "error" });
     } finally {
       setSavingPaymentId("");
     }
@@ -557,7 +556,6 @@ export default function OrderDetail({ orderId }) {
     if (!order) return;
     const previousOrder = order;
     setSavingPaymentId(payment.id);
-    setFeedback("");
     setOrder((current) =>
       current
         ? { ...current, pcd_order_payments: (current.pcd_order_payments || []).filter((item) => item.id !== payment.id) }
@@ -568,32 +566,37 @@ export default function OrderDetail({ orderId }) {
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
         setOrder(previousOrder);
-        setFeedback(payload.error || "Could not delete payment.");
+        toast({ title: payload.error || "Could not delete payment.", variant: "error" });
         return;
       }
       setOrder((current) => {
         if (!current) return current;
         return withSyncedDepositFields(current, current.pcd_order_payments || []);
       });
-      setFeedback("Payment line deleted.");
+      toast({ title: "Payment line deleted.", variant: "success" });
     } catch (error) {
       setOrder(previousOrder);
-      setFeedback(error?.message || "Could not delete payment.");
+      toast({ title: error?.message || "Could not delete payment.", variant: "error" });
     } finally {
       setSavingPaymentId("");
     }
   }
 
 
-  async function requestPayment(payment) {
+  async function requestPayment(payment, emailData) {
     if (!order || !payment?.id) return;
+    const { message, subject } = emailData || {};
     setSavingPaymentId(payment.id);
-    setFeedback("");
     try {
-      const response = await fetch(`/api/admin/orders/${orderId}/payments/${payment.id}/request`, { method: "POST" });
+      const hasData = message || subject;
+      const body = hasData ? JSON.stringify({ message, subject }) : undefined;
+      const response = await fetch(`/api/admin/orders/${orderId}/payments/${payment.id}/request`, {
+        method: "POST",
+        ...(body ? { headers: { "Content-Type": "application/json" }, body } : {}),
+      });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not request payment.");
+        toast({ title: payload.error || "Could not request payment.", variant: "error" });
         return;
       }
       setOrder((current) => {
@@ -605,9 +608,9 @@ export default function OrderDetail({ orderId }) {
           ),
         };
       });
-      setFeedback(payload.emailSent ? "Payment request sent to customer." : `Payment request created. Email is not configured, use this link: ${payload.checkoutUrl}`);
+      toast({ title: payload.emailSent ? "Payment request sent to customer." : `Payment request created. Email is not configured, use this link: ${payload.checkoutUrl}`, variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not request payment.");
+      toast({ title: error?.message || "Could not request payment.", variant: "error" });
     } finally {
       setSavingPaymentId("");
     }
@@ -615,7 +618,6 @@ export default function OrderDetail({ orderId }) {
 
   async function generateCutListPdf() {
     setIsGeneratingCutListPdf(true);
-    setFeedback("");
     const previewWindow = window.open("", "_blank");
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/cut-list-pdf`, { cache: "no-store" });
@@ -646,7 +648,7 @@ export default function OrderDetail({ orderId }) {
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) {
       if (previewWindow) previewWindow.close();
-      setFeedback(error?.message || "Could not generate cut list PDF.");
+      toast({ title: error?.message || "Could not generate cut list PDF.", variant: "error" });
     } finally {
       setIsGeneratingCutListPdf(false);
     }
@@ -657,7 +659,6 @@ export default function OrderDetail({ orderId }) {
     const nextItem = { ...item, ...changes };
     const previousOrder = order;
     setSavingItemId(item.id);
-    setFeedback("");
     setOrder((current) => (current ? setOrderItem(current, item.id, nextItem) : current));
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/items/${item.id}`, {
@@ -668,14 +669,14 @@ export default function OrderDetail({ orderId }) {
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
         setOrder(previousOrder);
-        setFeedback(payload.error || "Could not update order item.");
+        toast({ title: payload.error || "Could not update order item.", variant: "error" });
         return;
       }
       setOrder((current) => (current ? setOrderItem(current, item.id, payload.item) : current));
-      setFeedback("Order item updated.");
+      toast({ title: "Order item updated.", variant: "success" });
     } catch (error) {
       setOrder(previousOrder);
-      setFeedback(error?.message || "Could not update order item.");
+      toast({ title: error?.message || "Could not update order item.", variant: "error" });
     } finally {
       setSavingItemId("");
     }
@@ -763,7 +764,7 @@ export default function OrderDetail({ orderId }) {
   }
 
   if (isLoading) return <section className={styles.emptyState}><p>Loading order...</p></section>;
-  if (!order) return <section className={styles.emptyState}><p>{feedback || "Order not found."}</p></section>;
+  if (!order) return <section className={styles.emptyState}><p>Order not found.</p></section>;
 
   function renderOverview() {
     return (
@@ -900,7 +901,7 @@ export default function OrderDetail({ orderId }) {
           </div>
         </div>
 
-        <div className="bg-[#edf4eb] border border-[#a8c5a0] rounded-[8px] p-4 max-w-xs">
+        <div className="bg-[#edf4eb] border border-[#a8c5a0] rounded-[8px] p-4 max-w-xs ml-auto">
           <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6b9e61] mb-2">Quote totals</p>
           <div className={tw.totalRow}><span className="text-[#5a5a52]">Subtotal ex GST</span><strong className={tw.mono}>{formatMoney(quote.subtotal_ex_gst, quoteCurrency)}</strong></div>
           <div className={tw.totalRow}><span className="text-[#5a5a52]">GST</span><strong className={tw.mono}>{formatMoney(quote.gst_amount, quoteCurrency)}</strong></div>
@@ -1359,7 +1360,7 @@ export default function OrderDetail({ orderId }) {
                 {cutListPagination.pageItems.map((row, index) => (
                   <tr key={row.key}>
                     <td className={tw.td + " text-[#8b8a81] font-mono text-[11px]"}>
-                      {(cutListPagination.page - 1) * 20 + index + 1}
+                      {(cutListPagination.page - 1) * 8 + index + 1}
                     </td>
                     <td className={tw.td}>{row.source}</td>
                     <td className={tw.td + " whitespace-nowrap text-[#5a5a52]"}>{row.cabinet || "—"}</td>
@@ -1531,7 +1532,11 @@ export default function OrderDetail({ orderId }) {
                               type="button"
                               className={tw.smBtn}
                               disabled={savingPaymentId === payment.id}
-                              onClick={() => requestPayment(payment)}
+                              onClick={() => setPaymentRequestModal({
+                                payment,
+                                subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
+                                message: [`Hi ${order.customer_name || "there"},`, "", `A payment is requested for ${order.order_number || "your order"}.`, "", "Please use the button below to complete your payment.", "", "Regards,", "Perth Cabinet Doors"].join("\n"),
+                              })}
                             >
                               Request
                             </button>
@@ -1599,7 +1604,11 @@ export default function OrderDetail({ orderId }) {
                 </div>
                 <div className="pt-3 mt-3 border-t border-[#edf4eb] flex flex-wrap gap-2">
                   {!payment.is_paid && Number(payment.amount || 0) > 0 && (
-                    <button type="button" className={tw.smBtn} disabled={savingPaymentId === payment.id} onClick={() => requestPayment(payment)}>Request</button>
+                    <button type="button" className={tw.smBtn} disabled={savingPaymentId === payment.id} onClick={() => setPaymentRequestModal({
+                      payment,
+                      subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
+                      message: [`Hi ${order.customer_name || "there"},`, "", `A payment is requested for ${order.order_number || "your order"}.`, "", "Please use the button below to complete your payment.", "", "Regards,", "Perth Cabinet Doors"].join("\n"),
+                    })}>Request</button>
                   )}
                   <button type="button" className={tw.dangerBtn} disabled={savingPaymentId === payment.id} onClick={() => deletePayment(payment)}>Delete</button>
                 </div>
@@ -1619,93 +1628,174 @@ export default function OrderDetail({ orderId }) {
     if (!paymentModal) return null;
 
     const isDeposit = paymentModal.payment_type === "deposit";
+    const currency = order.currency || "AUD";
+    const existingTotal = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const outstandingAvailable = Math.max(0, paymentTotals.orderTotal - existingTotal);
 
     return (
-      <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-label={isDeposit ? "Add deposit line" : "Add payment line"}>
-        <div className={`${styles.customerModal} ${styles.paymentModal}`}>
-          <header className={styles.customerModalHeader}>
-            <div className={styles.customerModalIcon}>{isDeposit ? "DEP" : "PAY"}</div>
-            <div>
-              <p className={styles.tableMeta}>{isDeposit ? "Deposit required" : "Payment line"}</p>
-              <h2>{isDeposit ? "Add Deposit Line" : "Add Payment Line"}</h2>
-            </div>
-            <button type="button" className={styles.modalCloseButton} onClick={() => setPaymentModal(null)} disabled={savingPaymentId === "new"}>
-              Close
+      <Modal
+        open={true}
+        onClose={() => setPaymentModal(null)}
+        title={isDeposit ? "Add Deposit Line" : "Add Payment Line"}
+        subtitle={isDeposit ? "Deposit required" : "Payment line"}
+        size="md"
+        footer={
+          <>
+            <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setPaymentModal(null)}>
+              Cancel
             </button>
-          </header>
-          <div className={styles.customerModalBody}>
-            <div className={styles.customerModalGrid}>
-              <label className={styles.fieldLabel}>
-                Payment type
-                <select
-                  className={styles.fieldInput}
-                  value={paymentModal.payment_type}
-                  disabled={isDeposit}
-                  onChange={(event) => setPaymentModal((current) => ({ ...current, payment_type: event.target.value }))}
-                >
-                  {paymentTypes.map((type) => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.fieldLabel}>
-                Amount
-                <input
-                  className={styles.fieldInput}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={paymentModal.amount}
-                  onChange={(event) => setPaymentModal((current) => ({ ...current, amount: event.target.value }))}
-                />
-              </label>
-              <label className={styles.fieldLabel}>
-                Payment status
-                <select
-                  className={styles.fieldInput}
-                  value={paymentModal.is_paid ? "paid" : "pending"}
-                  onChange={(event) => setPaymentModal((current) => ({ ...current, is_paid: event.target.value === "paid" }))}
-                >
-                  <option value="pending">Pending</option>
-                  <option value="paid">Paid</option>
-                </select>
-              </label>
-              <label className={styles.fieldLabel}>
-                Date paid
-                <input
-                  className={styles.fieldInput}
-                  type="date"
-                  value={paymentModal.paid_at}
-                  disabled={!paymentModal.is_paid}
-                  onChange={(event) => setPaymentModal((current) => ({ ...current, paid_at: event.target.value }))}
-                />
-              </label>
-              <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-                Notes
-                <textarea
-                  className={styles.textareaInput}
-                  rows={3}
-                  value={paymentModal.notes}
-                  onChange={(event) => setPaymentModal((current) => ({ ...current, notes: event.target.value }))}
-                />
-              </label>
-            </div>
+            <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" disabled={savingPaymentId === "new"} onClick={() => addPayment(paymentModal)}>
+              Add line
+            </button>
+          </>
+        }
+      >
+        <div className={styles.customerModalGrid}>
+          <label className={styles.fieldLabel}>
+            Payment type
+            <select
+              className={styles.fieldInput}
+              value={paymentModal.payment_type}
+              disabled={isDeposit}
+              onChange={(event) => {
+                const nextType = event.target.value;
+                setPaymentModal((current) => ({
+                  ...current,
+                  payment_type: nextType,
+                  ...(nextType === "final" ? { amount: String(outstandingAvailable) } : {}),
+                }));
+              }}
+            >
+              {paymentTypes.map((type) => (
+                <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-col gap-[3px]">
+            <label className={styles.fieldLabel}>
+              Amount
+              <input
+                className={styles.fieldInput}
+                type="number"
+                min="0"
+                max={outstandingAvailable}
+                step="0.01"
+                value={paymentModal.amount}
+                onChange={(event) => setPaymentModal((current) => ({ ...current, amount: event.target.value }))}
+                onBlur={(event) => {
+                  const clamped = Math.min(Number(event.target.value || 0), outstandingAvailable);
+                  setPaymentModal((current) => ({ ...current, amount: String(clamped) }));
+                }}
+              />
+            </label>
+            <p className="text-[11px] text-[#8b8a81]">Outstanding balance: {formatMoney(outstandingAvailable, currency)}</p>
           </div>
-          <footer className={styles.customerModalFooter}>
-            <button type="button" className={styles.secondaryButton} onClick={() => setPaymentModal(null)}>
+          <label className={styles.fieldLabel}>
+            Payment status
+            <select
+              className={styles.fieldInput}
+              value={paymentModal.is_paid ? "paid" : "pending"}
+              onChange={(event) => setPaymentModal((current) => ({ ...current, is_paid: event.target.value === "paid" }))}
+            >
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+            </select>
+          </label>
+          <label className={styles.fieldLabel}>
+            Date paid
+            <input
+              className={styles.fieldInput}
+              type="date"
+              value={paymentModal.paid_at}
+              disabled={!paymentModal.is_paid}
+              onChange={(event) => setPaymentModal((current) => ({ ...current, paid_at: event.target.value }))}
+            />
+          </label>
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            Notes
+            <textarea
+              className={styles.textareaInput}
+              rows={3}
+              value={paymentModal.notes}
+              onChange={(event) => setPaymentModal((current) => ({ ...current, notes: event.target.value }))}
+            />
+          </label>
+        </div>
+      </Modal>
+    );
+  }
+
+  function renderPaymentRequestModal() {
+    if (!paymentRequestModal) return null;
+    const { payment, message, subject } = paymentRequestModal;
+    const hasEmail = !!order.customer_email;
+    const isSending = savingPaymentId === payment.id;
+
+    return (
+      <Modal
+        open={true}
+        onClose={() => setPaymentRequestModal(null)}
+        title="Email customer"
+        subtitle="Request payment"
+        size="lg"
+        footer={
+          <>
+            <button
+              type="button"
+              className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
+              onClick={() => setPaymentRequestModal(null)}
+              disabled={isSending}
+            >
               Cancel
             </button>
             <button
               type="button"
-              className={styles.primaryButton}
-              disabled={savingPaymentId === "new"}
-              onClick={() => addPayment(paymentModal)}
+              className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
+              disabled={!hasEmail || isSending}
+              onClick={() => {
+                setPaymentRequestModal(null);
+                requestPayment(payment, { message, subject });
+              }}
             >
-              Add line
+              {isSending ? "Sending…" : "Send request"}
             </button>
-          </footer>
+          </>
+        }
+      >
+        <div className={styles.customerModalGrid}>
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            To
+            <input className={styles.fieldInput} value={order.customer_email || ""} disabled />
+          </label>
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            Subject
+            <input
+              className={styles.fieldInput}
+              value={subject}
+              onChange={(event) => setPaymentRequestModal((current) => ({ ...current, subject: event.target.value }))}
+            />
+          </label>
+          <div className={`${styles.fieldWide} flex items-center justify-between px-3 py-2 bg-[#f5f8f4] border border-[#dbd8cc] rounded-[6px]`}>
+            <span className="text-[12px] text-[#5a5a52]">{titleCaseStatus(payment.payment_type)}</span>
+            <strong className="text-[13px] font-mono text-[#1a1a18]">{formatMoney(Number(payment.amount || 0), order.currency || "AUD")}</strong>
+          </div>
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            Email message
+            <textarea
+              className={`${styles.textareaInput} ${styles.quoteEmailTextarea}`}
+              style={{ minHeight: "220px" }}
+              value={message}
+              onChange={(event) => setPaymentRequestModal((current) => ({ ...current, message: event.target.value }))}
+            />
+          </label>
         </div>
-      </div>
+        {!hasEmail ? (
+          <div className="mx-1 mt-3 px-3 py-2 bg-[#fffbeb] border border-[#fcd34d] rounded-[6px] text-[12px] text-[#92400e] flex items-center gap-2">
+            <span>⚠</span>
+            <span>Add a customer email to this order before sending a payment request.</span>
+          </div>
+        ) : null}
+      </Modal>
     );
   }
 
@@ -1714,47 +1804,33 @@ export default function OrderDetail({ orderId }) {
     const row = panelNotesModal.row;
 
     return (
-      <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-label="Panel notes">
-        <div className={`${styles.customerModal} ${styles.paymentModal}`}>
-          <header className={styles.customerModalHeader}>
-            <div className={styles.customerModalIcon}>NOTE</div>
-            <div>
-              <p className={styles.tableMeta}>{row.source}</p>
-              <h2>{row.piece}</h2>
-            </div>
-            <button type="button" className={styles.modalCloseButton} onClick={() => setPanelNotesModal(null)} disabled={savingItemId === row.item.id}>
-              Close
-            </button>
-          </header>
-          <div className={styles.customerModalBody}>
-            <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-              Notes
-              <textarea
-                className={styles.textareaInput}
-                rows={6}
-                value={panelNotesModal.notes}
-                onChange={(event) => setPanelNotesModal((current) => ({ ...current, notes: event.target.value }))}
-              />
-            </label>
-          </div>
-          <footer className={styles.customerModalFooter}>
-            <button type="button" className={styles.secondaryButton} onClick={() => setPanelNotesModal(null)}>
+      <Modal
+        open={true}
+        onClose={() => setPanelNotesModal(null)}
+        title={row.piece}
+        subtitle={row.source}
+        size="md"
+        footer={
+          <>
+            <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setPanelNotesModal(null)}>
               Cancel
             </button>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              disabled={savingItemId === row.item.id}
-              onClick={async () => {
-                await updatePanelPlan(row, { notes: panelNotesModal.notes });
-                setPanelNotesModal(null);
-              }}
-            >
+            <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" disabled={savingItemId === row.item.id} onClick={async () => { await updatePanelPlan(row, { notes: panelNotesModal.notes }); setPanelNotesModal(null); }}>
               Save notes
             </button>
-          </footer>
-        </div>
-      </div>
+          </>
+        }
+      >
+        <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+          Notes
+          <textarea
+            className={styles.textareaInput}
+            rows={6}
+            value={panelNotesModal.notes}
+            onChange={(event) => setPanelNotesModal((current) => ({ ...current, notes: event.target.value }))}
+          />
+        </label>
+      </Modal>
     );
   }
 
@@ -1762,93 +1838,108 @@ export default function OrderDetail({ orderId }) {
     return (
       <div className={tw.card}>
         <div className={tw.cardHeader}>
-          <span className={tw.cardTitle}>Order history</span>
-          <span className={tw.muted}>{activity.length} {activity.length === 1 ? "entry" : "entries"}</span>
+          <span className={tw.cardTitle}>Activity log</span>
+          <span className={tw.muted}>{activity.length} {activity.length === 1 ? 'entry' : 'entries'}</span>
         </div>
-        <div className="hidden md:block">
-          <div className={tw.cardBody}>
-            {!activity.length && (
-              <p className="text-center text-[12px] text-[#8b8a81] py-6">No activity recorded for this order yet.</p>
-            )}
-            <div className="flex flex-col">
-              {activityPagination.pageItems.map((entry, index) => (
-                <div key={entry.id} className={`flex gap-3 py-3 ${index < activityPagination.pageItems.length - 1 ? "border-b border-[#edf4eb]" : ""}`}>
-                  <div className="flex flex-col items-center flex-shrink-0 mt-1">
-                    <div className={`w-[8px] h-[8px] rounded-full flex-shrink-0 ${
-                      entry.action_type === "create" ? "bg-[#6b9e61]" :
-                      entry.action_type === "update" ? "bg-[#6b9e61]/50" :
-                      "bg-[#dbd8cc]"
-                    }`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-semibold text-[#1a1a18]">{entry.title}</p>
-                    {entry.description && (
-                      <p className="text-[11px] text-[#5a5a52] mt-[2px] leading-relaxed">
-                        {formatActivityDescription(entry.description)}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2 mt-[4px] flex-wrap">
-                      <span className={`${tw.pill} ${
-                        entry.actor_type === "admin"
-                          ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
-                          : entry.actor_type === "customer"
-                          ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
-                          : "bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]"
-                      }`}>
-                        {activityActorLabel(entry.actor_type)}
-                      </span>
-                      <span className={`${tw.pill} bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]`}>
-                        {titleCaseStatus(entry.action_type)}
-                      </span>
-                      <time className={tw.muted} dateTime={entry.created_at || undefined}>
-                        {formatDateTime(entry.created_at)}
-                      </time>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <AdminPagination
-            label="activity entries"
-            page={activityPagination.page}
-            pageCount={activityPagination.pageCount}
-            totalItems={activityPagination.totalItems}
-            onPageChange={activityPagination.setPage}
-          />
-        </div>
-        <div className="md:hidden flex flex-col gap-3 p-3">
-          {activityPagination.pageItems.map(entry => (
-            <article key={entry.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
-              <div className="mb-2">
-                <p className="text-[13px] font-semibold text-[#1a1a18]">{entry.title}</p>
-                {entry.description && <p className="text-[11px] text-[#8b8a81] mt-[2px] leading-relaxed">{formatActivityDescription(entry.description)}</p>}
-              </div>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-                <div>
-                  <dt className="text-[#8b8a81]">Actor</dt>
-                  <dd>
-                    <span className={`${tw.pill} ${entry.actor_type === "admin" || entry.actor_type === "customer" ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]" : "bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]"}`}>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className={tw.table}>
+            <thead>
+              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                {['Date', 'Event', 'Detail', 'Actor', 'Type'].map(h => (
+                  <th key={h} className={tw.th}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {activityPagination.pageItems.map((entry) => (
+                <tr key={entry.id} className="border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4] transition-colors">
+                  <td className={tw.td + ' whitespace-nowrap text-[#8b8a81] text-[11px]'}>
+                    {formatDateTime(entry.created_at)}
+                  </td>
+                  <td className={tw.td + ' font-medium whitespace-nowrap'}>
+                    {entry.title}
+                  </td>
+                  <td className={tw.td + ' text-[#5a5a52] max-w-[320px]'}>
+                    <span className="block truncate text-[11px]" title={formatActivityDescription(entry.description)}>
+                      {formatActivityDescription(entry.description) || '—'}
+                    </span>
+                  </td>
+                  <td className={tw.td}>
+                    <span className={`${tw.pill} ${
+                      entry.actor_type === 'admin'
+                        ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
+                        : entry.actor_type === 'customer'
+                        ? 'bg-[#eff6ff] text-[#1e5fa8] border-[#93c5fd]'
+                        : 'bg-[#f5f5f4] text-[#8b8a81] border-[#dbd8cc]'
+                    }`}>
                       {activityActorLabel(entry.actor_type)}
                     </span>
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[#8b8a81]">Action</dt>
-                  <dd><span className={`${tw.pill} bg-[#f5f8f4] text-[#5a5a52] border-[#dbd8cc]`}>{titleCaseStatus(entry.action_type)}</span></dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-[#8b8a81]">Date</dt>
-                  <dd className={tw.muted}><time dateTime={entry.created_at || undefined}>{formatDateTime(entry.created_at)}</time></dd>
-                </div>
-              </dl>
-            </article>
+                  </td>
+                  <td className={tw.tdLast}>
+                    <span className="inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc] whitespace-nowrap">
+                      {titleCaseStatus(entry.action_type)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {!activity.length && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-[12px] text-[#8b8a81]">
+                    No activity recorded for this order yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile cards */}
+        <div className="md:hidden flex flex-col divide-y divide-[#edf4eb]">
+          {activityPagination.pageItems.map(entry => (
+            <div key={entry.id} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <p className="text-[12px] font-semibold text-[#1a1a18]">{entry.title}</p>
+                <time className="text-[10px] text-[#8b8a81] whitespace-nowrap flex-shrink-0 mt-[1px]">
+                  {formatDateTime(entry.created_at)}
+                </time>
+              </div>
+              {formatActivityDescription(entry.description) && (
+                <p className="text-[11px] text-[#5a5a52] leading-relaxed mb-2">
+                  {formatActivityDescription(entry.description)}
+                </p>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`${tw.pill} ${
+                  entry.actor_type === 'admin'
+                    ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
+                    : entry.actor_type === 'customer'
+                    ? 'bg-[#eff6ff] text-[#1e5fa8] border-[#93c5fd]'
+                    : 'bg-[#f5f5f4] text-[#8b8a81] border-[#dbd8cc]'
+                }`}>
+                  {activityActorLabel(entry.actor_type)}
+                </span>
+                <span className="inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]">
+                  {titleCaseStatus(entry.action_type)}
+                </span>
+              </div>
+            </div>
           ))}
           {!activity.length && (
-            <p className="py-8 text-center text-[12px] text-[#8b8a81]">No activity recorded for this order yet.</p>
+            <div className="py-8 text-center text-[12px] text-[#8b8a81]">
+              No activity recorded for this order yet.
+            </div>
           )}
-          <AdminPagination label="activity entries" page={activityPagination.page} pageCount={activityPagination.pageCount} totalItems={activityPagination.totalItems} onPageChange={activityPagination.setPage} />
         </div>
+
+        <AdminPagination
+          label="activity entries"
+          page={activityPagination.page}
+          pageCount={activityPagination.pageCount}
+          totalItems={activityPagination.totalItems}
+          onPageChange={activityPagination.setPage}
+        />
       </div>
     );
   }
@@ -1956,7 +2047,6 @@ export default function OrderDetail({ orderId }) {
               </div>
               <div className="p-4 bg-[#f5f8f4]">
                 {renderSection()}
-                {feedback ? <p className="mt-3 text-[13px] text-[#991b1b]">{feedback}</p> : null}
               </div>
             </div>
           )}
@@ -1973,6 +2063,7 @@ export default function OrderDetail({ orderId }) {
       </div>
 
       {renderPaymentModal()}
+      {renderPaymentRequestModal()}
       {renderPanelNotesModal()}
     </>
   );

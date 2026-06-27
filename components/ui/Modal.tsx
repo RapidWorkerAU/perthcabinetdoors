@@ -30,7 +30,7 @@ export interface ModalProps {
   onClose:          () => void
   title:            string
   subtitle?:        string
-  size?:            'sm' | 'md' | 'lg'
+  size?:            'sm' | 'md' | 'lg' | 'xl'
   hideCloseButton?: boolean
   contentFit?:      boolean
   footer?:          React.ReactNode
@@ -38,10 +38,11 @@ export interface ModalProps {
   className?:       string
 }
 
-const SIZE_CLASS: Record<'sm' | 'md' | 'lg', string> = {
+const SIZE_CLASS: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
   sm: 'md:max-w-[380px]',
   md: 'md:max-w-[480px]',
   lg: 'md:max-w-[560px]',
+  xl: 'md:w-[90vw] md:max-w-[90vw]',
 }
 
 export function Modal({

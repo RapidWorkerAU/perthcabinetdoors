@@ -1660,6 +1660,8 @@
 
 .cabinetOverlayModal {
   grid-template-rows: minmax(0, 1fr);
+  max-width: 70vw;
+  width: 70vw;
 }
 
 .cabinetOverlayBody {
@@ -2451,7 +2453,7 @@
 
 .quoteColourOption strong {
   color: var(--pcd-admin-text);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.25;
 }
@@ -2459,7 +2461,7 @@
 .quoteColourOption small,
 .quoteColourEmpty {
   color: var(--pcd-admin-text-soft);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.25;
 }
 

@@ -1,4 +1,4 @@
-﻿import { Resend } from "resend";
+import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
 import { createCheckoutSession, siteUrl } from "../../../../../../../../lib/pcd-stripe";
@@ -34,18 +34,41 @@ async function assertPaymentWithinOrderTotal(supabase, orderId, paymentId, amoun
   }
 }
 
-function paymentRequestHtml({ order, payment, checkoutUrl }) {
+function defaultEmailMessage(order) {
+  return [
+    `Hi ${order.customer_name || "there"},`,
+    "",
+    `A payment is requested for ${order.order_number || "your PCD order"}.`,
+    "",
+    "Please use the button below to complete your payment.",
+    "",
+    "Regards,",
+    "Perth Cabinet Doors",
+  ].join("\n");
+}
+
+function paymentRequestHtml({ order, payment, checkoutUrl, message }) {
+  const fullMessage = message || defaultEmailMessage(order);
+  const bodyHtml = String(fullMessage)
+    .split("\n")
+    .map((line) =>
+      line.trim() === ""
+        ? `<p style="margin:0 0 6px;">&nbsp;</p>`
+        : `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;">${escapeHtml(line)}</p>`
+    )
+    .join("");
+
   return `<!doctype html><html><body style="margin:0;background:#f4f0e8;padding:28px 14px;font-family:Arial,sans-serif;color:#18221b;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fffaf3;border:1px solid #d8cbb8;">
     <tr><td style="background:#eef7ed;padding:26px 30px;border-bottom:1px solid #d5e4d1;"><div style="color:#2f6b3b;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;">Perth Cabinet Doors</div><h1 style="margin:8px 0 0;color:#001f36;font-family:Arial,sans-serif;font-size:28px;font-weight:400;">Payment request</h1></td></tr>
-    <tr><td style="padding:26px 30px;"><p style="margin:0 0 14px;font-size:15px;line-height:1.6;">Hi ${escapeHtml(order.customer_name || "there")},</p>
-    <p style="margin:0 0 18px;font-size:15px;line-height:1.6;">A payment is requested for ${escapeHtml(order.order_number || "your PCD order")}.</p>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f7f2ea;border:1px solid #e3d7c6;">
+    <tr><td style="padding:26px 30px;">
+    ${bodyHtml}
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f7f2ea;border:1px solid #e3d7c6;margin-bottom:20px;">
     <tr><td style="padding:12px 14px;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Payment type</td><td style="padding:12px 14px;text-align:right;color:#001f36;font-weight:800;">${escapeHtml(payment.payment_type || "payment")}</td></tr>
     <tr><td style="padding:12px 14px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Amount</td><td style="padding:12px 14px;border-top:1px solid #e3d7c6;text-align:right;color:#001f36;font-weight:800;">${formatMoney(payment.amount)}</td></tr>
     </table>
-    <p style="margin:20px 0 18px;"><a href="${escapeHtml(checkoutUrl)}" style="display:inline-block;background:#17321f;color:#ffffff;text-decoration:none;padding:14px 20px;font-size:14px;font-weight:700;">Make payment</a></p>
+    <p style="margin:0 0 18px;"><a href="${escapeHtml(checkoutUrl)}" style="display:inline-block;background:#17321f;color:#ffffff;text-decoration:none;padding:14px 20px;font-size:14px;font-weight:700;">Make payment</a></p>
     <p style="margin:0;color:#7c725f;font-size:13px;line-height:1.5;word-break:break-all;">${escapeHtml(checkoutUrl)}</p></td></tr>
     </table></td></tr></table></body></html>`;
 }
@@ -53,6 +76,17 @@ function paymentRequestHtml({ order, payment, checkoutUrl }) {
 export async function POST(request, { params }) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;
+
+  let message = "";
+  let subject = "";
+  try {
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const body = await request.json();
+      message = String(body?.message || "").trim();
+      subject = String(body?.subject || "").trim();
+    }
+  } catch { /* ignore parse errors */ }
 
   try {
     const { orderId, paymentId } = await idsFromParams(params);
@@ -102,21 +136,18 @@ export async function POST(request, { params }) {
       .single();
     if (updateError) throw updateError;
 
+    const fullMessage = message || defaultEmailMessage(order);
+    const emailSubject = subject || `Payment request - ${order.order_number || "Perth Cabinet Doors"}`;
+
     let emailSent = false;
     if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
         to: [order.customer_email],
-        subject: `Payment request - ${order.order_number || "Perth Cabinet Doors"}`,
-        html: paymentRequestHtml({ order, payment: updatedPayment, checkoutUrl: session.url }),
-        text: [
-          `Hi ${order.customer_name || "there"},`,
-          "",
-          `A payment of ${formatMoney(updatedPayment.amount)} is requested for ${order.order_number || "your PCD order"}.`,
-          "",
-          `Pay here: ${session.url}`,
-        ].join("\n"),
+        subject: emailSubject,
+        html: paymentRequestHtml({ order, payment: updatedPayment, checkoutUrl: session.url, message: fullMessage }),
+        text: `${fullMessage}\n\nPay here: ${session.url}`,
       });
       emailSent = true;
     }
@@ -136,4 +167,3 @@ export async function POST(request, { params }) {
     return Response.json({ ok: false, error: error?.message || "Could not request payment." }, { status: 500 });
   }
 }
-

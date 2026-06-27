@@ -6,6 +6,7 @@ import { formatMoney } from '../../../lib/pcd-quote-utils'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/Toast'
 
 const STATUSES = ['draft', 'sent', 'viewed', 'approved', 'rejected']
 const FILTERS  = ['all', ...STATUSES]
@@ -52,12 +53,12 @@ function quoteCustomerSuburb(quote: Quote) {
 
 export default function QuotesTable() {
   const router = useRouter()
+  const { toast } = useToast()
   const [quotes,            setQuotes]            = useState<Quote[]>([])
   const [isLoading,         setIsLoading]         = useState(true)
   const [isCreating,        setIsCreating]        = useState(false)
   const [duplicatingQuoteId, setDuplicatingQuoteId] = useState('')
   const [isDeleting,        setIsDeleting]        = useState(false)
-  const [feedback,          setFeedback]          = useState('')
   const [setupRequired,     setSetupRequired]     = useState(false)
   const [statusFilter,      setStatusFilter]      = useState('draft')
   const [selectedQuoteIds,  setSelectedQuoteIds]  = useState<string[]>([])
@@ -83,15 +84,14 @@ export default function QuotesTable() {
 
   async function loadQuotes() {
     setIsLoading(true)
-    setFeedback('')
     try {
       const response = await fetch('/api/admin/quotes', { cache: 'no-store' })
       const payload  = await response.json()
       setSetupRequired(!!payload.setupRequired)
       setQuotes(payload.quotes || [])
-      if (payload.error) setFeedback(payload.error)
+      if (payload.error) toast({ title: payload.error, variant: 'error' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not load quotes.')
+      toast({ title: err instanceof Error ? err.message : 'Could not load quotes.', variant: 'error' })
     } finally {
       setIsLoading(false)
     }
@@ -101,7 +101,6 @@ export default function QuotesTable() {
 
   async function createQuote() {
     setIsCreating(true)
-    setFeedback('')
     try {
       const response = await fetch('/api/admin/quotes', {
         method:  'POST',
@@ -116,12 +115,12 @@ export default function QuotesTable() {
       })
       const payload = await response.json()
       if (!response.ok || !payload.ok || !payload.quote?.id) {
-        setFeedback(payload.error || 'Could not create quote.')
+        toast({ title: payload.error || 'Could not create quote.', variant: 'error' })
         return
       }
       router.push(`/admin/quotes/${payload.quote.id}`)
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not create quote.')
+      toast({ title: err instanceof Error ? err.message : 'Could not create quote.', variant: 'error' })
     } finally {
       setIsCreating(false)
     }
@@ -129,17 +128,16 @@ export default function QuotesTable() {
 
   async function duplicateQuote(quoteId: string) {
     setDuplicatingQuoteId(quoteId)
-    setFeedback('')
     try {
       const response = await fetch(`/api/admin/quotes/${quoteId}/duplicate`, { method: 'POST' })
       const payload  = await response.json()
       if (!response.ok || !payload.ok || !payload.quote?.id) {
-        setFeedback(payload.error || 'Could not duplicate quote.')
+        toast({ title: payload.error || 'Could not duplicate quote.', variant: 'error' })
         return
       }
       router.push(`/admin/quotes/${payload.quote.id}`)
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not duplicate quote.')
+      toast({ title: err instanceof Error ? err.message : 'Could not duplicate quote.', variant: 'error' })
     } finally {
       setDuplicatingQuoteId('')
     }
@@ -148,7 +146,6 @@ export default function QuotesTable() {
   async function deleteQuotes(ids: string[]) {
     if (!ids.length) return
     setIsDeleting(true)
-    setFeedback('')
     try {
       for (const id of ids) {
         const response = await fetch(`/api/admin/quotes/${id}`, { method: 'DELETE' })
@@ -157,9 +154,9 @@ export default function QuotesTable() {
       }
       setQuotes(current => current.filter(q => !ids.includes(q.id)))
       setSelectedQuoteIds(current => current.filter(id => !ids.includes(id)))
-      setFeedback(`${ids.length} quote${ids.length === 1 ? '' : 's'} deleted.`)
+      toast({ title: `${ids.length} quote${ids.length === 1 ? '' : 's'} deleted.`, variant: 'success' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not delete selected quotes.')
+      toast({ title: err instanceof Error ? err.message : 'Could not delete selected quotes.', variant: 'error' })
     } finally {
       setIsDeleting(false)
     }
@@ -180,7 +177,7 @@ export default function QuotesTable() {
   const allPageSelected = pageItems.length > 0 && pageItems.every(q => selectedQuoteIds.includes(q.id))
 
   return (
-    <div className="p-4 md:p-6 max-w-[1400px]">
+    <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Quotes</h1>
@@ -246,12 +243,6 @@ export default function QuotesTable() {
           Install <code className="font-mono text-[12px]">supabase/quote_project_workflow_setup.sql</code> before saving quotes.
         </div>
       )}
-      {feedback && (
-        <div className="mb-4 px-4 py-3 rounded-[6px] bg-[#fef2f2] border border-[#fca5a5] text-[13px] text-[#991b1b]">
-          {feedback}
-        </div>
-      )}
-
       {/* Desktop table */}
       <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
         <div className="overflow-x-auto">

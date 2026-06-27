@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 const nextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: __dirname,
-  pageExtensions: ["js", "jsx"],
+  pageExtensions: ["js", "jsx", "ts", "tsx"],
 };
 
 export default nextConfig;

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
+import { useToast } from '@/components/ui/Toast'
 
 interface Customer {
   id:            string
@@ -66,9 +67,9 @@ function formFromCustomer(customer: Customer): CustomerForm {
 export default function CustomersManager() {
   const [customers,           setCustomers]           = React.useState<Customer[]>([])
   const [form,                setForm]                = React.useState<CustomerForm>(emptyForm)
+  const { toast } = useToast()
   const [isLoading,           setIsLoading]           = React.useState(true)
   const [isSaving,            setIsSaving]            = React.useState(false)
-  const [feedback,            setFeedback]            = React.useState('')
   const [setupRequired,       setSetupRequired]       = React.useState(false)
   const [search,              setSearch]              = React.useState('')
   const [isCustomerModalOpen, setIsCustomerModalOpen] = React.useState(false)
@@ -88,15 +89,14 @@ export default function CustomersManager() {
 
   async function loadCustomers() {
     setIsLoading(true)
-    setFeedback('')
     try {
       const res     = await fetch('/api/admin/customers', { cache: 'no-store' })
       const payload = await res.json()
       setSetupRequired(!!payload.setupRequired)
       setCustomers(payload.customers || [])
-      if (payload.error) setFeedback(payload.error)
+      if (payload.error) toast({ title: payload.error, variant: 'error' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not load customers.')
+      toast({ title: err instanceof Error ? err.message : 'Could not load customers.', variant: 'error' })
     } finally {
       setIsLoading(false)
     }
@@ -110,13 +110,11 @@ export default function CustomersManager() {
 
   function openNewCustomerModal() {
     setForm(emptyForm)
-    setFeedback('')
     setIsCustomerModalOpen(true)
   }
 
   function openEditCustomerModal(customer: Customer) {
     setForm(formFromCustomer(customer))
-    setFeedback('')
     setIsCustomerModalOpen(true)
   }
 
@@ -129,7 +127,6 @@ export default function CustomersManager() {
   async function saveCustomer(e?: React.FormEvent | React.MouseEvent) {
     e?.preventDefault()
     setIsSaving(true)
-    setFeedback('')
 
     const endpoint = form.id ? `/api/admin/customers/${form.id}` : '/api/admin/customers'
     const method   = form.id ? 'PATCH' : 'POST'
@@ -143,7 +140,7 @@ export default function CustomersManager() {
       const payload = await res.json()
 
       if (!res.ok || !payload.ok) {
-        setFeedback(payload.error || 'Could not save customer.')
+        toast({ title: payload.error || 'Could not save customer.', variant: 'error' })
         return
       }
 
@@ -154,9 +151,9 @@ export default function CustomersManager() {
       })
       setForm(emptyForm)
       setIsCustomerModalOpen(false)
-      setFeedback(message)
+      toast({ title: message, variant: 'success' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not save customer.')
+      toast({ title: err instanceof Error ? err.message : 'Could not save customer.', variant: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -165,7 +162,6 @@ export default function CustomersManager() {
   async function deleteCustomers(ids: string[]) {
     if (!ids.length) return
     setIsSaving(true)
-    setFeedback('')
     try {
       for (const id of ids) {
         const res     = await fetch(`/api/admin/customers/${id}`, { method: 'DELETE' })
@@ -174,9 +170,9 @@ export default function CustomersManager() {
       }
       setCustomers(current => current.filter(c => !ids.includes(c.id)))
       setSelectedCustomerIds(current => current.filter(id => !ids.includes(id)))
-      setFeedback(`${ids.length} customer${ids.length === 1 ? '' : 's'} deleted.`)
+      toast({ title: `${ids.length} customer${ids.length === 1 ? '' : 's'} deleted.`, variant: 'success' })
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Could not delete selected customers.')
+      toast({ title: err instanceof Error ? err.message : 'Could not delete selected customers.', variant: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -197,7 +193,7 @@ export default function CustomersManager() {
   const allPageSelected = pageItems.length > 0 && pageItems.every(c => selectedCustomerIds.includes(c.id))
 
   return (
-    <div className="p-4 md:p-6 max-w-[1400px]">
+    <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Customers</h1>
@@ -208,12 +204,6 @@ export default function CustomersManager() {
       {setupRequired && (
         <div className="mb-4 px-4 py-3 rounded-[6px] bg-[#fff8df] border border-[#dcbf55] text-[13px] text-[#5c4200]">
           Run the updated <code>supabase/quote_project_workflow_setup.sql</code> before saving customers.
-        </div>
-      )}
-
-      {feedback && (
-        <div className="mb-4 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">
-          {feedback}
         </div>
       )}
 

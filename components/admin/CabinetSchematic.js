@@ -215,102 +215,109 @@ function BackPanelOutline({ cabinet, x, y, rectWidth, rectHeight, scale }) {
   );
 }
 
-export default function CabinetSchematic({ config = DEFAULT_CONFIG }) {
+export default function CabinetSchematic({ config = DEFAULT_CONFIG, view = null }) {
   const cabinet = normalizeCabinetConfig({ ...DEFAULT_CONFIG, ...config });
   const maxDimension = Math.max(cabinet.width_mm, cabinet.height_mm, cabinet.depth_mm, 1);
   const scale = DRAWING_MAX / maxDimension;
   const thicknessScale = cabinet.carcass_thickness_mm * scale;
   const shelfThicknessScale = cabinet.shelf_thickness_mm * scale;
   const backThicknessScale = cabinet.back_panel_included ? cabinet.back_panel_thickness_mm * scale : 0;
+  const singleStyle = { ...wrapStyle, gridTemplateColumns: "1fr" };
 
   return (
-    <div style={wrapStyle}>
-      <Drawing
-        title="Front Elevation"
-        widthMm={cabinet.width_mm}
-        heightMm={cabinet.height_mm}
-        scale={scale}
-        bottomLabel={toLabel(cabinet.width_mm)}
-        sideLabel={toLabel(cabinet.height_mm)}
-      >
-        {({ x, y, rectWidth, rectHeight }) => (
-          <>
-            <rect x={x} y={y} width={thicknessScale} height={rectHeight} fill="none" stroke={MUTED} strokeWidth="0.8" />
-            <rect
-              x={x + rectWidth - thicknessScale}
-              y={y}
-              width={thicknessScale}
-              height={rectHeight}
-              fill="none"
-              stroke={MUTED}
-              strokeWidth="0.8"
-            />
-            <FrontShelves
-              cabinet={cabinet}
-              x={x}
-              y={y}
-              rectWidth={rectWidth}
-              rectHeight={rectHeight}
-              thicknessScale={thicknessScale}
-              shelfThicknessScale={shelfThicknessScale}
-            />
-          </>
-        )}
-      </Drawing>
+    <div style={view ? singleStyle : wrapStyle}>
+      {(!view || view === "front") && (
+        <Drawing
+          title="Front Elevation"
+          widthMm={cabinet.width_mm}
+          heightMm={cabinet.height_mm}
+          scale={scale}
+          bottomLabel={toLabel(cabinet.width_mm)}
+          sideLabel={toLabel(cabinet.height_mm)}
+        >
+          {({ x, y, rectWidth, rectHeight }) => (
+            <>
+              <rect x={x} y={y} width={thicknessScale} height={rectHeight} fill="none" stroke={MUTED} strokeWidth="0.8" />
+              <rect
+                x={x + rectWidth - thicknessScale}
+                y={y}
+                width={thicknessScale}
+                height={rectHeight}
+                fill="none"
+                stroke={MUTED}
+                strokeWidth="0.8"
+              />
+              <FrontShelves
+                cabinet={cabinet}
+                x={x}
+                y={y}
+                rectWidth={rectWidth}
+                rectHeight={rectHeight}
+                thicknessScale={thicknessScale}
+                shelfThicknessScale={shelfThicknessScale}
+              />
+            </>
+          )}
+        </Drawing>
+      )}
 
-      <Drawing
-        title="Side Elevation"
-        widthMm={cabinet.depth_mm}
-        heightMm={cabinet.height_mm}
-        scale={scale}
-        bottomLabel={toLabel(cabinet.depth_mm)}
-        sideLabel={toLabel(cabinet.height_mm)}
-      >
-        {({ x, y, rectWidth, rectHeight }) => (
-          <>
-            <BackPanelOutline
-              cabinet={cabinet}
-              x={x}
-              y={y}
-              rectWidth={rectWidth}
-              rectHeight={rectHeight}
-              scale={scale}
-            />
-            <SideShelves
-              cabinet={cabinet}
-              x={x}
-              y={y}
-              rectWidth={rectWidth}
-              rectHeight={rectHeight}
-              shelfThicknessScale={shelfThicknessScale}
-              backThicknessScale={backThicknessScale}
-            />
-          </>
-        )}
-      </Drawing>
+      {(!view || view === "side") && (
+        <Drawing
+          title="Side Elevation"
+          widthMm={cabinet.depth_mm}
+          heightMm={cabinet.height_mm}
+          scale={scale}
+          bottomLabel={toLabel(cabinet.depth_mm)}
+          sideLabel={toLabel(cabinet.height_mm)}
+        >
+          {({ x, y, rectWidth, rectHeight }) => (
+            <>
+              <BackPanelOutline
+                cabinet={cabinet}
+                x={x}
+                y={y}
+                rectWidth={rectWidth}
+                rectHeight={rectHeight}
+                scale={scale}
+              />
+              <SideShelves
+                cabinet={cabinet}
+                x={x}
+                y={y}
+                rectWidth={rectWidth}
+                rectHeight={rectHeight}
+                shelfThicknessScale={shelfThicknessScale}
+                backThicknessScale={backThicknessScale}
+              />
+            </>
+          )}
+        </Drawing>
+      )}
 
-      <Drawing
-        title="Top Plan"
-        widthMm={cabinet.width_mm}
-        heightMm={cabinet.depth_mm}
-        scale={scale}
-        bottomLabel={toLabel(cabinet.width_mm)}
-        sideLabel={toLabel(cabinet.depth_mm)}
-      >
-        {({ x, y, rectWidth, rectHeight }) => (
-          <>
-            <line x1={x + thicknessScale} y1={y} x2={x + thicknessScale} y2={y + rectHeight} stroke={MUTED} strokeWidth="0.8" />
-            <line
-              x1={x + rectWidth - thicknessScale}
-              y1={y}
-              x2={x + rectWidth - thicknessScale}
-              y2={y + rectHeight}
-              stroke={MUTED}
-              strokeWidth="0.8"
-            />
-          </>
-        )}
-      </Drawing>
+      {(!view || view === "top") && (
+        <Drawing
+          title="Top Plan"
+          widthMm={cabinet.width_mm}
+          heightMm={cabinet.depth_mm}
+          scale={scale}
+          bottomLabel={toLabel(cabinet.width_mm)}
+          sideLabel={toLabel(cabinet.depth_mm)}
+        >
+          {({ x, y, rectWidth, rectHeight }) => (
+            <>
+              <line x1={x + thicknessScale} y1={y} x2={x + thicknessScale} y2={y + rectHeight} stroke={MUTED} strokeWidth="0.8" />
+              <line
+                x1={x + rectWidth - thicknessScale}
+                y1={y}
+                x2={x + rectWidth - thicknessScale}
+                y2={y + rectHeight}
+                stroke={MUTED}
+                strokeWidth="0.8"
+              />
+            </>
+          )}
+        </Drawing>
+      )}
     </div>
   );
 }

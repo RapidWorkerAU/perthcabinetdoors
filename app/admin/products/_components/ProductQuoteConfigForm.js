@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import styles from "../../admin-content.module.css";
+import { useToast } from "@/components/ui/Toast";
 
 const GROUP_KEYS = ["finish", "colour", "profileType", "profile", "edgeMould"];
 
@@ -66,8 +67,8 @@ export default function ProductQuoteConfigForm({
   fallbackConfig,
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [form, setForm] = useState(buildInitialState(initialConfig, fallbackConfig));
-  const [feedback, setFeedback] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const optionSetsByKind = (kind) => initialOptionSets.filter((item) => item.kind === kind);
@@ -101,7 +102,6 @@ export default function ProductQuoteConfigForm({
   async function handleSave(event) {
     event.preventDefault();
     setIsSaving(true);
-    setFeedback("");
 
     try {
       const supabase = createSupabaseBrowserClient();
@@ -129,11 +129,11 @@ export default function ProductQuoteConfigForm({
       const { error } = await supabase.from("product_quote_configs").upsert(payload, { onConflict: "product_id" });
 
       if (error) {
-        setFeedback(error.message || "Could not save quote configuration.");
+        toast({ title: error.message || "Could not save quote configuration.", variant: "error" });
         return;
       }
 
-      setFeedback("Quote configuration saved.");
+      toast({ title: "Quote configuration saved.", variant: "success" });
       router.refresh();
     } finally {
       setIsSaving(false);
@@ -387,7 +387,6 @@ export default function ProductQuoteConfigForm({
           </aside>
         </div>
 
-        {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
       </form>
     </div>
   );

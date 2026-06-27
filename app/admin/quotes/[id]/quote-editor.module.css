@@ -218,16 +218,27 @@
 
 .quoteItemsTable .quoteColourCombo {
   background: #ffffff !important;
-  border: 1px solid rgba(26, 46, 32, 0.22) !important;
-  border-radius: 4px !important;
+  border: 1px solid #a8c5a0 !important;
+  border-radius: 3px !important;
   box-shadow: none !important;
-  min-height: 30px;
+  height: 22px !important;
+  min-height: 0 !important;
   padding: 0;
 }
 
+.quoteItemsTable .quoteColourCombo:has(input:disabled) {
+  background: #f5f8f4 !important;
+  opacity: 0.6;
+}
+
 .quoteItemsTable .quoteColourComboButton {
-  background: #ffffff;
-  border-radius: 0 3px 3px 0;
+  background: transparent;
+  border-radius: 0 2px 2px 0;
+}
+
+.quoteItemsTable .quoteColourCombo input {
+  padding-left: 6px !important;
+  padding-right: 24px !important;
 }
 
 .quoteItemsTable .quoteConfigCell > * {
@@ -632,6 +643,7 @@
 }
 
 .quoteColourCombo {
+  font-size: 10px;
   position: relative;
 }
 

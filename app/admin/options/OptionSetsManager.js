@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
 import styles from "../admin-content.module.css";
+import { useToast } from "@/components/ui/Toast";
 
 const KIND_OPTIONS = [
   { value: "finish", label: "Finish list" },
@@ -98,9 +99,9 @@ function helperText(kind) {
 }
 
 export default function OptionSetsManager({ initialOptionSets }) {
+  const { toast } = useToast();
   const [optionSets, setOptionSets] = useState(initialOptionSets || []);
   const [draft, setDraft] = useState(emptyDraft());
-  const [feedback, setFeedback] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -115,7 +116,6 @@ export default function OptionSetsManager({ initialOptionSets }) {
 
   function startNew(kind = "finish") {
     setDraft({ ...emptyDraft(), kind });
-    setFeedback("");
   }
 
   function editItem(item) {
@@ -127,13 +127,11 @@ export default function OptionSetsManager({ initialOptionSets }) {
       configText: formatConfig(item.kind, item.config_json || {}),
       is_active: item.is_active ?? true,
     });
-    setFeedback("");
   }
 
   async function saveItem(event) {
     event.preventDefault();
     setIsSaving(true);
-    setFeedback("");
 
     try {
       const supabase = createSupabaseBrowserClient();
@@ -146,7 +144,7 @@ export default function OptionSetsManager({ initialOptionSets }) {
       };
 
       if (!payload.name || !payload.code) {
-        setFeedback("Name and code are required.");
+        toast({ title: "Name and code are required.", variant: "error" });
         return;
       }
 
@@ -159,7 +157,7 @@ export default function OptionSetsManager({ initialOptionSets }) {
           .single();
 
         if (error) {
-          setFeedback(error.message || "Could not update option set.");
+          toast({ title: error.message || "Could not update option set.", variant: "error" });
           return;
         }
 
@@ -172,7 +170,7 @@ export default function OptionSetsManager({ initialOptionSets }) {
           .single();
 
         if (error) {
-          setFeedback(error.message || "Could not create option set.");
+          toast({ title: error.message || "Could not create option set.", variant: "error" });
           return;
         }
 
@@ -180,7 +178,7 @@ export default function OptionSetsManager({ initialOptionSets }) {
         setDraft((current) => ({ ...current, id: data.id }));
       }
 
-      setFeedback("Option set saved.");
+      toast({ title: "Option set saved.", variant: "success" });
     } finally {
       setIsSaving(false);
     }
@@ -189,19 +187,18 @@ export default function OptionSetsManager({ initialOptionSets }) {
   async function deleteItem() {
     if (!draft.id) return;
     setIsDeleting(true);
-    setFeedback("");
 
     try {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.from("quote_option_sets").delete().eq("id", draft.id);
       if (error) {
-        setFeedback(error.message || "Could not delete option set.");
+        toast({ title: error.message || "Could not delete option set.", variant: "error" });
         return;
       }
 
       setOptionSets((previous) => previous.filter((item) => item.id !== draft.id));
       setDraft(emptyDraft());
-      setFeedback("Option set deleted.");
+      toast({ title: "Option set deleted.", variant: "success" });
     } finally {
       setIsDeleting(false);
     }
@@ -329,7 +326,6 @@ export default function OptionSetsManager({ initialOptionSets }) {
           </div>
         </form>
 
-        {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
       </section>
     </div>
   );

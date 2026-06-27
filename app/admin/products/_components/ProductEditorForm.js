@@ -6,6 +6,7 @@ import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../../lib/quote-form-data";
 import { buildColourFamilyFromLibraryRows, COLOUR_MATERIALS, inferThicknessFromMaterial } from "../../../../lib/pcd-colour-library";
 import styles from "../../admin-content.module.css";
+import { useToast } from "@/components/ui/Toast";
 import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
 import productStyles from "./product-editor.module.css";
 
@@ -336,8 +337,8 @@ export default function ProductEditorForm({
   const [isApplyingMedia, setIsApplyingMedia] = useState(false);
   const [draggingUrl, setDraggingUrl] = useState("");
 
+  const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
-  const [feedback, setFeedback] = useState("");
   const [previewMode, setPreviewMode] = useState("page");
   const [activeEditSection, setActiveEditSection] = useState("");
   const [adminOptionViewerMode, setAdminOptionViewerMode] = useState("colours");
@@ -352,17 +353,6 @@ export default function ProductEditorForm({
   const effectivePrimary = orderedMedia[0] || "";
   const nonPrimaryMedia = orderedMedia.slice(1);
   const showThermolaminateProfiles = material === "thermolaminate" && type !== "panel" && type !== "table-top";
-  const isSuccessFeedback = feedback === "Media linked to this product." || feedback === "Pricing saved.";
-
-  useEffect(() => {
-    if (!isSuccessFeedback) return undefined;
-
-    const timeout = window.setTimeout(() => {
-      setFeedback("");
-    }, 2800);
-
-    return () => window.clearTimeout(timeout);
-  }, [isSuccessFeedback]);
 
   useEffect(() => {
     if (effectivePrimary !== primaryImageUrl) {
@@ -395,7 +385,7 @@ export default function ProductEditorForm({
         const assets = await listBucketAssets(supabase, "products");
         setBucketAssets(assets);
       } catch (error) {
-        setFeedback(error?.message || "Could not load storage images.");
+        toast({ title: error?.message || "Could not load storage images.", variant: "error" });
       } finally {
         setIsLoadingAssets(false);
       }
@@ -417,7 +407,6 @@ export default function ProductEditorForm({
     setIsUploading(true);
     setUploadTotalCount(files.length);
     setUploadDoneCount(0);
-    setFeedback("");
 
     try {
       const supabase = createSupabaseBrowserClient();
@@ -457,7 +446,7 @@ export default function ProductEditorForm({
       setBucketAssets((previous) => sortAssetsByNewest([...uploadedAssets, ...previous]));
       setModalSelected((previous) => [...new Set([...previous, ...uploadedUrls])]);
     } catch (error) {
-      setFeedback(error?.message || "Image upload failed.");
+      toast({ title: error?.message || "Image upload failed.", variant: "error" });
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -475,7 +464,7 @@ export default function ProductEditorForm({
     const nextMediaUrlsRaw = [...preservedExternal, ...selectedBucketUrls];
 
     if (!nextMediaUrlsRaw.length) {
-      setFeedback("Select at least one image in the media modal.");
+      toast({ title: "Select at least one image in the media modal.", variant: "error" });
       return;
     }
 
@@ -496,10 +485,10 @@ export default function ProductEditorForm({
           normalized.primary,
           name || "Product"
         );
-        setFeedback("Media linked to this product.");
+        toast({ title: "Media linked to this product.", variant: "success" });
         router.refresh();
       } catch (error) {
-        setFeedback(error?.message || "Could not map selected media to this product.");
+        toast({ title: error?.message || "Could not map selected media to this product.", variant: "error" });
       } finally {
         setIsApplyingMedia(false);
       }
@@ -596,14 +585,14 @@ export default function ProductEditorForm({
         .eq("id", productId);
 
       if (error) {
-        setFeedback(error.message || "Could not save pricing.");
+        toast({ title: error.message || "Could not save pricing.", variant: "error" });
         return;
       }
 
       closeEditSection();
-      setFeedback("Pricing saved.");
+      toast({ title: "Pricing saved.", variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not save pricing.");
+      toast({ title: error?.message || "Could not save pricing.", variant: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -625,18 +614,17 @@ export default function ProductEditorForm({
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setFeedback("");
 
     const normalizedName = name.trim();
     const normalizedSlug = normalizeSlug(slug || initialProduct?.slug || normalizedName);
 
     if (!normalizedName) {
-      setFeedback("Title is required.");
+      toast({ title: "Title is required.", variant: "error" });
       return;
     }
 
     if (!normalizedSlug) {
-      setFeedback("Could not generate a valid slug from title.");
+      toast({ title: "Could not generate a valid slug from title.", variant: "error" });
       return;
     }
 
@@ -716,13 +704,13 @@ export default function ProductEditorForm({
       if (mode === "edit") {
         const { error } = await supabase.from("products").update(payload).eq("id", productId);
         if (error) {
-          setFeedback(error.message || "Could not update product.");
+          toast({ title: error.message || "Could not update product.", variant: "error" });
           return;
         }
       } else {
         const { data, error } = await supabase.from("products").insert(payload).select("id").single();
         if (error || !data?.id) {
-          setFeedback(error?.message || "Could not create product.");
+          toast({ title: error?.message || "Could not create product.", variant: "error" });
           return;
         }
         productId = data.id;
@@ -757,11 +745,7 @@ export default function ProductEditorForm({
             throw quoteConfigError;
           }
         } catch (error) {
-          setFeedback(
-            `${normalizedName} was saved, but the quote option links could not be saved: ${
-              error?.message || "Unknown error."
-            }`
-          );
+          toast({ title: `${normalizedName} was saved, but the quote option links could not be saved: ${error?.message || "Unknown error."}`, variant: "error" });
           return;
         }
       }
@@ -769,7 +753,7 @@ export default function ProductEditorForm({
       router.push("/admin/products");
       router.refresh();
     } catch (error) {
-      setFeedback(error?.message || "Could not save product.");
+      toast({ title: error?.message || "Could not save product.", variant: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -1512,16 +1496,6 @@ export default function ProductEditorForm({
             </button>
           </div>
         </div>
-
-        {feedback ? (
-          <div
-            className={`${productClass("productEditorToast")} ${isSuccessFeedback ? productClass("productEditorToastSuccess") : productClass("productEditorToastError")}`}
-            role={isSuccessFeedback ? "status" : "alert"}
-          >
-            <span className={productClass("productEditorToastIcon")} aria-hidden="true" />
-            <span>{feedback}</span>
-          </div>
-        ) : null}
 
         <div className={productClass("productPreviewCanvas")}>
           {previewMode === "page" ? (

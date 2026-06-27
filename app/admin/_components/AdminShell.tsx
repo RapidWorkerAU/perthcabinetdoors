@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { Avatar } from '@/components/ui/Avatar'
+import { ToastProvider } from '@/components/ui/Toast'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -257,11 +258,11 @@ function PcdSidebar({
       {/* Header / brand */}
       {collapsed ? (
         <div className="flex justify-center py-[13px] flex-shrink-0" style={{ borderBottom: `1px solid ${SIDEBAR_BORDER}` }}>
-          <img src="/images/rectangle-pcd-logo.png" alt="PCD" className="w-[30px] h-[30px] rounded-[6px] object-contain" />
+          <img src="/favicon.ico" alt="PCD" className="w-[30px] h-[30px] rounded-[6px] object-contain" />
         </div>
       ) : (
         <div className="flex items-center gap-[10px] px-[14px] py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${SIDEBAR_BORDER}` }}>
-          <img src="/images/rectangle-pcd-logo.png" alt="" className="w-[30px] h-[30px] rounded-[6px] object-contain flex-shrink-0" />
+          <img src="/favicon.ico" alt="" className="w-[30px] h-[30px] rounded-[6px] object-contain flex-shrink-0" />
           <div className="min-w-0">
             <p className="text-[13px] font-semibold truncate" style={{ color: TEXT_FULL }}>Perth Cabinet Doors</p>
             <p className="text-[11px] truncate" style={{ color: TEXT_SUBTLE }}>Admin</p>
@@ -542,6 +543,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   if (!mounted) return null
 
   return (
+    <ToastProvider>
     <>
       <div className="flex h-screen overflow-hidden" style={{ backgroundColor: PAGE_BG }}>
         {/* Sidebar — desktop only */}
@@ -587,5 +589,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         loading={logoutLoading}
       />
     </>
+    </ToastProvider>
   )
 }

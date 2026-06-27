@@ -63,8 +63,8 @@ export default function AdminResetPasswordPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f0ede4] flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-[460px] bg-[#f8f4ef] rounded-[8px] border border-[#dbd8cc] px-8 py-10 flex flex-col items-center shadow-[0_16px_30px_rgba(28,43,30,0.08)]">
+    <main className="min-h-screen bg-[#faf9f6] flex items-center justify-center px-4 py-10">
+      <div className="w-full max-w-[460px] bg-white rounded-[8px] border border-[#dbd8cc] px-8 py-10 flex flex-col items-center shadow-[0_1px_6px_rgba(0,0,0,0.05)]">
 
         <img
           src="/images/horizontal-pcd-logo.png"

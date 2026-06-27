@@ -4,7 +4,7 @@ import * as React from 'react'
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 
-export const PAGE_SIZE = 20
+export const PAGE_SIZE = 8
 
 export function useAdminPagination<T>(items: T[], resetKey: unknown = '') {
   const [page, setPage] = React.useState(1)

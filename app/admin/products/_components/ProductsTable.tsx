@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '../../../../lib/supabase/client'
 import { AdminPagination, useAdminPagination } from '../../_components/AdminPagination'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/Toast'
 
 function prettyCategory(category?: string | null) {
   if (!category) return '-'
@@ -43,9 +44,9 @@ interface Product {
 
 export default function ProductsTable({ initialProducts }: { initialProducts?: Product[] }) {
   const router = useRouter()
+  const { toast } = useToast()
   const [products,         setProducts]         = useState<Product[]>(initialProducts || [])
   const [isDeleting,       setIsDeleting]       = useState(false)
-  const [feedback,         setFeedback]         = useState('')
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
 
   const sorted = useMemo(
@@ -57,12 +58,11 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
   async function deleteProducts(ids: string[]) {
     if (!ids.length) return
     setIsDeleting(true)
-    setFeedback('')
     try {
       const supabase = createSupabaseBrowserClient()
       const { error } = await supabase.from('products').delete().in('id', ids)
       if (error) {
-        setFeedback(error.message || 'Could not delete product.')
+        toast({ title: error.message || 'Could not delete product.', variant: 'error' })
         return
       }
       setProducts(prev => prev.filter(p => !ids.includes(p.id)))
@@ -88,7 +88,7 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
   const allPageSelected = pageItems.length > 0 && pageItems.every(p => selectedProductIds.includes(p.id))
 
   return (
-    <div className="p-4 md:p-6 max-w-[1400px]">
+    <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Products</h1>
@@ -114,17 +114,11 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
         </div>
         <Link
           href="/admin/products/new"
-          className="h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors flex items-center"
+          className="h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors inline-flex items-center"
         >
           Add product
         </Link>
       </div>
-
-      {feedback && (
-        <div className="mb-4 px-4 py-3 rounded-[6px] bg-[#fef2f2] border border-[#fca5a5] text-[13px] text-[#991b1b]">
-          {feedback}
-        </div>
-      )}
 
       <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
         <div className="overflow-x-auto">

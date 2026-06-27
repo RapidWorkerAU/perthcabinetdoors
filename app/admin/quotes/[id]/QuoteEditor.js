@@ -9,7 +9,6 @@ import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, fo
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
 import RoomManager from "./_components/RoomManager";
 import PlannerOverlay from "./_components/PlannerOverlay";
-import ElevationPanel from "./_components/ElevationPanel";
 import {
   edgeProfilesForMaterial,
   isEdgeProfileSelectionAvailable,
@@ -21,6 +20,8 @@ import {
   profileTypesForSelection,
   thicknessOptionsForMaterial,
 } from "../../../../lib/quote-form-data";
+import { Modal } from '@/components/ui/Modal';
+import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
 import workflowStyles from "../../_components/admin-workflow.module.css";
@@ -36,7 +37,6 @@ const sections = [
   { key: "totals", label: "Quote Totals" },
   { key: "notes", label: "Notes" },
   { key: "attachments", label: "Attachments" },
-  { key: "elevations", label: "Elevations"   },
 ];
 
 const BASE_CABINET_TYPE = "base_cabinet";
@@ -555,7 +555,7 @@ function QuoteLineActionDropdown({ children, disabled = false, index, isOpen, on
   useEffect(() => {
     if (!isOpen || !buttonRef.current) return;
     // If the button is inside a display:none container, close immediately and bail out.
-    if (buttonRef.current.offsetParent === null) { onClose(); return; }
+    if (buttonRef.current.offsetParent === null) { return; }
 
     function closeOtherDropdowns(event) {
       if (event.detail !== dropdownIdRef.current) onClose();
@@ -688,6 +688,13 @@ const QuoteColourCombobox = memo(function QuoteColourCombobox({ disabled = false
   );
 });
 
+const QUOTE_COL_KEY = 'pcd-quote-table-col-widths'
+const QUOTE_COL_DEFAULTS = [18, 22, 88, 92, 70, 106, 60, 60, 108, 80, 52, 82, 66, 76, 80, 60]
+const QUOTE_COL_TOTAL = QUOTE_COL_DEFAULTS.reduce((a, b) => a + b, 0)
+const QUOTE_COL_MIN = 36
+// Drag handles appear between resizable columns only (indices 2–13); cols 0,1,15 are fixed utility cols
+const RESIZE_HANDLE_INDICES = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+
 export default function QuoteEditor({ quoteId }) {
   const fileInputRef = useRef(null);
   const lineViewModelCacheRef = useRef(new WeakMap());
@@ -714,13 +721,56 @@ export default function QuoteEditor({ quoteId }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isGeneratingCabinetPdf, setIsGeneratingCabinetPdf] = useState(false);
   const [isGeneratingQuotePdf, setIsGeneratingQuotePdf] = useState(false);
+  const { toast } = useToast();
   const [publishEmail, setPublishEmail] = useState(null);
-  const [feedback, setFeedback] = useState("");
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
   const [rooms, setRooms] = useState([]);
   const [roomsLoaded, setRoomsLoaded] = useState(false);
   const [isGeneratingLines, setIsGeneratingLines] = useState(false);
   const [plannerRoom, setPlannerRoom] = useState(null);
+
+  const colEls = useRef([])
+  const [colWidths, setColWidths] = useState(() => {
+    try {
+      const saved = localStorage.getItem(QUOTE_COL_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length === QUOTE_COL_DEFAULTS.length) return parsed
+      }
+    } catch {}
+    return [...QUOTE_COL_DEFAULTS]
+  })
+
+  function startColResize(colIndex, e) {
+    e.preventDefault()
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    const startX = e.clientX
+    const startWidths = colEls.current.map((el, i) =>
+      el ? parseFloat(el.style.width) || QUOTE_COL_DEFAULTS[i] : QUOTE_COL_DEFAULTS[i]
+    )
+    function onMouseMove(e) {
+      const delta = e.clientX - startX
+      const left = Math.max(QUOTE_COL_MIN, startWidths[colIndex] + delta)
+      const actualDelta = left - startWidths[colIndex]
+      const right = Math.max(QUOTE_COL_MIN, startWidths[colIndex + 1] - actualDelta)
+      if (colEls.current[colIndex]) colEls.current[colIndex].style.width = `${left}px`
+      if (colEls.current[colIndex + 1]) colEls.current[colIndex + 1].style.width = `${right}px`
+    }
+    function onMouseUp() {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      const finalWidths = colEls.current.map((el, i) =>
+        el ? parseFloat(el.style.width) || QUOTE_COL_DEFAULTS[i] : QUOTE_COL_DEFAULTS[i]
+      )
+      setColWidths(finalWidths)
+      try { localStorage.setItem(QUOTE_COL_KEY, JSON.stringify(finalWidths)) } catch {}
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
 
   const totals = useMemo(
     () => calculateQuoteTotals(form.lines, form.gst_rate, { ...form, business_defaults: businessDefaults }),
@@ -769,12 +819,11 @@ export default function QuoteEditor({ quoteId }) {
 
   async function loadQuote() {
     setIsLoading(true);
-    setFeedback("");
     try {
       const response = await fetch(`/api/admin/quotes/${quoteId}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-      setFeedback(payload.error || "Could not load quote.");
+        toast({ title: payload.error || "Could not load quote.", variant: "error" });
         return;
       }
       setForm(formFromQuote(payload.quote));
@@ -782,7 +831,7 @@ export default function QuoteEditor({ quoteId }) {
       setEditableLineDraft(null);
       setActiveCabinetLineIndex(null);
     } catch (error) {
-      setFeedback(error?.message || "Could not load quote.");
+      toast({ title: error?.message || "Could not load quote.", variant: "error" });
     } finally {
       setIsLoading(false);
     }
@@ -794,7 +843,7 @@ export default function QuoteEditor({ quoteId }) {
       const payload = await response.json();
       if (payload.ok) setCustomers(payload.customers || []);
     } catch (error) {
-      setFeedback(error?.message || "Could not load customers.");
+      toast({ title: error?.message || "Could not load customers.", variant: "error" });
     }
   }
 
@@ -806,7 +855,7 @@ export default function QuoteEditor({ quoteId }) {
   }, [quoteId]);
 
   useEffect(() => {
-    if ((activeSection !== "rooms" && activeSection !== "elevations") || roomsLoaded) return;
+    if (activeSection !== "rooms" || roomsLoaded) return;
     loadRooms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, roomsLoaded]);
@@ -820,12 +869,6 @@ export default function QuoteEditor({ quoteId }) {
       scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
     });
   }, [form.lines.length]);
-
-  useEffect(() => {
-    if (!feedback) return undefined;
-    const timeout = window.setTimeout(() => setFeedback(""), 3000);
-    return () => window.clearTimeout(timeout);
-  }, [feedback]);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -886,7 +929,6 @@ export default function QuoteEditor({ quoteId }) {
   async function handleGenerateLineItems() {
     if (!rooms.length) return;
     setIsGeneratingLines(true);
-    setFeedback("");
     let created = 0;
     let linkFailed = 0;
     const sortBase = form.lines.filter((l) => l.id).length;
@@ -938,9 +980,9 @@ export default function QuoteEditor({ quoteId }) {
       const warning = linkFailed > 0
         ? ` Warning: ${linkFailed} cabinet${linkFailed !== 1 ? "s" : ""} could not be linked — check the console.`
         : "";
-      setFeedback(base + warning);
+      toast({ title: base + warning, variant: linkFailed > 0 ? "warning" : "success" });
     } catch (err) {
-      setFeedback(err?.message || "Could not generate line items.");
+      toast({ title: err?.message || "Could not generate line items.", variant: "error" });
     } finally {
       setIsGeneratingLines(false);
     }
@@ -975,7 +1017,6 @@ export default function QuoteEditor({ quoteId }) {
       phone: form.customer_phone || "",
       site_address: form.site_address || "",
     });
-    setFeedback("");
     setIsCustomerModalOpen(true);
   }
 
@@ -1295,19 +1336,18 @@ export default function QuoteEditor({ quoteId }) {
     const line = form.lines[index];
     if (line?.id) {
       setSavingLineIndex(index);
-      setFeedback("");
       try {
         const response = await fetch(`/api/admin/quotes/${quoteId}/lines/${line.id}`, {
           method: "DELETE",
         });
         const payload = await response.json();
         if (!response.ok || !payload.ok) {
-          setFeedback(payload.error || "Could not delete quote line.");
+          toast({ title: payload.error || "Could not delete quote line.", variant: "error" });
           return;
         }
         setForm((current) => mergeQuoteIntoForm(current, payload.quote));
       } catch (error) {
-        setFeedback(error?.message || "Could not delete quote line.");
+        toast({ title: error?.message || "Could not delete quote line.", variant: "error" });
         return;
       } finally {
         setSavingLineIndex(null);
@@ -1352,7 +1392,7 @@ export default function QuoteEditor({ quoteId }) {
       return;
     }
     if (currentLines.some((line) => !line.id)) {
-      setFeedback("Save all quote lines before reordering.");
+      toast({ title: "Save all quote lines before reordering.", variant: "error" });
       return;
     }
 
@@ -1365,7 +1405,6 @@ export default function QuoteEditor({ quoteId }) {
       return current;
     });
     setSavingLineIndex(targetIndex);
-    setFeedback("");
 
     try {
       const response = await fetch(`/api/admin/quotes/${quoteId}/lines/reorder`, {
@@ -1381,10 +1420,10 @@ export default function QuoteEditor({ quoteId }) {
           if (current === targetIndex) return index;
           return current;
         });
-        setFeedback(payload.error || "Could not reorder quote lines.");
+        toast({ title: payload.error || "Could not reorder quote lines.", variant: "error" });
         return;
       }
-      setFeedback("Line order updated.");
+      toast({ title: "Line order updated.", variant: "success" });
     } catch (error) {
       setForm((current) => ({ ...current, lines: currentLines }));
       setActiveCabinetLineIndex((current) => {
@@ -1392,7 +1431,7 @@ export default function QuoteEditor({ quoteId }) {
         if (current === targetIndex) return index;
         return current;
       });
-      setFeedback(error?.message || "Could not reorder quote lines.");
+      toast({ title: error?.message || "Could not reorder quote lines.", variant: "error" });
     } finally {
       setSavingLineIndex(null);
     }
@@ -1401,7 +1440,6 @@ export default function QuoteEditor({ quoteId }) {
   async function saveLineAtIndex(index, nextLine = form.lines[index], { updateDraft = true } = {}) {
     if (!nextLine) return false;
     setSavingLineIndex(index);
-    setFeedback("");
     try {
       const endpoint = nextLine.id
         ? `/api/admin/quotes/${quoteId}/lines/${nextLine.id}`
@@ -1413,7 +1451,7 @@ export default function QuoteEditor({ quoteId }) {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not save quote line.");
+        toast({ title: payload.error || "Could not save quote line.", variant: "error" });
         return false;
       }
 
@@ -1423,10 +1461,10 @@ export default function QuoteEditor({ quoteId }) {
         return mergeQuoteIntoForm({ ...current, lines }, payload.quote);
       });
       if (updateDraft && index === editableLineIndex) setEditableLineDraft(savedLine);
-      setFeedback("Line saved.");
+      toast({ title: "Line saved.", variant: "success" });
       return true;
     } catch (error) {
-      setFeedback(error?.message || "Could not save quote line.");
+      toast({ title: error?.message || "Could not save quote line.", variant: "error" });
       return false;
     } finally {
       setSavingLineIndex(null);
@@ -1443,7 +1481,6 @@ export default function QuoteEditor({ quoteId }) {
       if (!savedLine) return false;
     }
     setIsSaving(true);
-    setFeedback("");
     try {
       const response = await fetch(`/api/admin/quotes/${quoteId}`, {
         method: "PATCH",
@@ -1452,14 +1489,14 @@ export default function QuoteEditor({ quoteId }) {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not save quote.");
+        toast({ title: payload.error || "Could not save quote.", variant: "error" });
         return false;
       }
       setForm((current) => mergeQuoteIntoForm(current, payload.quote));
-      setFeedback("Quote saved.");
+      toast({ title: "Quote saved.", variant: "success" });
       return true;
     } catch (error) {
-      setFeedback(error?.message || "Could not save quote.");
+      toast({ title: error?.message || "Could not save quote.", variant: "error" });
       return false;
     } finally {
       setIsSaving(false);
@@ -1491,16 +1528,15 @@ export default function QuoteEditor({ quoteId }) {
 
   async function generateQuotePdf() {
     setIsGeneratingQuotePdf(true);
-    setFeedback("");
     try {
       const saved = await saveQuote();
       if (!saved) return;
       if (typeof window !== "undefined") {
         window.open(`/api/admin/quotes/${quoteId}/pdf?t=${Date.now()}`, "_blank", "noopener,noreferrer");
       }
-      setFeedback("Quote PDF generated.");
+      toast({ title: "Quote PDF generated.", variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not generate quote PDF.");
+      toast({ title: error?.message || "Could not generate quote PDF.", variant: "error" });
     } finally {
       setIsGeneratingQuotePdf(false);
     }
@@ -1508,7 +1544,6 @@ export default function QuoteEditor({ quoteId }) {
 
   async function publishQuote() {
     setIsSaving(true);
-    setFeedback("");
     try {
       const saved = await saveQuote();
       if (!saved) return;
@@ -1522,9 +1557,8 @@ export default function QuoteEditor({ quoteId }) {
         deposit_required: Boolean(form.deposit_required),
         deposit_percent: form.deposit_percent || 0,
       });
-      setFeedback("");
     } catch (error) {
-      setFeedback(error?.message || "Could not prepare quote email.");
+      toast({ title: error?.message || "Could not prepare quote email.", variant: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -1536,16 +1570,15 @@ export default function QuoteEditor({ quoteId }) {
 
   async function sendPublishedQuote() {
     if (!publishEmail?.subject?.trim()) {
-      setFeedback("Enter an email subject before sending.");
+      toast({ title: "Enter an email subject before sending.", variant: "error" });
       return;
     }
     if (!publishEmail?.message?.trim()) {
-      setFeedback("Enter email content before sending.");
+      toast({ title: "Enter email content before sending.", variant: "error" });
       return;
     }
 
     setIsSaving(true);
-    setFeedback("");
     try {
       const response = await fetch(`/api/admin/quotes/${quoteId}/send`, {
         method: "POST",
@@ -1559,18 +1592,19 @@ export default function QuoteEditor({ quoteId }) {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not publish quote.");
+        toast({ title: payload.error || "Could not publish quote.", variant: "error" });
         return;
       }
       setPublishEmail(null);
-      setFeedback(
-        payload.emailSent
+      toast({
+        title: payload.emailSent
           ? "Quote published and sent to customer."
-          : `Quote published. Resend is not configured, so use this link: ${payload.viewUrl}`
-      );
+          : `Quote published. Resend is not configured, so use this link: ${payload.viewUrl}`,
+        variant: "success",
+      });
       await loadQuote();
     } catch (error) {
-      setFeedback(error?.message || "Could not publish quote.");
+      toast({ title: error?.message || "Could not publish quote.", variant: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -1578,11 +1612,10 @@ export default function QuoteEditor({ quoteId }) {
 
   async function saveCustomerFromDetails() {
     if (!customerForm.name.trim()) {
-      setFeedback("Enter a customer name before saving the contact.");
+      toast({ title: "Enter a customer name before saving the contact.", variant: "error" });
       return;
     }
     setIsSavingCustomer(true);
-    setFeedback("");
     try {
       const response = await fetch("/api/admin/customers", {
         method: "POST",
@@ -1591,7 +1624,7 @@ export default function QuoteEditor({ quoteId }) {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setFeedback(payload.error || "Could not save customer.");
+        toast({ title: payload.error || "Could not save customer.", variant: "error" });
         return;
       }
       setCustomers((current) => [payload.customer, ...current.filter((customer) => customer.id !== payload.customer.id)]);
@@ -1604,9 +1637,9 @@ export default function QuoteEditor({ quoteId }) {
         site_address: payload.customer.site_address || "",
       }));
       setIsCustomerModalOpen(false);
-      setFeedback("Customer saved. Save the quote to keep it attached.");
+      toast({ title: "Customer saved. Save the quote to keep it attached.", variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not save customer.");
+      toast({ title: error?.message || "Could not save customer.", variant: "error" });
     } finally {
       setIsSavingCustomer(false);
     }
@@ -1614,11 +1647,10 @@ export default function QuoteEditor({ quoteId }) {
 
   async function uploadAttachments() {
     if (!selectedFiles.length) {
-      setFeedback("Choose one or more files first.");
+      toast({ title: "Choose one or more files first.", variant: "error" });
       return;
     }
     setIsUploading(true);
-    setFeedback("");
     try {
       const supabase = createSupabaseBrowserClient();
       const rows = [];
@@ -1647,9 +1679,9 @@ export default function QuoteEditor({ quoteId }) {
       setSelectedFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
       await loadQuote();
-      setFeedback("Attachments uploaded.");
+      toast({ title: "Attachments uploaded.", variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not upload attachments.");
+      toast({ title: error?.message || "Could not upload attachments.", variant: "error" });
     } finally {
       setIsUploading(false);
     }
@@ -1657,16 +1689,15 @@ export default function QuoteEditor({ quoteId }) {
 
   async function deleteAttachment(attachment) {
     setIsUploading(true);
-    setFeedback("");
     try {
       const supabase = createSupabaseBrowserClient();
       await supabase.storage.from("attachments").remove([attachment.file_path]);
       const { error } = await supabase.from("pcd_quote_attachments").delete().eq("id", attachment.id);
       if (error) throw error;
       await loadQuote();
-      setFeedback("Attachment deleted.");
+      toast({ title: "Attachment deleted.", variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not delete attachment.");
+      toast({ title: error?.message || "Could not delete attachment.", variant: "error" });
     } finally {
       setIsUploading(false);
     }
@@ -1675,7 +1706,6 @@ export default function QuoteEditor({ quoteId }) {
 
   async function generateCabinetDrawingsAttachment() {
     setIsGeneratingCabinetPdf(true);
-    setFeedback("");
     try {
       const response = await fetch(`/api/admin/quotes/${quoteId}/cabinet-drawings`, {
         method: "POST",
@@ -1684,9 +1714,9 @@ export default function QuoteEditor({ quoteId }) {
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not generate cabinet drawings PDF.");
       await loadQuote();
-      setFeedback("Cabinet drawings PDF generated and attached.");
+      toast({ title: "Cabinet drawings PDF generated and attached.", variant: "success" });
     } catch (error) {
-      setFeedback(error?.message || "Could not generate cabinet drawings PDF.");
+      toast({ title: error?.message || "Could not generate cabinet drawings PDF.", variant: "error" });
     } finally {
       setIsGeneratingCabinetPdf(false);
     }
@@ -1843,53 +1873,50 @@ export default function QuoteEditor({ quoteId }) {
           </button>
         </div>
         {cabinets.length ? (
-          <div className={styles.productsTableWrap}>
-            <table className={`${styles.productsTable} ${styles.cabinetConfigTable}`}>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Cabinet</th>
-                  <th>Material</th>
-                  <th>Colour</th>
-                  <th>Qty</th>
-                  <th>Configuration</th>
-                  <th>Total ex GST</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cabinets.map(({ line, index }) => {
-                  const config = line.cabinet_config;
-                  const isConfigured = Boolean(config?.calculated_cut_list?.length);
-                  return (
-                    <tr key={line.id || index}>
-                      <td><span className={`${styles.quoteItemRowNum} ${workflowStyles.quoteItemRowNum}`}>{index + 1}</span></td>
-                      <td>
-                        <strong>{config?.label || line.product_name || "Base cabinet"}</strong>
-                        <small>{line.description || "Configure cabinet dimensions, cut list, pricing and schematic."}</small>
-                      </td>
-                      <td>{lineValue(line.material)}</td>
-                      <td>{lineValue(line.colour)}</td>
-                      <td>{line.qty || 1}</td>
-                      <td>
-                        <span className={`${styles.statusPill} ${isConfigured ? styles.statusPillActive : styles.statusPillDraft}`}>
-                          {isConfigured ? "Configured" : "Needs configuration"}
-                        </span>
-                      </td>
-                      <td>{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
-                      <td className={styles.actionsCol}>
-                        <AdminActionDropdown label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
-                          <button type="button" className={styles.tableActionMenuItem} onClick={() => setActiveCabinetLineIndex(index)}>
-                            Configure
-                          </button>
-                          <AdminConfirmDeleteAction onConfirm={() => removeLine(index)} />
-                        </AdminActionDropdown>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                    {['#', 'Cabinet', 'Material', 'Colour', 'Qty', 'Configuration', 'Total ex GST', 'Actions'].map(h => (
+                      <th key={h} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cabinets.map(({ line, index }) => {
+                    const config = line.cabinet_config;
+                    const isConfigured = Boolean(config?.calculated_cut_list?.length);
+                    return (
+                      <tr key={line.id || index} className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0">
+                        <td className="px-4 py-[11px] text-[#8b8a81] text-[12px] font-medium">{index + 1}</td>
+                        <td className="px-4 py-[11px]">
+                          <span className="text-[13px] font-medium text-[#1a1a18] block">{config?.label || line.product_name || "Base cabinet"}</span>
+                          <span className="text-[11px] text-[#8b8a81] block mt-[1px]">{line.description || "Configure cabinet dimensions, cut list, pricing and schematic."}</span>
+                        </td>
+                        <td className="px-4 py-[11px] text-[#1a1a18]">{lineValue(line.material)}</td>
+                        <td className="px-4 py-[11px] text-[#1a1a18]">{lineValue(line.colour)}</td>
+                        <td className="px-4 py-[11px] text-[#1a1a18]">{line.qty || 1}</td>
+                        <td className="px-4 py-[11px]">
+                          <span className={`inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border ${isConfigured ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]' : 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'}`}>
+                            {isConfigured ? "Configured" : "Needs configuration"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-[11px] text-[#1a1a18] font-mono">{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
+                        <td className="px-4 py-[11px]">
+                          <AdminActionDropdown label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
+                            <button type="button" className={styles.tableActionMenuItem} onClick={() => setActiveCabinetLineIndex(index)}>
+                              Configure
+                            </button>
+                            <AdminConfirmDeleteAction onConfirm={() => removeLine(index)} />
+                          </AdminActionDropdown>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
           <div className={styles.emptyState}>
@@ -1906,10 +1933,10 @@ export default function QuoteEditor({ quoteId }) {
     const v1 = 'text-[12px] font-medium text-[#1a1a18] leading-[1.25] block'
     const v2 = 'text-[11px] text-[#5a5a52] leading-[1.25] block mt-[1px]'
     const v3 = 'text-[10px] text-[#8b8a81] leading-[1.25] block mt-[1px]'
-    const naText = 'text-[11px] text-[#c5cdd8] italic block'
+    const naText = 'text-[10px] text-[#c5cdd8] italic block'
     const monoClass = 'font-mono'
     const fl = 'text-[9px] font-semibold uppercase tracking-[0.05em] text-[#8b8a81] block mb-[2px]'
-    const fi = 'w-full h-[22px] text-[11px] border border-[#a8c5a0] rounded-[3px] bg-white px-[5px] font-[inherit] block mb-[3px] last:mb-0 focus:outline-none focus:border-[#6b9e61]'
+    const fi = 'w-full h-[22px] text-[10px] border border-[#a8c5a0] rounded-[3px] bg-white px-[5px] font-[inherit] block mb-[3px] last:mb-0 focus:outline-none focus:border-[#6b9e61]'
     const fiMono = 'font-mono'
 
     return (
@@ -1927,29 +1954,30 @@ export default function QuoteEditor({ quoteId }) {
           </button>
         </div>
 
-        <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
+        <div className={`bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden ${quoteStyles.quoteItemsTable}`}>
           <div className="overflow-x-auto" ref={quoteItemsScrollerRef}>
-            <table className="w-full border-collapse" style={{minWidth: '960px', tableLayout: 'fixed'}}>
+            <table className="w-full border-collapse" style={{minWidth: `${QUOTE_COL_TOTAL}px`, tableLayout: 'fixed'}}>
               <colgroup>
-                <col style={{width: '24px'}} />
-                <col style={{width: '15%'}} />
-                <col style={{width: '14%'}} />
-                <col style={{width: '9%'}} />
-                <col style={{width: '12%'}} />
-                <col style={{width: '10%'}} />
-                <col style={{width: '5%'}} />
-                <col style={{width: '11%'}} />
-                <col style={{width: '12%'}} />
-                <col style={{width: '56px'}} />
+                {colWidths.map((w, i) => (
+                  <col key={i} ref={el => { colEls.current[i] = el }} style={{width: `${w}px`}} />
+                ))}
               </colgroup>
               <thead>
                 <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                  {['#', 'Product', 'Spec', 'Size', 'Edge & profile', 'Hinges', 'Qty', 'Cost & markup', 'Price & total', ''].map((h, i) => (
+                  {['', '#', 'Type', 'Material', 'Thickness', 'Finish & colour', 'W mm', 'H mm', 'Edge & profile', 'Hinges', 'Qty', 'Unit cost', 'Markup', 'Unit price', 'Total', ''].map((h, i) => (
                     <th
                       key={i}
-                      className="px-2 py-[7px] text-left text-[9px] font-semibold uppercase tracking-[0.07em] text-[#8b8a81] whitespace-nowrap"
+                      className="px-2 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap relative select-none overflow-visible"
                     >
                       {h}
+                      {RESIZE_HANDLE_INDICES.has(i) && (
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10 group/resizer"
+                          onMouseDown={e => startColResize(i, e)}
+                        >
+                          <div className="absolute left-[2px] top-[20%] bottom-[20%] w-[1px] bg-[#8b8a81]/30 group-hover/resizer:bg-[#6b9e61]/70 transition-colors" />
+                        </div>
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -1992,78 +2020,84 @@ export default function QuoteEditor({ quoteId }) {
                         } ${isLineSaving ? 'opacity-60' : ''}`}
                       >
 
-                        {/* # */}
+                        {/* Arrows */}
                         <td className={td}>
-                          <div className="flex flex-col items-center gap-[1px]">
-                            <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[17px] h-[17px] rounded-[3px] flex items-center justify-center flex-shrink-0">
-                              {index + 1}
-                            </span>
-                            {canMoveLines && (
-                              <div className="flex flex-col gap-[1px] opacity-0 group-hover:opacity-100 transition-opacity mt-[1px]">
-                                <button
-                                  type="button"
-                                  onClick={() => moveLine(index, -1)}
-                                  disabled={index === 0}
-                                  className="w-[14px] h-[11px] flex items-center justify-center text-[#c5cdd8] hover:text-[#5a5a52] disabled:opacity-30 text-[9px] leading-none"
-                                  aria-label={`Move line ${index + 1} up`}
-                                >▲</button>
-                                <button
-                                  type="button"
-                                  onClick={() => moveLine(index, 1)}
-                                  disabled={index === form.lines.length - 1}
-                                  className="w-[14px] h-[11px] flex items-center justify-center text-[#c5cdd8] hover:text-[#5a5a52] disabled:opacity-30 text-[9px] leading-none"
-                                  aria-label={`Move line ${index + 1} down`}
-                                >▼</button>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Product & material */}
-                        <td className={td}>
-                          {isEditable ? (
-                            <>
-                              <span className={fl}>Type</span>
-                              <QuoteTileCombobox
-                                placeholder="Select type"
-                                value={displayProductType(line.product_type)}
-                                options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
-                                onChange={option => updateProductLine(index, { product_type: option.value || option.name || option.label })}
-                              />
-                              <span className={fl} style={{marginTop: '3px'}}>Material</span>
-                              <QuoteTileCombobox
-                                placeholder="Select material"
-                                value={line.material}
-                                options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
-                                onChange={option => updateProductLine(index, { material: option.name || option.label })}
-                              />
-                            </>
-                          ) : (
-                            <>
-                              <span className={v1}>{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">—</span>}</span>
-                              <span className={v2}>{line.material || <span className="text-[#c5cdd8]">—</span>}</span>
-                            </>
+                          {canMoveLines && (
+                            <div className="flex flex-col gap-[1px] items-center">
+                              <button
+                                type="button"
+                                onClick={() => moveLine(index, -1)}
+                                disabled={index === 0}
+                                className="w-[14px] h-[11px] flex items-center justify-center text-[#c5cdd8] hover:text-[#5a5a52] disabled:opacity-30 text-[9px] leading-none"
+                                aria-label={`Move line ${index + 1} up`}
+                              >▲</button>
+                              <button
+                                type="button"
+                                onClick={() => moveLine(index, 1)}
+                                disabled={index === form.lines.length - 1}
+                                className="w-[14px] h-[11px] flex items-center justify-center text-[#c5cdd8] hover:text-[#5a5a52] disabled:opacity-30 text-[9px] leading-none"
+                                aria-label={`Move line ${index + 1} down`}
+                              >▼</button>
+                            </div>
                           )}
                         </td>
 
-                        {/* Spec: thickness, finish, colour */}
+                        {/* # */}
+                        <td className={td}>
+                          <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[17px] h-[17px] rounded-[3px] flex items-center justify-center flex-shrink-0">
+                            {index + 1}
+                          </span>
+                        </td>
+
+                        {/* Type */}
                         <td className={td}>
                           {isEditable ? (
-                            <>
-                              <span className={fl}>Thickness</span>
-                              <QuoteTileCombobox
-                                disabled={!line.material || isBaseCabinetEditable}
-                                placeholder={line.material ? 'Thickness' : '—'}
-                                value={line.thickness}
-                                options={thicknessOptions.map(t => ({ label: t, name: t, meta: 'Thickness' }))}
-                                onChange={option => updateProductLine(index, { thickness: option.name || option.label })}
-                              />
-                              <span className={fl} style={{marginTop: '3px'}}>Finish &amp; colour</span>
-                              <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
-                            </>
+                            <QuoteTileCombobox
+                              placeholder="Select type"
+                              value={displayProductType(line.product_type)}
+                              options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
+                              onChange={option => updateProductLine(index, { product_type: option.value || option.name || option.label })}
+                            />
+                          ) : (
+                            <span className={v1}>{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">—</span>}</span>
+                          )}
+                        </td>
+
+                        {/* Material */}
+                        <td className={td}>
+                          {isEditable ? (
+                            <QuoteTileCombobox
+                              placeholder="Select material"
+                              value={line.material}
+                              options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
+                              onChange={option => updateProductLine(index, { material: option.name || option.label })}
+                            />
+                          ) : (
+                            <span className={v1}>{line.material || <span className="text-[#c5cdd8]">—</span>}</span>
+                          )}
+                        </td>
+
+                        {/* Thickness */}
+                        <td className={td}>
+                          {isEditable ? (
+                            <QuoteTileCombobox
+                              disabled={!line.material || isBaseCabinetEditable}
+                              placeholder={line.material ? 'Thickness' : 'N/A – select material'}
+                              value={line.thickness}
+                              options={thicknessOptions.map(t => ({ label: t, name: t, meta: 'Thickness' }))}
+                              onChange={option => updateProductLine(index, { thickness: option.name || option.label })}
+                            />
+                          ) : (
+                            <span className={v1}>{line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
+                          )}
+                        </td>
+
+                        {/* Finish & colour */}
+                        <td className={td}>
+                          {isEditable ? (
+                            <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
                           ) : (
                             <>
-                              <span className={v1}>{line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
                               <span className={v2}>{line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
                               <span className={v3}>
                                 {colourSrc && (
@@ -2075,36 +2109,48 @@ export default function QuoteEditor({ quoteId }) {
                           )}
                         </td>
 
-                        {/* Size: W × H */}
+                        {/* W mm */}
                         <td className={td}>
                           {isEditable && !isBaseCabinetEditable ? (
-                            <>
-                              <span className={fl}>Width mm</span>
+                            <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                              <span className="px-[3px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0 select-none">W</span>
                               <input
-                                type="number"
-                                min="1"
-                                placeholder="W"
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="mm"
                                 value={line.width_mm}
                                 onChange={e => updateLine(index, 'width_mm', e.target.value)}
-                                className={`${fi} ${fiMono}`}
+                                className="flex-1 h-full px-[3px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
                               />
-                              <span className={fl}>Height mm</span>
-                              <input
-                                type="number"
-                                min="1"
-                                placeholder="H"
-                                value={line.height_mm}
-                                onChange={e => updateLine(index, 'height_mm', e.target.value)}
-                                className={`${fi} ${fiMono}`}
-                              />
-                            </>
+                            </div>
                           ) : isBaseCabinetEditable ? (
-                            <span className={naText}>Via cabinet tab</span>
+                            <span className={naText}>Via cabinet</span>
                           ) : (
                             <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
-                              {line.width_mm && line.height_mm
-                                ? `${line.width_mm} × ${line.height_mm}`
-                                : <span className="text-[#c5cdd8]">—</span>}
+                              {line.width_mm || <span className="text-[#c5cdd8]">—</span>}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* H mm */}
+                        <td className={td}>
+                          {isEditable && !isBaseCabinetEditable ? (
+                            <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                              <span className="px-[3px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0 select-none">H</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="mm"
+                                value={line.height_mm}
+                                onChange={e => updateLine(index, 'height_mm', e.target.value)}
+                                className="flex-1 h-full px-[3px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
+                              />
+                            </div>
+                          ) : isBaseCabinetEditable ? (
+                            <span className={naText}>Via cabinet</span>
+                          ) : (
+                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
+                              {line.height_mm || <span className="text-[#c5cdd8]">—</span>}
                             </span>
                           )}
                         </td>
@@ -2122,7 +2168,13 @@ export default function QuoteEditor({ quoteId }) {
                                   onChange={option => updateLine(index, 'edge_mould', option.name || option.label)}
                                 />
                               ) : (
-                                <span className={naText}>N/A for material</span>
+                                <QuoteTileCombobox
+                                  disabled
+                                  placeholder="N/A for material"
+                                  value=""
+                                  options={[]}
+                                  onChange={() => {}}
+                                />
                               )}
                               <span className={fl} style={{marginTop: '3px'}}>Profile</span>
                               {showProfiles ? (
@@ -2135,7 +2187,13 @@ export default function QuoteEditor({ quoteId }) {
                                   <span>↗</span>
                                 </button>
                               ) : (
-                                <span className={naText}>N/A for material</span>
+                                <QuoteTileCombobox
+                                  disabled
+                                  placeholder="N/A for material"
+                                  value=""
+                                  options={[]}
+                                  onChange={() => {}}
+                                />
                               )}
                             </>
                           ) : (
@@ -2182,14 +2240,42 @@ export default function QuoteEditor({ quoteId }) {
                         <td className={td}>
                           {isEditable && !isBaseCabinetEditable ? (
                             hingesApplicable ? (
-                              <button
-                                type="button"
-                                onClick={() => openHingeModal(index)}
-                                className="inline-flex items-center gap-[3px] text-[10px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[3px] px-[5px] py-[2px] bg-white hover:bg-[#edf4eb] transition-colors leading-none w-full justify-between"
-                              >
-                                <span>{hasHingeConfig(line) ? hingeConfigLines(line).join(' · ') : 'Configure hinges'}</span>
-                                <span>↗</span>
-                              </button>
+                              hasHingeConfig(line) ? (
+                                <div>
+                                  <div className="flex items-center gap-[4px] mb-[1px]">
+                                    <span className={line.hinge_holes ? 'text-[#2d5e28] text-[11px] font-medium leading-none' : 'text-[#c5cdd8] text-[11px] leading-none'}>
+                                      {line.hinge_holes ? '✓' : '✕'}
+                                    </span>
+                                    <span className="text-[10px] text-[#5a5a52]">Drill</span>
+                                  </div>
+                                  <div className="flex items-center gap-[4px] mb-[2px]">
+                                    <span className={line.hinge_supply ? 'text-[#2d5e28] text-[11px] font-medium leading-none' : 'text-[#c5cdd8] text-[11px] leading-none'}>
+                                      {line.hinge_supply ? '✓' : '✕'}
+                                    </span>
+                                    <span className="text-[10px] text-[#5a5a52]">Supply</span>
+                                  </div>
+                                  {line.hinge_qty && (
+                                    <span className="text-[10px] text-[#8b8a81] block">{line.hinge_qty}</span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => openHingeModal(index)}
+                                    className="flex items-center gap-[2px] text-[9px] text-[#8b8a81] hover:text-[#6b9e61] mt-[3px] leading-none"
+                                  >
+                                    <i className="ti ti-pencil" style={{fontSize:'8px'}} aria-hidden="true" />
+                                    <span>Edit</span>
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => openHingeModal(index)}
+                                  className="inline-flex items-center gap-[3px] text-[10px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[3px] px-[5px] py-[2px] bg-white hover:bg-[#edf4eb] transition-colors leading-none w-full justify-between"
+                                >
+                                  <span>Configure hinges</span>
+                                  <span>↗</span>
+                                </button>
+                              )
                             ) : (
                               <span className={naText}>N/A</span>
                             )
@@ -2234,27 +2320,37 @@ export default function QuoteEditor({ quoteId }) {
                         {/* Qty */}
                         <td className={td}>
                           {isEditable ? (
-                            <>
-                              <span className={fl}>Qty</span>
+                            <div className="flex items-center gap-[3px] h-[22px]">
                               <input
-                                type="number"
-                                min="1"
+                                type="text"
+                                inputMode="numeric"
                                 value={line.qty}
                                 onChange={e => updateLine(index, 'qty', e.target.value)}
-                                className={`${fi} ${fiMono}`}
+                                className="flex-1 h-full text-[10px] font-mono text-center border border-[#a8c5a0] rounded-[3px] bg-white focus:outline-none focus:border-[#6b9e61] min-w-0"
                               />
-                            </>
+                              <div className="flex flex-col gap-[2px] flex-shrink-0 justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => updateLine(index, 'qty', String(Number(line.qty || 1) + 1))}
+                                  className="p-0 border-0 bg-transparent leading-none text-[8px] text-[#a8c5a0] hover:text-[#2d5e28] cursor-pointer"
+                                >▲</button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateLine(index, 'qty', String(Math.max(1, Number(line.qty || 1) - 1)))}
+                                  className="p-0 border-0 bg-transparent leading-none text-[8px] text-[#a8c5a0] hover:text-[#2d5e28] cursor-pointer"
+                                >▼</button>
+                              </div>
+                            </div>
                           ) : (
                             <span className="text-[12px] font-medium text-[#1a1a18]">{line.qty || 1}</span>
                           )}
                         </td>
 
-                        {/* Cost & markup */}
+                        {/* Unit cost */}
                         <td className={td}>
                           {isEditable && !isBaseCabinetEditable ? (
                             <>
-                              <span className={fl}>Unit cost</span>
-                              <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden mb-[3px] bg-white">
+                              <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white">
                                 <span className="px-[4px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0">$</span>
                                 <input
                                   type="text"
@@ -2262,66 +2358,58 @@ export default function QuoteEditor({ quoteId }) {
                                   placeholder="0.00"
                                   value={line.product_unit_cost_ex_gst}
                                   onChange={e => updateLine(index, 'product_unit_cost_ex_gst', e.target.value)}
-                                  className="flex-1 h-full px-[4px] text-[11px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none"
+                                  className="flex-1 h-full px-[4px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none"
                                 />
                               </div>
                               {canResetUnitCost && (
                                 <button
                                   type="button"
                                   onClick={() => resetLineUnitCost(index)}
-                                  className="text-[9px] text-[#6b9e61] hover:underline block mb-[3px]"
+                                  className="text-[9px] text-[#6b9e61] hover:underline block mt-[2px]"
                                 >
                                   Reset to {formatMoney(line.calculated_unit_cost_ex_gst, form.currency)}
                                 </button>
                               )}
-                              <span className={fl}>Markup</span>
-                              <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={line.markup_percent}
-                                  onChange={e => updateLine(index, 'markup_percent', e.target.value)}
-                                  className="flex-1 h-full px-[4px] text-[11px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none"
-                                />
-                                <span className="px-[4px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
-                              </div>
                             </>
                           ) : (
-                            <>
-                              <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
-                                {formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}
-                              </span>
-                              <span className="text-[11px] text-[#5a5a52] font-mono block mt-[1px] leading-[1.25]">
-                                {line.markup_percent ?? businessDefaults.markup_percent}%
-                              </span>
-                            </>
+                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
+                              {formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}
+                            </span>
                           )}
                         </td>
 
-                        {/* Price & total */}
+                        {/* Markup */}
                         <td className={td}>
-                          {isEditable ? (
-                            <>
-                              <span className={fl}>Unit price</span>
-                              <span className="text-[12px] font-medium font-mono text-[#1a1a18] block mb-[4px]">
-                                {formatMoney(calculated.unit_price_ex_gst, form.currency)}
-                              </span>
-                              <span className={fl}>Line total</span>
-                              <span className="text-[14px] font-semibold font-mono text-[#1a1a18] block">
-                                {formatMoney(calculated.line_total_ex_gst, form.currency)}
-                              </span>
-                            </>
+                          {isEditable && !isBaseCabinetEditable ? (
+                            <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={line.markup_percent}
+                                onChange={e => updateLine(index, 'markup_percent', e.target.value)}
+                                className="flex-1 h-full px-[4px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
+                              />
+                              <span className="px-[4px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
+                            </div>
                           ) : (
-                            <>
-                              <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
-                                {formatMoney(calculated.unit_price_ex_gst, form.currency)}
-                              </span>
-                              <span className="text-[12px] font-semibold text-[#1a1a18] font-mono block mt-[1px] leading-[1.25]">
-                                {formatMoney(calculated.line_total_ex_gst, form.currency)}
-                              </span>
-                            </>
+                            <span className="text-[11px] text-[#5a5a52] font-mono block leading-[1.25]">
+                              {line.markup_percent ?? businessDefaults.markup_percent}%
+                            </span>
                           )}
+                        </td>
+
+                        {/* Unit price */}
+                        <td className={td}>
+                          <span className={isEditable ? 'text-[12px] font-medium font-mono text-[#1a1a18] block' : 'text-[11px] text-[#1a1a18] font-mono block leading-[1.25]'}>
+                            {formatMoney(calculated.unit_price_ex_gst, form.currency)}
+                          </span>
+                        </td>
+
+                        {/* Total */}
+                        <td className={td}>
+                          <span className={isEditable ? 'text-[14px] font-semibold font-mono text-[#1a1a18] block' : 'text-[12px] font-semibold text-[#1a1a18] font-mono block leading-[1.25]'}>
+                            {formatMoney(calculated.line_total_ex_gst, form.currency)}
+                          </span>
                         </td>
 
                         {/* Actions */}
@@ -2346,7 +2434,7 @@ export default function QuoteEditor({ quoteId }) {
                               </button>
                             </div>
                           ) : (
-                            <div className="flex gap-[2px] opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex gap-[2px]">
                               <QuoteLineActionDropdown
                                 disabled={isLineSaving || savingLineIndex !== null}
                                 index={index}
@@ -2389,27 +2477,10 @@ export default function QuoteEditor({ quoteId }) {
                         </td>
                       </tr>
 
-                      {/* Info bar below editing row */}
-                      {isEditable && (
-                        <tr>
-                          <td
-                            colSpan={10}
-                            className="px-3 py-[5px] bg-[#edf4eb] border-b border-[#a8c5a0] text-[10px] text-[#2d5e28] border-l-[3px] border-l-[#6b9e61]"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span>{hintText}</span>
-                              <span className="text-[#5a5a52]">
-                                <kbd className="font-mono bg-white border border-[#dbd8cc] rounded-[2px] px-[3px] text-[9px]">Esc</kbd> to cancel
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-
                       {/* Client note row */}
                       {!isEditable && line.client_note && (
                         <tr>
-                          <td colSpan={10} className="px-3 py-[4px] bg-[#f5f8f4] border-b border-[#edf4eb] text-[10px] text-[#5a5a52] italic">
+                          <td colSpan={16} className="px-3 py-[4px] bg-[#f5f8f4] border-b border-[#edf4eb] text-[10px] text-[#5a5a52] italic">
                             Note: {line.client_note}
                           </td>
                         </tr>
@@ -2420,7 +2491,7 @@ export default function QuoteEditor({ quoteId }) {
 
                 {form.lines.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="py-10 text-center">
+                    <td colSpan={16} className="py-10 text-center">
                       <p className="text-[13px] font-medium text-[#1a1a18] mb-1">No line items yet</p>
                       <p className="text-[11px] text-[#8b8a81] mb-3">Add your first line to start building this quote.</p>
                       <button
@@ -2587,7 +2658,7 @@ export default function QuoteEditor({ quoteId }) {
     return (
       <div>
         {groups.map(group => (
-          <details key={group.label} className="border border-[#dbd8cc] rounded-[8px] mb-3 overflow-hidden" open>
+          <details key={group.label} className="border border-[#dbd8cc] rounded-[8px] mb-3 overflow-hidden">
             <summary className="px-4 py-3 flex items-center justify-between cursor-pointer bg-white hover:bg-[#f5f8f4] transition-colors list-none">
               <div>
                 <p className="text-[13px] font-semibold text-[#1a1a18]">{group.label}</p>
@@ -2702,7 +2773,6 @@ export default function QuoteEditor({ quoteId }) {
     if (activeSection === "totals") return renderTotals();
     if (activeSection === "attachments") return renderAttachments();
     if (activeSection === "rooms") return renderRooms();
-    if (activeSection === "elevations") return <ElevationPanel rooms={rooms} quoteId={quoteId} quoteNumber={form.quote_number} />;
     return renderDetails();
   }
 
@@ -2720,8 +2790,6 @@ export default function QuoteEditor({ quoteId }) {
     meta: profileModal?.profile_type || "Profile",
     src: profileOptionSrc(profileModal?.profile_type, profile),
   }));
-  const isFeedbackInModal = Boolean(publishEmail || isCustomerModalOpen || lineNoteModal);
-
   return (
     <>
       <div className="flex flex-col md:flex-row min-h-full">
@@ -2828,283 +2896,241 @@ export default function QuoteEditor({ quoteId }) {
 
       </div>
 
-      {feedback && !isFeedbackInModal ? <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-white border border-[#dbd8cc] rounded-[8px] shadow-lg text-[13px] font-medium text-[#1a1a18]" role="status">{feedback}</div> : null}
-      {publishEmail && typeof document !== "undefined"
-        ? createPortal(
-            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="publish-quote-email-title">
-              <div className={`${styles.customerModal} ${styles.publishQuoteModal}`}>
-                <div className={styles.customerModalHeader}>
-                  <span className={styles.customerModalIcon}>PCD</span>
-                  <div>
-                    <p className={styles.tableMeta}>Publish quote</p>
-                    <h2 id="publish-quote-email-title">Email customer</h2>
-                  </div>
-                  <button type="button" className={styles.modalCloseButton} onClick={() => setPublishEmail(null)} disabled={isSaving}>
-                    Close
-                  </button>
-                </div>
-                <div className={styles.customerModalBody}>
-                  <div className={styles.customerModalGrid}>
-                    <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-                      To
-                      <input className={styles.fieldInput} value={form.customer_email || ""} disabled />
-                    </label>
-                    <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-                      Subject
-                      <input className={styles.fieldInput} value={publishEmail.subject} onChange={(event) => updatePublishEmail("subject", event.target.value)} />
-                    </label>
-                    <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-                      Email message
-                      <textarea
-                        className={`${styles.textareaInput} ${styles.quoteEmailTextarea}`}
-                        value={publishEmail.message}
-                        onChange={(event) => updatePublishEmail("message", event.target.value)}
-                      />
-                    </label>
-                    <label className={`${styles.checkboxRow} ${styles.fieldWide}`}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(publishEmail.deposit_required)}
-                        onChange={(event) => updatePublishEmail("deposit_required", event.target.checked)}
-                      />
-                      Require deposit before quote acceptance is completed
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Deposit %
-                      <input
-                        className={styles.fieldInput}
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        value={publishEmail.deposit_percent}
-                        disabled={!publishEmail.deposit_required}
-                        onChange={(event) => updatePublishEmail("deposit_percent", event.target.value)}
-                      />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Deposit amount
-                      <input
-                        className={styles.fieldInput}
-                        value={formatMoney((Number(form.total_inc_gst || totals.total_inc_gst || 0) * Number(publishEmail.deposit_percent || 0)) / 100, form.currency)}
-                        disabled
-                      />
-                    </label>
-                  </div>
-                  {!form.customer_email ? <p className={styles.inlineNotice}>Add a customer email before sending this quote.</p> : null}
-                  {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
-                </div>
-                <div className={styles.customerModalFooter}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => setPublishEmail(null)} disabled={isSaving}>
-                    Cancel
-                  </button>
-                  <button type="button" className={styles.primaryButton} onClick={sendPublishedQuote} disabled={isSaving || !form.customer_email}>
-                    {isSaving ? "Sending..." : "Send quote"}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
-      {isCustomerModalOpen && typeof document !== "undefined"
-        ? createPortal(
-            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="create-customer-title">
-              <div className={styles.customerModal}>
-                <div className={styles.customerModalHeader}>
-                  <span className={styles.customerModalIcon}>PCD</span>
-                  <div>
-                    <p className={styles.tableMeta}>Customer</p>
-                    <h2 id="create-customer-title">Create new customer</h2>
-                  </div>
-                  <button type="button" className={styles.modalCloseButton} onClick={() => setIsCustomerModalOpen(false)} disabled={isSavingCustomer}>
-                    Close
-                  </button>
-                </div>
-                <div className={styles.customerModalBody}>
-                  <div className={styles.customerModalGrid}>
-                    <input className={styles.fieldInput} placeholder="Customer name" value={customerForm.name} onChange={(event) => updateCustomerForm("name", event.target.value)} />
-                    <input className={styles.fieldInput} placeholder="Company name" value={customerForm.company_name} onChange={(event) => updateCustomerForm("company_name", event.target.value)} />
-                    <input className={styles.fieldInput} placeholder="Email" type="email" value={customerForm.email} onChange={(event) => updateCustomerForm("email", event.target.value)} />
-                    <input className={styles.fieldInput} placeholder="Phone" value={customerForm.phone} onChange={(event) => updateCustomerForm("phone", event.target.value)} />
-                    <input className={`${styles.fieldInput} ${styles.fieldWide}`} placeholder="Site / delivery address" value={customerForm.site_address} onChange={(event) => updateCustomerForm("site_address", event.target.value)} />
-                    <textarea className={`${styles.textareaInput} ${styles.fieldWide}`} placeholder="Notes" value={customerForm.notes} onChange={(event) => updateCustomerForm("notes", event.target.value)} />
-                  </div>
-                  {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
-                </div>
-                <div className={styles.customerModalFooter}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => setIsCustomerModalOpen(false)}>
-                    Cancel
-                  </button>
-                  <button type="button" className={styles.primaryButton} onClick={saveCustomerFromDetails} disabled={isSavingCustomer || !customerForm.name.trim()}>
-                    {isSavingCustomer ? "Saving..." : "Save customer"}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
-      {lineNoteModal && typeof document !== "undefined"
-        ? createPortal(
-            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="line-note-title">
-              <div className={`${styles.customerModal} ${quoteStyles.lineNoteModal}`}>
-                <div className={styles.customerModalHeader}>
-                  <span className={styles.customerModalIcon}>NT</span>
-                  <div>
-                    <p className={styles.tableMeta}>Client note</p>
-                    <h2 id="line-note-title">Line {lineNoteModal.lineIndex + 1} note</h2>
-                  </div>
-                  <button type="button" className={styles.modalCloseButton} onClick={() => setLineNoteModal(null)} disabled={savingLineIndex !== null}>
-                    Close
-                  </button>
-                </div>
-                <div className={styles.customerModalBody}>
-                  <label className={styles.fieldLabel}>
-                    Note shown on public quote
-                    <textarea
-                      className={styles.textareaInput}
-                      rows={6}
-                      value={lineNoteModal.client_note}
-                      onChange={(event) => updateLineNoteModal(event.target.value)}
-                      placeholder="Add a short note for the client about this line item."
-                    />
-                  </label>
-                  {feedback ? <p className={styles.feedback}>{feedback}</p> : null}
-                </div>
-                <div className={styles.customerModalFooter}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => setLineNoteModal(null)} disabled={savingLineIndex !== null}>
-                    Cancel
-                  </button>
-                  <button type="button" className={styles.primaryButton} onClick={saveLineNoteModal} disabled={savingLineIndex !== null}>
-                    {savingLineIndex === lineNoteModal.lineIndex ? "Saving..." : "Save note"}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
-      {profileModal && typeof document !== "undefined"
-        ? createPortal(
-            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="profile-config-title">
-              <div className={`${styles.customerModal} ${quoteStyles.profileConfigModal}`}>
-                <div className={styles.customerModalHeader}>
-                  <span className={styles.customerModalIcon}>PR</span>
-                  <div>
-                    <p className={styles.tableMeta}>Line item profile</p>
-                    <h2 id="profile-config-title">Edit Profile</h2>
-                  </div>
-                  <button type="button" className={styles.modalCloseButton} onClick={() => setProfileModal(null)}>
-                    Close
-                  </button>
-                </div>
-                <div className={styles.customerModalBody}>
-                  <div className={quoteStyles.profileConfigForm}>
-                    <label className={styles.fieldLabel}>
-                      Profile type
-                      <select
-                        className={styles.fieldInput}
-                        value={profileModal.profile_type}
-                        onChange={(event) => updateProfileModal("profile_type", event.target.value)}
-                      >
-                        <option value="">Profile type</option>
-                        {profileModalTypes.map((type) => <option key={type}>{type}</option>)}
-                      </select>
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Profile name
-                      <QuoteImageCombobox
-                        disabled={!profileModal.profile_type}
-                        placeholder={profileModal.profile_type ? "Profile name" : "Select profile type first"}
-                        value={profileModal.profile}
-                        options={profileModalOptions}
-                        onChange={(option) => updateProfileModal("profile", option.name || option.label)}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <div className={styles.customerModalFooter}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => setProfileModal(null)}>
-                    Cancel
-                  </button>
-                  <button type="button" className={styles.primaryButton} onClick={saveProfileModal}>
-                    Save profile
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
-      {hingeModal && typeof document !== "undefined"
-        ? createPortal(
-            <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="hinge-config-title">
-              <div className={`${styles.customerModal} ${quoteStyles.hingeConfigModal}`}>
-                <div className={styles.customerModalHeader}>
-                  <span className={styles.customerModalIcon}>HN</span>
-                  <div>
-                    <p className={styles.tableMeta}>Line item hinges</p>
-                    <h2 id="hinge-config-title">Edit Hinges</h2>
-                  </div>
-                  <button type="button" className={styles.modalCloseButton} onClick={() => setHingeModal(null)}>
-                    Close
-                  </button>
-                </div>
-                <div className={styles.customerModalBody}>
-                  <div className={quoteStyles.hingeConfigForm}>
-                    <label className={quoteStyles.hingeConfigToggle}>
-                      <input
-                        type="checkbox"
-                        checked={hingeModal.hinge_holes}
-                        onChange={(event) => updateHingeModal("hinge_holes", event.target.checked)}
-                      />
-                      <span>
-                        <strong>Hinge drilling required</strong>
-                        <small>Add hinge hole drilling to this door line.</small>
-                      </span>
-                    </label>
-                    <label className={quoteStyles.hingeConfigToggle}>
-                      <input
-                        type="checkbox"
-                        checked={hingeModal.hinge_supply}
-                        onChange={(event) => updateHingeModal("hinge_supply", event.target.checked)}
-                      />
-                      <span>
-                        <strong>Hinge supply required</strong>
-                        <small>Add supplied hinges to this door line.</small>
-                      </span>
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Quantity
-                      <select
-                        className={styles.fieldInput}
-                        value={hingeModal.hinge_qty}
-                        onChange={(event) => updateHingeModal("hinge_qty", event.target.value)}
-                        disabled={!hingeModal.hinge_holes && !hingeModal.hinge_supply}
-                      >
-                        <option value="">Please select hinge quantity...</option>
-                        <option>2 hinges</option>
-                        <option>3 hinges</option>
-                        <option>4 hinges</option>
-                      </select>
-                    </label>
-                    <p className={styles.tableMeta}>Leave both options unticked when no hinge items are required.</p>
-                  </div>
-                </div>
-                <div className={styles.customerModalFooter}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => setHingeModal(null)}>
-                    Cancel
-                  </button>
-                  <button type="button" className={styles.primaryButton} onClick={saveHingeModal}>
-                    Save hinges
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
+      {publishEmail && (
+        <Modal
+          open={true}
+          onClose={() => setPublishEmail(null)}
+          title="Email customer"
+          subtitle="Publish quote"
+          size="lg"
+          footer={
+            <>
+              <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setPublishEmail(null)} disabled={isSaving}>
+                Cancel
+              </button>
+              <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={sendPublishedQuote} disabled={isSaving || !form.customer_email}>
+                {isSaving ? "Sending..." : "Send quote"}
+              </button>
+            </>
+          }
+        >
+          <div className={styles.customerModalGrid}>
+            <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+              To
+              <input className={styles.fieldInput} value={form.customer_email || ""} disabled />
+            </label>
+            <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+              Subject
+              <input className={styles.fieldInput} value={publishEmail.subject} onChange={(event) => updatePublishEmail("subject", event.target.value)} />
+            </label>
+            <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+              Email message
+              <textarea
+                className={`${styles.textareaInput} ${styles.quoteEmailTextarea}`}
+                value={publishEmail.message}
+                onChange={(event) => updatePublishEmail("message", event.target.value)}
+              />
+            </label>
+            <label className={`${styles.checkboxRow} ${styles.fieldWide}`}>
+              <input
+                type="checkbox"
+                checked={Boolean(publishEmail.deposit_required)}
+                onChange={(event) => {
+                  updatePublishEmail("deposit_required", event.target.checked);
+                  updatePublishEmail("deposit_percent", event.target.checked ? 50 : 0);
+                }}
+              />
+              Require deposit before quote acceptance is completed
+            </label>
+            <label className={styles.fieldLabel}>
+              Deposit %
+              <input
+                className={styles.fieldInput}
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={publishEmail.deposit_percent}
+                disabled={!publishEmail.deposit_required}
+                onChange={(event) => updatePublishEmail("deposit_percent", event.target.value)}
+              />
+            </label>
+            <label className={styles.fieldLabel}>
+              Deposit amount
+              <input
+                className={styles.fieldInput}
+                value={formatMoney((Number(form.total_inc_gst || totals.total_inc_gst || 0) * Number(publishEmail.deposit_percent || 0)) / 100, form.currency)}
+                disabled
+              />
+            </label>
+          </div>
+          {!form.customer_email ? (
+            <div className="mx-1 px-3 py-2 bg-[#fffbeb] border border-[#fcd34d] rounded-[6px] text-[12px] text-[#92400e] flex items-center gap-2">
+              <span>⚠</span>
+              <span>Add a customer email before sending this quote.</span>
+            </div>
+          ) : null}
+        </Modal>
+      )}
+      {isCustomerModalOpen && (
+        <Modal
+          open={true}
+          onClose={() => setIsCustomerModalOpen(false)}
+          title="Create new customer"
+          size="md"
+          footer={
+            <>
+              <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setIsCustomerModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={saveCustomerFromDetails} disabled={isSavingCustomer || !customerForm.name.trim()}>
+                {isSavingCustomer ? "Saving..." : "Save customer"}
+              </button>
+            </>
+          }
+        >
+          <div className={styles.customerModalGrid}>
+            <input className={styles.fieldInput} placeholder="Customer name" value={customerForm.name} onChange={(event) => updateCustomerForm("name", event.target.value)} />
+            <input className={styles.fieldInput} placeholder="Company name" value={customerForm.company_name} onChange={(event) => updateCustomerForm("company_name", event.target.value)} />
+            <input className={styles.fieldInput} placeholder="Email" type="email" value={customerForm.email} onChange={(event) => updateCustomerForm("email", event.target.value)} />
+            <input className={styles.fieldInput} placeholder="Phone" value={customerForm.phone} onChange={(event) => updateCustomerForm("phone", event.target.value)} />
+            <input className={`${styles.fieldInput} ${styles.fieldWide}`} placeholder="Site / delivery address" value={customerForm.site_address} onChange={(event) => updateCustomerForm("site_address", event.target.value)} />
+            <textarea className={`${styles.textareaInput} ${styles.fieldWide}`} placeholder="Notes" value={customerForm.notes} onChange={(event) => updateCustomerForm("notes", event.target.value)} />
+          </div>
+        </Modal>
+      )}
+      {lineNoteModal && (
+        <Modal
+          open={true}
+          onClose={() => setLineNoteModal(null)}
+          title={`Line ${lineNoteModal.lineIndex + 1} note`}
+          subtitle="Client note"
+          size="md"
+          footer={
+            <>
+              <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setLineNoteModal(null)} disabled={savingLineIndex !== null}>
+                Cancel
+              </button>
+              <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={saveLineNoteModal} disabled={savingLineIndex !== null}>
+                {savingLineIndex === lineNoteModal.lineIndex ? "Saving..." : "Save note"}
+              </button>
+            </>
+          }
+        >
+          <label className={styles.fieldLabel}>
+            Note shown on public quote
+            <textarea
+              className={styles.textareaInput}
+              rows={6}
+              value={lineNoteModal.client_note}
+              onChange={(event) => updateLineNoteModal(event.target.value)}
+              placeholder="Add a short note for the client about this line item."
+            />
+          </label>
+        </Modal>
+      )}
+      {profileModal && (
+        <Modal
+          open={true}
+          onClose={() => setProfileModal(null)}
+          title="Edit Profile"
+          subtitle="Line item profile"
+          size="md"
+          footer={
+            <>
+              <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setProfileModal(null)}>
+                Cancel
+              </button>
+              <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={saveProfileModal}>
+                Save profile
+              </button>
+            </>
+          }
+        >
+          <div className={quoteStyles.profileConfigForm}>
+            <label className={styles.fieldLabel}>
+              Profile type
+              <select
+                className={styles.fieldInput}
+                value={profileModal.profile_type}
+                onChange={(event) => updateProfileModal("profile_type", event.target.value)}
+              >
+                <option value="">Profile type</option>
+                {profileModalTypes.map((type) => <option key={type}>{type}</option>)}
+              </select>
+            </label>
+            <label className={styles.fieldLabel}>
+              Profile name
+              <QuoteImageCombobox
+                disabled={!profileModal.profile_type}
+                placeholder={profileModal.profile_type ? "Profile name" : "Select profile type first"}
+                value={profileModal.profile}
+                options={profileModalOptions}
+                onChange={(option) => updateProfileModal("profile", option.name || option.label)}
+              />
+            </label>
+          </div>
+        </Modal>
+      )}
+      {hingeModal && (
+        <Modal
+          open={true}
+          onClose={() => setHingeModal(null)}
+          title="Edit Hinges"
+          subtitle="Line item hinges"
+          size="md"
+          footer={
+            <>
+              <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setHingeModal(null)}>
+                Cancel
+              </button>
+              <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={saveHingeModal}>
+                Save hinges
+              </button>
+            </>
+          }
+        >
+          <div className={quoteStyles.hingeConfigForm}>
+            <label className={quoteStyles.hingeConfigToggle}>
+              <input
+                type="checkbox"
+                checked={hingeModal.hinge_holes}
+                onChange={(event) => updateHingeModal("hinge_holes", event.target.checked)}
+              />
+              <span>
+                <strong>Hinge drilling required</strong>
+                <small>Add hinge hole drilling to this door line.</small>
+              </span>
+            </label>
+            <label className={quoteStyles.hingeConfigToggle}>
+              <input
+                type="checkbox"
+                checked={hingeModal.hinge_supply}
+                onChange={(event) => updateHingeModal("hinge_supply", event.target.checked)}
+              />
+              <span>
+                <strong>Hinge supply required</strong>
+                <small>Add supplied hinges to this door line.</small>
+              </span>
+            </label>
+            <label className={styles.fieldLabel}>
+              Quantity
+              <select
+                className={styles.fieldInput}
+                value={hingeModal.hinge_qty}
+                onChange={(event) => updateHingeModal("hinge_qty", event.target.value)}
+                disabled={!hingeModal.hinge_holes && !hingeModal.hinge_supply}
+              >
+                <option value="">Please select hinge quantity...</option>
+                <option>2 hinges</option>
+                <option>3 hinges</option>
+                <option>4 hinges</option>
+              </select>
+            </label>
+            <p className={styles.tableMeta}>Leave both options unticked when no hinge items are required.</p>
+          </div>
+        </Modal>
+      )}
       {plannerRoom && (
         <PlannerOverlay
           room={plannerRoom}
