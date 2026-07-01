@@ -1,6 +1,7 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
 import { saveQuoteLine } from "../../../../quotes/[id]/_quote-line-save";
 import { roundMoney } from "../../../../../../../lib/pcd-quote-utils";
+import { calculateCabinetTotals, normalizeCabinetConfig } from "../../../../../../../lib/pcd-cabinet-utils";
 
 async function getProjectId(params) {
   const resolved = await Promise.resolve(params);
@@ -22,14 +23,47 @@ function itemLabel(item) {
   return item.label || TYPE_LABELS[item.item_type] || item.item_type;
 }
 
-// Mirrors calculatedUnitCostFromLine/applyCalculatedUnitCost in QuoteEditor.js —
-// that calculation normally only runs client-side when a colour is (re)selected
-// in the quote editor, which left freshly-imported lines showing $0 until an
-// admin manually touched them. Pre-computing it here means a fully configured
-// design item (material + thickness + finish + colour, with a real cost per
-// sqm from the colour library) auto-prices correctly the moment it's imported.
-// Items imported with no rate (unconfigured) are left at $0, same as before.
+function cabinetDescription(config) {
+  const shelfText =
+    Number(config.shelf_qty) > 0
+      ? `, ${config.shelf_qty} ${Number(config.shelf_qty) === 1 ? "shelf" : "shelves"}`
+      : "";
+  return `${config.width_mm}mm wide x ${config.height_mm}mm high x ${config.depth_mm}mm deep - ${config.carcass_material || "cabinet board"} ${config.carcass_thickness_mm}mm carcass${shelfText}`;
+}
+
+function withCalculatedCabinetCost(line) {
+  const config = normalizeCabinetConfig(line.cabinet_config || {});
+  const totals = calculateCabinetTotals(config);
+  const unitCost = totals.calculated_material_cost_ex_gst;
+  const label = String(line.product_name || config.label || "").trim() || "Base cabinet";
+
+  return {
+    ...line,
+    product_name: label,
+    description: line.description || cabinetDescription({ ...config, label }),
+    product_unit_cost_ex_gst: unitCost,
+    calculated_unit_cost_ex_gst: unitCost,
+    cabinet_config: {
+      ...(line.cabinet_config || {}),
+      ...config,
+      label,
+      notes: line.cabinet_config?.notes || line.notes || "",
+      calculated_cut_list: totals.cut_list,
+      calculated_material_cost_ex_gst: totals.calculated_material_cost_ex_gst,
+      labour_hours: totals.labour_hours,
+      labour_cost: totals.labour_hours,
+      total_cabinet_cost_ex_gst: unitCost,
+    },
+  };
+}
+
+// Cabinet imports must use the full cut-list calculation. Flat doors/panels
+// still use the quote editor's width x height x sqm-rate calculation below.
 function withCalculatedUnitCost(line) {
+  if (line.product_type === "base_cabinet" && line.cabinet_config) {
+    return withCalculatedCabinetCost(line);
+  }
+
   const width = Number(line.width_mm) || 0;
   const height = Number(line.height_mm) || 0;
   const rate = Number(line.unit_cost_per_sqm_ex_gst) || 0;
@@ -60,7 +94,11 @@ function designItemToLine(item) {
   };
 
   if (isCabinet) {
-    // Quote line cost comes from the carcass cost
+    const shelfMaterial = item.shelf_material || item.material;
+    const shelfFinish = item.shelf_finish || item.finish;
+    const shelfColour = item.shelf_colour || item.colour;
+    const shelfCost = Number(item.cost_per_sqm_shelf || 0) || Number(item.cost_per_sqm_carcass || 0) || 0;
+
     line.unit_cost_per_sqm_ex_gst = item.cost_per_sqm_carcass || 0;
     line.thickness = item.carcass_thickness_mm ? `${item.carcass_thickness_mm}mm` : "";
     line.cabinet_config = {
@@ -73,16 +111,17 @@ function designItemToLine(item) {
       carcass_colour: item.colour,
       carcass_thickness_mm: item.carcass_thickness_mm ?? 16,
       back_panel_included: item.back_panel_included ?? true,
+      back_panel_material: item.material,
       back_panel_thickness_mm: item.back_panel_thickness_mm ?? 16,
       shelf_qty: item.shelf_qty ?? 0,
-      shelf_material: item.shelf_material,
-      shelf_finish: item.shelf_finish,
-      shelf_colour: item.shelf_colour,
+      shelf_material: shelfMaterial,
+      shelf_finish: shelfFinish,
+      shelf_colour: shelfColour,
       shelf_thickness_mm: item.shelf_thickness_mm ?? 16,
       shelf_heights_mm: item.shelf_heights_mm || [],
       mount_height_mm: item.mount_height_mm ?? null,
       cost_per_sqm_carcass: item.cost_per_sqm_carcass,
-      cost_per_sqm_shelf: item.cost_per_sqm_shelf,
+      cost_per_sqm_shelf: shelfCost,
       notes: item.notes,
     };
   } else {
