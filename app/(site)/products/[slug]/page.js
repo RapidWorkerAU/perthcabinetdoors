@@ -10,7 +10,13 @@ import {
   PRODUCTS,
 } from "../product-data";
 import ProductDetailClient from "./ProductDetailClient";
-import { getDatabaseColourFamilyForSelection, inferThicknessFromMaterial } from "../../../../lib/pcd-colour-library";
+import {
+  buildColourAvailabilityFromLibraryRows,
+  getDatabaseColourFamilyForSelection,
+  getDatabaseColourRows,
+  inferThicknessFromMaterial,
+  normaliseColourMaterialKey,
+} from "../../../../lib/pcd-colour-library";
 
 export const dynamic = "force-dynamic";
 
@@ -87,9 +93,19 @@ export default async function ProductDetailPage({ params }) {
   }
 
   const supabase = await createSupabaseServerClient();
+  const colourRows = await getDatabaseColourRows(supabase, { activeOnly: true });
+  const availability = buildColourAvailabilityFromLibraryRows(colourRows);
+  const materialKey = normaliseColourMaterialKey(product.material);
+  const availableThicknesses = availability[materialKey] || [];
+
+  const inferredThickness = inferThicknessFromMaterial(product.materialLabel || product.material);
+  const resolvedThickness = availableThicknesses.includes(inferredThickness)
+    ? inferredThickness
+    : availableThicknesses[0] || "";
+
   const colourFamily = await getDatabaseColourFamilyForSelection(supabase, {
     material: product.material,
-    thickness: inferThicknessFromMaterial(product.materialLabel || product.material),
+    thickness: resolvedThickness,
   });
 
   return (
@@ -99,6 +115,8 @@ export default async function ProductDetailPage({ params }) {
         product={product}
         relatedProducts={relatedProducts || getRelatedProducts(product)}
         colourFamily={colourFamily}
+        availableThicknesses={availableThicknesses}
+        initialThickness={resolvedThickness}
       />
     </>
   );

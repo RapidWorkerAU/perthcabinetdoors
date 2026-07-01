@@ -7,7 +7,7 @@ import {
   IconLayoutDashboard, IconUsers, IconMail, IconFileText,
   IconFileInvoice, IconPackage, IconBox, IconPalette,
   IconSettings, IconLogout, IconChevronsLeft, IconChevronsRight,
-  IconBell, IconDots, IconX,
+  IconBell, IconDots, IconX, IconRulerMeasure,
 } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
@@ -47,6 +47,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Quote Requests', href: '/admin/quote-requests', icon: IconFileText        },
   { label: 'Quotes',         href: '/admin/quotes',         icon: IconFileInvoice     },
   { label: 'Orders',         href: '/admin/orders',         icon: IconPackage         },
+  { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure    },
   { label: 'Products',       href: '/admin/products',       icon: IconBox             },
   { label: 'Options',        href: '/admin/options',        icon: IconPalette         },
   { label: 'Settings',       href: '/admin/settings',       icon: IconSettings        },
@@ -62,6 +63,7 @@ const BOTTOM_PRIMARY: NavItem[] = [
 const BOTTOM_MORE: NavItem[] = [
   { label: 'Enquiries',      href: '/admin/enquiries',      icon: IconMail        },
   { label: 'Quote Requests', href: '/admin/quote-requests', icon: IconFileText    },
+  { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure},
   { label: 'Products',       href: '/admin/products',       icon: IconBox         },
   { label: 'Options',        href: '/admin/options',        icon: IconPalette     },
   { label: 'Settings',       href: '/admin/settings',       icon: IconSettings    },

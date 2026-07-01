@@ -5,11 +5,13 @@ import {
   businessQuoteRequestHtml,
   customerQuoteRequestHtml,
   quoteLineItemsText,
+  sourceLabel,
   uniqueRecipients,
 } from "../../../lib/pcd-email-templates";
 import { logOrderActivity } from "../../../lib/pcd-activity-log";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 import { isEdgeProfileSelectionAvailable } from "../../../lib/quote-form-data";
+import { validateQuoteLineColour } from "../../../lib/pcd-colour-library";
 
 const lineSchema = z.object({
   productType: z.string().optional(),
@@ -52,6 +54,25 @@ export async function POST(request) {
 
     const payload = parsed.data;
     const supabase = createSupabaseAdminClient();
+
+    for (const line of payload.lines) {
+      const valid = await validateQuoteLineColour(supabase, {
+        material: line.material,
+        thickness: line.thickness,
+        finish: line.finish,
+        colour: line.colour,
+      });
+      if (!valid) {
+        return Response.json(
+          {
+            ok: false,
+            error: `The colour "${line.colour}" is not available for ${line.material || "the selected material"} ${line.thickness || ""}. Please reselect a colour and try again.`.trim(),
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const { data: requestRow, error } = await supabase
       .from("pcd_quote_requests")
       .insert({
@@ -121,7 +142,7 @@ export async function POST(request) {
         text: [
           "Perth Cabinet Doors - Quote Request",
           "",
-          `Source: ${payload.source}`,
+          `Source: ${sourceLabel(payload.source)}`,
           `Product: ${payload.productName || ""}`,
           `Name: ${payload.customerName || ""}`,
           `Email: ${payload.customerEmail || ""}`,

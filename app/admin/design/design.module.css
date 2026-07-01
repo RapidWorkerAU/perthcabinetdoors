@@ -4,7 +4,6 @@
    ============================================================ */
 
 /* ---- Shared tokens ---- */
-.listPage,
 .designProgram {
   --dt-text:        var(--pcd-admin-text, #1c1c1a);
   --dt-text-soft:   var(--pcd-admin-text-soft, #5f5e5a);
@@ -25,216 +24,49 @@
   --dt-transition:  var(--pcd-admin-transition, 150ms ease);
 }
 
-/* ============================================================
-   LIST PAGE  (/admin/design)
-   ============================================================ */
-
-.listPage {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.listHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.listHeading {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--dt-text);
-  margin: 0;
-}
-
-.projectGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-}
-
-.projectCard {
-  background: var(--dt-surface);
-  border: 1px solid var(--dt-border-soft);
-  border-radius: var(--dt-radius-lg);
-  box-shadow: var(--dt-shadow-sm);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: box-shadow var(--dt-transition);
-}
-
-.projectCard:hover {
-  box-shadow: var(--dt-shadow-md);
-}
-
-.projectCardBody {
-  padding: 16px 20px;
-  flex: 1;
-}
-
-.projectCardName {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--dt-text);
-  margin: 0 0 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.projectCardMeta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--dt-text-muted);
-}
-
-.statusPill {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  background: var(--dt-border-soft);
-  color: var(--dt-text-muted);
-}
-
-.statusPillDraft    { background: #fef3c7; color: #92400e; }
-.statusPillReady    { background: #dcfce7; color: #14532d; }
-.statusPillImported { background: #dbeafe; color: #1e3a5f; }
-
-.projectCardFooter {
-  border-top: 1px solid var(--dt-border-soft);
-  padding: 10px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  background: var(--dt-bg);
-}
-
-.emptyState {
-  text-align: center;
-  padding: 60px 24px;
-  color: var(--dt-text-muted);
-  font-size: 14px;
-}
-
-.emptyState p { margin: 0 0 16px; }
-
-/* New project inline form */
-.newProjectForm {
-  background: var(--dt-surface);
-  border: 1px solid var(--dt-border-soft);
-  border-radius: var(--dt-radius-lg);
-  padding: 16px 20px;
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-  box-shadow: var(--dt-shadow-sm);
-}
-
-.newProjectField {
-  flex: 1 1 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--dt-text-muted);
-}
-
-.newProjectInput {
-  padding: 7px 10px;
-  border: 1px solid var(--dt-border);
-  border-radius: var(--dt-radius-sm);
-  font-size: 13px;
-  font-family: inherit;
-  color: var(--dt-text);
-  background: var(--dt-bg);
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.newProjectInput:focus {
-  outline: none;
-  border-color: var(--dt-green);
-}
-
-.newProjectActions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-  padding-bottom: 1px;
-}
-
+/* Used by the design program editor (error state, import modal, add-item form) */
 .feedback {
   width: 100%;
   font-size: 12px;
-  color: var(--dt-red);
-  background: var(--dt-red-soft);
-  border-radius: var(--dt-radius-sm);
+  color: var(--dt-red, #e24b4a);
+  background: var(--dt-red-soft, #fcebeb);
+  border-radius: var(--dt-radius-sm, 4px);
   padding: 6px 10px;
   margin: 0;
 }
 
-/* ---- Shared buttons ---- */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 7px 16px;
-  border-radius: var(--dt-radius-sm);
+  border-radius: var(--dt-radius-sm, 4px);
   font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   border: none;
   white-space: nowrap;
-  transition: opacity var(--dt-transition), background var(--dt-transition);
+  transition: opacity var(--dt-transition, 150ms ease), background var(--dt-transition, 150ms ease);
 }
 
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btnPrimary {
-  background: var(--dt-green);
+  background: var(--dt-green, #1a2e20);
   color: #fff;
-  border: 1px solid var(--dt-green);
+  border: 1px solid var(--dt-green, #1a2e20);
 }
 
 .btnPrimary:hover:not(:disabled) { opacity: 0.85; }
 
 .btnSecondary {
-  background: var(--dt-surface);
-  color: var(--dt-text-soft);
-  border: 1px solid var(--dt-border);
+  background: var(--dt-surface, #ffffff);
+  color: var(--dt-text-soft, #5f5e5a);
+  border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
 }
 
-.btnSecondary:hover:not(:disabled) { background: var(--dt-bg); color: var(--dt-text); }
-
-.btnDanger {
-  background: none;
-  color: var(--dt-red);
-  border: 1px solid var(--dt-red);
-}
-
-.btnDanger:hover:not(:disabled) { background: var(--dt-red-soft); }
-
-.btnSm {
-  padding: 4px 10px;
-  font-size: 12px;
-}
+.btnSecondary:hover:not(:disabled) { background: var(--dt-bg, #f7f6f3); color: var(--dt-text, #1c1c1a); }
 
 /* ============================================================
    DESIGN PROGRAM  (/admin/design/[projectId])
@@ -306,7 +138,7 @@
   font-size: 11px;
   color: rgba(255,255,255,0.4);
   text-decoration: none;
-  transition: color var(--dt-transition);
+  transition: color var(--dt-transition, 150ms ease);
 }
 
 .backLink:hover { color: rgba(255,255,255,0.7); }
@@ -336,7 +168,7 @@
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: background var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease);
 }
 
 .importBtn:hover:not(:disabled) { background: #3d7a53; }
@@ -368,7 +200,7 @@
   cursor: pointer;
   text-align: left;
   font-family: inherit;
-  transition: background var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease);
 }
 
 .roomSectionHeader:hover { background: rgba(255,255,255,0.04); }
@@ -392,7 +224,7 @@
   border-radius: 3px;
   opacity: 0;
   padding: 0;
-  transition: opacity var(--dt-transition), background var(--dt-transition), color var(--dt-transition);
+  transition: opacity var(--dt-transition, 150ms ease), background var(--dt-transition, 150ms ease), color var(--dt-transition, 150ms ease);
 }
 .roomEditBtn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
 
@@ -412,7 +244,7 @@
   cursor: pointer;
   border-radius: 3px;
   opacity: 0;
-  transition: opacity var(--dt-transition), background var(--dt-transition), color var(--dt-transition);
+  transition: opacity var(--dt-transition, 150ms ease), background var(--dt-transition, 150ms ease), color var(--dt-transition, 150ms ease);
 }
 .roomSectionHeader:hover .roomDeleteBtn { opacity: 1; }
 .roomDeleteBtn:hover { background: rgba(220,50,50,0.15); color: rgba(255,100,100,0.9); }
@@ -431,7 +263,7 @@
   font-size: 10px;
   cursor: pointer;
   text-align: center;
-  transition: background var(--dt-transition), color var(--dt-transition), border-color var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease), color var(--dt-transition, 150ms ease), border-color var(--dt-transition, 150ms ease);
 }
 .itemDeleteBtn:hover { background: rgba(220,50,50,0.12); color: rgba(255,100,100,0.8); border-color: rgba(255,80,80,0.4); }
 .itemDeleteBtnConfirm { background: rgba(220,50,50,0.2) !important; color: #f87171 !important; border-color: rgba(255,80,80,0.6) !important; }
@@ -514,7 +346,7 @@
   border-bottom: 1.5px solid rgba(255,255,255,0.3);
   transform: rotate(45deg);
   flex-shrink: 0;
-  transition: transform var(--dt-transition);
+  transition: transform var(--dt-transition, 150ms ease);
   margin-top: -3px;
 }
 
@@ -548,7 +380,7 @@
   width: 100%;
   text-align: left;
   font-family: inherit;
-  transition: background var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease);
 }
 
 .leftItemRow:hover { background: rgba(255,255,255,0.04); }
@@ -601,7 +433,7 @@
   cursor: pointer;
   line-height: 1;
   padding: 0;
-  transition: color var(--dt-transition), transform var(--dt-transition);
+  transition: color var(--dt-transition, 150ms ease), transform var(--dt-transition, 150ms ease);
   transform: rotate(0deg);
 }
 
@@ -687,7 +519,7 @@
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
-  transition: background var(--dt-transition), border-color var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease), border-color var(--dt-transition, 150ms ease);
 }
 .addFreestandingBtn:hover:not(:disabled) { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.6); }
 .addFreestandingBtn:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -713,7 +545,7 @@
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
-  transition: background var(--dt-transition), color var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease), color var(--dt-transition, 150ms ease);
 }
 
 .addRoomBtn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
@@ -826,7 +658,7 @@
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: background var(--dt-transition), color var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease), color var(--dt-transition, 150ms ease);
 }
 
 .islandBtn:hover {
@@ -880,21 +712,21 @@
 
 .rightPanelHeader {
   padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--dt-border-soft);
+  border-bottom: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));
   flex-shrink: 0;
-  background: var(--dt-bg);
+  background: var(--dt-bg, #f7f6f3);
 }
 
 .rightPanelTitle {
   font-size: 13px;
   font-weight: 700;
-  color: var(--dt-text);
+  color: var(--dt-text, #1c1c1a);
   margin: 0 0 2px;
 }
 
 .rightPanelSubtitle {
   font-size: 11px;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
   margin: 0;
 }
 
@@ -914,22 +746,22 @@
   gap: 8px;
   padding: 40px 24px;
   text-align: center;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
   font-size: 13px;
   height: 100%;
 }
 
 .rightIdleHint {
   font-size: 11px;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
   opacity: 0.6;
 }
 
 /* Tabs */
 .tabs {
   display: flex;
-  border-bottom: 1px solid var(--dt-border-soft);
-  background: var(--dt-bg);
+  border-bottom: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));
+  background: var(--dt-bg, #f7f6f3);
   flex-shrink: 0;
 }
 
@@ -938,28 +770,28 @@
   padding: 9px 4px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
   font-family: inherit;
   text-align: center;
-  transition: color var(--dt-transition), border-color var(--dt-transition);
+  transition: color var(--dt-transition, 150ms ease), border-color var(--dt-transition, 150ms ease);
   white-space: nowrap;
 }
 
-.tabBtn:hover { color: var(--dt-text); }
+.tabBtn:hover { color: var(--dt-text, #1c1c1a); }
 
 .tabBtnActive {
-  color: var(--dt-green);
-  border-bottom-color: var(--dt-green);
+  color: var(--dt-green, #1a2e20);
+  border-bottom-color: var(--dt-green, #1a2e20);
 }
 
 /* Form layout inside right panel */
 .formSection {
   padding: 14px 16px;
-  border-bottom: 1px solid var(--dt-border-soft);
+  border-bottom: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));
 }
 
 .formSection:last-child { border-bottom: none; }
@@ -985,76 +817,76 @@
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
 }
 
 .fieldInput {
   padding: 6px 8px;
-  border: 1px solid var(--dt-border);
-  border-radius: var(--dt-radius-sm);
+  border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
+  border-radius: var(--dt-radius-sm, 4px);
   font-size: 13px;
   font-family: inherit;
-  color: var(--dt-text);
-  background: var(--dt-surface);
+  color: var(--dt-text, #1c1c1a);
+  background: var(--dt-surface, #ffffff);
   width: 100%;
   box-sizing: border-box;
-  transition: border-color var(--dt-transition);
+  transition: border-color var(--dt-transition, 150ms ease);
 }
 
-.fieldInput:focus { outline: none; border-color: var(--dt-green); }
+.fieldInput:focus { outline: none; border-color: var(--dt-green, #1a2e20); }
 
 .fieldTextarea {
   padding: 6px 8px;
-  border: 1px solid var(--dt-border);
-  border-radius: var(--dt-radius-sm);
+  border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
+  border-radius: var(--dt-radius-sm, 4px);
   font-size: 13px;
   font-family: inherit;
-  color: var(--dt-text);
-  background: var(--dt-surface);
+  color: var(--dt-text, #1c1c1a);
+  background: var(--dt-surface, #ffffff);
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
   min-height: 80px;
-  transition: border-color var(--dt-transition);
+  transition: border-color var(--dt-transition, 150ms ease);
 }
 
-.fieldTextarea:focus { outline: none; border-color: var(--dt-green); }
+.fieldTextarea:focus { outline: none; border-color: var(--dt-green, #1a2e20); }
 
 .fieldCheckLabel {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: var(--dt-text);
+  color: var(--dt-text, #1c1c1a);
   cursor: pointer;
 }
 
 .fieldCheckLabel input[type="checkbox"] {
   width: 15px;
   height: 15px;
-  accent-color: var(--dt-green);
+  accent-color: var(--dt-green, #1a2e20);
   cursor: pointer;
 }
 
 .fieldSelect {
   padding: 6px 8px;
-  border: 1px solid var(--dt-border);
-  border-radius: var(--dt-radius-sm);
+  border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
+  border-radius: var(--dt-radius-sm, 4px);
   font-size: 13px;
   font-family: inherit;
-  color: var(--dt-text);
-  background: var(--dt-surface);
+  color: var(--dt-text, #1c1c1a);
+  background: var(--dt-surface, #ffffff);
   width: 100%;
   box-sizing: border-box;
   appearance: none;
   cursor: pointer;
 }
 
-.fieldSelect:focus { outline: none; border-color: var(--dt-green); }
+.fieldSelect:focus { outline: none; border-color: var(--dt-green, #1a2e20); }
 
 .savingIndicator {
   font-size: 11px;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
   font-style: italic;
   padding: 6px 16px;
   text-align: right;
@@ -1063,13 +895,13 @@
 /* Delete item button area */
 .rightPanelFooter {
   padding: 12px 16px;
-  border-top: 1px solid var(--dt-border-soft);
+  border-top: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: var(--dt-bg);
+  background: var(--dt-bg, #f7f6f3);
 }
 
 .deleteItemBtn {
@@ -1078,16 +910,16 @@
   gap: 5px;
   padding: 5px 10px;
   background: none;
-  border: 1px solid var(--dt-red);
-  border-radius: var(--dt-radius-sm);
-  color: var(--dt-red);
+  border: 1px solid var(--dt-red, #e24b4a);
+  border-radius: var(--dt-radius-sm, 4px);
+  color: var(--dt-red, #e24b4a);
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
-  transition: background var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease);
 }
 
-.deleteItemBtn:hover { background: var(--dt-red-soft); }
+.deleteItemBtn:hover { background: var(--dt-red-soft, #fcebeb); }
 .deleteItemBtnConfirm { background: rgba(220,50,50,0.2) !important; color: #f87171 !important; border-color: rgba(255,80,80,0.6) !important; }
 
 /* Add item form (when adding from wall click) */
@@ -1134,7 +966,7 @@
 
 .modalHeader {
   padding: 18px 20px 14px;
-  border-bottom: 1px solid var(--dt-border-soft);
+  border-bottom: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1145,7 +977,7 @@
 .modalTitle {
   font-size: 15px;
   font-weight: 700;
-  color: var(--dt-text);
+  color: var(--dt-text, #1c1c1a);
   margin: 0;
 }
 
@@ -1156,15 +988,15 @@
   align-items: center;
   justify-content: center;
   background: none;
-  border: 1px solid var(--dt-border);
+  border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
   border-radius: 6px;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
   cursor: pointer;
   font-size: 14px;
-  transition: background var(--dt-transition);
+  transition: background var(--dt-transition, 150ms ease);
 }
 
-.modalCloseBtn:hover { background: var(--dt-bg); color: var(--dt-text); }
+.modalCloseBtn:hover { background: var(--dt-bg, #f7f6f3); color: var(--dt-text, #1c1c1a); }
 
 .modalBody {
   padding: 20px;
@@ -1177,37 +1009,37 @@
 
 .modalFooter {
   padding: 14px 20px;
-  border-top: 1px solid var(--dt-border-soft);
+  border-top: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
   flex-shrink: 0;
-  background: var(--dt-bg);
+  background: var(--dt-bg, #f7f6f3);
 }
 
 .quoteSelect {
   padding: 8px 10px;
-  border: 1px solid var(--dt-border);
-  border-radius: var(--dt-radius-sm);
+  border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
+  border-radius: var(--dt-radius-sm, 4px);
   font-size: 13px;
   font-family: inherit;
-  color: var(--dt-text);
-  background: var(--dt-surface);
+  color: var(--dt-text, #1c1c1a);
+  background: var(--dt-surface, #ffffff);
   width: 100%;
   box-sizing: border-box;
   appearance: none;
   cursor: pointer;
 }
 
-.quoteSelect:focus { outline: none; border-color: var(--dt-green); }
+.quoteSelect:focus { outline: none; border-color: var(--dt-green, #1a2e20); }
 
 .modalSummary {
-  background: var(--dt-bg);
-  border-radius: var(--dt-radius-md);
+  background: var(--dt-bg, #f7f6f3);
+  border-radius: var(--dt-radius-md, 8px);
   padding: 12px 14px;
   font-size: 13px;
-  color: var(--dt-text-soft);
+  color: var(--dt-text-soft, #5f5e5a);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1220,40 +1052,40 @@
   gap: 8px;
 }
 
-.modalSummaryLabel { color: var(--dt-text-muted); }
-.modalSummaryValue { font-weight: 600; color: var(--dt-text); }
+.modalSummaryLabel { color: var(--dt-text-muted, #888780); }
+.modalSummaryValue { font-weight: 600; color: var(--dt-text, #1c1c1a); }
 
 .importSuccess {
   background: #dcfce7;
   border: 1px solid #86efac;
-  border-radius: var(--dt-radius-md);
+  border-radius: var(--dt-radius-md, 8px);
   padding: 12px 14px;
   color: #14532d;
   font-size: 13px;
 }
 
 .importError {
-  background: var(--dt-red-soft);
+  background: var(--dt-red-soft, #fcebeb);
   border: 1px solid rgba(226,75,74,0.3);
-  border-radius: var(--dt-radius-md);
+  border-radius: var(--dt-radius-md, 8px);
   padding: 12px 14px;
-  color: var(--dt-red);
+  color: var(--dt-red, #e24b4a);
   font-size: 13px;
 }
 
 .modalSearchInput {
   padding: 8px 10px;
-  border: 1px solid var(--dt-border);
-  border-radius: var(--dt-radius-sm);
+  border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
+  border-radius: var(--dt-radius-sm, 4px);
   font-size: 13px;
   font-family: inherit;
-  color: var(--dt-text);
-  background: var(--dt-surface);
+  color: var(--dt-text, #1c1c1a);
+  background: var(--dt-surface, #ffffff);
   width: 100%;
   box-sizing: border-box;
 }
 
-.modalSearchInput:focus { outline: none; border-color: var(--dt-green); }
+.modalSearchInput:focus { outline: none; border-color: var(--dt-green, #1a2e20); }
 
 .modalFieldLabel {
   display: flex;
@@ -1263,7 +1095,7 @@
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
 }
 
 /* ---- Material colour picker ---- */
@@ -1273,8 +1105,8 @@
   gap: 8px;
   padding: 10px 12px;
   background: rgba(0, 0, 0, 0.03);
-  border: 1px solid var(--dt-border-soft);
-  border-radius: var(--dt-radius-sm);
+  border: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));
+  border-radius: var(--dt-radius-sm, 4px);
 }
 
 .pickerLabel {
@@ -1282,13 +1114,13 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
   margin: 0 0 2px;
 }
 
 .pickerLoading {
   font-size: 11px;
-  color: var(--dt-text-muted);
+  color: var(--dt-text-muted, #888780);
   font-style: italic;
   margin: 0;
 }
@@ -1296,11 +1128,11 @@
 .pickerCost {
   font-size: 12px;
   font-weight: 600;
-  color: var(--dt-green);
+  color: var(--dt-green, #1a2e20);
   margin: 2px 0 0;
   padding: 4px 8px;
-  background: var(--dt-green-soft);
-  border-radius: var(--dt-radius-sm);
+  background: var(--dt-green-soft, #eaf3de);
+  border-radius: var(--dt-radius-sm, 4px);
 }
 
 /* ---- Front elevation view (inline canvas swap) ---- */

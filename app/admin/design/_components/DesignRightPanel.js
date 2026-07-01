@@ -20,15 +20,15 @@ const TYPE_LABELS = {
   panel:         "Panel",
 };
 
-// Shared inline section divider used across tabs
+// Shared inline section divider used across tabs — right panel has a white background
 function SectionDivider({ label }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
-      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>
+      <div style={{ flex: 1, height: 1, background: "var(--dt-border-soft, rgba(0,0,0,0.08))" }} />
+      <span style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>
         {label}
       </span>
-      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
+      <div style={{ flex: 1, height: 1, background: "var(--dt-border-soft, rgba(0,0,0,0.08))" }} />
     </div>
   );
 }
@@ -135,14 +135,31 @@ function CabinetConfigForm({ item, onItemChange }) {
   const [saving, setSaving]       = useState(false);
   const timerRef                  = useRef(null);
   const latestRef                 = useRef(draft);
+  const pendingPatchRef           = useRef({});
+  const onItemChangeRef           = useRef(onItemChange);
+  onItemChangeRef.current = onItemChange;
 
   // Reset whole form when switching to a different item
   useEffect(() => {
     setDraft(item);
     latestRef.current = item;
+    pendingPatchRef.current = {};
     clearTimeout(timerRef.current);
     setSaving(false);
   }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush any unsaved edits immediately when the user switches away from this
+  // item (deselects, picks another cabinet) instead of losing them — a bare
+  // debounce timer alone silently dropped whichever field was edited earlier
+  // if a different field was edited again before the 600ms delay elapsed.
+  useEffect(() => {
+    return () => {
+      clearTimeout(timerRef.current);
+      const patch = pendingPatchRef.current;
+      if (Object.keys(patch).length) onItemChangeRef.current(item.id, patch);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
 
   // Sync mount_height_mm when changed externally (e.g., dragged in the front elevation)
   useEffect(() => {
@@ -150,28 +167,57 @@ function CabinetConfigForm({ item, onItemChange }) {
     latestRef.current = { ...latestRef.current, mount_height_mm: item.mount_height_mm };
   }, [item.mount_height_mm]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function flushPending() {
+    const patch = pendingPatchRef.current;
+    pendingPatchRef.current = {};
+    if (!Object.keys(patch).length) {
+      setSaving(false);
+      return;
+    }
+    onItemChangeRef.current(item.id, patch).finally(() => setSaving(false));
+  }
+
   function set(key, val) {
     const next = { ...latestRef.current, [key]: val };
     latestRef.current = next;
     setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
     clearTimeout(timerRef.current);
     setSaving(true);
-    timerRef.current = setTimeout(async () => {
-      await onItemChange(item.id, { [key]: val });
-      setSaving(false);
-    }, 600);
+    timerRef.current = setTimeout(flushPending, 600);
   }
 
   function setMulti(patch) {
     const next = { ...latestRef.current, ...patch };
     latestRef.current = next;
     setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
     clearTimeout(timerRef.current);
     setSaving(true);
-    timerRef.current = setTimeout(async () => {
-      await onItemChange(item.id, patch);
-      setSaving(false);
-    }, 600);
+    timerRef.current = setTimeout(flushPending, 600);
+  }
+
+  // For discrete choices (radios, selects, colour pickers) — save immediately
+  // rather than debouncing, so there is no window in which a quick click-away
+  // could lose the choice.
+  function setNow(key, val) {
+    const next = { ...latestRef.current, [key]: val };
+    latestRef.current = next;
+    setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
+    clearTimeout(timerRef.current);
+    setSaving(true);
+    flushPending();
+  }
+
+  function setMultiNow(patch) {
+    const next = { ...latestRef.current, ...patch };
+    latestRef.current = next;
+    setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
+    clearTimeout(timerRef.current);
+    setSaving(true);
+    flushPending();
   }
 
   // Auto-switch away from Doors tab if front type is changed away from "doors"
@@ -207,12 +253,12 @@ function CabinetConfigForm({ item, onItemChange }) {
 
   function updDoorCfg(patch) {
     const prev = latestRef.current.door_config || {};
-    set("door_config", { ...prev, ...patch });
+    setNow("door_config", { ...prev, ...patch });
   }
 
   function updDoorStyle(patch) {
     const prev = latestRef.current.door_style || {};
-    set("door_style", { ...prev, ...patch });
+    setNow("door_style", { ...prev, ...patch });
   }
 
   function onDoorColsChange(newCols) {
@@ -221,7 +267,7 @@ function CabinetConfigForm({ item, onItemChange }) {
     const hinges = Array.from({ length: newCols }, (_, i) =>
       i < prevH.length ? prevH[i] : (i === 0 ? "L" : "R")
     );
-    set("door_config", {
+    setNow("door_config", {
       ...prev,
       columns:      newCols,
       hinges,
@@ -234,7 +280,7 @@ function CabinetConfigForm({ item, onItemChange }) {
     const prev = latestRef.current.door_config || {};
     const h = [...(prev.hinges || [])];
     h[col] = val;
-    set("door_config", { ...prev, hinges: h });
+    setNow("door_config", { ...prev, hinges: h });
   }
 
   function onDoorRatioChange(col, ratio) {
@@ -296,7 +342,7 @@ function CabinetConfigForm({ item, onItemChange }) {
               {draft.wall === "island" && (
                 <label className={styles.fieldLabel}>
                   Rotation
-                  <select className={styles.fieldSelect} value={draft.rotation || 0} onChange={(e) => set("rotation", Number(e.target.value))}>
+                  <select className={styles.fieldSelect} value={draft.rotation || 0} onChange={(e) => setNow("rotation", Number(e.target.value))}>
                     {ROTATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </label>
@@ -305,25 +351,25 @@ function CabinetConfigForm({ item, onItemChange }) {
               <SectionDivider label="Cabinet Front" />
               <div style={{ display: "flex", gap: 14 }}>
                 {[["none", "None"], ["doors", "Doors"], ["drawers", "Drawers"]].map(([val, label]) => (
-                  <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "rgba(255,255,255,0.75)", cursor: "pointer" }}>
+                  <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--dt-text, #1c1c1a)", cursor: "pointer" }}>
                     <input
                       type="radio"
                       name={`front_type_${item.id}`}
                       value={val}
                       checked={(draft.front_type ?? "none") === val}
-                      onChange={() => set("front_type", val)}
+                      onChange={() => setNow("front_type", val)}
                     />
                     {label}
                   </label>
                 ))}
               </div>
               {draft.front_type === "doors" && (
-                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", margin: "2px 0 0", lineHeight: 1.4 }}>
+                <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
                   Configure door layout and style in the Doors tab.
                 </p>
               )}
 
-              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", margin: "4px 0 0", lineHeight: 1.4 }}>
+              <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "4px 0 0", lineHeight: 1.4 }}>
                 Drag the cabinet on the floor plan to reposition. Wall assigns automatically.
               </p>
             </div>
@@ -340,7 +386,7 @@ function CabinetConfigForm({ item, onItemChange }) {
                 finish={draft.finish || ""}
                 colour={draft.colour || ""}
                 onChange={({ material, thickness, finish, colour, costPerSqmExGst }) =>
-                  setMulti({
+                  setMultiNow({
                     material,
                     finish,
                     colour,
@@ -355,7 +401,7 @@ function CabinetConfigForm({ item, onItemChange }) {
               </label>
               <label className={styles.fieldLabel}>
                 Unit cost mode
-                <select className={styles.fieldSelect} value={draft.unit_cost_mode || "auto"} onChange={(e) => set("unit_cost_mode", e.target.value)}>
+                <select className={styles.fieldSelect} value={draft.unit_cost_mode || "auto"} onChange={(e) => setNow("unit_cost_mode", e.target.value)}>
                   <option value="auto">Auto (calculated)</option>
                   <option value="manual">Manual (override)</option>
                 </select>
@@ -377,7 +423,7 @@ function CabinetConfigForm({ item, onItemChange }) {
                 <input
                   type="checkbox"
                   checked={draft.back_panel_included ?? true}
-                  onChange={(e) => set("back_panel_included", e.target.checked)}
+                  onChange={(e) => setNow("back_panel_included", e.target.checked)}
                 />
                 Include back panel
               </label>
@@ -400,7 +446,7 @@ function CabinetConfigForm({ item, onItemChange }) {
                     finish={draft.shelf_finish || ""}
                     colour={draft.shelf_colour || ""}
                     onChange={({ material, thickness, finish, colour, costPerSqmExGst }) =>
-                      setMulti({
+                      setMultiNow({
                         shelf_material: material,
                         shelf_finish: finish,
                         shelf_colour: colour,
@@ -424,7 +470,7 @@ function CabinetConfigForm({ item, onItemChange }) {
                     <input
                       type="checkbox"
                       checked={draft.has_kickboard ?? false}
-                      onChange={(e) => set("has_kickboard", e.target.checked)}
+                      onChange={(e) => setNow("has_kickboard", e.target.checked)}
                     />
                     Include kickboard / plinth
                   </label>
@@ -457,13 +503,13 @@ function CabinetConfigForm({ item, onItemChange }) {
                         <select
                           className={styles.fieldSelect}
                           value={draft.kickboard_span ?? "continuous"}
-                          onChange={(e) => set("kickboard_span", e.target.value)}
+                          onChange={(e) => setNow("kickboard_span", e.target.value)}
                         >
                           <option value="continuous">Continuous (spans across adjacent cabinets)</option>
                           <option value="individual">Individual (separate piece per cabinet)</option>
                         </select>
                       </label>
-                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", margin: "0", lineHeight: 1.4 }}>
+                      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
                         Continuous kickboard runs are calculated as one piece across the full run in the cut list. Material defaults to carcass.
                       </p>
                     </>
@@ -538,7 +584,7 @@ function CabinetConfigForm({ item, onItemChange }) {
                           </label>
                         );
                       })}
-                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", margin: "0", lineHeight: 1.4 }}>
+                      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
                         Percentages are relative and will be normalised automatically.
                       </p>
                     </>
@@ -635,36 +681,80 @@ function DoorPanelForm({ item, onItemChange }) {
   const [saving, setSaving] = useState(false);
   const timerRef  = useRef(null);
   const latestRef = useRef(draft);
+  const pendingPatchRef = useRef({});
+  const onItemChangeRef = useRef(onItemChange);
+  onItemChangeRef.current = onItemChange;
 
   useEffect(() => {
     setDraft(item);
     latestRef.current = item;
+    pendingPatchRef.current = {};
     clearTimeout(timerRef.current);
     setSaving(false);
   }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush any unsaved edits immediately on switching away from this item —
+  // see the matching comment in CabinetConfigForm for why this is needed.
+  useEffect(() => {
+    return () => {
+      clearTimeout(timerRef.current);
+      const patch = pendingPatchRef.current;
+      if (Object.keys(patch).length) onItemChangeRef.current(item.id, patch);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+
+  function flushPending() {
+    const patch = pendingPatchRef.current;
+    pendingPatchRef.current = {};
+    if (!Object.keys(patch).length) {
+      setSaving(false);
+      return;
+    }
+    onItemChangeRef.current(item.id, patch).finally(() => setSaving(false));
+  }
 
   function set(key, val) {
     const next = { ...latestRef.current, [key]: val };
     latestRef.current = next;
     setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
     clearTimeout(timerRef.current);
     setSaving(true);
-    timerRef.current = setTimeout(async () => {
-      await onItemChange(item.id, { [key]: val });
-      setSaving(false);
-    }, 600);
+    timerRef.current = setTimeout(flushPending, 600);
   }
 
   function setMulti(patch) {
     const next = { ...latestRef.current, ...patch };
     latestRef.current = next;
     setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
     clearTimeout(timerRef.current);
     setSaving(true);
-    timerRef.current = setTimeout(async () => {
-      await onItemChange(item.id, patch);
-      setSaving(false);
-    }, 600);
+    timerRef.current = setTimeout(flushPending, 600);
+  }
+
+  // For discrete choices (selects, colour pickers, checkboxes) — save
+  // immediately rather than debouncing, so there is no window in which a
+  // quick click-away could lose the choice.
+  function setNow(key, val) {
+    const next = { ...latestRef.current, [key]: val };
+    latestRef.current = next;
+    setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
+    clearTimeout(timerRef.current);
+    setSaving(true);
+    flushPending();
+  }
+
+  function setMultiNow(patch) {
+    const next = { ...latestRef.current, ...patch };
+    latestRef.current = next;
+    setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
+    clearTimeout(timerRef.current);
+    setSaving(true);
+    flushPending();
   }
 
   const profileTypes  = profileTypesForSelection(draft.material || "", draft.thickness || "");
@@ -702,7 +792,7 @@ function DoorPanelForm({ item, onItemChange }) {
             finish={draft.finish || ""}
             colour={draft.colour || ""}
             onChange={({ material, thickness, finish, colour, costPerSqmExGst }) =>
-              setMulti({
+              setMultiNow({
                 material,
                 thickness,
                 finish,
@@ -717,7 +807,7 @@ function DoorPanelForm({ item, onItemChange }) {
             <>
               <label className={styles.fieldLabel}>
                 Profile type
-                <select className={styles.fieldSelect} value={draft.profile_type || ""} onChange={(e) => setMulti({ profile_type: e.target.value, profile: "" })}>
+                <select className={styles.fieldSelect} value={draft.profile_type || ""} onChange={(e) => setMultiNow({ profile_type: e.target.value, profile: "" })}>
                   <option value="">— None —</option>
                   {profileTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
@@ -725,7 +815,7 @@ function DoorPanelForm({ item, onItemChange }) {
               {profileNames.length > 0 && (
                 <label className={styles.fieldLabel}>
                   Profile
-                  <select className={styles.fieldSelect} value={draft.profile || ""} onChange={(e) => set("profile", e.target.value)}>
+                  <select className={styles.fieldSelect} value={draft.profile || ""} onChange={(e) => setNow("profile", e.target.value)}>
                     <option value="">— Select —</option>
                     {profileNames.map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
@@ -738,7 +828,7 @@ function DoorPanelForm({ item, onItemChange }) {
           {edgeProfiles.length > 0 ? (
             <label className={styles.fieldLabel}>
               Edge mould
-              <select className={styles.fieldSelect} value={draft.edge_mould || ""} onChange={(e) => set("edge_mould", e.target.value)}>
+              <select className={styles.fieldSelect} value={draft.edge_mould || ""} onChange={(e) => setNow("edge_mould", e.target.value)}>
                 <option value="">— None —</option>
                 {edgeProfiles.map((ep) => <option key={ep} value={ep}>{ep}</option>)}
               </select>
@@ -758,11 +848,11 @@ function DoorPanelForm({ item, onItemChange }) {
           {item.item_type === "door" && (
             <>
               <label className={styles.fieldCheckLabel}>
-                <input type="checkbox" checked={Boolean(draft.hinge_holes)} onChange={(e) => set("hinge_holes", e.target.checked)} />
+                <input type="checkbox" checked={Boolean(draft.hinge_holes)} onChange={(e) => setNow("hinge_holes", e.target.checked)} />
                 Hinge holes
               </label>
               <label className={styles.fieldCheckLabel}>
-                <input type="checkbox" checked={Boolean(draft.hinge_supply)} onChange={(e) => set("hinge_supply", e.target.checked)} />
+                <input type="checkbox" checked={Boolean(draft.hinge_supply)} onChange={(e) => setNow("hinge_supply", e.target.checked)} />
                 Supply hinges
               </label>
               {draft.hinge_supply && (

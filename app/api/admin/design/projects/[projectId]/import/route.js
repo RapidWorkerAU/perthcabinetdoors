@@ -1,5 +1,6 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
 import { saveQuoteLine } from "../../../../quotes/[id]/_quote-line-save";
+import { roundMoney } from "../../../../../../../lib/pcd-quote-utils";
 
 async function getProjectId(params) {
   const resolved = await Promise.resolve(params);
@@ -7,6 +8,41 @@ async function getProjectId(params) {
 }
 
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet"];
+
+const TYPE_LABELS = {
+  base_cabinet: "Base Cabinet",
+  wall_cabinet: "Wall Cabinet",
+  tall_cabinet: "Tall Cabinet",
+  door: "Door",
+  drawer_front: "Drawer Front",
+  panel: "Panel",
+};
+
+function itemLabel(item) {
+  return item.label || TYPE_LABELS[item.item_type] || item.item_type;
+}
+
+// Mirrors calculatedUnitCostFromLine/applyCalculatedUnitCost in QuoteEditor.js —
+// that calculation normally only runs client-side when a colour is (re)selected
+// in the quote editor, which left freshly-imported lines showing $0 until an
+// admin manually touched them. Pre-computing it here means a fully configured
+// design item (material + thickness + finish + colour, with a real cost per
+// sqm from the colour library) auto-prices correctly the moment it's imported.
+// Items imported with no rate (unconfigured) are left at $0, same as before.
+function withCalculatedUnitCost(line) {
+  const width = Number(line.width_mm) || 0;
+  const height = Number(line.height_mm) || 0;
+  const rate = Number(line.unit_cost_per_sqm_ex_gst) || 0;
+  const areaSqm = width > 0 && height > 0 ? (width * height) / 1000000 : 0;
+  const calculated = rate > 0 && areaSqm > 0 ? roundMoney(areaSqm * rate) : 0;
+
+  return {
+    ...line,
+    calculated_unit_cost_ex_gst: calculated,
+    product_unit_cost_ex_gst:
+      line.unit_cost_mode === "auto" && calculated > 0 ? calculated : line.product_unit_cost_ex_gst || 0,
+  };
+}
 
 function designItemToLine(item) {
   const isCabinet = CABINET_TYPES.includes(item.item_type);
@@ -63,13 +99,80 @@ function designItemToLine(item) {
   return line;
 }
 
+// Splits a cabinet's front into individual door panels using the same
+// columns/rows/width_ratios math as the front elevation drawing, then
+// groups identical-size doors (within this one cabinet) into a single count.
+function computeDoorSizes(item) {
+  const cfg = item.door_config || {};
+  const cols = Math.max(1, cfg.columns || 1);
+  const rows = Math.max(1, cfg.rows || 1);
+  const rawRatios = Array.isArray(cfg.width_ratios) && cfg.width_ratios.length === cols
+    ? cfg.width_ratios
+    : Array(cols).fill(1 / cols);
+  const totalRatio = rawRatios.reduce((sum, r) => sum + (Number(r) || 0), 0) || 1;
+  const widthMm = Number(item.width_mm) || 0;
+  const heightMm = Number(item.height_mm) || 0;
+  const doorHeight = Math.round(heightMm / rows);
+
+  const sizes = new Map();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const ratio = (Number(rawRatios[c]) || 0) / totalRatio;
+      const doorWidth = Math.round(widthMm * ratio);
+      const key = `${doorWidth}x${doorHeight}`;
+      const existing = sizes.get(key);
+      if (existing) existing.qty += 1;
+      else sizes.set(key, { width: doorWidth, height: doorHeight, qty: 1 });
+    }
+  }
+  return Array.from(sizes.values());
+}
+
+// Doors are imported as standalone quote lines (not nested in cabinet_config),
+// grouped per cabinet, one line per unique door size on that cabinet.
+function doorLinesForCabinet(item, roomName) {
+  if (item.front_type !== "doors") return [];
+
+  const style = item.door_style || {};
+  const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
+  const sizes = computeDoorSizes(item);
+
+  return sizes.map((size) => ({
+    product_type: "door",
+    product_name: "Door",
+    description: traceLabel ? `Doors — ${traceLabel}` : "Doors",
+    width_mm: size.width,
+    height_mm: size.height,
+    qty: size.qty,
+    material: style.material || "",
+    finish: style.finish || "",
+    colour: style.colour || "",
+    thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
+    profile_type: style.profile_type || "",
+    profile: style.profile || "",
+    edge_mould: style.edge_mould || "",
+    unit_cost_per_sqm_ex_gst: style.cost_per_sqm || 0,
+    unit_cost_mode: "auto",
+  }));
+}
+
+function isCabinetUnconfigured(item) {
+  if (!String(item.material || "").trim()) return true;
+  if (item.front_type === "doors" && !String(item.door_style?.material || "").trim()) return true;
+  return false;
+}
+
+function isStandaloneUnconfigured(item) {
+  return !String(item.material || "").trim();
+}
+
 export async function POST(request, { params }) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;
 
   try {
     const projectId = await getProjectId(params);
-    const { quote_id: quoteId } = await request.json();
+    const { quote_id: quoteId, force } = await request.json();
 
     if (!quoteId) {
       return Response.json({ ok: false, error: "quote_id is required." }, { status: 422 });
@@ -88,17 +191,41 @@ export async function POST(request, { params }) {
       return Response.json({ ok: false, error: "Quote not found." }, { status: 404 });
     }
 
-    // Load all items for this project, ordered for consistent sort order
-    const { data: items, error: itemsError } = await context.supabase
-      .from("pcd_design_items")
-      .select("*")
-      .eq("design_project_id", projectId)
-      .order("room_id", { ascending: true })
-      .order("sort_order", { ascending: true });
+    // Load all items and rooms for this project, ordered for consistent sort order
+    const [{ data: items, error: itemsError }, { data: rooms, error: roomsError }] = await Promise.all([
+      context.supabase
+        .from("pcd_design_items")
+        .select("*")
+        .eq("design_project_id", projectId)
+        .order("room_id", { ascending: true })
+        .order("sort_order", { ascending: true }),
+      context.supabase.from("pcd_design_rooms").select("id, name").eq("design_project_id", projectId),
+    ]);
 
     if (itemsError) throw itemsError;
+    if (roomsError) throw roomsError;
     if (!items?.length) {
       return Response.json({ ok: false, error: "No items to import." }, { status: 422 });
+    }
+
+    const roomNameById = new Map((rooms || []).map((room) => [room.id, room.name]));
+
+    if (!force) {
+      const warnings = [];
+      for (const item of items) {
+        const isCabinet = CABINET_TYPES.includes(item.item_type);
+        const unconfigured = isCabinet ? isCabinetUnconfigured(item) : isStandaloneUnconfigured(item);
+        if (unconfigured) {
+          const roomName = roomNameById.get(item.room_id);
+          warnings.push({
+            itemId: item.id,
+            label: [itemLabel(item), roomName].filter(Boolean).join(" — "),
+          });
+        }
+      }
+      if (warnings.length) {
+        return Response.json({ ok: true, needsConfirmation: true, warnings });
+      }
     }
 
     // Get current max sort_order in the quote
@@ -114,14 +241,21 @@ export async function POST(request, { params }) {
     const results = { created: 0, failed: 0, errors: [] };
 
     for (const item of items) {
-      try {
-        const line = designItemToLine(item);
-        await saveQuoteLine(context.supabase, quoteId, line, { sortOrder });
-        sortOrder += 1;
-        results.created += 1;
-      } catch (err) {
-        results.failed += 1;
-        results.errors.push(`Item "${item.label || item.id}": ${err?.message}`);
+      const isCabinet = CABINET_TYPES.includes(item.item_type);
+      const lines = [designItemToLine(item)];
+      if (isCabinet) {
+        lines.push(...doorLinesForCabinet(item, roomNameById.get(item.room_id)));
+      }
+
+      for (const line of lines) {
+        try {
+          await saveQuoteLine(context.supabase, quoteId, withCalculatedUnitCost(line), { sortOrder });
+          sortOrder += 1;
+          results.created += 1;
+        } catch (err) {
+          results.failed += 1;
+          results.errors.push(`Item "${item.label || item.id}": ${err?.message}`);
+        }
       }
     }
 

@@ -7,8 +7,6 @@ import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney } from "../../../../lib/pcd-quote-utils";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
-import RoomManager from "./_components/RoomManager";
-import PlannerOverlay from "./_components/PlannerOverlay";
 import {
   edgeProfilesForMaterial,
   isEdgeProfileSelectionAvailable,
@@ -46,11 +44,6 @@ const quoteProductTypes = [
   { value: BASE_CABINET_TYPE, label: "Base cabinet" },
 ];
 const ADMIN_DROPDOWN_OPEN_EVENT = "pcd-admin-dropdown-open";
-
-const CABINET_TYPE_LABELS = {
-  base: "Base", wall: "Wall", tall: "Tall",
-  corner_base: "Corner Base", corner_wall: "Corner Wall", island: "Island",
-};
 
 const emptyLine = {
   product_type: "",
@@ -750,10 +743,6 @@ export default function QuoteEditor({ quoteId }) {
   const { toast } = useToast();
   const [publishEmail, setPublishEmail] = useState(null);
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
-  const [rooms, setRooms] = useState([]);
-  const [roomsLoaded, setRoomsLoaded] = useState(false);
-  const [isGeneratingLines, setIsGeneratingLines] = useState(false);
-  const [plannerRoom, setPlannerRoom] = useState(null);
 
   const colEls = useRef([])
   const [colWidths, setColWidths] = useState(() => {
@@ -886,12 +875,6 @@ export default function QuoteEditor({ quoteId }) {
   }, [quoteId]);
 
   useEffect(() => {
-    if (activeSection !== "rooms" || roomsLoaded) return;
-    loadRooms();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, roomsLoaded]);
-
-  useEffect(() => {
     if (!shouldScrollQuoteItemsToBottomRef.current) return;
     shouldScrollQuoteItemsToBottomRef.current = false;
     const scroller = quoteItemsScrollerRef.current;
@@ -946,78 +929,6 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
-  async function loadRooms() {
-    try {
-      const response = await fetch(`/api/admin/quotes/${quoteId}/rooms`, { cache: "no-store" });
-      const payload = await response.json();
-      if (payload.ok) {
-        setRooms(payload.rooms || []);
-        setRoomsLoaded(true);
-      }
-    } catch {}
-  }
-
-  async function handleGenerateLineItems() {
-    if (!rooms.length) return;
-    setIsGeneratingLines(true);
-    let created = 0;
-    let linkFailed = 0;
-    const sortBase = form.lines.filter((l) => l.id).length;
-    try {
-      for (const room of rooms) {
-        // Room with no cabinets returns ok:true with empty array — skips cleanly
-        const cabRes = await fetch(`/api/admin/quotes/${quoteId}/rooms/${room.id}/cabinets`, { cache: "no-store" });
-        const cabData = await cabRes.json();
-        if (!cabData.ok) continue;
-        // quote_line_item_id filter prevents duplicates if run twice
-        const unlinked = (cabData.cabinets || []).filter((c) => !c.quote_line_item_id);
-        for (const cabinet of unlinked) {
-          const lineRes = await fetch(`/api/admin/quotes/${quoteId}/lines`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              line: {
-                product_name: CABINET_TYPE_LABELS[cabinet.cabinet_type] || "Cabinet",
-                description: `Room: ${room.name}`,
-                width_mm: cabinet.width_mm || null,
-                height_mm: cabinet.height_mm || null,
-              },
-              sort_order: sortBase + created,
-            }),
-          });
-          const lineData = await lineRes.json();
-          if (!lineData.ok) continue;
-          created++;
-          const patchRes = await fetch(`/api/admin/quotes/${quoteId}/rooms/${room.id}/cabinets/${cabinet.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ quote_line_item_id: lineData.line.id }),
-          });
-          const patchData = await patchRes.json();
-          if (!patchData.ok) {
-            console.warn(`Cabinet ${cabinet.id}: line ${lineData.line.id} created but link PATCH failed:`, patchData.error);
-            linkFailed++;
-          }
-        }
-      }
-      if (created > 0) {
-        const quoteRes = await fetch(`/api/admin/quotes/${quoteId}`, { cache: "no-store" });
-        const quoteData = await quoteRes.json();
-        if (quoteData.ok) setForm(formFromQuote(quoteData.quote));
-      }
-      const base = created > 0
-        ? `Generated ${created} line item${created !== 1 ? "s" : ""} and linked to cabinets.`
-        : "All cabinets are already linked to line items.";
-      const warning = linkFailed > 0
-        ? ` Warning: ${linkFailed} cabinet${linkFailed !== 1 ? "s" : ""} could not be linked — check the console.`
-        : "";
-      toast({ title: base + warning, variant: linkFailed > 0 ? "warning" : "success" });
-    } catch (err) {
-      toast({ title: err?.message || "Could not generate line items.", variant: "error" });
-    } finally {
-      setIsGeneratingLines(false);
-    }
-  }
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -1595,6 +1506,7 @@ export default function QuoteEditor({ quoteId }) {
         message: defaultQuoteEmailMessage(form, nextViewUrl),
         deposit_required: Boolean(form.deposit_required),
         deposit_percent: form.deposit_percent || 0,
+        include_price: false,
       });
     } catch (error) {
       toast({ title: error?.message || "Could not prepare quote email.", variant: "error" });
@@ -1627,6 +1539,7 @@ export default function QuoteEditor({ quoteId }) {
           message: publishEmail.message,
           deposit_required: publishEmail.deposit_required,
           deposit_percent: publishEmail.deposit_percent,
+          include_price: publishEmail.include_price,
         }),
       });
       const payload = await response.json();
@@ -1759,50 +1672,6 @@ export default function QuoteEditor({ quoteId }) {
     } finally {
       setIsGeneratingCabinetPdf(false);
     }
-  }
-
-  // ---- Room CRUD (state-only callbacks — RoomManager owns the API calls) ----
-
-  function handleRoomAdd(room) {
-    setRooms((prev) => [...prev, room]);
-  }
-
-  function handleRoomUpdate(room) {
-    setRooms((prev) => prev.map((r) => (r.id === room.id ? room : r)));
-  }
-
-  function handleRoomDelete(roomId) {
-    setRooms((prev) => prev.filter((r) => r.id !== roomId));
-  }
-
-  async function handlePlannerSaved() {
-    await loadRooms();
-    setPlannerRoom(null);
-  }
-
-  function renderRooms() {
-    return (
-      <div className={quoteStyles.roomPlannerSection}>
-        <div className={quoteStyles.roomPlannerActions}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={handleGenerateLineItems}
-            disabled={isGeneratingLines || !rooms.length}
-          >
-            {isGeneratingLines ? "Generating…" : "Generate line items"}
-          </button>
-        </div>
-        <RoomManager
-          quoteId={quoteId}
-          rooms={rooms}
-          onRoomAdd={handleRoomAdd}
-          onRoomUpdate={handleRoomUpdate}
-          onRoomDelete={handleRoomDelete}
-          onOpenPlanner={setPlannerRoom}
-        />
-      </div>
-    );
   }
 
   function renderDetails() {
@@ -2924,7 +2793,6 @@ export default function QuoteEditor({ quoteId }) {
     if (activeSection === "notes") return renderNotes();
     if (activeSection === "totals") return renderTotals();
     if (activeSection === "attachments") return renderAttachments();
-    if (activeSection === "rooms") return renderRooms();
     return renderDetails();
   }
 
@@ -3095,6 +2963,14 @@ export default function QuoteEditor({ quoteId }) {
                 value={publishEmail.message}
                 onChange={(event) => updatePublishEmail("message", event.target.value)}
               />
+            </label>
+            <label className={`${styles.checkboxRow} ${styles.fieldWide}`}>
+              <input
+                type="checkbox"
+                checked={Boolean(publishEmail.include_price)}
+                onChange={(event) => updatePublishEmail("include_price", event.target.checked)}
+              />
+              Include price in email
             </label>
             <label className={`${styles.checkboxRow} ${styles.fieldWide}`}>
               <input
@@ -3298,15 +3174,6 @@ export default function QuoteEditor({ quoteId }) {
             <p className={styles.tableMeta}>Leave both options unticked when no hinge items are required.</p>
           </div>
         </Modal>
-      )}
-      {plannerRoom && (
-        <PlannerOverlay
-          room={plannerRoom}
-          quoteId={quoteId}
-          quoteLineItems={form.lines.filter((l) => l.id)}
-          onClose={() => setPlannerRoom(null)}
-          onSaved={handlePlannerSaved}
-        />
       )}
       {editableLineIndex !== null && typeof document !== 'undefined' ? createPortal(
         (() => {

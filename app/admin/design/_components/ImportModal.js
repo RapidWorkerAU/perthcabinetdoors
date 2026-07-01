@@ -11,6 +11,7 @@ export default function ImportModal({ projectId, itemCount, onClose }) {
   const [loading, setLoading]     = useState(true);
   const [busy, setBusy]           = useState(false);
   const [result, setResult]       = useState(null);
+  const [warnings, setWarnings]   = useState(null);
   const [error, setError]         = useState("");
 
   useEffect(() => {
@@ -43,17 +44,22 @@ export default function ImportModal({ projectId, itemCount, onClose }) {
 
   const selectedQuote = quotes.find((q) => q.id === selectedId) || null;
 
-  async function handleImport() {
+  async function handleImport(force = false) {
     if (!selectedId) { setError("Please select a quote."); return; }
     setBusy(true); setError("");
     try {
       const res  = await fetch(`/api/admin/design/projects/${projectId}/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quote_id: selectedId }),
+        body: JSON.stringify({ quote_id: selectedId, force }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Import failed.");
+      if (data.needsConfirmation) {
+        setWarnings(data.warnings || []);
+        return;
+      }
+      setWarnings(null);
       setResult(data.results);
     } catch (err) {
       setError(err?.message || "Import failed.");
@@ -93,9 +99,24 @@ export default function ImportModal({ projectId, itemCount, onClose }) {
                   </p>
                 )}
               </div>
-              <p style={{ fontSize: 13, color: "#666", margin: 0 }}>
+              <p style={{ fontSize: 13, color: "var(--dt-text-soft, #5f5e5a)", margin: 0 }}>
                 You can now open the quote to review the imported line items.
               </p>
+            </>
+          ) : warnings ? (
+            <>
+              <div className={styles.importError}>
+                <strong>{warnings.length} item{warnings.length !== 1 ? "s" : ""} not fully configured.</strong>
+                <p style={{ margin: "6px 0 0" }}>
+                  These items are missing a material/colour selection. You can go back and configure them, or import
+                  anyway and fill in the blanks in the quote editor.
+                </p>
+              </div>
+              <ul style={{ margin: "10px 0 0", padding: "0 0 0 18px", fontSize: 13, color: "var(--dt-text, #1c1c1a)" }}>
+                {warnings.map((w) => (
+                  <li key={w.itemId}>{w.label}</li>
+                ))}
+              </ul>
             </>
           ) : (
             <>
@@ -142,10 +163,6 @@ export default function ImportModal({ projectId, itemCount, onClose }) {
                 <div className={styles.modalSummary}>
                   <div className={styles.modalSummaryRow}>
                     <span className={styles.modalSummaryLabel}>Quote</span>
-                    <span className={styles.modalSummaryValue}>{quoteLabel(selectedQuote)}</span>
-                  </div>
-                  <div className={styles.modalSummaryRow}>
-                    <span className={styles.modalSummaryLabel}>Status</span>
                     <span className={styles.modalSummaryValue}>{selectedQuote.status || "—"}</span>
                   </div>
                 </div>
@@ -157,17 +174,25 @@ export default function ImportModal({ projectId, itemCount, onClose }) {
         </div>
 
         <div className={styles.modalFooter}>
-          <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={onClose}>
-            {result ? "Close" : "Cancel"}
+          <button
+            type="button"
+            className={`${styles.btn} ${styles.btnSecondary}`}
+            onClick={warnings ? () => setWarnings(null) : onClose}
+          >
+            {result ? "Close" : warnings ? "Go back and configure" : "Cancel"}
           </button>
           {!result && (
             <button
               type="button"
               className={`${styles.btn} ${styles.btnPrimary}`}
-              onClick={handleImport}
+              onClick={() => handleImport(Boolean(warnings))}
               disabled={busy || !selectedId}
             >
-              {busy ? "Importing…" : `Import ${itemCount} items`}
+              {busy
+                ? "Importing…"
+                : warnings
+                ? "Import all items anyway"
+                : `Import ${itemCount} items`}
             </button>
           )}
         </div>

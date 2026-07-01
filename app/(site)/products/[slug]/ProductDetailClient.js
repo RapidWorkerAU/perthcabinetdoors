@@ -1,7 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
-import { inferThicknessFromMaterial } from "../../../../lib/pcd-colour-library";
+import { useEffect, useState } from "react";
 import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../../lib/quote-form-data";
 import styles from "./product-detail.module.css";
 
@@ -29,14 +28,22 @@ function deliveryText(product) {
   return "Pre-drilled, ready to hang";
 }
 
-export default function ProductDetailClient({ product, relatedProducts, colourFamily: databaseColourFamily }) {
-  const colourFamily = databaseColourFamily?.groups?.length ? databaseColourFamily : { label: "Colour library", note: "", groups: [] };
+export default function ProductDetailClient({
+  product,
+  relatedProducts,
+  colourFamily: initialColourFamily,
+  availableThicknesses = [],
+  initialThickness = "",
+}) {
+  const emptyColourFamily = { label: "Colour library", note: "", groups: [] };
   const galleryImages = product.galleryImages || [];
   const thumbs = galleryImages.length
     ? galleryImages.map((_, index) => `Image ${index + 1}`)
     : THUMBS;
   const visibleThumbs = thumbs.slice(0, 4);
   const [activeThumb, setActiveThumb] = useState(0);
+  const [selectedThickness, setSelectedThickness] = useState(initialThickness);
+  const [colourFamily, setColourFamily] = useState(initialColourFamily?.groups?.length ? initialColourFamily : emptyColourFamily);
   const [activeFinish, setActiveFinish] = useState(0);
   const [activeColour, setActiveColour] = useState(0);
   const [viewerMode, setViewerMode] = useState("colours");
@@ -46,15 +53,48 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
   const [enquiryStatus, setEnquiryStatus] = useState("");
   const [isSendingEnquiry, setIsSendingEnquiry] = useState(false);
   const [enquiryErrors, setEnquiryErrors] = useState({});
-  const selectedFinish = colourFamily.groups[activeFinish] || colourFamily.groups[0] || { label: "Finish", colours: [] };
-  const selectedColour = selectedFinish.colours[activeColour] || selectedFinish.colours[0] || { name: "Colour", src: "" };
-  const productThickness = inferThicknessFromMaterial(product.materialLabel || product.material);
-  const availableProfileTypes = profileTypesForSelection(product.material === "thermolaminate" ? "Thermolaminate" : "", productThickness);
+  const showThicknessPicker = availableThicknesses.length > 1;
+  const selectedFinish = colourFamily.groups[activeFinish] || colourFamily.groups[0] || { label: "", colours: [] };
+  const hasColourOptions = selectedFinish.colours.length > 0;
+  const selectedColour = hasColourOptions ? selectedFinish.colours[activeColour] || selectedFinish.colours[0] : null;
+  const availableProfileTypes = profileTypesForSelection(product.material === "thermolaminate" ? "Thermolaminate" : "", selectedThickness);
   const resolvedProfileType = availableProfileTypes.includes(activeProfileType) ? activeProfileType : availableProfileTypes[0] || "";
-  const profileOptions = profileNamesForSelection(resolvedProfileType, "Thermolaminate", productThickness);
+  const profileOptions = profileNamesForSelection(resolvedProfileType, "Thermolaminate", selectedThickness);
   const selectedProfile = profileOptions[activeProfile] || profileOptions[0];
   const selectedEdge = EDGE_PROFILES[activeEdge] || EDGE_PROFILES[0];
   const showThermolaminateProfiles = product.material === "thermolaminate";
+
+  useEffect(() => {
+    if (!selectedThickness || selectedThickness === initialThickness) return;
+    let cancelled = false;
+
+    async function loadColourFamily() {
+      try {
+        const response = await fetch(
+          `/api/colour-library?material=${encodeURIComponent(product.material)}&thickness=${encodeURIComponent(selectedThickness)}`,
+          { cache: "no-store" }
+        );
+        const payload = await response.json();
+        if (!cancelled) {
+          setColourFamily(payload?.colourFamily?.groups?.length ? payload.colourFamily : emptyColourFamily);
+          setActiveFinish(0);
+          setActiveColour(0);
+        }
+      } catch {
+        if (!cancelled) setColourFamily(emptyColourFamily);
+      }
+    }
+
+    loadColourFamily();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedThickness]);
+
+  function selectThickness(thickness) {
+    setSelectedThickness(thickness);
+  }
 
   function selectFinish(index) {
     setActiveFinish(index);
@@ -77,6 +117,7 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
     if (!String(formData.get("height") || "").trim()) nextErrors.height = "Please enter a height.";
     if (!String(formData.get("name") || "").trim()) nextErrors.name = "Please enter your name.";
     if (!String(formData.get("contact") || "").trim()) nextErrors.contact = "Please enter a phone number or email address.";
+    if (hasColourOptions && !selectedColour) nextErrors.colour = "Please choose a colour from the options above.";
 
     if (Object.keys(nextErrors).length) {
       setEnquiryErrors(nextErrors);
@@ -107,12 +148,12 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
               productType: product.typeLabel,
               productName: product.name,
               material: product.materialLabel,
-              thickness: inferThicknessFromMaterial(product.materialLabel || product.material),
+              thickness: selectedThickness,
               width,
               height,
               qty,
-              finish: selectedFinish.label,
-              colour: String(formData.get("colour") || ""),
+              finish: selectedColour ? selectedFinish.label : "",
+              colour: selectedColour ? selectedColour.name : "",
             },
           ],
         }),
@@ -212,7 +253,23 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
 
               {viewerMode === "colours" || !showThermolaminateProfiles ? (
                 <div className={styles.viewerPanel}>
-                  <div className={styles.sectionLabel}>{colourFamily.label} colour</div>
+                  <div className={styles.sectionLabel}>{colourFamily.label || "Colour library"} colour</div>
+                  {showThicknessPicker ? (
+                    <div className={styles.finishTabs} role="radiogroup" aria-label="Board thickness">
+                      {availableThicknesses.map((thickness) => (
+                        <button
+                          aria-checked={selectedThickness === thickness}
+                          className={`${styles.finishTab} ${selectedThickness === thickness ? styles.active : ""}`}
+                          key={thickness}
+                          onClick={() => selectThickness(thickness)}
+                          role="radio"
+                          type="button"
+                        >
+                          {thickness}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className={styles.finishTabs}>
                     {colourFamily.groups.map((finish, index) => (
                       <button
@@ -239,9 +296,13 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
                       </button>
                     ))}
                   </div>
-                  <div className={styles.colourName}>
-                    {selectedColour.name} <span>{selectedFinish.label}</span>
-                  </div>
+                  {selectedColour ? (
+                    <div className={styles.colourName}>
+                      {selectedColour.name} <span>{selectedFinish.label}</span>
+                    </div>
+                  ) : (
+                    <div className={styles.colourName}>No colours available for this thickness yet - contact us for options.</div>
+                  )}
                   <div className={styles.colourNote}>{colourFamily.note} Shown colours are indicative only. Request a sample before ordering.</div>
                 </div>
               ) : null}
@@ -372,7 +433,18 @@ export default function ProductDetailClient({ product, relatedProducts, colourFa
               </div>
               <div className={styles.fieldRow}>
                 <label className={styles.field}>Quantity<input name="qty" type="number" min="1" placeholder="e.g. 6" /></label>
-                <label className={styles.field}>Colour / finish<input name="colour" type="text" placeholder={`e.g. ${selectedColour.name}`} /></label>
+                <div className={styles.field}>
+                  Colour / finish
+                  <input
+                    type="text"
+                    value={selectedColour ? `${selectedFinish.label} - ${selectedColour.name}` : "Select a colour above"}
+                    readOnly
+                    disabled
+                    className={enquiryErrors.colour ? styles.fieldInputError : ""}
+                  />
+                  <small>Pick your colour using the swatches above - this updates automatically.</small>
+                  {enquiryErrors.colour ? <span className={styles.fieldError}>{enquiryErrors.colour}</span> : null}
+                </div>
               </div>
               <div className={styles.fieldRow}>
                 <label className={styles.field}>

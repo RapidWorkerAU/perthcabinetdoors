@@ -2,6 +2,7 @@ import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
 import { createCheckoutSession, siteUrl } from "../../../../../../../../lib/pcd-stripe";
+import { paymentTypeLabel } from "../../../../../../../../lib/pcd-payment-notifications";
 
 async function idsFromParams(params) {
   const resolved = await params;
@@ -65,7 +66,7 @@ function paymentRequestHtml({ order, payment, checkoutUrl, message }) {
     <tr><td style="padding:26px 30px;">
     ${bodyHtml}
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f7f2ea;border:1px solid #e3d7c6;margin-bottom:20px;">
-    <tr><td style="padding:12px 14px;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Payment type</td><td style="padding:12px 14px;text-align:right;color:#001f36;font-weight:800;">${escapeHtml(payment.payment_type || "payment")}</td></tr>
+    <tr><td style="padding:12px 14px;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Payment type</td><td style="padding:12px 14px;text-align:right;color:#001f36;font-weight:800;">${escapeHtml(paymentTypeLabel(payment.payment_type))}</td></tr>
     <tr><td style="padding:12px 14px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Amount</td><td style="padding:12px 14px;border-top:1px solid #e3d7c6;text-align:right;color:#001f36;font-weight:800;">${formatMoney(payment.amount)}</td></tr>
     </table>
     <p style="margin:0 0 18px;"><a href="${escapeHtml(checkoutUrl)}" style="display:inline-block;background:#17321f;color:#ffffff;text-decoration:none;padding:14px 20px;font-size:14px;font-weight:700;">Make payment</a></p>
@@ -109,7 +110,7 @@ export async function POST(request, { params }) {
       amount: payment.amount,
       currency: "AUD",
       customerEmail: order.customer_email,
-      description: `${order.order_number || "PCD order"} ${payment.payment_type || "payment"}`,
+      description: `${order.order_number || "PCD order"} ${paymentTypeLabel(payment.payment_type)}`,
       successUrl: `${baseUrl}/payments/success?session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${baseUrl}/admin/orders/${orderId}`,
       metadata: {
@@ -158,7 +159,7 @@ export async function POST(request, { params }) {
       actor_type: "admin",
       action_type: "payment_requested",
       title: "Payment requested",
-      description: `${updatedPayment.payment_type || "payment"} - ${formatMoney(updatedPayment.amount)}`,
+      description: `${paymentTypeLabel(updatedPayment.payment_type)} - ${formatMoney(updatedPayment.amount)}`,
       metadata: { payment_id: paymentId, stripe_checkout_session_id: session.id, emailSent },
     });
 

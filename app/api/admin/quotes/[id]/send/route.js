@@ -31,7 +31,7 @@ function defaultEmailBody(quote, viewUrl) {
   ].join("\n");
 }
 
-function quoteEmailHtml({ quote, viewUrl, message }) {
+function quoteEmailHtml({ quote, viewUrl, message, includePrice }) {
   const paragraphs = String(message || "")
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
@@ -58,11 +58,20 @@ function quoteEmailHtml({ quote, viewUrl, message }) {
                     <td style="padding:14px 16px;color:#7c725f;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Quote number</td>
                     <td style="padding:14px 16px;color:#001f36;font-size:14px;font-weight:700;text-align:right;">${escapeHtml(quote.quote_number)}</td>
                   </tr>
-                  <tr>
+                  ${
+                    includePrice
+                      ? `<tr>
                     <td style="padding:14px 16px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Total inc GST</td>
                     <td style="padding:14px 16px;border-top:1px solid #e3d7c6;color:#001f36;font-size:16px;font-weight:800;text-align:right;">$${Number(quote.total_inc_gst || 0).toFixed(2)}</td>
-                  </tr>
+                  </tr>`
+                      : ""
+                  }
                 </table>
+                ${
+                  !includePrice
+                    ? `<p style="margin:0 0 14px;color:#7c725f;font-size:13px;line-height:1.5;">Pricing has not been included in this email. Open the secure link below to view the full itemised quote and pricing.</p>`
+                    : ""
+                }
                 <p style="margin:0 0 18px;">
                   <a href="${escapeHtml(viewUrl)}" style="display:inline-block;background:#17321f;color:#ffffff;text-decoration:none;padding:14px 20px;font-size:14px;font-weight:700;">View and approve quote</a>
                 </p>
@@ -102,6 +111,7 @@ export async function POST(request, { params }) {
     const viewUrl = `${origin}/quotes/view?code=${encodeURIComponent(quote.access_code)}`;
     const emailSubject = String(payload.subject || `${quote.quote_number} - Perth Cabinet Doors quote`).trim();
     const emailMessage = String(payload.message || defaultEmailBody(quote, viewUrl)).trim();
+    const includePrice = Boolean(payload.include_price);
     const depositRequired = Boolean(payload.deposit_required);
     const depositPercent = Math.max(0, Math.min(100, Number(payload.deposit_percent || 0)));
     const { error: updateError } = await context.supabase
@@ -136,7 +146,7 @@ export async function POST(request, { params }) {
         from: process.env.RESEND_FROM_EMAIL,
         to: [quote.customer_email],
         subject: emailSubject,
-        html: quoteEmailHtml({ quote, viewUrl, message: emailMessage }),
+        html: quoteEmailHtml({ quote, viewUrl, message: emailMessage, includePrice }),
         text: emailMessage,
       });
       emailSent = true;
