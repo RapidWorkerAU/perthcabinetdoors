@@ -36,13 +36,6 @@ function itemLabel(item) {
   return item.label || TYPE_LABELS[item.item_type] || item.item_type;
 }
 
-// Mirrors calculatedUnitCostFromLine/applyCalculatedUnitCost in QuoteEditor.js —
-// that calculation normally only runs client-side when a colour is (re)selected
-// in the quote editor, which left freshly-imported lines showing $0 until an
-// admin manually touched them. Pre-computing it here means a fully configured
-// design item (material + thickness + finish + colour, with a real cost per
-// sqm from the colour library) auto-prices correctly the moment it's imported.
-// Items imported with no rate (unconfigured) are left at $0, same as before.
 function cabinetDescription(config) {
   const shelfText =
     Number(config.shelf_qty) > 0
@@ -80,6 +73,8 @@ function withCalculatedCabinetCost(line) {
   };
 }
 
+// Cabinet imports must use the full cut-list calculation. Flat doors/panels
+// still use the quote editor's width x height x sqm-rate calculation below.
 function withCalculatedUnitCost(line) {
   if (line.product_type === "base_cabinet" && line.cabinet_config) {
     return withCalculatedCabinetCost(line);
