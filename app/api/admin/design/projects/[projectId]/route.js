@@ -37,6 +37,7 @@ export async function PATCH(request, { params }) {
     if ("name"   in payload) patch.name   = String(payload.name ?? "").trim() || null;
     if ("status" in payload) patch.status = String(payload.status ?? "").trim() || null;
     if ("notes"  in payload) patch.notes  = String(payload.notes ?? "").trim() || null;
+    if ("material_defaults" in payload) patch.material_defaults = payload.material_defaults ?? null;
 
     if (!Object.keys(patch).length) {
       return Response.json({ ok: false, error: "No fields to update." }, { status: 422 });

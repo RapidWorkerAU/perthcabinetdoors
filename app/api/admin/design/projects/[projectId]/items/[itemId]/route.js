@@ -29,11 +29,12 @@ function buildPatch(payload) {
   const num = (key) => { if (key in payload) patch[key] = dbNum(payload[key]); };
   const bool = (key, fb = false) => { if (key in payload) patch[key] = Boolean(payload[key]); };
 
-  str("label"); str("wall"); str("material"); str("finish"); str("colour"); str("notes");
+  str("label"); str("wall"); str("secondary_wall"); str("material"); str("finish"); str("colour"); str("notes");
   str("thickness"); str("profile_type"); str("profile"); str("edge_mould"); str("hinge_qty");
   str("shelf_material"); str("shelf_finish"); str("shelf_colour");
   int("x_mm", 0); int("y_mm", 0); int("rotation", 0); int("mount_height_mm");
   int("width_mm"); int("height_mm"); int("depth_mm"); int("qty", 1);
+  int("secondary_width_mm");
   int("sort_order", 0);
   int("carcass_thickness_mm", 16); int("back_panel_thickness_mm", 16);
   int("shelf_qty", 0); int("shelf_thickness_mm", 16);
@@ -42,9 +43,17 @@ function buildPatch(payload) {
   bool("back_panel_included"); bool("hinge_holes"); bool("hinge_supply");
   bool("has_kickboard");
   int("kickboard_height_mm", 150); int("kickboard_thickness_mm", 16); str("kickboard_span");
+  bool("end_panel_left"); bool("end_panel_right"); bool("has_back_panel"); bool("panel_to_floor");
+  bool("back_panel_wall1"); bool("back_panel_wall2");
+  str("back_panel_span"); int("back_panel_qty", 1);
   str("front_type");
+  bool("has_rangehood");
+  int("rangehood_housing_height_mm"); int("rangehood_channel_width_mm");
   if ("door_config" in payload) patch.door_config = payload.door_config ?? null;
   if ("door_style"  in payload) patch.door_style  = payload.door_style  ?? null;
+  if ("drawer_config"  in payload) patch.drawer_config  = payload.drawer_config  ?? null;
+  if ("drawer_style"   in payload) patch.drawer_style   = payload.drawer_style   ?? null;
+  if ("section_config" in payload) patch.section_config = payload.section_config ?? null;
   if ("room_id" in payload) patch.room_id = payload.room_id || null;
   if ("shelf_heights_mm" in payload) patch.shelf_heights_mm = Array.isArray(payload.shelf_heights_mm) ? payload.shelf_heights_mm : [];
   if ("unit_cost_mode" in payload) patch.unit_cost_mode = payload.unit_cost_mode === "manual" ? "manual" : "auto";

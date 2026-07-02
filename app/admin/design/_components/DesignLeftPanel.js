@@ -3,82 +3,33 @@
 import Link from "next/link";
 import { useState, useRef } from "react";
 import styles from "../design.module.css";
+import { computeKickboardRun, computeAllKickboardRuns, kickboardSegments } from "../../../../lib/pcd-kickboard-utils";
+import { computeBackPanelRun, computeAllBackPanelRuns, splitBackPanelWidths, backPanelSegment } from "../../../../lib/pcd-backpanel-utils";
+import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves } from "../../../../lib/pcd-door-utils";
 
 const ITEM_COLORS = {
   base_cabinet:  "#3b82f6",
   wall_cabinet:  "#22c55e",
   tall_cabinet:  "#f97316",
+  corner_base_cabinet: "#0ea5e9",
   door:          "#a855f7",
   drawer_front:  "#8b5cf6",
   panel:         "#6b7280",
+  obstruction:   "#57534e",
 };
 
 const TYPE_SHORT = {
   base_cabinet:  "base",
   wall_cabinet:  "wall",
   tall_cabinet:  "tall",
+  corner_base_cabinet: "corner",
   door:          "door",
   drawer_front:  "drwr",
   panel:         "panel",
+  obstruction:   "obstr.",
 };
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet"];
-
-// Returns position along the wall axis for adjacency detection.
-// For left/right walls: old format stores position in x_mm; new format in y_mm.
-function getWallAxisPos(item) {
-  if (item.wall === "left" || item.wall === "right") {
-    const x = item.x_mm || 0;
-    const y = item.y_mm || 0;
-    return (x > 0 && !y) ? x : y;
-  }
-  return item.x_mm || 0;
-}
-
-// Finds the continuous kickboard run that `item` belongs to across allItems.
-// Returns { firstItemId, totalWidth, count } — only the first item in a run
-// should output a kickboard cut, preventing double-counting.
-function computeKickboardRun(item, allItems) {
-  const ADJACENCY_TOLERANCE = 5; // mm gap tolerance for "touching"
-
-  const candidates = allItems
-    .filter((i) =>
-      i.room_id === item.room_id &&
-      i.wall === item.wall &&
-      i.has_kickboard &&
-      (i.kickboard_span || "continuous") === "continuous"
-    )
-    .sort((a, b) => getWallAxisPos(a) - getWallAxisPos(b));
-
-  if (!candidates.length) {
-    return { firstItemId: item.id, totalWidth: item.width_mm || 600, count: 1 };
-  }
-
-  const runs = [];
-  let currentRun = [candidates[0]];
-  for (let i = 1; i < candidates.length; i++) {
-    const prev  = currentRun[currentRun.length - 1];
-    const curr  = candidates[i];
-    const prevEnd   = getWallAxisPos(prev) + (prev.width_mm || 600);
-    const currStart = getWallAxisPos(curr);
-    if (currStart <= prevEnd + ADJACENCY_TOLERANCE) {
-      currentRun.push(curr);
-    } else {
-      runs.push([...currentRun]);
-      currentRun = [curr];
-    }
-  }
-  runs.push(currentRun);
-
-  const myRun = runs.find((run) => run.some((i) => i.id === item.id));
-  if (!myRun) return { firstItemId: item.id, totalWidth: item.width_mm || 600, count: 1 };
-
-  return {
-    firstItemId: myRun[0].id,
-    totalWidth:  myRun.reduce((sum, i) => sum + (i.width_mm || 600), 0),
-    count:       myRun.length,
-  };
-}
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
 
 /**
  * Computes the board cut list for a cabinet item.
@@ -89,7 +40,49 @@ function computeKickboardRun(item, allItems) {
  *   - Shelves span between sides, set back 20mm from front
  *   - Kickboard: continuous runs show once (on run's first cabinet); individual shows per cabinet
  */
-function computeCutList(item, allItems = []) {
+// L-shaped corner cabinet piece list, mirroring calculateCornerCabinetCutList
+// in lib/pcd-cabinet-utils.js (used at import time) — kept as a parallel
+// implementation here since this function's shape (dim1/axis1/dim2/axis2 for
+// the left panel's UI display) differs from that one's (width_mm/height_mm/
+// area_sqm for quote line costing).
+function computeCornerCutList(item, W, H, D, T, BT, shelfQty) {
+  const secW = Number(item.secondary_width_mm) || 0;
+  if (!secW) return [];
+
+  const legAPanelDepth = Math.max(0, D - BT);
+  const legBWidth = Math.max(0, secW - D);
+  const SHELF_SETBACK = 20;
+  const parts = [];
+
+  parts.push({ name: "Side — Wall 1 outer end", dim1: H, axis1: "H", dim2: legAPanelDepth, axis2: "D" });
+  parts.push({ name: "Side — Wall 2 outer end", dim1: H, axis1: "H", dim2: legAPanelDepth, axis2: "D" });
+  parts.push({ name: "Top — Wall 1 leg",    dim1: Math.max(0, W - T), axis1: "W", dim2: legAPanelDepth, axis2: "D" });
+  parts.push({ name: "Bottom — Wall 1 leg", dim1: Math.max(0, W - T), axis1: "W", dim2: legAPanelDepth, axis2: "D" });
+
+  if (legBWidth > 0) {
+    parts.push({ name: "Top — Wall 2 leg",    dim1: Math.max(0, legBWidth - T), axis1: "W", dim2: legAPanelDepth, axis2: "D" });
+    parts.push({ name: "Bottom — Wall 2 leg", dim1: Math.max(0, legBWidth - T), axis1: "W", dim2: legAPanelDepth, axis2: "D" });
+  }
+
+  if (BT > 0) {
+    parts.push({ name: "Back — Wall 1 leg", dim1: W, axis1: "W", dim2: H, axis2: "H", material: "back" });
+    if (legBWidth > 0) {
+      parts.push({ name: "Back — Wall 2 leg", dim1: legBWidth, axis1: "W", dim2: H, axis2: "H", material: "back" });
+    }
+  }
+
+  for (let i = 0; i < shelfQty; i++) {
+    const suffix = shelfQty === 1 ? "" : ` ${i + 1}`;
+    parts.push({ name: `Shelf${suffix} — Wall 1 leg`, dim1: Math.max(0, W - T), axis1: "W", dim2: legAPanelDepth - SHELF_SETBACK, axis2: "D", material: "shelf" });
+    if (legBWidth > 0) {
+      parts.push({ name: `Shelf${suffix} — Wall 2 leg`, dim1: Math.max(0, legBWidth - T), axis1: "W", dim2: legAPanelDepth - SHELF_SETBACK, axis2: "D", material: "shelf" });
+    }
+  }
+
+  return parts;
+}
+
+function computeCutList(item, allItems = [], room = null) {
   const W  = Number(item.width_mm)            || 0;
   const H  = Number(item.height_mm)           || 0;
   const D  = Number(item.depth_mm)            || 0;
@@ -104,87 +97,213 @@ function computeCutList(item, allItems = []) {
   const innerW = W - 2 * T;
   const SHELF_SETBACK = 20;
 
-  const parts = [];
+  const parts = item.item_type === "corner_base_cabinet"
+    ? computeCornerCutList(item, W, H, D, T, BT, shelfQty)
+    : [];
 
-  parts.push({ name: "Left Side",  dim1: H, axis1: "H", dim2: D, axis2: "D" });
-  parts.push({ name: "Right Side", dim1: H, axis1: "H", dim2: D, axis2: "D" });
-  parts.push({ name: "Top",    dim1: innerW, axis1: "W", dim2: D, axis2: "D" });
-  parts.push({ name: "Bottom", dim1: innerW, axis1: "W", dim2: D, axis2: "D" });
+  if (item.item_type !== "corner_base_cabinet") {
+    parts.push({ name: "Left Side",  dim1: H, axis1: "H", dim2: D, axis2: "D" });
+    parts.push({ name: "Right Side", dim1: H, axis1: "H", dim2: D, axis2: "D" });
+    parts.push({ name: "Top",    dim1: innerW, axis1: "W", dim2: D, axis2: "D" });
+    parts.push({ name: "Bottom", dim1: innerW, axis1: "W", dim2: D, axis2: "D" });
 
-  if (BT > 0) {
-    parts.push({ name: "Back Panel", dim1: innerW, axis1: "W", dim2: H, axis2: "H", material: "back" });
+    if (BT > 0) {
+      parts.push({ name: "Back Panel", dim1: innerW, axis1: "W", dim2: H, axis2: "H", material: "back" });
+    }
+
+    // Rangehood cabinet — a boxed recess at the bottom for the rangehood
+    // unit, a boxed vertical channel above it (full depth) for the flue,
+    // and shelves cut as a left/right pair either side of that channel
+    // instead of one full-width board. Wall cabinets only.
+    const hasChannel = item.item_type === "wall_cabinet"
+      && item.has_rangehood
+      && Number(item.rangehood_channel_width_mm) > 0;
+    const channelW = hasChannel ? Math.min(Number(item.rangehood_channel_width_mm) || 0, innerW) : 0;
+
+    if (hasChannel) {
+      const housingH = Math.min(Number(item.rangehood_housing_height_mm) || 0, H);
+      const channelH = Math.max(0, H - housingH);
+      parts.push({ name: "Rangehood Housing Divider", dim1: innerW, axis1: "W", dim2: D, axis2: "D" });
+      parts.push({ name: "Rangehood Channel — Left Wall",  dim1: channelH, axis1: "H", dim2: D, axis2: "D" });
+      parts.push({ name: "Rangehood Channel — Right Wall", dim1: channelH, axis1: "H", dim2: D, axis2: "D" });
+    }
+
+    for (let i = 0; i < shelfQty; i++) {
+      const suffix = shelfQty === 1 ? "" : ` ${i + 1}`;
+      if (hasChannel) {
+        const sideTotal = Math.max(0, innerW - channelW);
+        const leftW = Math.floor(sideTotal / 2);
+        const rightW = sideTotal - leftW;
+        parts.push({ name: `Shelf${suffix} — Left`,  dim1: leftW,  axis1: "W", dim2: D - SHELF_SETBACK, axis2: "D", material: "shelf" });
+        parts.push({ name: `Shelf${suffix} — Right`, dim1: rightW, axis1: "W", dim2: D - SHELF_SETBACK, axis2: "D", material: "shelf" });
+      } else {
+        const name = shelfQty === 1 ? "Shelf" : `Shelf ${i + 1}`;
+        parts.push({ name, dim1: innerW, axis1: "W", dim2: D - SHELF_SETBACK, axis2: "D", material: "shelf" });
+      }
+    }
+
+    // Doors / drawer fronts — sized with the same columns/rows/width_ratios
+    // (doors) and heights_mm/gap (drawers) math the elevation view and quote
+    // import use, so the cut list always matches what actually gets quoted.
+    // Same-size fronts (matching hinge setup, for doors) collapse into one
+    // row with a ×qty suffix rather than listing each one separately.
+    if (item.front_type === "doors") {
+      computeDoorSizes(item).forEach((size) => {
+        const suffix = size.qty > 1 ? ` ×${size.qty}` : "";
+        parts.push({ name: `Door${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "door" });
+      });
+    } else if (item.front_type === "drawers") {
+      computeDrawerSizes(item).forEach((size) => {
+        const suffix = size.qty > 1 ? ` ×${size.qty}` : "";
+        parts.push({ name: `Drawer Front${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "drawer" });
+      });
+    } else if (item.front_type === "mixed") {
+      const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
+      sections.forEach((sec, idx) => {
+        const sectionLabel = `Section ${idx + 1}`;
+        if (sec.type === "drawers") {
+          computeDrawerSizesForConfig(sec.drawer || {}, item.width_mm, sec.height_mm).forEach((size) => {
+            const suffix = size.qty > 1 ? ` ×${size.qty}` : "";
+            parts.push({ name: `Drawer Front — ${sectionLabel}${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "drawer" });
+          });
+        } else if (sec.type === "doors") {
+          computeDoorSizesForConfig(sec.door || {}, item.width_mm, sec.height_mm).forEach((size) => {
+            const suffix = size.qty > 1 ? ` ×${size.qty}` : "";
+            parts.push({ name: `Door — ${sectionLabel}${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "door" });
+          });
+        }
+        // "open" sections: no board
+      });
+    }
+  } else if (item.front_type === "doors") {
+    // Corner cabinet — one bi-fold door leaf per wall leg instead of the
+    // columns/rows grid regular cabinets use.
+    computeCornerDoorLeaves(item).forEach((leaf) => {
+      const legLabel = leaf.key === "secondary" ? "Wall 2" : "Wall 1";
+      parts.push({ name: `Corner Door — ${legLabel}`, dim1: leaf.widthMm, axis1: "W", dim2: leaf.heightMm, axis2: "H", material: "door" });
+    });
   }
 
-  for (let i = 0; i < shelfQty; i++) {
-    const name = shelfQty === 1 ? "Shelf" : `Shelf ${i + 1}`;
-    parts.push({ name, dim1: innerW, axis1: "W", dim2: D - SHELF_SETBACK, axis2: "D", material: "shelf" });
-  }
-
-  // Kickboard / plinth — not applicable to wall cabinets (they're not on the floor)
+  // Kickboard / plinth — not applicable to wall cabinets (they're not on the
+  // floor). A corner cabinet contributes up to two independent kickboard
+  // segments (one per open leg — the corner-square return has no front face
+  // and never gets a kickboard, and the two legs can never share one
+  // continuous board since they're at a right angle) — see
+  // lib/pcd-kickboard-utils.js for the full geometry.
   if (item.has_kickboard && item.item_type !== "wall_cabinet") {
     const kH    = Number(item.kickboard_height_mm) || 150;
     const kSpan = item.kickboard_span || "continuous";
+    const isCorner = item.item_type === "corner_base_cabinet";
 
     if (kSpan === "continuous") {
-      const run = computeKickboardRun(item, allItems);
-      if (run.count <= 1) {
-        // Single-cabinet continuous kickboard — stays in this cabinet's cut list
-        parts.push({ name: "Kickboard", dim1: W, axis1: "W", dim2: kH, axis2: "H", material: "kickboard" });
+      const { legs } = computeKickboardRun(item, allItems, room);
+      for (const leg of legs) {
+        if (leg.count <= 1) {
+          // Single-cabinet continuous kickboard — stays in this cabinet's cut list
+          const name = isCorner ? `Kickboard — ${leg.leg === "secondary" ? "Wall 2" : "Wall 1"}` : "Kickboard";
+          parts.push({ name, dim1: leg.totalWidth, axis1: "W", dim2: kH, axis2: "H", material: "kickboard" });
+        }
+        // Multi-cabinet runs are shown as their own top-level line items — omit here entirely
       }
-      // Multi-cabinet runs are shown as their own top-level line items — omit here entirely
     } else {
       // Individual span — always stays in this cabinet's cut list
-      parts.push({ name: "Kickboard", dim1: W, axis1: "W", dim2: kH, axis2: "H", material: "kickboard" });
+      for (const seg of kickboardSegments(item, room)) {
+        const name = isCorner ? `Kickboard — ${seg.leg === "secondary" ? "Wall 2" : "Wall 1"}` : "Kickboard";
+        parts.push({ name, dim1: seg.length, axis1: "W", dim2: kH, axis2: "H", material: "kickboard" });
+      }
+    }
+  }
+
+  // End & back panels — base/tall cabinets only (matches BACK_PANEL_TYPES in
+  // lib/pcd-backpanel-utils.js; a corner cabinet's "back" isn't a single
+  // well-defined side given its L-shape, and wall cabinets aren't
+  // floor-standing). panel_to_floor extends both down through where a
+  // kickboard recess would otherwise be, instead of stopping at carcass height.
+  if (item.item_type === "base_cabinet" || item.item_type === "tall_cabinet") {
+    const panelH = item.panel_to_floor ? H + (Number(item.kickboard_height_mm) || 150) : H;
+
+    if (item.end_panel_left)  parts.push({ name: "End Panel — Left",  dim1: D, axis1: "D", dim2: panelH, axis2: "H", material: "panel" });
+    if (item.end_panel_right) parts.push({ name: "End Panel — Right", dim1: D, axis1: "D", dim2: panelH, axis2: "H", material: "panel" });
+
+    if (item.has_back_panel) {
+      const bSpan = item.back_panel_span || "continuous";
+      if (bSpan === "continuous") {
+        const run = computeBackPanelRun(item, allItems);
+        if (run.count <= 1) {
+          // Single-cabinet continuous run — stays in this cabinet's cut list,
+          // split into the run-owner's chosen panel count.
+          const widths = splitBackPanelWidths(run.totalWidth, item.back_panel_qty || 1);
+          widths.forEach((w, i) => {
+            const suffix = widths.length > 1 ? ` ${i + 1}` : "";
+            parts.push({ name: `Back Panel${suffix}`, dim1: w, axis1: "W", dim2: panelH, axis2: "H", material: "panel" });
+          });
+        }
+        // Multi-cabinet runs are shown as their own top-level line items — omit here entirely
+      } else {
+        const seg = backPanelSegment(item);
+        parts.push({ name: "Back Panel", dim1: seg?.length || W, axis1: "W", dim2: panelH, axis2: "H", material: "panel" });
+      }
+    }
+
+    // Kickboard under an end/back panel that doesn't reach the floor —
+    // closes the toe-kick recess on that side, reusing the same
+    // height/thickness as the front kickboard. Only relevant if the
+    // cabinet actually has a front kickboard (has_kickboard) — if it
+    // doesn't, there's nothing to "continue" underneath.
+    if (item.has_kickboard && !item.panel_to_floor) {
+      const kH2 = Number(item.kickboard_height_mm) || 150;
+      if (item.end_panel_left)  parts.push({ name: "Kickboard — Left End",  dim1: D, axis1: "D", dim2: kH2, axis2: "H", material: "kickboard" });
+      if (item.end_panel_right) parts.push({ name: "Kickboard — Right End", dim1: D, axis1: "D", dim2: kH2, axis2: "H", material: "kickboard" });
+
+      if (item.has_back_panel) {
+        const bSpan = item.back_panel_span || "continuous";
+        if (bSpan === "continuous") {
+          const run = computeBackPanelRun(item, allItems);
+          if (run.count <= 1) {
+            parts.push({ name: "Kickboard — Back", dim1: run.totalWidth, axis1: "W", dim2: kH2, axis2: "H", material: "kickboard" });
+          }
+          // Multi-cabinet runs surface via the Back Panel run's own entry — see BackPanelRunItem
+        } else {
+          const seg = backPanelSegment(item);
+          parts.push({ name: "Kickboard — Back", dim1: seg?.length || W, axis1: "W", dim2: kH2, axis2: "H", material: "kickboard" });
+        }
+      }
+    }
+  }
+
+  // Corner cabinet back panels — manual per-leg toggle (Wall 1 = primary,
+  // Wall 2 = secondary). Each spans that leg's FULL width — unlike the
+  // front, there's no return-zone carve-out on the back. Standalone per
+  // leg (no continuous-run merging with neighbouring cabinets, unlike the
+  // regular-cabinet back panel system).
+  if (item.item_type === "corner_base_cabinet" && (item.back_panel_wall1 || item.back_panel_wall2)) {
+    const panelH = item.panel_to_floor ? H + (Number(item.kickboard_height_mm) || 150) : H;
+    const secW = Number(item.secondary_width_mm) || 0;
+
+    if (item.back_panel_wall1) parts.push({ name: "Back Panel — Wall 1", dim1: W, axis1: "W", dim2: panelH, axis2: "H", material: "panel" });
+    if (item.back_panel_wall2 && item.secondary_wall && secW > 0) {
+      parts.push({ name: "Back Panel — Wall 2", dim1: secW, axis1: "W", dim2: panelH, axis2: "H", material: "panel" });
+    }
+
+    if (item.has_kickboard && !item.panel_to_floor) {
+      const kH2 = Number(item.kickboard_height_mm) || 150;
+      if (item.back_panel_wall1) parts.push({ name: "Kickboard — Wall 1 Back", dim1: W, axis1: "W", dim2: kH2, axis2: "H", material: "kickboard" });
+      if (item.back_panel_wall2 && item.secondary_wall && secW > 0) {
+        parts.push({ name: "Kickboard — Wall 2 Back", dim1: secW, axis1: "W", dim2: kH2, axis2: "H", material: "kickboard" });
+      }
     }
   }
 
   return parts;
 }
 
-// Returns all continuous kickboard runs with 2+ cabinets for a given list of room items.
-// Single-cabinet continuous or individual kickboards are NOT returned here.
-function computeAllKickboardRuns(roomItems) {
-  const ADJACENCY_TOLERANCE = 5;
-
-  const kbItems = roomItems.filter((i) =>
-    i.has_kickboard &&
-    (i.kickboard_span || "continuous") === "continuous" &&
-    i.item_type !== "wall_cabinet"
-  );
-  if (!kbItems.length) return [];
-
-  const byWall = {};
-  for (const item of kbItems) {
-    const w = item.wall || "top";
-    if (!byWall[w]) byWall[w] = [];
-    byWall[w].push(item);
-  }
-
-  const allRuns = [];
-  for (const [wall, wallItems] of Object.entries(byWall)) {
-    const sorted = [...wallItems].sort((a, b) => getWallAxisPos(a) - getWallAxisPos(b));
-    let currentRun = [sorted[0]];
-    for (let i = 1; i < sorted.length; i++) {
-      const prev      = currentRun[currentRun.length - 1];
-      const curr      = sorted[i];
-      const prevEnd   = getWallAxisPos(prev) + (prev.width_mm || 600);
-      const currStart = getWallAxisPos(curr);
-      if (currStart <= prevEnd + ADJACENCY_TOLERANCE) {
-        currentRun.push(curr);
-      } else {
-        if (currentRun.length >= 2) allRuns.push({ wall, items: [...currentRun] });
-        currentRun = [curr];
-      }
-    }
-    if (currentRun.length >= 2) allRuns.push({ wall, items: currentRun });
-  }
-  return allRuns;
-}
-
 const MAT_DOT_COLOR = {
   shelf:     "#3b82f6",
   back:      "#6b7280",
   kickboard: "#f59e0b",
+  panel:     "#a855f7",
+  door:      "#a855f7",
+  drawer:    "#8b5cf6",
 };
 
 function CutListRow({ part }) {
@@ -206,8 +325,8 @@ const WALL_SHORT = { top: "Top", bottom: "Bottom", left: "Left", right: "Right" 
 
 function KickboardRunItem({ run, runId, openItems, toggleItem }) {
   const isExpanded = openItems.has(runId);
-  const totalWidth = run.items.reduce((sum, i) => sum + (i.width_mm || 600), 0);
-  const kHeight    = run.items[0]?.kickboard_height_mm || 150;
+  const totalWidth = run.segments.reduce((sum, s) => sum + s.length, 0);
+  const kHeight    = run.segments[0]?.item?.kickboard_height_mm || 150;
 
   return (
     <div className={styles.leftItemBlock}>
@@ -228,13 +347,16 @@ function KickboardRunItem({ run, runId, openItems, toggleItem }) {
       </div>
       {isExpanded && (
         <div className={styles.cutList}>
-          {run.items.map((item) => (
-            <div key={item.id} className={styles.cutListRow}>
+          {run.segments.map((seg) => (
+            <div key={`${seg.item.id}-${seg.leg}`} className={styles.cutListRow}>
               <span className={styles.cutListMatDot} style={{ background: "#f59e0b" }} />
               <span className={styles.cutListDim}>
-                {item.width_mm || 600} <span className={styles.cutListAxis}>(W)</span>
+                {seg.length} <span className={styles.cutListAxis}>(W)</span>
               </span>
-              <span className={styles.cutListName}>{item.label || item.item_type}</span>
+              <span className={styles.cutListName}>
+                {seg.item.label || seg.item.item_type}
+                {seg.leg === "secondary" ? " (Wall 2)" : seg.item.item_type === "corner_base_cabinet" ? " (Wall 1)" : ""}
+              </span>
             </div>
           ))}
           <div className={styles.cutListRow} style={{ marginTop: 5, borderTop: "1px solid rgba(245,158,11,0.2)", paddingTop: 5 }}>
@@ -246,6 +368,78 @@ function KickboardRunItem({ run, runId, openItems, toggleItem }) {
             </span>
             <span className={styles.cutListName}>Total cut</span>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BackPanelRunItem({ run, runId, openItems, toggleItem }) {
+  const isExpanded = openItems.has(runId);
+  const totalWidth = run.segments.reduce((sum, s) => sum + s.length, 0);
+  const firstItem  = run.segments[0]?.item;
+  const qty        = firstItem?.back_panel_qty || 1;
+  const panelH     = firstItem?.panel_to_floor
+    ? (Number(firstItem.height_mm) || 0) + (Number(firstItem.kickboard_height_mm) || 150)
+    : (Number(firstItem.height_mm) || 0);
+  const widths = splitBackPanelWidths(totalWidth, qty);
+  const showKickboard = firstItem?.has_kickboard && !firstItem?.panel_to_floor;
+  const kickboardH = Number(firstItem?.kickboard_height_mm) || 150;
+
+  return (
+    <div className={styles.leftItemBlock}>
+      <div className={styles.leftItemRow}>
+        <span className={styles.leftItemDot} style={{ background: "#a855f7" }} />
+        <span className={styles.leftItemLabel}>
+          Back Panel {WALL_SHORT[run.wall] || run.wall}
+        </span>
+        <span className={styles.leftItemType} style={{ color: "#a855f7" }}>run</span>
+        <button
+          type="button"
+          className={`${styles.leftItemExpand} ${isExpanded ? styles.leftItemExpandOpen : ""}`}
+          onClick={(e) => toggleItem(runId, e)}
+          title={isExpanded ? "Collapse" : "Show cabinets & panels in this run"}
+        >
+          ›
+        </button>
+      </div>
+      {isExpanded && (
+        <div className={styles.cutList}>
+          {run.segments.map((seg) => (
+            <div key={seg.item.id} className={styles.cutListRow}>
+              <span className={styles.cutListMatDot} style={{ background: "#a855f7" }} />
+              <span className={styles.cutListDim}>
+                {seg.length} <span className={styles.cutListAxis}>(W)</span>
+              </span>
+              <span className={styles.cutListName}>{seg.item.label || seg.item.item_type}</span>
+            </div>
+          ))}
+          {widths.map((w, i) => (
+            <div
+              key={`panel-${i}`}
+              className={styles.cutListRow}
+              style={i === 0 ? { marginTop: 5, borderTop: "1px solid rgba(168,85,247,0.2)", paddingTop: 5 } : undefined}
+            >
+              <span className={styles.cutListMatDot} style={{ background: "#a855f7" }} />
+              <span className={styles.cutListDim} style={{ color: "rgba(168,85,247,0.9)" }}>
+                {w} <span className={styles.cutListAxis}>(W)</span>
+                {" × "}
+                {panelH} <span className={styles.cutListAxis}>(H)</span>
+              </span>
+              <span className={styles.cutListName}>Panel {i + 1} of {widths.length}</span>
+            </div>
+          ))}
+          {showKickboard && (
+            <div className={styles.cutListRow} style={{ marginTop: 5, borderTop: "1px solid rgba(245,158,11,0.2)", paddingTop: 5 }}>
+              <span className={styles.cutListMatDot} style={{ background: "#f59e0b" }} />
+              <span className={styles.cutListDim} style={{ color: "rgba(245,158,11,0.9)" }}>
+                {totalWidth} <span className={styles.cutListAxis}>(W)</span>
+                {" × "}
+                {kickboardH} <span className={styles.cutListAxis}>(H)</span>
+              </span>
+              <span className={styles.cutListName}>Kickboard — Back (continues under panel)</span>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -265,6 +459,7 @@ export default function DesignLeftPanel({
   onDeleteRoom,
   onDeleteItem,
   onOpenImport,
+  onOpenMaterialDefaults,
   onAddCabinet,
 }) {
   const [openRooms, setOpenRooms]         = useState(() => rooms.map((r) => r.id));
@@ -344,11 +539,11 @@ export default function DesignLeftPanel({
     finally { setRoomBusy(false); }
   }
 
-  function renderItem(item, roomId) {
+  function renderItem(item, roomId, room = null) {
     const isCabinet  = CABINET_TYPES.includes(item.item_type);
     const isSelected = item.id === selectedItemId;
     const isExpanded = openItems.has(item.id);
-    const cutList    = isCabinet && isExpanded ? computeCutList(item, items) : [];
+    const cutList    = isCabinet && isExpanded ? computeCutList(item, items, room) : [];
 
     return (
       <div key={item.id} className={styles.leftItemBlock}>
@@ -369,25 +564,40 @@ export default function DesignLeftPanel({
             {item.qty > 1 && <span className={styles.leftItemQty}> ×{item.qty}</span>}
           </span>
           <span className={styles.leftItemType}>{TYPE_SHORT[item.item_type] || item.item_type}</span>
-          {isCabinet && (
-            <button
-              type="button"
-              className={`${styles.leftItemExpand} ${isExpanded ? styles.leftItemExpandOpen : ""}`}
-              onClick={(e) => toggleItem(item.id, e)}
-              title={isExpanded ? "Collapse cut list" : "Expand cut list"}
-            >
-              ›
-            </button>
-          )}
+          <button
+            type="button"
+            className={`${styles.leftItemExpand} ${isExpanded ? styles.leftItemExpandOpen : ""}`}
+            onClick={(e) => toggleItem(item.id, e)}
+            title={isExpanded ? "Collapse" : "Expand"}
+          >
+            ›
+          </button>
         </div>
 
-        {/* Cut list + delete */}
+        {/* Cut list (cabinets) or a simple dimension summary (everything
+            else — doors, drawer fronts, panels, obstructions) + delete */}
         {isExpanded && (
           <div className={styles.cutList}>
-            {cutList.length > 0 ? (
-              cutList.map((part, i) => <CutListRow key={i} part={part} />)
+            {isCabinet ? (
+              cutList.length > 0 ? (
+                cutList.map((part, i) => <CutListRow key={i} part={part} />)
+              ) : (
+                <p className={styles.cutListEmpty}>Set dimensions to see cut list</p>
+              )
             ) : (
-              <p className={styles.cutListEmpty}>Set dimensions to see cut list</p>
+              <div className={styles.cutListRow}>
+                <span className={styles.cutListDim}>
+                  {item.width_mm || 0} <span className={styles.cutListAxis}>(W)</span>
+                  {" × "}
+                  {item.height_mm || 0} <span className={styles.cutListAxis}>(H)</span>
+                  {item.depth_mm ? (
+                    <>
+                      {" × "}
+                      {item.depth_mm} <span className={styles.cutListAxis}>(D)</span>
+                    </>
+                  ) : null}
+                </span>
+              </div>
             )}
             <button
               type="button"
@@ -412,13 +622,23 @@ export default function DesignLeftPanel({
           </Link>
         </div>
         <p className={styles.projectName}>{project?.name || "Design Tool"}</p>
-        <button
-          type="button"
-          className={styles.importBtn}
-          onClick={onOpenImport}
-        >
-          Import to Quote
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <button
+            type="button"
+            className={styles.importBtn}
+            onClick={onOpenMaterialDefaults}
+            title="Set project-wide starting materials for new cabinets, shelves, doors, drawers and panels"
+          >
+            Material Defaults
+          </button>
+          <button
+            type="button"
+            className={styles.importBtn}
+            onClick={onOpenImport}
+          >
+            Import to Quote
+          </button>
+        </div>
       </div>
 
       {/* Room list */}
@@ -523,12 +743,25 @@ export default function DesignLeftPanel({
 
               {isOpen && (
                 <>
-                  {roomItems.map((item) => renderItem(item, room.id))}
+                  {roomItems.map((item) => renderItem(item, room.id, room))}
                   {/* Continuous kickboard runs (2+ cabinets) — own line items */}
-                  {computeAllKickboardRuns(roomItems).map((run) => {
-                    const runId = `kb-${room.id}-${run.wall}-${run.items[0]?.id}`;
+                  {computeAllKickboardRuns(roomItems, room).map((run) => {
+                    const runId = `kb-${room.id}-${run.wall}-${run.segments[0]?.item?.id}-${run.segments[0]?.leg}`;
                     return (
                       <KickboardRunItem
+                        key={runId}
+                        run={run}
+                        runId={runId}
+                        openItems={openItems}
+                        toggleItem={toggleItem}
+                      />
+                    );
+                  })}
+                  {/* Continuous back panel runs (2+ cabinets) — own line items */}
+                  {computeAllBackPanelRuns(roomItems).map((run) => {
+                    const runId = `bp-${room.id}-${run.wall}-${run.segments[0]?.item?.id}`;
+                    return (
+                      <BackPanelRunItem
                         key={runId}
                         run={run}
                         runId={runId}
@@ -570,16 +803,16 @@ export default function DesignLeftPanel({
         })()}
       </div>
 
-      {/* Add cabinet button */}
+      {/* Add item button */}
       <div className={styles.addFreestandingRow}>
         <button
           type="button"
           className={styles.addFreestandingBtn}
           onClick={onAddCabinet}
           disabled={!selectedRoomId}
-          title={selectedRoomId ? "Add a cabinet — drag it to set position and wall" : "Select a room first"}
+          title={selectedRoomId ? "Add an item — drag it to set position and wall" : "Select a room first"}
         >
-          + Add Cabinet
+          + Add Item
         </button>
       </div>
 

@@ -6,6 +6,7 @@ import DesignCanvas from "./DesignCanvas";
 import DesignLeftPanel from "./DesignLeftPanel";
 import DesignRightPanel from "./DesignRightPanel";
 import ImportModal from "./ImportModal";
+import MaterialDefaultsModal from "./MaterialDefaultsModal";
 import FrontElevationView from "./FrontElevationView";
 
 export default function DesignProgram({ projectId }) {
@@ -16,6 +17,7 @@ export default function DesignProgram({ projectId }) {
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [isAddingItem, setIsAddingItem]  = useState(false);
   const [importOpen, setImportOpen]     = useState(false);
+  const [materialDefaultsOpen, setMaterialDefaultsOpen] = useState(false);
   const [frontViewWall, setFrontViewWall] = useState(null);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState(null);
@@ -118,6 +120,34 @@ export default function DesignProgram({ projectId }) {
     handleItemChange(itemId, pos);
   }
 
+  // Copies every field of an existing item into a brand new row — same
+  // wall/material/door_config/etc, nudged 100mm along the wall so it isn't
+  // rendered exactly on top of the original (still needs a drag afterward,
+  // same as any freshly added item).
+  async function handleDuplicateItem(itemId) {
+    const original = items.find((i) => i.id === itemId);
+    if (!original) return;
+    const { id, created_at, updated_at, ...rest } = original;
+    const payload = {
+      ...rest,
+      label: original.label ? `${original.label} (copy)` : original.label,
+      x_mm: (original.x_mm || 0) + 100,
+      y_mm: (original.y_mm || 0) + 100,
+      sort_order: items.length,
+    };
+    const res = await fetch(`/api/admin/design/projects/${projectId}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Could not duplicate item.");
+    setItems((it) => [...it, data.item]);
+    setSelectedItemId(data.item.id);
+    setIsAddingItem(false);
+    return data.item;
+  }
+
   async function handleDeleteItem(itemId) {
     const res = await fetch(`/api/admin/design/projects/${projectId}/items/${itemId}`, { method: "DELETE" });
     if (!res.ok) return;
@@ -178,6 +208,7 @@ export default function DesignProgram({ projectId }) {
         onDeleteRoom={handleDeleteRoom}
         onDeleteItem={handleDeleteItem}
         onOpenImport={() => setImportOpen(true)}
+        onOpenMaterialDefaults={() => setMaterialDefaultsOpen(true)}
         onAddCabinet={() => { setIsAddingItem(true); setSelectedItemId(null); }}
       />
 
@@ -226,18 +257,33 @@ export default function DesignProgram({ projectId }) {
 
       <DesignRightPanel
         item={selectedItem}
+        allItems={roomItems}
+        materialDefaults={project?.material_defaults}
         isAddingItem={isAddingItem}
         onAdd={handleAddItem}
         onCancelAdd={() => setIsAddingItem(false)}
         onItemChange={handleItemChange}
         onDeleteItem={handleDeleteItem}
+        onDuplicateItem={handleDuplicateItem}
+        onSelectItem={(id) => { setSelectedItemId(id); setIsAddingItem(false); }}
       />
 
       {importOpen && (
         <ImportModal
           projectId={projectId}
-          itemCount={items.length}
+          items={items}
+          rooms={rooms}
           onClose={() => setImportOpen(false)}
+        />
+      )}
+
+      {materialDefaultsOpen && (
+        <MaterialDefaultsModal
+          projectId={projectId}
+          initialDefaults={project?.material_defaults}
+          onClose={() => setMaterialDefaultsOpen(false)}
+          onSaved={(materialDefaults) => setProject((p) => ({ ...p, material_defaults: materialDefaults }))}
+          onItemsChanged={loadAll}
         />
       )}
 
