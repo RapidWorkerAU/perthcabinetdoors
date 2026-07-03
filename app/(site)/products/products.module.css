@@ -164,6 +164,73 @@
   color: #4a7a42;
 }
 
+.mobileFilterTrigger {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 6px;
+  color: #1a1a18;
+  cursor: pointer;
+  display: none;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 16px;
+  min-height: 44px;
+  width: 100%;
+}
+
+.mobileFilterTrigger:active {
+  background: #f5f8f4;
+}
+
+.mobileFilterBadge {
+  background: #4a7a42;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 18px;
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.modalFilterReset {
+  background: none;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  color: #6a6a62;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 13px;
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.modalFilterReset:hover {
+  border-color: #4a7a42;
+  color: #4a7a42;
+}
+
+.mobileFilterApplyBtn {
+  background: #4a7a42;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.mobileFilterApplyBtn:hover {
+  background: #3d6537;
+}
+
 .toolbar {
   align-items: center;
   border-bottom: 1px solid #dbd8cc;
@@ -429,8 +496,14 @@
     padding: 28px 24px 64px;
   }
 
+  /* Replaced by the "Filters" button + full-screen modal below — the
+     stacked checkbox list above the grid was hard to scan on a phone. */
   .sidebar {
-    position: static;
+    display: none;
+  }
+
+  .mobileFilterTrigger {
+    display: flex;
   }
 
   .pageHeader {
@@ -475,15 +548,16 @@
     line-height: 1.08;
   }
 
-  .filterOptions {
-    gap: 8px;
-  }
-
+  /* This used to try to lay filter checkboxes out 2-per-row, but
+     .filterGroup (the real parent) was never a flex/grid container, so
+     the sizing had no effect — all that visibly landed was
+     justify-content: center, which centred the checkbox+label in each
+     full-width row instead of the normal left-aligned list. Filters now
+     live in a full-screen modal with plenty of width, so a plain
+     left-aligned list (just a touch-friendlier row height) is the right
+     call, not a compact 2-column layout. */
   .filterOption {
-    flex: 1 1 calc(50% - 8px);
-    justify-content: center;
-    min-height: 38px;
-    text-align: center;
+    min-height: 40px;
   }
 
   .toolbar {

@@ -1,6 +1,6 @@
 ﻿import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, GST_RATE, roundMoney } from "../../../../../lib/pcd-quote-utils";
-import { isEdgeProfileSelectionAvailable } from "../../../../../lib/quote-form-data";
+import { isEdgeProfileSelectionAvailable, profileTypesForSelection, profileNamesForSelection } from "../../../../../lib/quote-form-data";
 
 export async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -23,6 +23,13 @@ export function dbNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+// Money/markup/hours/rate fields should never go negative — the UI now
+// blocks typing a minus sign, but the API is the actual boundary, so
+// clamp here too in case a request bypasses the UI.
+function dbNonNegativeNumber(value, fallback = 0) {
+  return Math.max(0, dbNumber(value, fallback));
+}
+
 function dbNullableNumber(value) {
   if (value === "" || value === null || typeof value === "undefined") return null;
   const number = Number(value);
@@ -30,6 +37,13 @@ function dbNullableNumber(value) {
 }
 
 export function quoteLineRow(line, quoteId, sortOrder) {
+  // Same idea as edge_mould below: profile_type/profile are material- and
+  // thickness-dependent option lists, so a stale value left over from a
+  // different material selection shouldn't be saved as if it were still a
+  // valid choice.
+  const profileTypeValid = !line.profile_type || profileTypesForSelection(line.material, line.thickness).includes(line.profile_type);
+  const profileValid = !line.profile || (profileTypeValid && profileNamesForSelection(line.profile_type, line.material, line.thickness).includes(line.profile));
+
   return {
     quote_id: quoteId,
     sort_order: sortOrder,
@@ -43,8 +57,8 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     height_mm: dbNullableNumber(line.height_mm),
     finish: dbText(line.finish),
     colour: dbText(line.colour),
-    profile_type: dbText(line.profile_type),
-    profile: dbText(line.profile),
+    profile_type: profileTypeValid ? dbText(line.profile_type) : null,
+    profile: profileValid ? dbText(line.profile) : null,
     edge_mould: isEdgeProfileSelectionAvailable(line.edge_mould, line.material) ? dbText(line.edge_mould) : null,
     qty: dbNumber(line.qty, 1),
     hinge_holes: Boolean(line.hinge_holes),
@@ -61,14 +75,14 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     hinge_supply_cost_ex_gst: dbNumber(line.hinge_supply_cost_ex_gst),
     hinge_drilling_qty: dbNumber(line.hinge_drilling_qty),
     hinge_supply_qty: dbNumber(line.hinge_supply_qty),
-    labour_hours: dbNumber(line.labour_hours),
-    worker_hourly_rate: dbNumber(line.worker_hourly_rate),
+    labour_hours: dbNonNegativeNumber(line.labour_hours),
+    worker_hourly_rate: dbNonNegativeNumber(line.worker_hourly_rate),
     labour_cost_ex_gst: dbNumber(line.labour_cost_ex_gst),
-    travel_cost_ex_gst: dbNumber(line.travel_cost_ex_gst),
-    delivery_cost_ex_gst: dbNumber(line.delivery_cost_ex_gst),
-    installation_cost_ex_gst: dbNumber(line.installation_cost_ex_gst),
-    other_cost_ex_gst: dbNumber(line.other_cost_ex_gst),
-    markup_percent: dbNumber(line.markup_percent),
+    travel_cost_ex_gst: dbNonNegativeNumber(line.travel_cost_ex_gst),
+    delivery_cost_ex_gst: dbNonNegativeNumber(line.delivery_cost_ex_gst),
+    installation_cost_ex_gst: dbNonNegativeNumber(line.installation_cost_ex_gst),
+    other_cost_ex_gst: dbNonNegativeNumber(line.other_cost_ex_gst),
+    markup_percent: dbNonNegativeNumber(line.markup_percent),
     markup_amount_ex_gst: dbNumber(line.markup_amount_ex_gst),
     unit_price_ex_gst: dbNumber(line.unit_price_ex_gst),
     line_total_ex_gst: dbNumber(line.line_total_ex_gst),

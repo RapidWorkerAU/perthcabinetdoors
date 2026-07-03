@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import styles from "../design.module.css";
-import DesignCanvas from "./DesignCanvas";
+import DesignCanvas, { findOverlappingItemIds } from "./DesignCanvas";
 import DesignLeftPanel from "./DesignLeftPanel";
 import DesignRightPanel from "./DesignRightPanel";
 import ImportModal from "./ImportModal";
@@ -171,6 +171,12 @@ export default function DesignProgram({ projectId }) {
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId) || null;
   const roomItems    = items.filter((i) => i.room_id === selectedRoomId);
   const selectedItem = items.find((i) => i.id === selectedItemId) || null;
+  // Collision is otherwise only checked during an interactive drag, so this
+  // recomputes on every render (cheap for realistic item counts) to also
+  // catch overlaps introduced by editing width/height/depth/mount height
+  // via the right panel's number inputs.
+  const overlappingItemIds = selectedRoom ? findOverlappingItemIds(roomItems, selectedRoom) : new Set();
+  const selectedItemOverlaps = Boolean(selectedItem && overlappingItemIds.has(selectedItem.id));
 
   if (loading) {
     return (
@@ -240,6 +246,7 @@ export default function DesignProgram({ projectId }) {
                 room={selectedRoom}
                 items={roomItems}
                 selectedItemId={selectedItemId}
+                overlappingItemIds={overlappingItemIds}
                 onItemClick={handleCanvasItemClick}
                 onDeselect={handleCanvasDeselect}
                 onItemDragEnd={handleItemDragEnd}
@@ -260,6 +267,7 @@ export default function DesignProgram({ projectId }) {
         allItems={roomItems}
         materialDefaults={project?.material_defaults}
         isAddingItem={isAddingItem}
+        isOverlapping={selectedItemOverlaps}
         onAdd={handleAddItem}
         onCancelAdd={() => setIsAddingItem(false)}
         onItemChange={handleItemChange}

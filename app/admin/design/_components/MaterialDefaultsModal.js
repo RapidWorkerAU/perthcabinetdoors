@@ -86,7 +86,7 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
     if (!confirmApply) {
       setConfirmApply(true);
       clearTimeout(confirmApplyTimer.current);
-      confirmApplyTimer.current = setTimeout(() => setConfirmApply(false), 4000);
+      confirmApplyTimer.current = setTimeout(() => setConfirmApply(false), 3000);
       return;
     }
     clearTimeout(confirmApplyTimer.current);

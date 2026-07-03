@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
-import { COLOUR_MATERIALS, materialTypeForKey, optionsFromColourFamily } from "../../lib/pcd-colour-library"
+import { COLOUR_MATERIALS, materialTypeForKey, materialLabelForType, optionsFromColourFamily } from "../../lib/pcd-colour-library"
 import { calculateCabinetTotals, normalizeCabinetConfig } from "../../lib/pcd-cabinet-utils"
 import CabinetSchematic from "./CabinetSchematic"
 
@@ -131,7 +131,13 @@ function fieldId(prefix: string, name: string): string {
 }
 
 function materialDisplay({ material, finish, colour }: { material?: unknown; finish?: unknown; colour?: unknown }): string {
-  return [material, finish, colour].filter(Boolean).join(" - ")
+  // Carcass material may be Title Case (set via the quote line's own Material
+  // dropdown when a cabinet is created from scratch) while shelf material is
+  // always the design tool's lowercase vocabulary (set via the picker below) —
+  // normalize to one consistent label here so they don't show mismatched
+  // casing side by side without touching either stored value.
+  const materialLabel = material ? materialLabelForType(String(material)) : material
+  return [materialLabel, finish, colour].filter(Boolean).join(" - ")
 }
 
 // ---------------------------------------------------------------------------

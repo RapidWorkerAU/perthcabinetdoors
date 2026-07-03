@@ -292,6 +292,58 @@ function cabinetVerticalRange(item) {
 }
 function verticalRangesOverlap([a0, a1], [b0, b1]) { return a0 < b1 && a1 > b0; }
 
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// Same footprint/vertical-range rules the interactive drag collision system
+// above uses, but as a static "do these two already-placed items overlap"
+// check with no drag in progress — collision is otherwise only ever
+// evaluated while dragging, so resizing an item via the right panel's
+// number inputs (width/height/depth/mount height) never re-checks it
+// against its neighbours. Returns the Set of item ids currently overlapping
+// at least one other item in the room, for the caller to flag/highlight.
+export function findOverlappingItemIds(items, room) {
+  const W = room?.width_mm || 4000;
+  const D = room?.depth_mm || 3000;
+
+  function footprintsFor(item) {
+    if (item.wall === "island") {
+      const { ew, ed } = islandEffectiveDims(item);
+      return [{ x: item.x_mm || 0, y: item.y_mm || 0, w: ew, h: ed }];
+    }
+    const rects = [];
+    const primary = cabinetFootprint(item, W, D);
+    if (primary) rects.push(primary);
+    const secondary = cornerSecondaryFootprint(item, W, D);
+    if (secondary) rects.push(secondary);
+    return rects;
+  }
+
+  const withFootprints = items
+    .filter((item) => item.wall) // unplaced/freshly-added items have no footprint yet
+    .map((item) => ({
+      item,
+      footprints: footprintsFor(item),
+      vRange: cabinetVerticalRange(item),
+    }));
+
+  const overlapping = new Set();
+  for (let i = 0; i < withFootprints.length; i++) {
+    for (let j = i + 1; j < withFootprints.length; j++) {
+      const a = withFootprints[i];
+      const b = withFootprints[j];
+      if (!verticalRangesOverlap(a.vRange, b.vRange)) continue;
+      const anyOverlap = a.footprints.some((fa) => b.footprints.some((fb) => rectsOverlap(fa, fb)));
+      if (anyOverlap) {
+        overlapping.add(a.item.id);
+        overlapping.add(b.item.id);
+      }
+    }
+  }
+  return overlapping;
+}
+
 function computeGaps1D(xMm, widthMm, others, roomMax) {
   const right = xMm + widthMm;
   const leftObs  = others.filter((o) => (o.x_mm || 0) + (o.width_mm || 0) <= xMm);
@@ -576,7 +628,7 @@ function FrontFaceStrip({ rect, frontEdge }) {
   );
 }
 
-function CabinetShape({ item, lay, selected, dragging, onPointerDown, onPointerUp }) {
+function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerDown, onPointerUp }) {
   const rect = cabinetSvgRect(item, lay);
   if (!rect) return null;
 
@@ -637,6 +689,20 @@ function CabinetShape({ item, lay, selected, dragging, onPointerDown, onPointerU
           x={x} y={y} width={w} height={h}
           rx={3}
           fill="url(#obstructionHatch)"
+          style={{ pointerEvents: "none" }}
+        />
+      )}
+      {/* Collision is only re-checked during an interactive drag, so a
+          resize made via the right panel's number inputs can silently leave
+          two items overlapping — flag it here since nothing else will. */}
+      {isOverlapping && (
+        <rect
+          x={x} y={y} width={w} height={h}
+          rx={3}
+          fill="none"
+          stroke="#ef4444"
+          strokeWidth={2}
+          strokeDasharray="5 3"
           style={{ pointerEvents: "none" }}
         />
       )}
@@ -763,6 +829,7 @@ export default function DesignCanvas({
   room,
   items,
   selectedItemId,
+  overlappingItemIds,
   onItemClick,
   onDeselect,
   onItemDragEnd,
@@ -1140,6 +1207,7 @@ export default function DesignCanvas({
             lay={lay}
             selected={item.id === selectedItemId}
             dragging={drag?.itemId === item.id}
+            isOverlapping={Boolean(overlappingItemIds?.has(item.id))}
             onPointerDown={handleItemPointerDown}
             onPointerUp={handleItemPointerUp}
           />
@@ -1153,6 +1221,7 @@ export default function DesignCanvas({
             lay={lay}
             selected={item.id === selectedItemId}
             dragging={drag?.itemId === item.id}
+            isOverlapping={Boolean(overlappingItemIds?.has(item.id))}
             onPointerDown={handleItemPointerDown}
             onPointerUp={handleItemPointerUp}
           />
@@ -1168,6 +1237,7 @@ export default function DesignCanvas({
             lay={lay}
             selected={item.id === selectedItemId}
             dragging={drag?.itemId === item.id}
+            isOverlapping={Boolean(overlappingItemIds?.has(item.id))}
             onPointerDown={handleItemPointerDown}
             onPointerUp={handleItemPointerUp}
           />

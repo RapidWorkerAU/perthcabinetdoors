@@ -642,7 +642,7 @@ export function FrontStyleFields({ label, style, onChange }) {
       <label className={styles.fieldLabel}>
         Cost per sqm ex GST ($)
         <input className={styles.fieldInput} type="number" min="0" step="0.01"
-          value={style.cost_per_sqm || ""}
+          value={style.cost_per_sqm ?? ""}
           onChange={(e) => onChange({ cost_per_sqm: Number(e.target.value) })}
           placeholder="0.00" />
       </label>
@@ -1092,7 +1092,7 @@ function CabinetConfigForm({ item, allItems, materialDefaults, onItemChange, onS
               />
               <label className={styles.fieldLabel}>
                 Cost per sqm — carcass ($)
-                <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.cost_per_sqm_carcass || ""} onChange={(e) => set("cost_per_sqm_carcass", e.target.value)} placeholder="0.00" />
+                <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.cost_per_sqm_carcass ?? ""} onChange={(e) => set("cost_per_sqm_carcass", e.target.value)} placeholder="0.00" />
               </label>
               <label className={styles.fieldLabel}>
                 Unit cost mode
@@ -1104,7 +1104,7 @@ function CabinetConfigForm({ item, allItems, materialDefaults, onItemChange, onS
               {draft.unit_cost_mode === "manual" && (
                 <label className={styles.fieldLabel}>
                   Unit cost per sqm ex GST ($)
-                  <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.unit_cost_per_sqm_ex_gst || ""} onChange={(e) => set("unit_cost_per_sqm_ex_gst", e.target.value)} placeholder="0.00" />
+                  <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.unit_cost_per_sqm_ex_gst ?? ""} onChange={(e) => set("unit_cost_per_sqm_ex_gst", e.target.value)} placeholder="0.00" />
                 </label>
               )}
             </div>
@@ -1152,7 +1152,7 @@ function CabinetConfigForm({ item, allItems, materialDefaults, onItemChange, onS
                   />
                   <label className={styles.fieldLabel}>
                     Cost per sqm — shelf ($)
-                    <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.cost_per_sqm_shelf || ""} onChange={(e) => set("cost_per_sqm_shelf", e.target.value)} placeholder="0.00" />
+                    <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.cost_per_sqm_shelf ?? ""} onChange={(e) => set("cost_per_sqm_shelf", e.target.value)} placeholder="0.00" />
                   </label>
                 </>
               )}
@@ -1772,7 +1772,7 @@ function DoorPanelForm({ item, onItemChange }) {
 
           <label className={styles.fieldLabel}>
             Cost per sqm ex GST ($)
-            <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.unit_cost_per_sqm_ex_gst || ""} onChange={(e) => set("unit_cost_per_sqm_ex_gst", e.target.value)} placeholder="0.00" />
+            <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.unit_cost_per_sqm_ex_gst ?? ""} onChange={(e) => set("unit_cost_per_sqm_ex_gst", e.target.value)} placeholder="0.00" />
           </label>
 
           {item.item_type === "door" && (
@@ -1788,7 +1788,7 @@ function DoorPanelForm({ item, onItemChange }) {
               {draft.hinge_supply && (
                 <label className={styles.fieldLabel}>
                   Hinge qty
-                  <input className={styles.fieldInput} value={draft.hinge_qty || ""} onChange={(e) => set("hinge_qty", e.target.value)} />
+                  <input className={styles.fieldInput} type="number" min="1" step="1" value={draft.hinge_qty || ""} onChange={(e) => set("hinge_qty", e.target.value)} />
                 </label>
               )}
             </>
@@ -1899,9 +1899,10 @@ function ObstructionForm({ item, onItemChange }) {
 }
 
 // ---- Right panel container ----
-export default function DesignRightPanel({ item, allItems, materialDefaults, isAddingItem, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem }) {
+export default function DesignRightPanel({ item, allItems, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmTimer = useRef(null);
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   function handleDeleteClick() {
     if (confirmDelete) {
@@ -1911,6 +1912,19 @@ export default function DesignRightPanel({ item, allItems, materialDefaults, isA
     } else {
       setConfirmDelete(true);
       confirmTimer.current = setTimeout(() => setConfirmDelete(false), 3000);
+    }
+  }
+
+  // Duplicate posts a new item to the server; without a busy guard a fast
+  // double-click (or double-tap) fires two requests before the first
+  // response lands, creating two duplicate rows.
+  async function handleDuplicateClick() {
+    if (isDuplicating) return;
+    setIsDuplicating(true);
+    try {
+      await onDuplicateItem(item.id);
+    } finally {
+      setIsDuplicating(false);
     }
   }
 
@@ -1936,6 +1950,11 @@ export default function DesignRightPanel({ item, allItems, materialDefaults, isA
           <p className={styles.rightPanelTitle}>{item.label || TYPE_LABELS[item.item_type] || item.item_type}</p>
           <p className={styles.rightPanelSubtitle}>{TYPE_LABELS[item.item_type]}</p>
         </div>
+        {isOverlapping && (
+          <p className={styles.overlapWarning}>
+            ⚠ This item overlaps another item on the plan. Drag it (or the other item) to fix the position.
+          </p>
+        )}
         {isCabinet ? (
           <CabinetConfigForm key={item.id} item={item} allItems={allItems} materialDefaults={materialDefaults} onItemChange={onItemChange} onSelectItem={onSelectItem} />
         ) : item.item_type === "obstruction" ? (
@@ -1947,9 +1966,10 @@ export default function DesignRightPanel({ item, allItems, materialDefaults, isA
           <button
             type="button"
             className={`${styles.btn} ${styles.btnSecondary}`}
-            onClick={() => onDuplicateItem(item.id)}
+            onClick={handleDuplicateClick}
+            disabled={isDuplicating}
           >
-            Duplicate
+            {isDuplicating ? "Duplicating…" : "Duplicate"}
           </button>
           <button
             type="button"

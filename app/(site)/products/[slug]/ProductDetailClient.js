@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import PortalModal from "@/components/PortalModal";
 import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../../lib/quote-form-data";
 import styles from "./product-detail.module.css";
 
@@ -50,6 +51,11 @@ export default function ProductDetailClient({
   const [activeProfileType, setActiveProfileType] = useState("");
   const [activeProfile, setActiveProfile] = useState(0);
   const [activeEdge, setActiveEdge] = useState(0);
+  // Which tile group is currently open in the full-screen viewer, if any —
+  // small swatch/tile images (44px colour squares especially) are too
+  // small to judge accurately on a phone, so tapping one opens it larger
+  // with prev/next to browse the rest of that group without closing.
+  const [lightboxType, setLightboxType] = useState(null); // "colour" | "profile" | "edge" | null
   const [enquiryStatus, setEnquiryStatus] = useState("");
   const [isSendingEnquiry, setIsSendingEnquiry] = useState(false);
   const [enquiryErrors, setEnquiryErrors] = useState({});
@@ -104,6 +110,50 @@ export default function ProductDetailClient({
   function selectProfileType(profileType) {
     setActiveProfileType(profileType);
     setActiveProfile(0);
+  }
+
+  // The lightbox always browses whatever the *current* group/filters are
+  // (e.g. the active finish's colours, or the active profile type's names) —
+  // it's a bigger view of the same grid on screen, not a separate list.
+  function lightboxItems() {
+    if (lightboxType === "colour") {
+      return selectedFinish.colours.map((colour) => ({
+        src: colour.src,
+        name: colour.name,
+        sub: selectedFinish.label,
+      }));
+    }
+    if (lightboxType === "profile") {
+      return profileOptions.map((profile) => ({
+        src: profileOptionSrc(resolvedProfileType, profile),
+        name: profile,
+        sub: resolvedProfileType,
+      }));
+    }
+    if (lightboxType === "edge") {
+      return EDGE_PROFILES.map((edge) => ({ src: edgeOptionSrc(edge), name: edge, sub: "" }));
+    }
+    return [];
+  }
+
+  function lightboxActiveIndex() {
+    if (lightboxType === "colour") return activeColour;
+    if (lightboxType === "profile") return activeProfile;
+    if (lightboxType === "edge") return activeEdge;
+    return 0;
+  }
+
+  function setLightboxActiveIndex(index) {
+    if (lightboxType === "colour") setActiveColour(index);
+    if (lightboxType === "profile") setActiveProfile(index);
+    if (lightboxType === "edge") setActiveEdge(index);
+  }
+
+  function openLightbox(type, index) {
+    setLightboxType(type);
+    if (type === "colour") setActiveColour(index);
+    if (type === "profile") setActiveProfile(index);
+    if (type === "edge") setActiveEdge(index);
   }
 
   async function submitProductEnquiry(event) {
@@ -255,20 +305,34 @@ export default function ProductDetailClient({
                 <div className={styles.viewerPanel}>
                   <div className={styles.sectionLabel}>{colourFamily.label || "Colour library"} colour</div>
                   {showThicknessPicker ? (
-                    <div className={styles.finishTabs} role="radiogroup" aria-label="Board thickness">
-                      {availableThicknesses.map((thickness) => (
-                        <button
-                          aria-checked={selectedThickness === thickness}
-                          className={`${styles.finishTab} ${selectedThickness === thickness ? styles.active : ""}`}
-                          key={thickness}
-                          onClick={() => selectThickness(thickness)}
-                          role="radio"
-                          type="button"
+                    <>
+                      <div className={styles.finishTabs} role="radiogroup" aria-label="Board thickness">
+                        {availableThicknesses.map((thickness) => (
+                          <button
+                            aria-checked={selectedThickness === thickness}
+                            className={`${styles.finishTab} ${selectedThickness === thickness ? styles.active : ""}`}
+                            key={thickness}
+                            onClick={() => selectThickness(thickness)}
+                            role="radio"
+                            type="button"
+                          >
+                            {thickness}
+                          </button>
+                        ))}
+                      </div>
+                      <label className={styles.mobileSelectLabel}>
+                        Thickness
+                        <select
+                          className={styles.mobileSelect}
+                          value={selectedThickness}
+                          onChange={(event) => selectThickness(event.target.value)}
                         >
-                          {thickness}
-                        </button>
-                      ))}
-                    </div>
+                          {availableThicknesses.map((thickness) => (
+                            <option key={thickness} value={thickness}>{thickness}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
                   ) : null}
                   <div className={styles.finishTabs}>
                     {colourFamily.groups.map((finish, index) => (
@@ -282,13 +346,25 @@ export default function ProductDetailClient({
                       </button>
                     ))}
                   </div>
+                  <label className={styles.mobileSelectLabel}>
+                    Finish
+                    <select
+                      className={styles.mobileSelect}
+                      value={activeFinish}
+                      onChange={(event) => selectFinish(Number(event.target.value))}
+                    >
+                      {colourFamily.groups.map((finish, index) => (
+                        <option key={`${finish.label}-${index}`} value={index}>{finish.label}</option>
+                      ))}
+                    </select>
+                  </label>
                   <div className={styles.colourSwatches}>
                     {selectedFinish.colours.map((colour, index) => (
                       <button
-                        aria-label={colour.name}
+                        aria-label={`${colour.name} - tap to view larger`}
                         className={`${styles.swatch} ${activeColour === index ? styles.active : ""}`}
                         key={colour.id || `${selectedFinish.label}-${colour.name}-${index}`}
-                        onClick={() => setActiveColour(index)}
+                        onClick={() => openLightbox("colour", index)}
                         title={colour.name}
                         type="button"
                       >
@@ -296,6 +372,7 @@ export default function ProductDetailClient({
                       </button>
                     ))}
                   </div>
+                  <p className={styles.tileHint}>Tap a swatch to view it larger and select it.</p>
                   {selectedColour ? (
                     <div className={styles.colourName}>
                       {selectedColour.name} <span>{selectedFinish.label}</span>
@@ -322,13 +399,25 @@ export default function ProductDetailClient({
                       </button>
                     ))}
                   </div>
+                  <label className={styles.mobileSelectLabel}>
+                    Profile type
+                    <select
+                      className={styles.mobileSelect}
+                      value={resolvedProfileType}
+                      onChange={(event) => selectProfileType(event.target.value)}
+                    >
+                      {availableProfileTypes.map((profileType) => (
+                        <option key={profileType} value={profileType}>{profileType}</option>
+                      ))}
+                    </select>
+                  </label>
                   <div className={styles.profileSwatches}>
                     {profileOptions.map((profile, index) => (
                       <button
-                        aria-label={profile}
+                        aria-label={`${profile} - tap to view larger`}
                         className={`${styles.profileSwatch} ${activeProfile === index ? styles.active : ""}`}
                         key={`${resolvedProfileType}-${profile}`}
-                        onClick={() => setActiveProfile(index)}
+                        onClick={() => openLightbox("profile", index)}
                         title={profile}
                         type="button"
                       >
@@ -337,6 +426,7 @@ export default function ProductDetailClient({
                       </button>
                     ))}
                   </div>
+                  <p className={styles.tileHint}>Tap a profile to view it larger and select it.</p>
                   {selectedProfile ? (
                     <div className={styles.colourName}>
                       {selectedProfile} <span>{resolvedProfileType}</span>
@@ -351,10 +441,10 @@ export default function ProductDetailClient({
                   <div className={styles.edgeProfileList}>
                     {EDGE_PROFILES.map((edge, index) => (
                       <button
-                        aria-label={edge}
+                        aria-label={`${edge} - tap to view larger`}
                         className={`${styles.edgeProfileTile} ${activeEdge === index ? styles.active : ""}`}
                         key={edge}
-                        onClick={() => setActiveEdge(index)}
+                        onClick={() => openLightbox("edge", index)}
                         title={edge}
                         type="button"
                       >
@@ -363,6 +453,7 @@ export default function ProductDetailClient({
                       </button>
                     ))}
                   </div>
+                  <p className={styles.tileHint}>Tap an edge profile to view it larger and select it.</p>
                   <div className={styles.colourName}>{selectedEdge}</div>
                 </div>
               ) : null}
@@ -507,6 +598,54 @@ export default function ProductDetailClient({
         <p>Copyright 2026 Perth Cabinet Doors. All rights reserved.</p>
         <p>Perth, Western Australia &nbsp;&middot;&nbsp; <a href="tel:0408906784">0408 906 784</a> &nbsp;&middot;&nbsp; <a href="mailto:sales@perthcabinetdoors.com.au">sales@perthcabinetdoors.com.au</a></p>
       </footer>
+
+      {(() => {
+        if (!lightboxType) return null;
+        const items = lightboxItems();
+        const activeIndex = lightboxActiveIndex();
+        const item = items[activeIndex];
+        if (!item) return null;
+        const goPrev = () => setLightboxActiveIndex((activeIndex - 1 + items.length) % items.length);
+        const goNext = () => setLightboxActiveIndex((activeIndex + 1) % items.length);
+
+        return (
+          <PortalModal
+            open
+            onClose={() => setLightboxType(null)}
+            ariaLabel={`${item.name} preview`}
+            eyebrow={item.sub || undefined}
+            title={item.name}
+            size="lg"
+          >
+            <div className={styles.lightboxViewer}>
+              <button
+                type="button"
+                className={styles.lightboxNav}
+                onClick={goPrev}
+                aria-label="Previous"
+                disabled={items.length < 2}
+              >
+                &lsaquo;
+              </button>
+              <div className={styles.lightboxImageWrap}>
+                <img className={styles.lightboxImage} src={item.src} alt={item.name} />
+              </div>
+              <button
+                type="button"
+                className={styles.lightboxNav}
+                onClick={goNext}
+                aria-label="Next"
+                disabled={items.length < 2}
+              >
+                &rsaquo;
+              </button>
+            </div>
+            {items.length > 1 ? (
+              <p className={styles.lightboxCount}>{activeIndex + 1} of {items.length}</p>
+            ) : null}
+          </PortalModal>
+        );
+      })()}
     </main>
   );
 }

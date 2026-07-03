@@ -15,6 +15,23 @@ const ITEM_COLORS = {
   obstruction:   "#57534e",
 };
 
+// Friendly fallback label when an item has no custom label yet — avoids
+// rendering the raw snake_case item_type in the elevation view.
+const TYPE_LABELS = {
+  base_cabinet:  "Base Cabinet",
+  wall_cabinet:  "Wall Cabinet",
+  tall_cabinet:  "Tall Cabinet",
+  corner_base_cabinet: "Corner Base Cabinet",
+  door:          "Door",
+  drawer_front:  "Drawer Front",
+  panel:         "Panel",
+  obstruction:   "Obstruction",
+};
+
+function itemDisplayLabel(item) {
+  return item.label || TYPE_LABELS[item.item_type] || item.item_type;
+}
+
 export const CABINET_MOUNT_MM = {
   base_cabinet:  0,
   wall_cabinet:  1400,
@@ -767,7 +784,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
               }}
             >
               <span className={styles.elevItemChipDot} />
-              {item.label || item.item_type}{isSecondaryWallView(item) ? " (return)" : isIslandVirtualView(item) ? " (freestanding)" : ""}
+              {itemDisplayLabel(item)}{isSecondaryWallView(item) ? " (return)" : isIslandVirtualView(item) ? " (freestanding)" : ""}
             </button>
           ))}
         </div>
@@ -902,7 +919,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                 })()
               : null;
             const cy = svgY + svgH / 2;
-            const shortLabel = (item.label || item.item_type).slice(0, 14);
+            const shortLabel = itemDisplayLabel(item).slice(0, 14);
             const fs = Math.min(Math.max(svgW / (shortLabel.length * 0.72), 7), 12);
             const canDrag = DRAGGABLE_TYPES.has(item.item_type);
             const isObstruction = item.item_type === "obstruction";

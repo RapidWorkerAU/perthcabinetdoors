@@ -581,8 +581,24 @@ function cornerBackPanelLinesForCabinet(item, roomName) {
   return lines;
 }
 
+function isMissingOrZero(value) {
+  return !(Number(value) > 0);
+}
+
+// A design item can have a material selected but no cost-per-sqm entered
+// (e.g. project material defaults were never filled in) or no real
+// dimensions — previously this imported silently as a $0 or 0mm x 0mm line
+// with no warning at all, understating the quote with nothing for staff to
+// notice.
 function isStandaloneUnconfigured(item) {
-  return !String(item.material || "").trim();
+  const isPanel = item.item_type === "panel";
+  const widthMissing = isPanel ? isMissingOrZero(item.depth_mm) : isMissingOrZero(item.width_mm);
+  return (
+    !String(item.material || "").trim() ||
+    widthMissing ||
+    isMissingOrZero(item.height_mm) ||
+    isMissingOrZero(item.unit_cost_per_sqm_ex_gst)
+  );
 }
 
 // Resolves what to import for a given item from the client's per-item
@@ -655,19 +671,33 @@ export async function POST(request, { params }) {
         const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
 
         if (isCabinet) {
-          if (sel.cabinet && !String(item.material || "").trim()) {
+          if (sel.cabinet && (
+            !String(item.material || "").trim() ||
+            isMissingOrZero(item.width_mm) ||
+            isMissingOrZero(item.height_mm) ||
+            isMissingOrZero(item.depth_mm) ||
+            isMissingOrZero(item.cost_per_sqm_carcass)
+          )) {
             warnings.push({ itemId: item.id, label: `${traceLabel} (cabinet)` });
           }
-          if (sel.doors && item.front_type === "doors" && !String(item.door_style?.material || "").trim()) {
+          if (sel.doors && item.front_type === "doors" && (
+            !String(item.door_style?.material || "").trim() ||
+            isMissingOrZero(item.door_style?.cost_per_sqm)
+          )) {
             warnings.push({ itemId: item.id, label: `${traceLabel} (doors)` });
           }
-          if (sel.doors && item.front_type === "drawers" && !String(item.drawer_style?.material || "").trim()) {
+          if (sel.doors && item.front_type === "drawers" && (
+            !String(item.drawer_style?.material || "").trim() ||
+            isMissingOrZero(item.drawer_style?.cost_per_sqm)
+          )) {
             warnings.push({ itemId: item.id, label: `${traceLabel} (drawers)` });
           }
           if (sel.doors && item.front_type === "mixed") {
             const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
-            const missingDoorStyle   = sections.some((s) => s.type === "doors")   && !String(item.door_style?.material   || "").trim();
-            const missingDrawerStyle = sections.some((s) => s.type === "drawers") && !String(item.drawer_style?.material || "").trim();
+            const hasDoors   = sections.some((s) => s.type === "doors");
+            const hasDrawers = sections.some((s) => s.type === "drawers");
+            const missingDoorStyle   = hasDoors   && (!String(item.door_style?.material   || "").trim() || isMissingOrZero(item.door_style?.cost_per_sqm));
+            const missingDrawerStyle = hasDrawers && (!String(item.drawer_style?.material || "").trim() || isMissingOrZero(item.drawer_style?.cost_per_sqm));
             if (missingDoorStyle || missingDrawerStyle) {
               warnings.push({ itemId: item.id, label: `${traceLabel} (mixed front)` });
             }

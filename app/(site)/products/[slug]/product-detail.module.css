@@ -272,6 +272,43 @@
   color: #a8c5a0;
 }
 
+/* Mobile-only stand-in for .finishTabs (thickness / finish / profile type) —
+   hidden on desktop, swapped in below 720px. A native select is a more
+   compact, standard pattern for a plain text choice on a phone than a row
+   of tab buttons that has to wrap; the colour/profile/edge image tiles
+   these filter stay as tiles on every screen size since those need to be
+   seen, not just read. */
+.mobileSelectLabel {
+  color: #6b9e61;
+  display: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+.mobileSelect {
+  appearance: none;
+  background: #faf9f6;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a5a52' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-position: right 12px center;
+  background-repeat: no-repeat;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  color: #1a1a18;
+  cursor: pointer;
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  margin-top: 4px;
+  min-height: 44px;
+  padding: 0 32px 0 12px;
+  text-transform: none;
+  width: 100%;
+}
+
 .swatch {
   background: #e8e4d8;
   border: 1.5px solid transparent;
@@ -296,6 +333,12 @@
   border-color: #4a7a42;
   outline: 2px solid #4a7a42;
   outline-offset: 2px;
+}
+
+.tileHint {
+  color: #9a9a90;
+  font-size: 11px;
+  margin: 6px 0 0;
 }
 
 .colourName {
@@ -822,6 +865,65 @@
   text-decoration: none;
 }
 
+.lightboxViewer {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.lightboxImageWrap {
+  align-items: center;
+  aspect-ratio: 1 / 1;
+  background: #f0ede4;
+  border: 1px solid #dbd8cc;
+  border-radius: 6px;
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  max-height: 60vh;
+  overflow: hidden;
+}
+
+.lightboxImage {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.lightboxNav {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 50%;
+  color: #1a1a18;
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 22px;
+  height: 44px;
+  justify-content: center;
+  line-height: 1;
+  width: 44px;
+}
+
+.lightboxNav:hover:not(:disabled) {
+  border-color: #6b9e61;
+  color: #4a7a42;
+}
+
+.lightboxNav:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.lightboxCount {
+  color: #9a9a90;
+  font-size: 12px;
+  margin: 12px 0 0;
+  text-align: center;
+}
+
 @media (max-width: 980px) {
   .productHero,
   .lowerSections {
@@ -858,6 +960,16 @@
   .siteFooter {
     padding: 24px;
   }
+
+  /* Thickness / finish / profile type switch from tab buttons to a native
+     select below this width — see .mobileSelect above. */
+  .finishTabs {
+    display: none;
+  }
+
+  .mobileSelectLabel {
+    display: block;
+  }
 }
 
 @media (max-width: 520px) {
@@ -881,27 +993,45 @@
     line-height: 1.08;
   }
 
-  .detailBadges,
-  .viewerToggle,
-  .finishTabs {
+  /* .finishTabs (and its .finishTab buttons) is already hidden below 720px
+     in favour of the .mobileSelect dropdown, so it no longer needs a
+     mobile layout here. This block used to re-declare
+     "display: flex" for .finishTabs at this narrower breakpoint too,
+     which — since it comes after the 720px rule in the cascade and both
+     apply at once on a phone — was silently overriding the hide and
+     showing the tab buttons AND the dropdown at the same time. */
+  .detailBadges {
     align-items: stretch;
     display: flex;
     flex-wrap: wrap;
   }
 
-  .viewerToggleButton,
-  .finishTab {
-    flex: 1 1 calc(50% - 8px);
-    justify-content: center;
-    text-align: center;
+  /* .viewerToggle stays a 3-column grid (not the 2-per-row flex-wrap
+     .finishTab uses) deliberately — it has no gap between segments by
+     design (a connected segmented control, divided by border-right only),
+     so putting it through the same flex-grow 2-up treatment as .finishTab
+     closed that simulated gap to zero: the first two segments ended up
+     sharing a row with no visible gap between them (just a faint 1px
+     border), reading as one wide button, while the third segment stretched
+     alone across its own full-width row. Narrower padding/font here instead
+     of a layout change, so "Front profiles"/"Edge profiles" still fit
+     without needing the row to wrap to 2 lines. */
+  .viewerToggleButton {
+    font-size: 11px;
+    padding: 8px 4px;
   }
 
-  .colourSwatches {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+  /* .colourSwatches is display:flex (flex-wrap), not grid — swatches are a
+     fixed 44x44 with a real 10px gap, so they already wrap naturally with
+     visible spacing; no column count to force here. */
 
-  .profileSwatches,
-  .edgeProfileList,
+  /* .profileSwatches/.edgeProfileList deliberately NOT collapsed to 1
+     column here — they used to be, which not only wasted most of the row
+     width on every tile (a 70px-tall image in a ~350px-wide box) but also
+     silently undid the working 2-column layout set at 720px below, since
+     this rule comes later in the cascade and both apply on a phone.
+     Profile/edge names are short enough that 2-up stays comfortable even
+     on a narrow phone. */
   .featureGrid,
   .infoGrid,
   .relatedGrid {
@@ -912,8 +1042,21 @@
     min-height: 280px;
   }
 
+  /* .galleryThumbs is display:flex with no flex-wrap (base rule), so 4
+     fixed 72x72 thumbnails + gaps (318px total) never actually wrapped to
+     2 columns here — they just got tight/clipped on narrower phones.
+     Switching to a real grid (with fluid, non-fixed thumb sizing below)
+     makes 2-per-row actually happen. */
   .galleryThumbs {
+    display: grid;
+    gap: 8px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .thumb {
+    aspect-ratio: 1 / 1;
+    height: auto;
+    width: 100%;
   }
 
   .viewerPanel,
@@ -929,5 +1072,14 @@
 
   .formActions button {
     width: 100%;
+  }
+
+  .lightboxViewer {
+    gap: 8px;
+  }
+
+  .lightboxNav {
+    height: 40px;
+    width: 40px;
   }
 }

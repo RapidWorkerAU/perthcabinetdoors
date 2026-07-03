@@ -29,6 +29,24 @@ const TYPE_SHORT = {
   obstruction:   "obstr.",
 };
 
+// Friendly fallback label when an item has no custom label yet (every item
+// starts unlabeled) — without this, the raw snake_case item_type would
+// render directly in the list instead of a human-readable name.
+const TYPE_LABELS = {
+  base_cabinet:  "Base Cabinet",
+  wall_cabinet:  "Wall Cabinet",
+  tall_cabinet:  "Tall Cabinet",
+  corner_base_cabinet: "Corner Base Cabinet",
+  door:          "Door",
+  drawer_front:  "Drawer Front",
+  panel:         "Panel",
+  obstruction:   "Obstruction",
+};
+
+function itemDisplayLabel(item) {
+  return item.label || TYPE_LABELS[item.item_type] || item.item_type;
+}
+
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
 
 /**
@@ -354,7 +372,7 @@ function KickboardRunItem({ run, runId, openItems, toggleItem }) {
                 {seg.length} <span className={styles.cutListAxis}>(W)</span>
               </span>
               <span className={styles.cutListName}>
-                {seg.item.label || seg.item.item_type}
+                {itemDisplayLabel(seg.item)}
                 {seg.leg === "secondary" ? " (Wall 2)" : seg.item.item_type === "corner_base_cabinet" ? " (Wall 1)" : ""}
               </span>
             </div>
@@ -560,7 +578,7 @@ export default function DesignLeftPanel({
             style={{ background: ITEM_COLORS[item.item_type] || "#888" }}
           />
           <span className={styles.leftItemLabel}>
-            {item.label || item.item_type}
+            {itemDisplayLabel(item)}
             {item.qty > 1 && <span className={styles.leftItemQty}> ×{item.qty}</span>}
           </span>
           <span className={styles.leftItemType}>{TYPE_SHORT[item.item_type] || item.item_type}</span>

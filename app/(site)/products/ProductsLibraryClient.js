@@ -1,17 +1,63 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import PortalModal from "@/components/PortalModal";
 import { DEFAULT_TYPES, PRODUCTS } from "./product-data";
 import styles from "./products.module.css";
+
+const ALL_MATERIALS = ["thermolaminate", "decorative", "compact"];
+
+const TYPE_OPTIONS = [
+  ["door", "Door"],
+  ["drawer-front", "Drawer front"],
+  ["panel", "Panel"],
+  ["table-top", "Table top"],
+];
+
+const MATERIAL_OPTIONS = [
+  ["thermolaminate", "Thermolaminate"],
+  ["decorative", "Decorative board"],
+  ["compact", "Compact laminate"],
+];
 
 function toggleValue(values, value) {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
 
+// Shared between the desktop sidebar and the mobile full-screen filter
+// modal so both stay in sync from the same markup instead of two
+// hand-maintained copies.
+function FilterGroups({ types, materials, onToggleType, onToggleMaterial }) {
+  return (
+    <>
+      <div className={styles.filterGroup}>
+        <div className={styles.filterGroupLabel}>Product type</div>
+        {TYPE_OPTIONS.map(([value, label]) => (
+          <label className={styles.filterOption} key={value}>
+            <input type="checkbox" checked={types.includes(value)} onChange={() => onToggleType(value)} />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+
+      <div className={styles.filterGroup}>
+        <div className={styles.filterGroupLabel}>Material</div>
+        {MATERIAL_OPTIONS.map(([value, label]) => (
+          <label className={styles.filterOption} key={value}>
+            <input type="checkbox" checked={materials.includes(value)} onChange={() => onToggleMaterial(value)} />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export default function ProductsLibraryClient({ products = PRODUCTS }) {
   const [types, setTypes] = useState(DEFAULT_TYPES);
-  const [materials, setMaterials] = useState(["thermolaminate", "decorative", "compact"]);
+  const [materials, setMaterials] = useState(ALL_MATERIALS);
   const [sort, setSort] = useState("default");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const visibleProducts = useMemo(() => {
     const filtered = products.filter((product) => {
@@ -35,9 +81,23 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
 
   function resetFilters() {
     setTypes(DEFAULT_TYPES);
-    setMaterials(["thermolaminate", "decorative", "compact"]);
+    setMaterials(ALL_MATERIALS);
     setSort("default");
   }
+
+  function handleToggleType(value) {
+    setTypes((current) => toggleValue(current, value));
+  }
+
+  function handleToggleMaterial(value) {
+    setMaterials((current) => toggleValue(current, value));
+  }
+
+  // Only counts as "active" once something has been narrowed from the
+  // default (everything selected) state — matches what "Reset all filters"
+  // resets back to.
+  const activeFilterCount =
+    (DEFAULT_TYPES.length - types.length) + (ALL_MATERIALS.length - materials.length);
 
   return (
     <main className={styles.page}>
@@ -56,42 +116,29 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
       <div className={styles.catalogue}>
         <aside className={styles.sidebar}>
           <div className={styles.sidebarHeading}>Filter products</div>
-
-          <div className={styles.filterGroup}>
-            <div className={styles.filterGroupLabel}>Product type</div>
-            {[
-              ["door", "Door"],
-              ["drawer-front", "Drawer front"],
-              ["panel", "Panel"],
-              ["table-top", "Table top"],
-            ].map(([value, label]) => (
-              <label className={styles.filterOption} key={value}>
-                <input type="checkbox" checked={types.includes(value)} onChange={() => setTypes(toggleValue(types, value))} />
-                <span>{label}</span>
-              </label>
-            ))}
-          </div>
-
-          <div className={styles.filterGroup}>
-            <div className={styles.filterGroupLabel}>Material</div>
-            {[
-              ["thermolaminate", "Thermolaminate"],
-              ["decorative", "Decorative board"],
-              ["compact", "Compact laminate"],
-            ].map(([value, label]) => (
-              <label className={styles.filterOption} key={value}>
-                <input type="checkbox" checked={materials.includes(value)} onChange={() => setMaterials(toggleValue(materials, value))} />
-                <span>{label}</span>
-              </label>
-            ))}
-          </div>
-
+          <FilterGroups
+            types={types}
+            materials={materials}
+            onToggleType={handleToggleType}
+            onToggleMaterial={handleToggleMaterial}
+          />
           <button className={styles.filterReset} type="button" onClick={resetFilters}>
             Reset all filters
           </button>
         </aside>
 
         <section>
+          <button
+            type="button"
+            className={styles.mobileFilterTrigger}
+            onClick={() => setFiltersOpen(true)}
+          >
+            <span>Filters</span>
+            {activeFilterCount > 0 ? (
+              <span className={styles.mobileFilterBadge}>{activeFilterCount}</span>
+            ) : null}
+          </button>
+
           <div className={styles.toolbar}>
             <p className={styles.resultCount}>Showing <strong>{visibleProducts.length}</strong> products</p>
             <div className={styles.sortWrap}>
@@ -156,6 +203,34 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
           </p>
         </div>
       </footer>
+
+      <PortalModal
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        ariaLabel="Filter products"
+        title="Filter products"
+        footer={
+          <>
+            <button className={styles.modalFilterReset} type="button" onClick={resetFilters}>
+              Reset all filters
+            </button>
+            <button
+              className={styles.mobileFilterApplyBtn}
+              type="button"
+              onClick={() => setFiltersOpen(false)}
+            >
+              Show {visibleProducts.length} results
+            </button>
+          </>
+        }
+      >
+        <FilterGroups
+          types={types}
+          materials={materials}
+          onToggleType={handleToggleType}
+          onToggleMaterial={handleToggleMaterial}
+        />
+      </PortalModal>
     </main>
   );
 }

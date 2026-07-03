@@ -241,6 +241,30 @@ function lineValue(value, fallback = "-") {
   return value || fallback;
 }
 
+// Width/height/qty are plain type="text" inputs (so partial input like an
+// empty box while retyping isn't fought by the browser's number-input
+// validation), which means nothing was stopping a pasted value like
+// "1,200" from turning into NaN downstream and silently zeroing out the
+// line's calculated cost. Restrict to digits only — every one of these is a
+// whole-unit mm dimension or a whole cabinet/door count in this business.
+function sanitizeIntegerInput(value) {
+  return String(value ?? "").replace(/[^0-9]/g, "");
+}
+
+// Used by the qty +/- steppers so a stray non-numeric value already in the
+// field can't produce "NaN" written back into it.
+function safeLineQty(value) {
+  const num = Math.round(Number(value));
+  return Number.isFinite(num) && num > 0 ? num : 1;
+}
+
+// Markup should never go negative (that's a below-cost quote line with no
+// warning) — strip a typed/pasted minus sign at input time rather than only
+// catching it after the fact.
+function sanitizeNonNegativeDecimalInput(value) {
+  return String(value ?? "").replace(/[^0-9.]/g, "");
+}
+
 // Trim/case-insensitive comparison so a product_type coming from anywhere
 // other than this editor's own dropdown (e.g. a future design-tool import
 // change) can't silently fall through an exact-match check and lose its
@@ -2105,7 +2129,7 @@ export default function QuoteEditor({ quoteId }) {
                                 inputMode="numeric"
                                 placeholder="mm"
                                 value={line.width_mm}
-                                onChange={e => updateLine(index, 'width_mm', e.target.value)}
+                                onChange={e => updateLine(index, 'width_mm', sanitizeIntegerInput(e.target.value))}
                                 className="flex-1 h-full px-[3px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
                               />
                             </div>
@@ -2128,7 +2152,7 @@ export default function QuoteEditor({ quoteId }) {
                                 inputMode="numeric"
                                 placeholder="mm"
                                 value={line.height_mm}
-                                onChange={e => updateLine(index, 'height_mm', e.target.value)}
+                                onChange={e => updateLine(index, 'height_mm', sanitizeIntegerInput(e.target.value))}
                                 className="flex-1 h-full px-[3px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
                               />
                             </div>
@@ -2311,18 +2335,18 @@ export default function QuoteEditor({ quoteId }) {
                                 type="text"
                                 inputMode="numeric"
                                 value={line.qty}
-                                onChange={e => updateLine(index, 'qty', e.target.value)}
+                                onChange={e => updateLine(index, 'qty', sanitizeIntegerInput(e.target.value))}
                                 className="flex-1 h-full text-[10px] font-mono text-center border border-[#a8c5a0] rounded-[3px] bg-white focus:outline-none focus:border-[#6b9e61] min-w-0"
                               />
                               <div className="flex flex-col gap-[2px] flex-shrink-0 justify-center">
                                 <button
                                   type="button"
-                                  onClick={() => updateLine(index, 'qty', String(Number(line.qty || 1) + 1))}
+                                  onClick={() => updateLine(index, 'qty', String(safeLineQty(line.qty) + 1))}
                                   className="p-0 border-0 bg-transparent leading-none text-[8px] text-[#a8c5a0] hover:text-[#2d5e28] cursor-pointer"
                                 >▲</button>
                                 <button
                                   type="button"
-                                  onClick={() => updateLine(index, 'qty', String(Math.max(1, Number(line.qty || 1) - 1)))}
+                                  onClick={() => updateLine(index, 'qty', String(Math.max(1, safeLineQty(line.qty) - 1)))}
                                   className="p-0 border-0 bg-transparent leading-none text-[8px] text-[#a8c5a0] hover:text-[#2d5e28] cursor-pointer"
                                 >▼</button>
                               </div>
@@ -2372,7 +2396,7 @@ export default function QuoteEditor({ quoteId }) {
                                 type="text"
                                 inputMode="decimal"
                                 value={line.markup_percent}
-                                onChange={e => updateLine(index, 'markup_percent', e.target.value)}
+                                onChange={e => updateLine(index, 'markup_percent', sanitizeNonNegativeDecimalInput(e.target.value))}
                                 className="flex-1 h-full px-[4px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
                               />
                               <span className="px-[4px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
@@ -2617,13 +2641,13 @@ export default function QuoteEditor({ quoteId }) {
               <div className={tw.grid2}>
                 <label className={tw.fieldLabel}>
                   Hours
-                  <input className={tw.fieldInput + " font-mono"} type="number" step="0.01" value={form.labour_hours} onChange={e => updateForm("labour_hours", e.target.value)} />
+                  <input className={tw.fieldInput + " font-mono"} type="number" min="0" step="0.01" value={form.labour_hours} onChange={e => updateForm("labour_hours", e.target.value)} />
                 </label>
                 <label className={tw.fieldLabel}>
                   Hourly rate ex GST
                   <div className="flex items-center h-[34px] border border-[#dbd8cc] rounded-[6px] overflow-hidden">
                     <span className="px-3 h-full flex items-center text-[13px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#dbd8cc]">$</span>
-                    <input type="number" step="0.01" value={form.worker_hourly_rate} onChange={e => updateForm("worker_hourly_rate", e.target.value)} className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono" />
+                    <input type="number" min="0" step="0.01" value={form.worker_hourly_rate} onChange={e => updateForm("worker_hourly_rate", e.target.value)} className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono" />
                   </div>
                 </label>
               </div>
@@ -2642,7 +2666,7 @@ export default function QuoteEditor({ quoteId }) {
                     {label}
                     <div className="flex items-center h-[34px] border border-[#dbd8cc] rounded-[6px] overflow-hidden">
                       <span className="px-3 h-full flex items-center text-[13px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#dbd8cc]">$</span>
-                      <input type="number" step="0.01" value={form[field]} onChange={e => updateForm(field, e.target.value)} className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono" />
+                      <input type="number" min="0" step="0.01" value={form[field]} onChange={e => updateForm(field, e.target.value)} className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono" />
                     </div>
                   </label>
                 ))}
@@ -3288,7 +3312,7 @@ export default function QuoteEditor({ quoteId }) {
                         <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
                           <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">W</span>
                           <input type="text" inputMode="numeric" placeholder="mm" value={line.width_mm}
-                            onChange={e => updateLine(idx, 'width_mm', e.target.value)}
+                            onChange={e => updateLine(idx, 'width_mm', sanitizeIntegerInput(e.target.value))}
                             className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
                         </div>
                       </div>
@@ -3297,14 +3321,14 @@ export default function QuoteEditor({ quoteId }) {
                         <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
                           <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">H</span>
                           <input type="text" inputMode="numeric" placeholder="mm" value={line.height_mm}
-                            onChange={e => updateLine(idx, 'height_mm', e.target.value)}
+                            onChange={e => updateLine(idx, 'height_mm', sanitizeIntegerInput(e.target.value))}
                             className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
                         </div>
                       </div>
                       <div>
                         <span className={mfl}>Qty</span>
                         <input type="text" inputMode="numeric" value={line.qty}
-                          onChange={e => updateLine(idx, 'qty', e.target.value)}
+                          onChange={e => updateLine(idx, 'qty', sanitizeIntegerInput(e.target.value))}
                           className="w-full h-[44px] text-[14px] font-mono text-center border border-[#a8c5a0] rounded-[6px] bg-white focus:outline-none focus:border-[#6b9e61]" />
                       </div>
                       <div>
@@ -3325,7 +3349,7 @@ export default function QuoteEditor({ quoteId }) {
                         <span className={mfl}>Markup %</span>
                         <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
                           <input type="text" inputMode="decimal" value={line.markup_percent}
-                            onChange={e => updateLine(idx, 'markup_percent', e.target.value)}
+                            onChange={e => updateLine(idx, 'markup_percent', sanitizeNonNegativeDecimalInput(e.target.value))}
                             className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
                           <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
                         </div>
