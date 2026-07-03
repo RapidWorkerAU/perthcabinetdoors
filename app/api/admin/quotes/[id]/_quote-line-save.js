@@ -33,6 +33,7 @@ export function quoteLineRow(line, quoteId, sortOrder) {
   return {
     quote_id: quoteId,
     sort_order: sortOrder,
+    design_item_id: line.design_item_id || null,
     product_type: dbText(line.product_type),
     product_name: dbText(line.product_name),
     description: dbText(line.description),
@@ -85,6 +86,8 @@ export function cabinetConfigRow(config, quoteId, lineItemId) {
     height_mm: dbNumber(config.height_mm),
     width_mm: dbNumber(config.width_mm),
     depth_mm: dbNumber(config.depth_mm),
+    is_corner: Boolean(config.is_corner),
+    secondary_width_mm: dbNumber(config.secondary_width_mm),
     carcass_material: dbText(config.carcass_material),
     carcass_finish: dbText(config.carcass_finish),
     carcass_colour: dbText(config.carcass_colour),
@@ -98,6 +101,10 @@ export function cabinetConfigRow(config, quoteId, lineItemId) {
     shelf_colour: dbText(config.shelf_colour),
     shelf_thickness_mm: dbNumber(config.shelf_thickness_mm, 16),
     shelf_heights_mm: Array.isArray(config.shelf_heights_mm) ? config.shelf_heights_mm : [],
+    has_rangehood: Boolean(config.has_rangehood),
+    rangehood_housing_height_mm: dbNumber(config.rangehood_housing_height_mm),
+    rangehood_channel_width_mm: dbNumber(config.rangehood_channel_width_mm),
+    mount_height_mm: dbNullableNumber(config.mount_height_mm),
     cost_per_sqm_carcass: dbNumber(config.cost_per_sqm_carcass),
     cost_per_sqm_shelf: dbNumber(config.cost_per_sqm_shelf),
     labour_cost: dbNumber(config.labour_cost),
@@ -228,6 +235,7 @@ export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id
   const calculatedLine = {
     ...calculateQuoteLine(line, businessDefaults),
     id: lineId || null,
+    design_item_id: line?.design_item_id ?? null,
     cabinet_config: line?.cabinet_config || null,
   };
   const row = quoteLineRow(calculatedLine, quoteId, sortOrder);

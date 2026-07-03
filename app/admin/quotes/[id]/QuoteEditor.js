@@ -241,12 +241,31 @@ function lineValue(value, fallback = "-") {
   return value || fallback;
 }
 
+// Trim/case-insensitive comparison so a product_type coming from anywhere
+// other than this editor's own dropdown (e.g. a future design-tool import
+// change) can't silently fall through an exact-match check and lose its
+// cabinet/hinge UI.
+function normalizeProductTypeKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function isBaseCabinetLine(line) {
-  return line?.product_type === BASE_CABINET_TYPE;
+  return normalizeProductTypeKey(line?.product_type) === normalizeProductTypeKey(BASE_CABINET_TYPE);
+}
+
+// Turns an unrecognized raw value (e.g. "drawer_front") into a readable
+// fallback instead of ever rendering a snake_case/underscored code as-is.
+function humanizeUnknownProductType(value) {
+  const text = String(value || "").replace(/[_-]+/g, " ").trim();
+  if (!text) return "";
+  return text.replace(/\S+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }
 
 function displayProductType(value) {
-  return value === BASE_CABINET_TYPE ? "Base cabinet" : value;
+  if (normalizeProductTypeKey(value) === normalizeProductTypeKey(BASE_CABINET_TYPE)) return "Base cabinet";
+  const knownMatch = PRODUCT_TYPES.find((type) => normalizeProductTypeKey(type) === normalizeProductTypeKey(value));
+  if (knownMatch) return knownMatch;
+  return humanizeUnknownProductType(value) || value;
 }
 
 function defaultQuoteEmailSubject(form) {
@@ -728,6 +747,7 @@ export default function QuoteEditor({ quoteId }) {
   const [editableLineDraft, setEditableLineDraft] = useState(null);
   const [openLineActionIndex, setOpenLineActionIndex] = useState(null);
   const [deleteLineConfirmIndex, setDeleteLineConfirmIndex] = useState(null);
+  const [deleteAttachmentConfirmId, setDeleteAttachmentConfirmId] = useState(null);
   const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
   const [hingeModal, setHingeModal] = useState(null);
   const [profileModal, setProfileModal] = useState(null);
@@ -823,7 +843,7 @@ export default function QuoteEditor({ quoteId }) {
         meta: "Edge profile",
         src: edgeOptionSrc(edge),
       })),
-      hingesApplicable: line.product_type === "Door",
+      hingesApplicable: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Door"),
       colourSrc: colourSrcForLine(line),
       isBaseCabinet: isBaseCabinetLine(line),
     };
@@ -1259,8 +1279,23 @@ export default function QuoteEditor({ quoteId }) {
     }
     const sourceLine = form.lines[index];
     if (!sourceLine) return;
-    const { id: _id, ...rest } = sourceLine;
-    const nextLine = { ...rest };
+    // Drop design_item_id too — a manually duplicated line is a distinct
+    // line the user is deliberately creating, not something a design-tool
+    // reimport should manage/replace alongside its original.
+    const { id: _id, design_item_id: _designItemId, ...rest } = sourceLine;
+    // A duplicated line must get its own cabinet_config row on save, not
+    // reuse the source cabinet's — otherwise saving the duplicate's config
+    // upserts with the original cabinet's primary key, which already
+    // belongs to a different line and fails to save.
+    const nextLine = {
+      ...rest,
+      cabinet_config: rest.cabinet_config
+        ? (() => {
+            const { id: _configId, ...configRest } = rest.cabinet_config;
+            return configRest;
+          })()
+        : rest.cabinet_config,
+    };
     const nextIndex = form.lines.length;
     shouldScrollQuoteItemsToBottomRef.current = true;
     setForm((current) => ({ ...current, lines: [...current.lines, nextLine] }));
@@ -1652,6 +1687,7 @@ export default function QuoteEditor({ quoteId }) {
       toast({ title: error?.message || "Could not delete attachment.", variant: "error" });
     } finally {
       setIsUploading(false);
+      setDeleteAttachmentConfirmId(null);
     }
   }
 
@@ -2767,9 +2803,20 @@ export default function QuoteEditor({ quoteId }) {
                   <a href={attachment.file_url} target="_blank" rel="noreferrer" className="text-[12px] font-medium text-[#6b9e61] hover:underline flex-shrink-0">
                     View
                   </a>
-                  <button type="button" onClick={() => deleteAttachment(attachment)} disabled={isUploading} className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50 flex-shrink-0">
-                    Delete
-                  </button>
+                  {deleteAttachmentConfirmId === attachment.id ? (
+                    <span className="flex items-center gap-2 flex-shrink-0">
+                      <button type="button" onClick={() => deleteAttachment(attachment)} disabled={isUploading} className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50">
+                        Confirm?
+                      </button>
+                      <button type="button" onClick={() => setDeleteAttachmentConfirmId(null)} className="text-[12px] font-medium text-[#5a5a52] hover:underline">
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" onClick={() => setDeleteAttachmentConfirmId(attachment.id)} disabled={isUploading} className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50 flex-shrink-0">
+                      Delete
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

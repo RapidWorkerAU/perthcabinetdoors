@@ -1,10 +1,11 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
-import { saveQuoteLine } from "../../../../quotes/[id]/_quote-line-save";
+import { saveQuoteLine, deleteQuoteLine } from "../../../../quotes/[id]/_quote-line-save";
 import { roundMoney } from "../../../../../../../lib/pcd-quote-utils";
 import { calculateCabinetTotals, normalizeCabinetConfig } from "../../../../../../../lib/pcd-cabinet-utils";
 import { computeKickboardRun } from "../../../../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, splitBackPanelWidths, backPanelSegment } from "../../../../../../../lib/pcd-backpanel-utils";
 import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote } from "../../../../../../../lib/pcd-door-utils";
+import { materialLabelForType } from "../../../../../../../lib/pcd-colour-library";
 
 async function getProjectId(params) {
   const resolved = await Promise.resolve(params);
@@ -88,6 +89,12 @@ function withCalculatedUnitCost(line) {
 
   return {
     ...line,
+    // The design tool's material picker stores lowercase values
+    // ("decorative board"); Door/Drawer front/Panel quote lines are matched
+    // against the quote editor's Title Case vocabulary ("Decorative Board")
+    // for material/thickness/profile/edge-mould selection, so convert here —
+    // the one place every non-cabinet line passes through before saving.
+    material: materialLabelForType(line.material || ""),
     calculated_unit_cost_ex_gst: calculated,
     product_unit_cost_ex_gst:
       line.unit_cost_mode === "auto" && calculated > 0 ? calculated : line.product_unit_cost_ex_gst || 0,
@@ -698,6 +705,20 @@ export async function POST(request, { params }) {
       const sel = selectionForItem(item, selections);
       const lines = [];
 
+      // Re-running an import for a project that's already (partly) imported
+      // must replace this item's previously imported lines, not append
+      // duplicates alongside them — every reimport doubled the quote
+      // subtotal until this was tracked.
+      const { data: staleLines, error: staleLinesError } = await context.supabase
+        .from("pcd_quote_line_items")
+        .select("id")
+        .eq("quote_id", quoteId)
+        .eq("design_item_id", item.id);
+      if (staleLinesError) throw staleLinesError;
+      for (const stale of staleLines || []) {
+        await deleteQuoteLine(context.supabase, quoteId, stale.id);
+      }
+
       if (isCabinet) {
         if (sel.cabinet) {
           lines.push(designItemToLine(item));
@@ -726,7 +747,8 @@ export async function POST(request, { params }) {
 
       for (const line of lines) {
         try {
-          await saveQuoteLine(context.supabase, quoteId, withCalculatedUnitCost(line), { sortOrder });
+          const taggedLine = { ...line, design_item_id: item.id };
+          await saveQuoteLine(context.supabase, quoteId, withCalculatedUnitCost(taggedLine), { sortOrder });
           sortOrder += 1;
           results.created += 1;
         } catch (err) {

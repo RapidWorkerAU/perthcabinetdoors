@@ -10,7 +10,7 @@ import {
 } from "../../../../lib/quote-form-data";
 import { computeBackPanelRun } from "../../../../lib/pcd-backpanel-utils";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
-import { thicknessOptionsForMaterial } from "../../../../lib/pcd-colour-library";
+import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
 
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
 // Cabinet types plus a standalone filler panel — a thin board a user can
@@ -578,9 +578,14 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm }) {
 export function FrontStyleFields({ label, style, onChange }) {
   const mat = style.material || "";
   const thk = style.thickness_mm ? `${style.thickness_mm}mm` : "";
-  const profTypes = profileTypesForSelection(mat, thk);
-  const profNames = profileNamesForSelection(style.profile_type || "", mat, thk);
-  const edgeProfs = edgeProfilesForMaterial(mat);
+  // The material picker stores lowercase values (e.g. "decorative board")
+  // but the profile/edge-mould lookup tables key off the Title Case labels
+  // the quote editor uses (e.g. "Decorative Board") — convert before
+  // looking up, otherwise these options are always empty.
+  const matLabel = materialLabelForType(mat);
+  const profTypes = profileTypesForSelection(matLabel, thk);
+  const profNames = profileNamesForSelection(style.profile_type || "", matLabel, thk);
+  const edgeProfs = edgeProfilesForMaterial(matLabel);
 
   return (
     <>
@@ -1632,9 +1637,12 @@ function DoorPanelForm({ item, onItemChange }) {
     flushPending();
   }
 
-  const profileTypes  = profileTypesForSelection(draft.material || "", draft.thickness || "");
-  const profileNames  = profileNamesForSelection(draft.profile_type || "", draft.material || "", draft.thickness || "");
-  const edgeProfiles  = edgeProfilesForMaterial(draft.material || "");
+  // Same lowercase-vs-Title-Case conversion as FrontStyleFields above —
+  // draft.material comes from the design tool's material picker.
+  const draftMaterialLabel = materialLabelForType(draft.material || "");
+  const profileTypes  = profileTypesForSelection(draftMaterialLabel, draft.thickness || "");
+  const profileNames  = profileNamesForSelection(draft.profile_type || "", draftMaterialLabel, draft.thickness || "");
+  const edgeProfiles  = edgeProfilesForMaterial(draftMaterialLabel);
   const isPanel = draft.item_type === "panel";
 
   // A standalone panel has two independent "thickness" values that should

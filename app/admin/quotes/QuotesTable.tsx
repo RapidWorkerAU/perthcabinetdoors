@@ -62,6 +62,8 @@ export default function QuotesTable() {
   const [setupRequired,     setSetupRequired]     = useState(false)
   const [statusFilter,      setStatusFilter]      = useState('draft')
   const [selectedQuoteIds,  setSelectedQuoteIds]  = useState<string[]>([])
+  const [confirmDeleteId,  setConfirmDeleteId]   = useState('')
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   const statusCounts = useMemo(() => {
     return quotes.reduce<Record<string, number>>(
@@ -159,14 +161,18 @@ export default function QuotesTable() {
       toast({ title: err instanceof Error ? err.message : 'Could not delete selected quotes.', variant: 'error' })
     } finally {
       setIsDeleting(false)
+      setConfirmDeleteId('')
+      setConfirmBulkDelete(false)
     }
   }
 
   function toggleSelectedQuote(id: string) {
+    setConfirmBulkDelete(false)
     setSelectedQuoteIds(current => current.includes(id) ? current.filter(i => i !== id) : [...current, id])
   }
 
   function toggleSelectedPage(checked: boolean) {
+    setConfirmBulkDelete(false)
     const pageIds = pageItems.map(q => q.id)
     setSelectedQuoteIds(current => {
       if (!checked) return current.filter(id => !pageIds.includes(id))
@@ -214,14 +220,35 @@ export default function QuotesTable() {
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           {selectedQuoteIds.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => deleteQuotes(selectedQuoteIds)}
-              disabled={isDeleting}
-              className="text-[13px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-            >
-              Delete {selectedQuoteIds.length} selected
-            </button>
+            confirmBulkDelete ? (
+              <span className="flex items-center gap-2 text-[13px]">
+                <span className="text-[#5a5a52]">Delete {selectedQuoteIds.length} quotes?</span>
+                <button
+                  type="button"
+                  onClick={() => deleteQuotes(selectedQuoteIds)}
+                  disabled={isDeleting}
+                  className="font-medium text-[#b42318] hover:underline disabled:opacity-50"
+                >
+                  Confirm delete
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmBulkDelete(false)}
+                  className="font-medium text-[#5a5a52] hover:underline"
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmBulkDelete(true)}
+                disabled={isDeleting}
+                className="text-[13px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
+              >
+                Delete {selectedQuoteIds.length} selected
+              </button>
+            )
           ) : (
             <span className="text-[13px] text-[#8b8a81]">
               {visibleQuotes.length} {visibleQuotes.length === 1 ? 'quote' : 'quotes'}
@@ -334,14 +361,34 @@ export default function QuotesTable() {
                         >
                           {duplicatingQuoteId === quote.id ? 'Duplicating...' : 'Duplicate'}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteQuotes([quote.id])}
-                          disabled={isDeleting}
-                          className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                        >
-                          Delete
-                        </button>
+                        {confirmDeleteId === quote.id ? (
+                          <span className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => deleteQuotes([quote.id])}
+                              disabled={isDeleting}
+                              className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
+                            >
+                              Confirm?
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId('')}
+                              className="text-[12px] font-medium text-[#5a5a52] hover:underline"
+                            >
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(quote.id)}
+                            disabled={isDeleting}
+                            className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
