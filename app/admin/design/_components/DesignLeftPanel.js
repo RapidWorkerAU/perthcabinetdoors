@@ -5,6 +5,7 @@ import { useState, useRef } from "react";
 import styles from "../design.module.css";
 import { computeKickboardRun, computeAllKickboardRuns, kickboardSegments } from "../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, computeAllBackPanelRuns, splitBackPanelWidths, backPanelSegment } from "../../../../lib/pcd-backpanel-utils";
+import { computeFillerPanelRun, computeAllFillerPanelRuns, fillerPanelSegment, fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves } from "../../../../lib/pcd-door-utils";
 
 const ITEM_COLORS = {
@@ -50,12 +51,16 @@ function itemDisplayLabel(item) {
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
 
 /**
- * Computes the board cut list for a cabinet item.
+ * Computes the board cut list for a cabinet item, mirroring
+ * calculateCabinetCutList in lib/pcd-cabinet-utils.js (used at import time)
+ * so the design tool's preview always matches what actually gets quoted.
  * Standard box construction:
- *   - Left/right sides run full height and full depth
- *   - Top/bottom span between the sides (W − 2×T)
- *   - Back fits between the sides, full height (W − 2×T) × H
- *   - Shelves span between sides, set back 20mm from front
+ *   - Left/right sides run full height; depth is carcass depth minus the
+ *     back panel thickness, since the back sits flush against the rear
+ *     edges rather than housed in a groove between the sides
+ *   - Top/bottom span between the sides (W − 2×T), same reduced depth as the sides
+ *   - Back panel is full width × full height (the outside footprint), never inset
+ *   - Shelves span between sides, same reduced depth as the sides/top/bottom
  *   - Kickboard: continuous runs show once (on run's first cabinet); individual shows per cabinet
  */
 // L-shaped corner cabinet piece list, mirroring calculateCornerCabinetCutList
@@ -69,7 +74,6 @@ function computeCornerCutList(item, W, H, D, T, BT, shelfQty) {
 
   const legAPanelDepth = Math.max(0, D - BT);
   const legBWidth = Math.max(0, secW - D);
-  const SHELF_SETBACK = 20;
   const parts = [];
 
   parts.push({ name: "Side — Wall 1 outer end", dim1: H, axis1: "H", dim2: legAPanelDepth, axis2: "D" });
@@ -91,9 +95,9 @@ function computeCornerCutList(item, W, H, D, T, BT, shelfQty) {
 
   for (let i = 0; i < shelfQty; i++) {
     const suffix = shelfQty === 1 ? "" : ` ${i + 1}`;
-    parts.push({ name: `Shelf${suffix} — Wall 1 leg`, dim1: Math.max(0, W - T), axis1: "W", dim2: legAPanelDepth - SHELF_SETBACK, axis2: "D", material: "shelf" });
+    parts.push({ name: `Shelf${suffix} — Wall 1 leg`, dim1: Math.max(0, W - T), axis1: "W", dim2: legAPanelDepth, axis2: "D", material: "shelf" });
     if (legBWidth > 0) {
-      parts.push({ name: `Shelf${suffix} — Wall 2 leg`, dim1: Math.max(0, legBWidth - T), axis1: "W", dim2: legAPanelDepth - SHELF_SETBACK, axis2: "D", material: "shelf" });
+      parts.push({ name: `Shelf${suffix} — Wall 2 leg`, dim1: Math.max(0, legBWidth - T), axis1: "W", dim2: legAPanelDepth, axis2: "D", material: "shelf" });
     }
   }
 
@@ -113,20 +117,20 @@ function computeCutList(item, allItems = [], room = null) {
   if (!W || !H || !D) return [];
 
   const innerW = W - 2 * T;
-  const SHELF_SETBACK = 20;
+  const carcassPanelDepth = Math.max(0, D - BT);
 
   const parts = item.item_type === "corner_base_cabinet"
     ? computeCornerCutList(item, W, H, D, T, BT, shelfQty)
     : [];
 
   if (item.item_type !== "corner_base_cabinet") {
-    parts.push({ name: "Left Side",  dim1: H, axis1: "H", dim2: D, axis2: "D" });
-    parts.push({ name: "Right Side", dim1: H, axis1: "H", dim2: D, axis2: "D" });
-    parts.push({ name: "Top",    dim1: innerW, axis1: "W", dim2: D, axis2: "D" });
-    parts.push({ name: "Bottom", dim1: innerW, axis1: "W", dim2: D, axis2: "D" });
+    parts.push({ name: "Left Side",  dim1: H, axis1: "H", dim2: carcassPanelDepth, axis2: "D" });
+    parts.push({ name: "Right Side", dim1: H, axis1: "H", dim2: carcassPanelDepth, axis2: "D" });
+    parts.push({ name: "Top",    dim1: innerW, axis1: "W", dim2: carcassPanelDepth, axis2: "D" });
+    parts.push({ name: "Bottom", dim1: innerW, axis1: "W", dim2: carcassPanelDepth, axis2: "D" });
 
     if (BT > 0) {
-      parts.push({ name: "Back Panel", dim1: innerW, axis1: "W", dim2: H, axis2: "H", material: "back" });
+      parts.push({ name: "Back Panel", dim1: W, axis1: "W", dim2: H, axis2: "H", material: "back" });
     }
 
     // Rangehood cabinet — a boxed recess at the bottom for the rangehood
@@ -141,9 +145,9 @@ function computeCutList(item, allItems = [], room = null) {
     if (hasChannel) {
       const housingH = Math.min(Number(item.rangehood_housing_height_mm) || 0, H);
       const channelH = Math.max(0, H - housingH);
-      parts.push({ name: "Rangehood Housing Divider", dim1: innerW, axis1: "W", dim2: D, axis2: "D" });
-      parts.push({ name: "Rangehood Channel — Left Wall",  dim1: channelH, axis1: "H", dim2: D, axis2: "D" });
-      parts.push({ name: "Rangehood Channel — Right Wall", dim1: channelH, axis1: "H", dim2: D, axis2: "D" });
+      parts.push({ name: "Rangehood Housing Divider", dim1: innerW, axis1: "W", dim2: carcassPanelDepth, axis2: "D" });
+      parts.push({ name: "Rangehood Channel — Left Wall",  dim1: channelH, axis1: "H", dim2: carcassPanelDepth, axis2: "D" });
+      parts.push({ name: "Rangehood Channel — Right Wall", dim1: channelH, axis1: "H", dim2: carcassPanelDepth, axis2: "D" });
     }
 
     for (let i = 0; i < shelfQty; i++) {
@@ -152,11 +156,11 @@ function computeCutList(item, allItems = [], room = null) {
         const sideTotal = Math.max(0, innerW - channelW);
         const leftW = Math.floor(sideTotal / 2);
         const rightW = sideTotal - leftW;
-        parts.push({ name: `Shelf${suffix} — Left`,  dim1: leftW,  axis1: "W", dim2: D - SHELF_SETBACK, axis2: "D", material: "shelf" });
-        parts.push({ name: `Shelf${suffix} — Right`, dim1: rightW, axis1: "W", dim2: D - SHELF_SETBACK, axis2: "D", material: "shelf" });
+        parts.push({ name: `Shelf${suffix} — Left`,  dim1: leftW,  axis1: "W", dim2: carcassPanelDepth, axis2: "D", material: "shelf" });
+        parts.push({ name: `Shelf${suffix} — Right`, dim1: rightW, axis1: "W", dim2: carcassPanelDepth, axis2: "D", material: "shelf" });
       } else {
         const name = shelfQty === 1 ? "Shelf" : `Shelf ${i + 1}`;
-        parts.push({ name, dim1: innerW, axis1: "W", dim2: D - SHELF_SETBACK, axis2: "D", material: "shelf" });
+        parts.push({ name, dim1: innerW, axis1: "W", dim2: carcassPanelDepth, axis2: "D", material: "shelf" });
       }
     }
 
@@ -229,6 +233,28 @@ function computeCutList(item, allItems = [], room = null) {
         const name = isCorner ? `Kickboard — ${seg.leg === "secondary" ? "Wall 2" : "Wall 1"}` : "Kickboard";
         parts.push({ name, dim1: seg.length, axis1: "W", dim2: kH, axis2: "H", material: "kickboard" });
       }
+    }
+  }
+
+  // Filler panel — wall cabinets only, closes the gap between the cabinet
+  // top and the ceiling (the wall-cabinet mirror of kickboard, above instead
+  // of below). Unlike kickboard, there's no corner-leg splitting needed
+  // since there's no corner wall cabinet variant — always a single segment.
+  if (item.item_type === "wall_cabinet" && item.has_filler_panel) {
+    const fH    = item.filler_panel_height_mm ?? fillerPanelGapMm(item, room);
+    const fSpan = item.filler_panel_span || "continuous";
+
+    if (fSpan === "continuous") {
+      const run = computeFillerPanelRun(item, allItems);
+      if (run.count <= 1) {
+        // Single-cabinet continuous run — stays in this cabinet's cut list
+        parts.push({ name: "Filler Panel", dim1: run.totalWidth, axis1: "W", dim2: fH, axis2: "H", material: "filler" });
+      }
+      // Multi-cabinet runs are shown as their own top-level line items — omit here entirely
+    } else {
+      // Individual span — always stays in this cabinet's cut list
+      const seg = fillerPanelSegment(item);
+      parts.push({ name: "Filler Panel", dim1: seg?.length || W, axis1: "W", dim2: fH, axis2: "H", material: "filler" });
     }
   }
 
@@ -319,6 +345,7 @@ const MAT_DOT_COLOR = {
   shelf:     "#3b82f6",
   back:      "#6b7280",
   kickboard: "#f59e0b",
+  filler:    "#f59e0b",
   panel:     "#a855f7",
   door:      "#a855f7",
   drawer:    "#8b5cf6",
@@ -383,6 +410,55 @@ function KickboardRunItem({ run, runId, openItems, toggleItem }) {
               {totalWidth} <span className={styles.cutListAxis}>(W)</span>
               {" × "}
               {kHeight} <span className={styles.cutListAxis}>(H)</span>
+            </span>
+            <span className={styles.cutListName}>Total cut</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FillerPanelRunItem({ run, runId, openItems, toggleItem, room }) {
+  const isExpanded = openItems.has(runId);
+  const totalWidth = run.segments.reduce((sum, s) => sum + s.length, 0);
+  const firstItem  = run.segments[0]?.item;
+  const fHeight    = firstItem?.filler_panel_height_mm ?? fillerPanelGapMm(firstItem || {}, room);
+
+  return (
+    <div className={styles.leftItemBlock}>
+      <div className={styles.leftItemRow}>
+        <span className={styles.leftItemDot} style={{ background: "#f59e0b" }} />
+        <span className={styles.leftItemLabel}>
+          Filler Panel {WALL_SHORT[run.wall] || run.wall}
+        </span>
+        <span className={styles.leftItemType} style={{ color: "#f59e0b" }}>run</span>
+        <button
+          type="button"
+          className={`${styles.leftItemExpand} ${isExpanded ? styles.leftItemExpandOpen : ""}`}
+          onClick={(e) => toggleItem(runId, e)}
+          title={isExpanded ? "Collapse" : "Show cabinets in this run"}
+        >
+          ›
+        </button>
+      </div>
+      {isExpanded && (
+        <div className={styles.cutList}>
+          {run.segments.map((seg) => (
+            <div key={seg.item.id} className={styles.cutListRow}>
+              <span className={styles.cutListMatDot} style={{ background: "#f59e0b" }} />
+              <span className={styles.cutListDim}>
+                {seg.length} <span className={styles.cutListAxis}>(W)</span>
+              </span>
+              <span className={styles.cutListName}>{itemDisplayLabel(seg.item)}</span>
+            </div>
+          ))}
+          <div className={styles.cutListRow} style={{ marginTop: 5, borderTop: "1px solid rgba(245,158,11,0.2)", paddingTop: 5 }}>
+            <span className={styles.cutListMatDot} style={{ background: "#f59e0b" }} />
+            <span className={styles.cutListDim} style={{ color: "rgba(245,158,11,0.9)" }}>
+              {totalWidth} <span className={styles.cutListAxis}>(W)</span>
+              {" × "}
+              {fHeight} <span className={styles.cutListAxis}>(H)</span>
             </span>
             <span className={styles.cutListName}>Total cut</span>
           </div>
@@ -785,6 +861,20 @@ export default function DesignLeftPanel({
                         runId={runId}
                         openItems={openItems}
                         toggleItem={toggleItem}
+                      />
+                    );
+                  })}
+                  {/* Continuous filler panel runs (2+ wall cabinets) — own line items */}
+                  {computeAllFillerPanelRuns(roomItems).map((run) => {
+                    const runId = `fp-${room.id}-${run.wall}-${run.segments[0]?.item?.id}`;
+                    return (
+                      <FillerPanelRunItem
+                        key={runId}
+                        run={run}
+                        runId={runId}
+                        openItems={openItems}
+                        toggleItem={toggleItem}
+                        room={room}
                       />
                     );
                   })}

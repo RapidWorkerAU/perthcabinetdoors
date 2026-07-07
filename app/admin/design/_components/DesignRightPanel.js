@@ -9,6 +9,7 @@ import {
   profileTypesForSelection,
 } from "../../../../lib/quote-form-data";
 import { computeBackPanelRun } from "../../../../lib/pcd-backpanel-utils";
+import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
 
@@ -651,7 +652,7 @@ export function FrontStyleFields({ label, style, onChange }) {
 }
 
 // ---- Cabinet config form ----
-function CabinetConfigForm({ item, allItems, materialDefaults, onItemChange, onSelectItem }) {
+function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChange, onSelectItem }) {
   const [activeTab, setActiveTab] = useState("Dimensions");
   const [draft, setDraft]         = useState(item);
   const [saving, setSaving]       = useState(false);
@@ -1253,6 +1254,64 @@ function CabinetConfigForm({ item, allItems, materialDefaults, onItemChange, onS
                       </label>
                       <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
                         Continuous kickboard runs are calculated as one piece across the full run in the cut list. Material defaults to carcass.
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* ── Filler Panel — wall cabinets only. Closes the gap between
+                  the cabinet top and the ceiling, the wall-cabinet mirror of
+                  Kickboard/Plinth below. Height defaults to the actual gap to
+                  the room's ceiling height so it fills flush unless overridden. ── */}
+              {draft.item_type === "wall_cabinet" && (
+                <>
+                  <SectionDivider label="Filler Panel" />
+                  <label className={styles.fieldCheckLabel}>
+                    <input
+                      type="checkbox"
+                      checked={draft.has_filler_panel ?? false}
+                      onChange={(e) => setNow("has_filler_panel", e.target.checked)}
+                    />
+                    Include filler panel (to ceiling)
+                  </label>
+                  {draft.has_filler_panel && (
+                    <>
+                      <div className={styles.fieldRow}>
+                        <label className={styles.fieldLabel}>
+                          Height mm
+                          <input
+                            className={styles.fieldInput}
+                            type="number"
+                            min="1"
+                            value={draft.filler_panel_height_mm ?? fillerPanelGapMm(draft, room)}
+                            onChange={(e) => set("filler_panel_height_mm", e.target.value)}
+                          />
+                        </label>
+                        <label className={styles.fieldLabel}>
+                          Thickness mm
+                          <input
+                            className={styles.fieldInput}
+                            type="number"
+                            min="1"
+                            value={draft.filler_panel_thickness_mm ?? 16}
+                            onChange={(e) => set("filler_panel_thickness_mm", e.target.value)}
+                          />
+                        </label>
+                      </div>
+                      <label className={styles.fieldLabel}>
+                        Spanning style
+                        <select
+                          className={styles.fieldSelect}
+                          value={draft.filler_panel_span ?? "continuous"}
+                          onChange={(e) => setNow("filler_panel_span", e.target.value)}
+                        >
+                          <option value="continuous">Continuous (spans across adjacent cabinets)</option>
+                          <option value="individual">Individual (separate piece per cabinet)</option>
+                        </select>
+                      </label>
+                      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+                        Continuous filler panel runs are calculated as one piece across the full run in the cut list. Material defaults to carcass. Height defaults to the gap to the ceiling ({fillerPanelGapMm(draft, room)}mm) — override if you need a different height.
                       </p>
                     </>
                   )}
@@ -1899,7 +1958,7 @@ function ObstructionForm({ item, onItemChange }) {
 }
 
 // ---- Right panel container ----
-export default function DesignRightPanel({ item, allItems, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem }) {
+export default function DesignRightPanel({ item, allItems, room, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmTimer = useRef(null);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -1956,7 +2015,7 @@ export default function DesignRightPanel({ item, allItems, materialDefaults, isA
           </p>
         )}
         {isCabinet ? (
-          <CabinetConfigForm key={item.id} item={item} allItems={allItems} materialDefaults={materialDefaults} onItemChange={onItemChange} onSelectItem={onSelectItem} />
+          <CabinetConfigForm key={item.id} item={item} allItems={allItems} room={room} materialDefaults={materialDefaults} onItemChange={onItemChange} onSelectItem={onSelectItem} />
         ) : item.item_type === "obstruction" ? (
           <ObstructionForm key={item.id} item={item} onItemChange={onItemChange} />
         ) : (

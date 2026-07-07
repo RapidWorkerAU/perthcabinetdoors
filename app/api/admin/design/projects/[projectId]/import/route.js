@@ -4,6 +4,7 @@ import { roundMoney } from "../../../../../../../lib/pcd-quote-utils";
 import { calculateCabinetTotals, normalizeCabinetConfig } from "../../../../../../../lib/pcd-cabinet-utils";
 import { computeKickboardRun } from "../../../../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, splitBackPanelWidths, backPanelSegment } from "../../../../../../../lib/pcd-backpanel-utils";
+import { computeFillerPanelRun, fillerPanelSegment, fillerPanelGapMm } from "../../../../../../../lib/pcd-fillerpanel-utils";
 import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote } from "../../../../../../../lib/pcd-door-utils";
 import { materialLabelForType } from "../../../../../../../lib/pcd-colour-library";
 
@@ -417,6 +418,48 @@ function kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room) {
   return lines;
 }
 
+// Filler panels are imported as a standalone "Panel" line, the wall-cabinet
+// mirror of kickboardLinesForCabinet above — closes the gap between a wall
+// cabinet's top and the ceiling instead of the floor-level toe-kick. There's
+// no corner wall cabinet variant, so (unlike kickboard) this is always a
+// single segment, no leg-splitting. Continuous multi-cabinet runs (mirroring
+// the left panel's own cut-list grouping — see lib/pcd-fillerpanel-utils.js)
+// collapse into a single line spanning the whole run's total width, emitted
+// once by the first cabinet in that run that's actually selected for import.
+function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room) {
+  if (!item.has_filler_panel || item.item_type !== "wall_cabinet") return [];
+
+  const span = item.filler_panel_span || "continuous";
+  const heightMm = item.filler_panel_height_mm ?? fillerPanelGapMm(item, room);
+  const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
+
+  let widthMm;
+  if (span === "continuous") {
+    const run = computeFillerPanelRun(item, selectedCabinetItems);
+    if (run.count > 1 && run.firstItemId !== item.id) return []; // covered by the run's first cabinet
+    widthMm = run.totalWidth;
+  } else {
+    const seg = fillerPanelSegment(item);
+    widthMm = seg?.length || item.width_mm || 600;
+  }
+
+  return [{
+    product_type: "Panel",
+    product_name: "Filler Panel",
+    description: traceLabel ? `Filler Panel — ${traceLabel}` : "Filler Panel",
+    notes: "Filler panel — closes the gap to the ceiling.",
+    width_mm: widthMm,
+    height_mm: heightMm,
+    qty: 1,
+    material: item.material || "",
+    finish: item.finish || "",
+    colour: item.colour || "",
+    thickness: item.filler_panel_thickness_mm ? `${item.filler_panel_thickness_mm}mm` : "",
+    unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
+    unit_cost_mode: "auto",
+  }];
+}
+
 // End & back panels — mirrors the left panel's cut-list logic (see
 // lib/pcd-backpanel-utils.js). Only base_cabinet/tall_cabinet get these —
 // a corner cabinet's "back" isn't a single well-defined side, and wall
@@ -645,7 +688,7 @@ export async function POST(request, { params }) {
         .eq("design_project_id", projectId)
         .order("room_id", { ascending: true })
         .order("sort_order", { ascending: true }),
-      context.supabase.from("pcd_design_rooms").select("id, name, width_mm, depth_mm").eq("design_project_id", projectId),
+      context.supabase.from("pcd_design_rooms").select("id, name, width_mm, depth_mm, height_mm").eq("design_project_id", projectId),
     ]);
 
     if (itemsError) throw itemsError;
@@ -754,6 +797,9 @@ export async function POST(request, { params }) {
           lines.push(designItemToLine(item));
           lines.push(
             ...kickboardLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id), roomById.get(item.room_id))
+          );
+          lines.push(
+            ...fillerPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id), roomById.get(item.room_id))
           );
           lines.push(
             ...endBackPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id))

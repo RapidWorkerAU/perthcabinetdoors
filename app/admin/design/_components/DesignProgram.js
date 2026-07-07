@@ -265,6 +265,7 @@ export default function DesignProgram({ projectId }) {
       <DesignRightPanel
         item={selectedItem}
         allItems={roomItems}
+        room={selectedRoom}
         materialDefaults={project?.material_defaults}
         isAddingItem={isAddingItem}
         isOverlapping={selectedItemOverlaps}

@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import styles from "../design.module.css";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
+import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 
 const ITEM_COLORS = {
   base_cabinet:  "#3b82f6",
@@ -528,15 +529,17 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     };
   }
 
+  // Default (unsaved) shelf position matches normalizeShelfHeights in
+  // lib/pcd-cabinet-utils.js — (i+1)*H/(qty+1), no carcass-thickness term —
+  // so an un-dragged shelf shows at the same height here as in the cabinet
+  // schematic, cut-list PDF, and whatever gets persisted on import.
   function getShelfPositions(item) {
     if (localShelves[item.id]?.length) return localShelves[item.id];
     if (item.shelf_heights_mm?.length) return item.shelf_heights_mm;
     const qty = item.shelf_qty || 0;
     if (!qty) return [];
-    const T  = item.carcass_thickness_mm || 16;
     const hMm = item.height_mm || 720;
-    const sec = (hMm - 2 * T) / (qty + 1);
-    return Array.from({ length: qty }, (_, i) => T + sec * (i + 1));
+    return Array.from({ length: qty }, (_, i) => Math.round(((i + 1) * hMm) / (qty + 1)));
   }
 
   // ---- Pointer handlers ----------------------------------------------------
@@ -891,6 +894,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             // Kickboard lifts the cabinet body off the floor by kickboard height
             const kbMm   = (item.has_kickboard && item.item_type !== "wall_cabinet")
               ? (item.kickboard_height_mm || 150)
+              : 0;
+            // Filler panel closes the gap between a wall cabinet's top and the ceiling
+            const fillerMm = (item.item_type === "wall_cabinet" && item.has_filler_panel)
+              ? (item.filler_panel_height_mm ?? fillerPanelGapMm(item, room))
               : 0;
             const fill   = ITEM_COLORS[item.item_type] || "#888";
             const svgX   = ox + xMm  * scale;
@@ -1249,6 +1256,18 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   <rect
                     x={svgX} y={svgY + svgH}
                     width={svgW} height={kbMm * scale}
+                    fill="rgba(245,158,11,0.45)"
+                    stroke="rgba(245,158,11,0.7)"
+                    strokeWidth={0.5}
+                    style={{ pointerEvents: "none" }}
+                  />
+                )}
+
+                {/* Filler panel strip — sits above the cabinet body, fills space to the ceiling */}
+                {fillerMm > 0 && (
+                  <rect
+                    x={svgX} y={svgY - fillerMm * scale}
+                    width={svgW} height={fillerMm * scale}
                     fill="rgba(245,158,11,0.45)"
                     stroke="rgba(245,158,11,0.7)"
                     strokeWidth={0.5}

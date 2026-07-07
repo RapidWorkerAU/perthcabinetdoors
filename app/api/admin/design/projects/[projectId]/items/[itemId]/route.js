@@ -43,6 +43,8 @@ function buildPatch(payload) {
   bool("back_panel_included"); bool("hinge_holes"); bool("hinge_supply");
   bool("has_kickboard");
   int("kickboard_height_mm", 150); int("kickboard_thickness_mm", 16); str("kickboard_span");
+  bool("has_filler_panel");
+  int("filler_panel_height_mm"); int("filler_panel_thickness_mm", 16); str("filler_panel_span");
   bool("end_panel_left"); bool("end_panel_right"); bool("has_back_panel"); bool("panel_to_floor");
   bool("back_panel_wall1"); bool("back_panel_wall2");
   str("back_panel_span"); int("back_panel_qty", 1);
