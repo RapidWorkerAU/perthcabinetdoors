@@ -9,7 +9,9 @@ import {
   profileTypesForSelection,
 } from "../../../../lib/quote-form-data";
 import { computeBackPanelRun } from "../../../../lib/pcd-backpanel-utils";
+import { computeBottomPanelRun } from "../../../../lib/pcd-bottompanel-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
+import { getAbsPos, itemDepthMm } from "./DesignCanvas";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
 
@@ -21,7 +23,11 @@ const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_b
 // Obstruction: a generic non-manufactured spatial blocker (nib wall, full
 // wall, brick recess) — draggable and fully collision-checked like a
 // cabinet, but never quoted.
-const ADDABLE_TYPES = [...CABINET_TYPES, "panel", "obstruction"];
+// Scribe: the mirror image of "panel" — a side filler that sits flush
+// against a cabinet's front face and runs sideways to an obstruction, so
+// (unlike panel) width_mm keeps its normal along-wall-span meaning and
+// scribe_thickness_mm is its own dedicated field rather than an overload.
+const ADDABLE_TYPES = [...CABINET_TYPES, "panel", "scribe", "obstruction"];
 
 const TYPE_LABELS = {
   base_cabinet:  "Base Cabinet",
@@ -31,6 +37,7 @@ const TYPE_LABELS = {
   door:          "Door",
   drawer_front:  "Drawer Front",
   panel:         "Panel",
+  scribe:        "Scribe",
   obstruction:   "Obstruction",
 };
 
@@ -40,6 +47,40 @@ const WALL_OPTIONS = [
   { value: "left", label: "Left wall" },
   { value: "right", label: "Right wall" },
 ];
+
+// Manually reassigns which wall an item belongs to — the plan view only
+// ever derives `wall` automatically (snapToWall, by nearest-room-edge
+// distance while dragging), which guesses wrong for a small item sitting
+// right in a corner between two walls (e.g. a scribe meant to support a
+// wall cabinet run but sitting slightly closer to the perpendicular wall).
+// Recomputes x_mm/y_mm from the item's CURRENT absolute room position so it
+// stays where it visually is, just reinterpreted under the new wall's
+// along-wall-axis convention (getAbsPos/cabinetFootprint's own convention —
+// x_mm for top/bottom, y_mm for left/right, both for island).
+function reassignWall(item, newWall, room) {
+  const roomW = room?.width_mm || 4000;
+  const roomD = room?.depth_mm || 3000;
+  const { absX, absY } = getAbsPos(item, roomW, roomD);
+  const w = item.width_mm || 600;
+  const d = itemDepthMm(item);
+
+  switch (newWall) {
+    case "top":
+      return { wall: "top", x_mm: Math.max(0, Math.min(absX, roomW - w)), y_mm: 0 };
+    case "bottom":
+      return { wall: "bottom", x_mm: Math.max(0, Math.min(absX, roomW - w)), y_mm: 0 };
+    case "left":
+      return { wall: "left", x_mm: 0, y_mm: Math.max(0, Math.min(absY, roomD - w)) };
+    case "right":
+      return { wall: "right", x_mm: 0, y_mm: Math.max(0, Math.min(absY, roomD - w)) };
+    default: // "island" — freestanding, both axes matter
+      return {
+        wall: "island",
+        x_mm: Math.max(0, Math.min(absX, roomW - w)),
+        y_mm: Math.max(0, Math.min(absY, roomD - d)),
+      };
+  }
+}
 
 // Shared inline section divider used across tabs — right panel has a white background
 function SectionDivider({ label }) {
@@ -105,6 +146,7 @@ function AddItemForm({ onAdd, onCancel }) {
   const isCabinet = CABINET_TYPES.includes(draft.item_type);
   const isCorner = draft.item_type === "corner_base_cabinet";
   const isPanel = draft.item_type === "panel";
+  const isScribe = draft.item_type === "scribe";
   const isObstruction = draft.item_type === "obstruction";
 
   function setType(nextType) {
@@ -128,6 +170,24 @@ function AddItemForm({ onAdd, onCancel }) {
         width_mm: 18,
         height_mm: d.height_mm || 720,
         depth_mm: d.depth_mm || 600,
+      }));
+      return;
+    }
+    if (nextType === "scribe") {
+      // Normal width/height, plus its own dedicated thickness field —
+      // scribe's along-wall span lives in width_mm like a cabinet's does,
+      // unlike panel's overloaded width_mm-as-thickness. Always freeform
+      // ("island") from creation — a scribe is positioned relative to
+      // whichever cabinet it fills against, not a room wall, so it never
+      // gets auto-assigned a wall by drag proximity (see isFreeform in
+      // DesignCanvas.js). Rotation controls which wall it supports.
+      setDraft((d) => ({
+        ...d,
+        item_type: nextType,
+        wall: "island",
+        width_mm: d.width_mm && d.width_mm !== 600 ? d.width_mm : 300,
+        height_mm: d.height_mm || 720,
+        scribe_thickness_mm: d.scribe_thickness_mm || 18,
       }));
       return;
     }
@@ -156,7 +216,7 @@ function AddItemForm({ onAdd, onCancel }) {
         </label>
         <label className={styles.fieldLabel}>
           Label
-          <input className={styles.fieldInput} value={draft.label} onChange={(e) => set("label", e.target.value)} placeholder={isPanel ? "e.g. Filler panel" : "e.g. Sink base"} />
+          <input className={styles.fieldInput} value={draft.label} onChange={(e) => set("label", e.target.value)} placeholder={isPanel ? "e.g. Filler panel" : isScribe ? "e.g. Fridge scribe" : "e.g. Sink base"} />
         </label>
         {isPanel ? (
           <>
@@ -173,6 +233,23 @@ function AddItemForm({ onAdd, onCancel }) {
             <label className={styles.fieldLabel}>
               Thickness mm
               <input className={styles.fieldInput} type="number" min="1" value={draft.width_mm} onChange={(e) => set("width_mm", e.target.value)} />
+            </label>
+          </>
+        ) : isScribe ? (
+          <>
+            <div className={styles.fieldRow}>
+              <label className={styles.fieldLabel}>
+                Width mm
+                <input className={styles.fieldInput} type="number" min="1" value={draft.width_mm} onChange={(e) => set("width_mm", e.target.value)} />
+              </label>
+              <label className={styles.fieldLabel}>
+                Height mm
+                <input className={styles.fieldInput} type="number" min="1" value={draft.height_mm} onChange={(e) => set("height_mm", e.target.value)} />
+              </label>
+            </div>
+            <label className={styles.fieldLabel}>
+              Thickness mm
+              <input className={styles.fieldInput} type="number" min="1" value={draft.scribe_thickness_mm} onChange={(e) => set("scribe_thickness_mm", e.target.value)} />
             </label>
           </>
         ) : (
@@ -1260,11 +1337,13 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 </>
               )}
 
-              {/* ── Filler Panel — wall cabinets only. Closes the gap between
-                  the cabinet top and the ceiling, the wall-cabinet mirror of
-                  Kickboard/Plinth below. Height defaults to the actual gap to
-                  the room's ceiling height so it fills flush unless overridden. ── */}
-              {draft.item_type === "wall_cabinet" && (
+              {/* ── Filler Panel — wall and tall cabinets only (both can run
+                  nearly up to the ceiling). Closes the gap above the
+                  cabinet, the mirror of Kickboard/Plinth below. Height
+                  defaults to the actual gap to the room's ceiling, or to the
+                  nearest obstruction above it (e.g. a bulkhead) if that's
+                  closer, unless overridden. ── */}
+              {(draft.item_type === "wall_cabinet" || draft.item_type === "tall_cabinet") && (
                 <>
                   <SectionDivider label="Filler Panel" />
                   <label className={styles.fieldCheckLabel}>
@@ -1284,7 +1363,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                             className={styles.fieldInput}
                             type="number"
                             min="1"
-                            value={draft.filler_panel_height_mm ?? fillerPanelGapMm(draft, room)}
+                            value={draft.filler_panel_height_mm ?? fillerPanelGapMm(draft, room, allItems)}
                             onChange={(e) => set("filler_panel_height_mm", e.target.value)}
                           />
                         </label>
@@ -1311,12 +1390,88 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                         </select>
                       </label>
                       <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                        Continuous filler panel runs are calculated as one piece across the full run in the cut list. Material defaults to carcass. Height defaults to the gap to the ceiling ({fillerPanelGapMm(draft, room)}mm) — override if you need a different height.
+                        Continuous filler panel runs are calculated as one piece across the full run in the cut list. Material defaults to carcass. Height defaults to the gap above the cabinet ({fillerPanelGapMm(draft, room, allItems)}mm) — to the ceiling, or to the nearest obstruction above if closer — override if you need a different height.
                       </p>
                     </>
                   )}
                 </>
               )}
+
+              {/* ── Underside panel — wall cabinets only. Finishes the
+                  visible underside of a wall cabinet (or a continuous run of
+                  them), the wall-cabinet mirror of Finished Back Panel
+                  below. Reuses the cabinet's own carcass material/thickness,
+                  same as back panel. ── */}
+              {draft.item_type === "wall_cabinet" && (() => {
+                const isContinuous = (draft.bottom_panel_span ?? "continuous") === "continuous";
+                const liveItems = allItems
+                  ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i))
+                  : [draft];
+                const run = draft.has_bottom_panel && isContinuous
+                  ? computeBottomPanelRun(draft, liveItems)
+                  : null;
+                const isFirstInRun = !run || run.firstItemId === draft.id;
+                const firstItem = run && !isFirstInRun
+                  ? liveItems.find((i) => i.id === run.firstItemId)
+                  : null;
+
+                return (
+                  <>
+                    <SectionDivider label="Underside Panel" />
+                    <label className={styles.fieldCheckLabel}>
+                      <input
+                        type="checkbox"
+                        checked={draft.has_bottom_panel ?? false}
+                        onChange={(e) => setNow("has_bottom_panel", e.target.checked)}
+                      />
+                      Finished underside panel
+                    </label>
+
+                    {draft.has_bottom_panel && (
+                      <>
+                        <label className={styles.fieldLabel}>
+                          Spanning style
+                          <select
+                            className={styles.fieldSelect}
+                            value={draft.bottom_panel_span ?? "continuous"}
+                            onChange={(e) => setNow("bottom_panel_span", e.target.value)}
+                          >
+                            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
+                            <option value="individual">Individual (one panel, this cabinet only)</option>
+                          </select>
+                        </label>
+
+                        {isContinuous && (
+                          isFirstInRun ? (
+                            <label className={styles.fieldLabel}>
+                              Panel count {run && run.count > 1 ? `(run of ${run.count} cabinets)` : ""}
+                              <input
+                                className={styles.fieldInput}
+                                type="number"
+                                min="1"
+                                value={draft.bottom_panel_qty ?? 1}
+                                onChange={(e) => set("bottom_panel_qty", e.target.value)}
+                              />
+                            </label>
+                          ) : (
+                            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+                              Continuous underside panel run ({run.count} cabinets, {draft.bottom_panel_qty ?? firstItem?.bottom_panel_qty ?? 1} panels) —
+                              panel count is set on{" "}
+                              <button
+                                type="button"
+                                onClick={() => onSelectItem?.(run.firstItemId)}
+                                style={{ background: "none", border: "none", padding: 0, color: "var(--dt-accent, #2f7a4d)", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
+                              >
+                                {firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}
+                              </button>.
+                            </p>
+                          )
+                        )}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* ── End & back panels — base/tall cabinets only. A corner
                   cabinet's "back" isn't a single well-defined side given
@@ -1615,7 +1770,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
 }
 
 // ---- Door / panel flat form ----
-function DoorPanelForm({ item, onItemChange }) {
+function DoorPanelForm({ item, room, onItemChange }) {
   const [draft, setDraft] = useState(item);
   const [saving, setSaving] = useState(false);
   const timerRef  = useRef(null);
@@ -1703,6 +1858,7 @@ function DoorPanelForm({ item, onItemChange }) {
   const profileNames  = profileNamesForSelection(draft.profile_type || "", draftMaterialLabel, draft.thickness || "");
   const edgeProfiles  = edgeProfilesForMaterial(draftMaterialLabel);
   const isPanel = draft.item_type === "panel";
+  const isScribe = draft.item_type === "scribe";
 
   // A standalone panel has two independent "thickness" values that should
   // normally agree: width_mm (the plan-view footprint dimension, always a
@@ -1725,6 +1881,18 @@ function DoorPanelForm({ item, onItemChange }) {
     setMulti(patch);
   }
 
+  // Same keep-in-sync idea as onPanelWidthMmChange, but writing to
+  // scribe_thickness_mm instead of width_mm.
+  function onScribeThicknessMmChange(value) {
+    const patch = { scribe_thickness_mm: value };
+    const numVal = Math.round(Number(value));
+    if (draft.material && Number.isFinite(numVal)) {
+      const match = thicknessOptionsForMaterial(draft.material).find((o) => parseInt(o, 10) === numVal);
+      if (match) patch.thickness = match;
+    }
+    setMulti(patch);
+  }
+
   function onPanelBoardChange({ material, thickness, finish, colour, costPerSqmExGst }) {
     const patch = {
       material,
@@ -1735,6 +1903,23 @@ function DoorPanelForm({ item, onItemChange }) {
     };
     const mm = parseInt(thickness, 10);
     if (Number.isFinite(mm)) patch.width_mm = mm;
+    setMultiNow(patch);
+  }
+
+  // Same keep-in-sync idea as onPanelBoardChange, but for scribe's own
+  // scribe_thickness_mm field instead of width_mm — scribe keeps width_mm at
+  // its normal along-wall-span meaning, so its footprint thickness lives
+  // in scribe_thickness_mm and needs its own sync path.
+  function onScribeBoardChange({ material, thickness, finish, colour, costPerSqmExGst }) {
+    const patch = {
+      material,
+      thickness,
+      finish,
+      colour,
+      unit_cost_per_sqm_ex_gst: costPerSqmExGst || draft.unit_cost_per_sqm_ex_gst || 0,
+    };
+    const mm = parseInt(thickness, 10);
+    if (Number.isFinite(mm)) patch.scribe_thickness_mm = mm;
     setMultiNow(patch);
   }
 
@@ -1768,6 +1953,12 @@ function DoorPanelForm({ item, onItemChange }) {
               <input className={styles.fieldInput} type="number" min="1" value={draft.depth_mm || ""} onChange={(e) => set("depth_mm", e.target.value)} />
             </label>
           )}
+          {isScribe && (
+            <label className={styles.fieldLabel}>
+              Thickness mm
+              <input className={styles.fieldInput} type="number" min="1" value={draft.scribe_thickness_mm || ""} onChange={(e) => onScribeThicknessMmChange(e.target.value)} />
+            </label>
+          )}
           <label className={styles.fieldLabel}>
             Qty
             <input className={styles.fieldInput} type="number" min="1" value={draft.qty ?? ""} onChange={(e) => set("qty", e.target.value)} />
@@ -1780,7 +1971,7 @@ function DoorPanelForm({ item, onItemChange }) {
             thickness={draft.thickness || ""}
             finish={draft.finish || ""}
             colour={draft.colour || ""}
-            onChange={isPanel ? onPanelBoardChange : ({ material, thickness, finish, colour, costPerSqmExGst }) =>
+            onChange={isPanel ? onPanelBoardChange : isScribe ? onScribeBoardChange : ({ material, thickness, finish, colour, costPerSqmExGst }) =>
               setMultiNow({
                 material,
                 thickness,
@@ -1852,10 +2043,36 @@ function DoorPanelForm({ item, onItemChange }) {
               )}
             </>
           )}
+          {isPanel && (
+            <label className={styles.fieldLabel}>
+              Wall
+              <select
+                className={styles.fieldSelect}
+                value={draft.wall || "island"}
+                onChange={(e) => setMultiNow(reassignWall(draft, e.target.value, room))}
+              >
+                {WALL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                <option value="island">Freestanding (island)</option>
+              </select>
+            </label>
+          )}
           <label className={styles.fieldLabel}>
             X offset mm
             <input className={styles.fieldInput} type="number" min="0" value={draft.x_mm ?? 0} onChange={(e) => set("x_mm", e.target.value)} />
           </label>
+          {draft.wall === "island" && (
+            <label className={styles.fieldLabel}>
+              Rotation
+              <select className={styles.fieldSelect} value={draft.rotation || 0} onChange={(e) => setNow("rotation", Number(e.target.value))}>
+                {ROTATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              {isScribe && (
+                <span style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", fontWeight: 400, display: "block", marginTop: 2 }}>
+                  Always freestanding — this sets which wall it supports (0° = top, 90° = right, 180° = bottom, 270° = left).
+                </span>
+              )}
+            </label>
+          )}
           <label className={styles.fieldLabel}>
             Notes
             <textarea className={styles.fieldTextarea} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={4} />
@@ -2019,7 +2236,7 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
         ) : item.item_type === "obstruction" ? (
           <ObstructionForm key={item.id} item={item} onItemChange={onItemChange} />
         ) : (
-          <DoorPanelForm key={item.id} item={item} onItemChange={onItemChange} />
+          <DoorPanelForm key={item.id} item={item} room={room} onItemChange={onItemChange} />
         )}
         <div className={styles.rightPanelFooter}>
           <button

@@ -37,6 +37,7 @@ function buildPatch(payload) {
   int("secondary_width_mm");
   int("sort_order", 0);
   int("carcass_thickness_mm", 16); int("back_panel_thickness_mm", 16);
+  int("scribe_thickness_mm", 18);
   int("shelf_qty", 0); int("shelf_thickness_mm", 16);
   num("cost_per_sqm_carcass"); num("cost_per_sqm_shelf");
   num("unit_cost_per_sqm_ex_gst");
@@ -48,6 +49,7 @@ function buildPatch(payload) {
   bool("end_panel_left"); bool("end_panel_right"); bool("has_back_panel"); bool("panel_to_floor");
   bool("back_panel_wall1"); bool("back_panel_wall2");
   str("back_panel_span"); int("back_panel_qty", 1);
+  bool("has_bottom_panel"); str("bottom_panel_span"); int("bottom_panel_qty", 1);
   str("front_type");
   bool("has_rangehood");
   int("rangehood_housing_height_mm"); int("rangehood_channel_width_mm");

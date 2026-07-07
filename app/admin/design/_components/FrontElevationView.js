@@ -13,6 +13,7 @@ const ITEM_COLORS = {
   door:          "#a855f7",
   drawer_front:  "#8b5cf6",
   panel:         "#6b7280",
+  scribe:        "#ec4899",
   obstruction:   "#57534e",
 };
 
@@ -26,6 +27,7 @@ const TYPE_LABELS = {
   door:          "Door",
   drawer_front:  "Drawer Front",
   panel:         "Panel",
+  scribe:        "Scribe",
   obstruction:   "Obstruction",
 };
 
@@ -41,6 +43,7 @@ export const CABINET_MOUNT_MM = {
   door:          0,
   drawer_front:  0,
   panel:         0,
+  scribe:        0,
   obstruction:   0,
 };
 
@@ -52,9 +55,9 @@ const WALL_LABELS = {
   left:   "Left Wall",
   right:  "Right Wall",
 };
-const DRAGGABLE_TYPES = new Set(["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "panel", "obstruction"]);
+const DRAGGABLE_TYPES = new Set(["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "panel", "scribe", "obstruction"]);
 // Types that can be dragged up/down (mount_height_mm), not just along the wall.
-const VERTICAL_DRAG_TYPES = new Set(["wall_cabinet", "obstruction", "panel"]);
+const VERTICAL_DRAG_TYPES = new Set(["wall_cabinet", "obstruction", "panel", "scribe"]);
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -895,9 +898,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const kbMm   = (item.has_kickboard && item.item_type !== "wall_cabinet")
               ? (item.kickboard_height_mm || 150)
               : 0;
-            // Filler panel closes the gap between a wall cabinet's top and the ceiling
-            const fillerMm = (item.item_type === "wall_cabinet" && item.has_filler_panel)
-              ? (item.filler_panel_height_mm ?? fillerPanelGapMm(item, room))
+            // Filler panel closes the gap between a wall/tall cabinet's top
+            // and the ceiling, or the nearest obstruction above it if closer
+            const fillerMm = ((item.item_type === "wall_cabinet" || item.item_type === "tall_cabinet") && item.has_filler_panel)
+              ? (item.filler_panel_height_mm ?? fillerPanelGapMm(item, room, items))
               : 0;
             const fill   = ITEM_COLORS[item.item_type] || "#888";
             const svgX   = ox + xMm  * scale;
@@ -1300,6 +1304,14 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   );
                 })()}
 
+                {/* Underside panel — wall cabinets only, a horizontal strip
+                    along the bottom edge (the mirror of end panels' vertical
+                    side strips), finishing the visible underside. */}
+                {item.item_type === "wall_cabinet" && item.has_bottom_panel && (
+                  <rect x={svgX} y={svgY + svgH - Math.min(4, svgH)} width={svgW} height={Math.min(4, svgH)}
+                    fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
+                )}
+
                 {/* Width dim leader below cabinet (below kickboard strip if present) */}
                 {svgW > 18 && (
                   <ElevDimLine
@@ -1355,10 +1367,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     label={gapRightNeighbor} horizontal
                   />
                 )}
-                {/* Vertical gaps for wall cabinets/panels — filtered by X-range overlap
-                    (via computeYGaps), not mount-height, so this correctly
+                {/* Vertical gaps for wall cabinets/panels/scribes — filtered by X-range
+                    overlap (via computeYGaps), not mount-height, so this correctly
                     reaches a base/tall cabinet's top surface below. */}
-                {(draggingItem.item_type === "wall_cabinet" || draggingItem.item_type === "panel") && (() => {
+                {(draggingItem.item_type === "wall_cabinet" || draggingItem.item_type === "panel" || draggingItem.item_type === "scribe") && (() => {
                   const { gapBot, gapTop, botBound, topBound } =
                     computeYGaps(mountMm, hMm, xMm, wMm, allDragOthers, roomHeightMm);
                   const dimX = ox + (xMm + wMm / 2) * scale;

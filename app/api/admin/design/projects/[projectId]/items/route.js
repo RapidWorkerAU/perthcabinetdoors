@@ -50,7 +50,10 @@ function applyMaterialDefaults(payload, defaults) {
       if (blank(merged.shelf_thickness_mm)) merged.shelf_thickness_mm = shelf.thickness_mm;
       if (blank(merged.cost_per_sqm_shelf)) merged.cost_per_sqm_shelf = shelf.cost_per_sqm;
     }
-  } else if (payload.item_type === "panel") {
+  } else if (payload.item_type === "panel" || payload.item_type === "scribe") {
+    // Scribe reuses the same material-defaults bucket as panel — it's
+    // quoted as a "Panel" product line too, just a distinct design-tool
+    // item_type for its own drag/snap/render rules.
     const panel = defaults.panel;
     if (panel) {
       if (blank(merged.material)) merged.material = panel.material;
@@ -120,6 +123,9 @@ function buildRow(payload, projectId) {
           back_panel_wall1:       Boolean(payload.back_panel_wall1 ?? false),
           back_panel_wall2:       Boolean(payload.back_panel_wall2 ?? false),
           panel_to_floor:         Boolean(payload.panel_to_floor ?? false),
+          has_bottom_panel:       Boolean(payload.has_bottom_panel ?? false),
+          bottom_panel_span:      dbText(payload.bottom_panel_span) || "continuous",
+          bottom_panel_qty:       dbInt(payload.bottom_panel_qty) ?? 1,
           front_type:             dbText(payload.front_type) || "none",
           door_config:            payload.door_config ?? null,
           door_style:             payload.door_style  ?? null,
@@ -138,6 +144,7 @@ function buildRow(payload, projectId) {
           hinge_holes: Boolean(payload.hinge_holes),
           hinge_supply: Boolean(payload.hinge_supply),
           hinge_qty: dbText(payload.hinge_qty),
+          scribe_thickness_mm: dbInt(payload.scribe_thickness_mm) ?? 18,
         }),
   };
 }
@@ -175,7 +182,7 @@ export async function POST(request, { params }) {
     const projectId = await getProjectId(params);
     const payload = await request.json();
 
-    const VALID_TYPES = [...CABINET_TYPES, "door", "drawer_front", "panel", "obstruction"];
+    const VALID_TYPES = [...CABINET_TYPES, "door", "drawer_front", "panel", "scribe", "obstruction"];
     if (!VALID_TYPES.includes(payload.item_type)) {
       return Response.json({ ok: false, error: "Invalid item_type." }, { status: 422 });
     }

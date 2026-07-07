@@ -5,6 +5,7 @@ import { useState, useRef } from "react";
 import styles from "../design.module.css";
 import { computeKickboardRun, computeAllKickboardRuns, kickboardSegments } from "../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, computeAllBackPanelRuns, splitBackPanelWidths, backPanelSegment } from "../../../../lib/pcd-backpanel-utils";
+import { computeBottomPanelRun, computeAllBottomPanelRuns, bottomPanelSegment } from "../../../../lib/pcd-bottompanel-utils";
 import { computeFillerPanelRun, computeAllFillerPanelRuns, fillerPanelSegment, fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves } from "../../../../lib/pcd-door-utils";
 
@@ -16,6 +17,7 @@ const ITEM_COLORS = {
   door:          "#a855f7",
   drawer_front:  "#8b5cf6",
   panel:         "#6b7280",
+  scribe:        "#ec4899",
   obstruction:   "#57534e",
 };
 
@@ -27,6 +29,7 @@ const TYPE_SHORT = {
   door:          "door",
   drawer_front:  "drwr",
   panel:         "panel",
+  scribe:        "scribe",
   obstruction:   "obstr.",
 };
 
@@ -41,6 +44,7 @@ const TYPE_LABELS = {
   door:          "Door",
   drawer_front:  "Drawer Front",
   panel:         "Panel",
+  scribe:        "Scribe",
   obstruction:   "Obstruction",
 };
 
@@ -236,12 +240,13 @@ function computeCutList(item, allItems = [], room = null) {
     }
   }
 
-  // Filler panel — wall cabinets only, closes the gap between the cabinet
-  // top and the ceiling (the wall-cabinet mirror of kickboard, above instead
-  // of below). Unlike kickboard, there's no corner-leg splitting needed
-  // since there's no corner wall cabinet variant — always a single segment.
-  if (item.item_type === "wall_cabinet" && item.has_filler_panel) {
-    const fH    = item.filler_panel_height_mm ?? fillerPanelGapMm(item, room);
+  // Filler panel — wall/tall cabinets only, closes the gap above the
+  // cabinet: to the ceiling, or to the nearest obstruction above it (e.g. a
+  // bulkhead) if that's closer (the mirror of kickboard, above instead of
+  // below). Unlike kickboard, there's no corner-leg splitting needed since
+  // there's no corner wall/tall cabinet variant — always a single segment.
+  if ((item.item_type === "wall_cabinet" || item.item_type === "tall_cabinet") && item.has_filler_panel) {
+    const fH    = item.filler_panel_height_mm ?? fillerPanelGapMm(item, room, allItems);
     const fSpan = item.filler_panel_span || "continuous";
 
     if (fSpan === "continuous") {
@@ -255,6 +260,29 @@ function computeCutList(item, allItems = [], room = null) {
       // Individual span — always stays in this cabinet's cut list
       const seg = fillerPanelSegment(item);
       parts.push({ name: "Filler Panel", dim1: seg?.length || W, axis1: "W", dim2: fH, axis2: "H", material: "filler" });
+    }
+  }
+
+  // Underside panel — wall cabinets only, finishes the visible underside
+  // (the mirror of back panel, but a horizontal face — width × depth,
+  // not width × height — since it sits flat under the cabinet).
+  if (item.item_type === "wall_cabinet" && item.has_bottom_panel) {
+    const bSpan = item.bottom_panel_span || "continuous";
+    if (bSpan === "continuous") {
+      const run = computeBottomPanelRun(item, allItems);
+      if (run.count <= 1) {
+        // Single-cabinet continuous run — stays in this cabinet's cut list,
+        // split into the run-owner's chosen panel count.
+        const widths = splitBackPanelWidths(run.totalWidth, item.bottom_panel_qty || 1);
+        widths.forEach((w, i) => {
+          const suffix = widths.length > 1 ? ` ${i + 1}` : "";
+          parts.push({ name: `Underside Panel${suffix}`, dim1: w, axis1: "W", dim2: D, axis2: "D", material: "panel" });
+        });
+      }
+      // Multi-cabinet runs are shown as their own top-level line items — omit here entirely
+    } else {
+      const seg = bottomPanelSegment(item);
+      parts.push({ name: "Underside Panel", dim1: seg?.length || W, axis1: "W", dim2: D, axis2: "D", material: "panel" });
     }
   }
 
@@ -419,11 +447,11 @@ function KickboardRunItem({ run, runId, openItems, toggleItem }) {
   );
 }
 
-function FillerPanelRunItem({ run, runId, openItems, toggleItem, room }) {
+function FillerPanelRunItem({ run, runId, openItems, toggleItem, room, allItems }) {
   const isExpanded = openItems.has(runId);
   const totalWidth = run.segments.reduce((sum, s) => sum + s.length, 0);
   const firstItem  = run.segments[0]?.item;
-  const fHeight    = firstItem?.filler_panel_height_mm ?? fillerPanelGapMm(firstItem || {}, room);
+  const fHeight    = firstItem?.filler_panel_height_mm ?? fillerPanelGapMm(firstItem || {}, room, allItems);
 
   return (
     <div className={styles.leftItemBlock}>
@@ -534,6 +562,63 @@ function BackPanelRunItem({ run, runId, openItems, toggleItem }) {
               <span className={styles.cutListName}>Kickboard — Back (continues under panel)</span>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BottomPanelRunItem({ run, runId, openItems, toggleItem }) {
+  const isExpanded = openItems.has(runId);
+  const totalWidth = run.segments.reduce((sum, s) => sum + s.length, 0);
+  const firstItem  = run.segments[0]?.item;
+  const qty        = firstItem?.bottom_panel_qty || 1;
+  const panelD     = Number(firstItem?.depth_mm) || 0;
+  const widths     = splitBackPanelWidths(totalWidth, qty);
+
+  return (
+    <div className={styles.leftItemBlock}>
+      <div className={styles.leftItemRow}>
+        <span className={styles.leftItemDot} style={{ background: "#a855f7" }} />
+        <span className={styles.leftItemLabel}>
+          Underside Panel {WALL_SHORT[run.wall] || run.wall}
+        </span>
+        <span className={styles.leftItemType} style={{ color: "#a855f7" }}>run</span>
+        <button
+          type="button"
+          className={`${styles.leftItemExpand} ${isExpanded ? styles.leftItemExpandOpen : ""}`}
+          onClick={(e) => toggleItem(runId, e)}
+          title={isExpanded ? "Collapse" : "Show cabinets in this run"}
+        >
+          ›
+        </button>
+      </div>
+      {isExpanded && (
+        <div className={styles.cutList}>
+          {run.segments.map((seg) => (
+            <div key={seg.item.id} className={styles.cutListRow}>
+              <span className={styles.cutListMatDot} style={{ background: "#a855f7" }} />
+              <span className={styles.cutListDim}>
+                {seg.length} <span className={styles.cutListAxis}>(W)</span>
+              </span>
+              <span className={styles.cutListName}>{seg.item.label || seg.item.item_type}</span>
+            </div>
+          ))}
+          {widths.map((w, i) => (
+            <div
+              key={`panel-${i}`}
+              className={styles.cutListRow}
+              style={i === 0 ? { marginTop: 5, borderTop: "1px solid rgba(168,85,247,0.2)", paddingTop: 5 } : undefined}
+            >
+              <span className={styles.cutListMatDot} style={{ background: "#a855f7" }} />
+              <span className={styles.cutListDim} style={{ color: "rgba(168,85,247,0.9)" }}>
+                {w} <span className={styles.cutListAxis}>(W)</span>
+                {" × "}
+                {panelD} <span className={styles.cutListAxis}>(D)</span>
+              </span>
+              <span className={styles.cutListName}>Panel {i + 1} of {widths.length}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -684,7 +769,14 @@ export default function DesignLeftPanel({
                   {item.width_mm || 0} <span className={styles.cutListAxis}>(W)</span>
                   {" × "}
                   {item.height_mm || 0} <span className={styles.cutListAxis}>(H)</span>
-                  {item.depth_mm ? (
+                  {item.item_type === "scribe" ? (
+                    item.scribe_thickness_mm ? (
+                      <>
+                        {" × "}
+                        {item.scribe_thickness_mm} <span className={styles.cutListAxis}>(T)</span>
+                      </>
+                    ) : null
+                  ) : item.depth_mm ? (
                     <>
                       {" × "}
                       {item.depth_mm} <span className={styles.cutListAxis}>(D)</span>
@@ -875,6 +967,20 @@ export default function DesignLeftPanel({
                         openItems={openItems}
                         toggleItem={toggleItem}
                         room={room}
+                        allItems={roomItems}
+                      />
+                    );
+                  })}
+                  {/* Continuous underside panel runs (2+ wall cabinets) — own line items */}
+                  {computeAllBottomPanelRuns(roomItems).map((run) => {
+                    const runId = `up-${room.id}-${run.wall}-${run.segments[0]?.item?.id}`;
+                    return (
+                      <BottomPanelRunItem
+                        key={runId}
+                        run={run}
+                        runId={runId}
+                        openItems={openItems}
+                        toggleItem={toggleItem}
                       />
                     );
                   })}

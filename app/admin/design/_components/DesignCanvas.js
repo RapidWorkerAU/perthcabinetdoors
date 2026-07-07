@@ -20,6 +20,7 @@ const ITEM_COLORS = {
   door:          "#a855f7",
   drawer_front:  "#8b5cf6",
   panel:         "#6b7280",
+  scribe:        "#ec4899",
   obstruction:   "#57534e",
 };
 
@@ -31,10 +32,20 @@ const ITEM_SHORT = {
   door:          "Door",
   drawer_front:  "Drwr",
   panel:         "Panel",
+  scribe:        "Scribe",
   obstruction:   "Obstr.",
 };
 
 // --- Geometry helpers ---
+
+// A scribe's plan-view footprint depth (how far it projects from the wall
+// it's against) is its own scribe_thickness_mm — unlike every other item
+// type, which stores its real footprint depth in depth_mm directly. Scribe
+// keeps width_mm at its normal along-wall-span meaning, the mirror image of
+// "panel" (which overloads width_mm as thickness and depth_mm as its span).
+export function itemDepthMm(item) {
+  return item.item_type === "scribe" ? (item.scribe_thickness_mm || 18) : (item.depth_mm || 600);
+}
 
 function computeLayout(room) {
   const W = room.width_mm || 4000;
@@ -91,10 +102,10 @@ function withCornerWallDetection(item, patch, roomWidthMm, roomDepthMm) {
 // Returns absolute room-space (absX, absY) for any cabinet, normalising both old and new formats.
 // Old format for left/right: x_mm = position along wall (room-space y), y_mm = 0.
 // New format for left/right: x_mm = 0 (or roomW-depth), y_mm = position along wall.
-function getAbsPos(item, roomW, roomD) {
+export function getAbsPos(item, roomW, roomD) {
   const x = item.x_mm || 0;
   const y = item.y_mm || 0;
-  const d = item.depth_mm || 600;
+  const d = itemDepthMm(item);
   switch (item.wall) {
     case "top":    return { absX: x, absY: 0 };
     case "bottom": return { absX: x, absY: roomD - d };
@@ -185,7 +196,7 @@ function resolveCollision1D(desired, width, obstacles, roomMax) {
 function cabinetFootprint(item, roomW, roomD) {
   const { absX, absY } = getAbsPos(item, roomW, roomD);
   const w = item.width_mm || 600;
-  const d = item.depth_mm || 600;
+  const d = itemDepthMm(item);
   switch (item.wall) {
     case "top":
     case "bottom": return { x: absX, y: absY, w,   h: d };
@@ -436,7 +447,7 @@ function edgeStripRect(rect, edge, t = 4) {
 // the front-facing indicator.
 function islandEffectiveDims(item) {
   const w = item.width_mm || 600;
-  const d = item.depth_mm || 600;
+  const d = itemDepthMm(item);
   if (item.wall === "island" && (item.rotation || 0) % 180 === 90) {
     return { ew: d, ed: w };
   }
@@ -652,7 +663,8 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
 
   const label      = item.label || ITEM_SHORT[item.item_type] || "?";
   const shortLabel = label.length > 12 ? label.slice(0, 11) + "…" : label;
-  const dimText    = item.width_mm ? `${item.width_mm}w` + (item.depth_mm ? ` × ${item.depth_mm}d` : "") : "";
+  const itemDepth  = itemDepthMm(item);
+  const dimText    = item.width_mm ? `${item.width_mm}w` + (itemDepth ? ` × ${itemDepth}d` : "") : "";
   const fontSize   = Math.min(w, h) > 50 ? 10 : 8;
   const showDims   = w > 55 && h > 34 && dimText;
 
@@ -865,6 +877,14 @@ export default function DesignCanvas({
     setDrag({
       itemId:      item.id,
       wall:        item.wall,   // starting wall — used for orientation during drag
+      // Scribes never get auto-assigned a wall by drag proximity — they're
+      // always freeform (positioned relative to whichever cabinet they're
+      // filling against, not a room wall), so nearest-wall detection kept
+      // guessing wrong for one sitting in a corner. Rotation (via the
+      // right panel's Rotation control, always shown once wall is
+      // "island") is what determines which wall a scribe conceptually
+      // supports, same mechanism as a rotated island cabinet.
+      isFreeform:  item.item_type === "scribe",
       startPt:     pt,
       startAbsX:   absX,
       startAbsY:   absY,
@@ -895,8 +915,12 @@ export default function DesignCanvas({
       const rawAbsX = drag.startAbsX + dxMm;
       const rawAbsY = drag.startAbsY + dyMm;
 
-      // Detect target wall and get clamped snap position
-      const snapped = snapToWall(rawAbsX, rawAbsY, drag.itemWidthMm, drag.itemDepthMm, drag.wall, W, D);
+      // Detect target wall and get clamped snap position — freeform items
+      // (scribe) skip nearest-wall detection entirely and always stay
+      // "island", so proximity to a room wall/corner never reassigns them.
+      const snapped = drag.isFreeform
+        ? { wall: "island", x_mm: clamp(rawAbsX, 0, W - drag.itemWidthMm), y_mm: clamp(rawAbsY, 0, D - drag.itemDepthMm) }
+        : snapToWall(rawAbsX, rawAbsY, drag.itemWidthMm, drag.itemDepthMm, drag.wall, W, D);
       const { wall: newWall } = snapped;
       let { x_mm: newX, y_mm: newY } = snapped;
 

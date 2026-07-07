@@ -4,6 +4,7 @@ import { roundMoney } from "../../../../../../../lib/pcd-quote-utils";
 import { calculateCabinetTotals, normalizeCabinetConfig } from "../../../../../../../lib/pcd-cabinet-utils";
 import { computeKickboardRun } from "../../../../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, splitBackPanelWidths, backPanelSegment } from "../../../../../../../lib/pcd-backpanel-utils";
+import { computeBottomPanelRun, bottomPanelSegment } from "../../../../../../../lib/pcd-bottompanel-utils";
 import { computeFillerPanelRun, fillerPanelSegment, fillerPanelGapMm } from "../../../../../../../lib/pcd-fillerpanel-utils";
 import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote } from "../../../../../../../lib/pcd-door-utils";
 import { materialLabelForType } from "../../../../../../../lib/pcd-colour-library";
@@ -23,15 +24,20 @@ const TYPE_LABELS = {
   door: "Door",
   drawer_front: "Drawer Front",
   panel: "Panel",
+  scribe: "Scribe",
 };
 
 // Quote line product_type must match the casing the quote editor's own
 // dropdown uses (PRODUCT_TYPES in lib/quote-form-data.js), otherwise the
 // imported line's Product Type field shows blank until manually reselected.
+// scribe imports as a "Panel" quote line, same product type as panel — it's
+// only a distinct item_type so the design tool can dictate its own
+// drag/snap/render rules, not a distinct cost category in the quote editor.
 const QUOTE_PRODUCT_TYPES = {
   door: "Door",
   drawer_front: "Drawer front",
   panel: "Panel",
+  scribe: "Panel",
 };
 
 function itemLabel(item) {
@@ -418,19 +424,22 @@ function kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room) {
   return lines;
 }
 
-// Filler panels are imported as a standalone "Panel" line, the wall-cabinet
-// mirror of kickboardLinesForCabinet above — closes the gap between a wall
-// cabinet's top and the ceiling instead of the floor-level toe-kick. There's
-// no corner wall cabinet variant, so (unlike kickboard) this is always a
-// single segment, no leg-splitting. Continuous multi-cabinet runs (mirroring
-// the left panel's own cut-list grouping — see lib/pcd-fillerpanel-utils.js)
-// collapse into a single line spanning the whole run's total width, emitted
-// once by the first cabinet in that run that's actually selected for import.
-function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room) {
-  if (!item.has_filler_panel || item.item_type !== "wall_cabinet") return [];
+// Filler panels are imported as a standalone "Panel" line, the mirror of
+// kickboardLinesForCabinet above — closes the gap above a wall or tall
+// cabinet (to the ceiling, or the nearest obstruction above it if closer)
+// instead of the floor-level toe-kick. There's no corner wall/tall cabinet
+// variant, so (unlike kickboard) this is always a single segment, no
+// leg-splitting. Continuous multi-cabinet runs (mirroring the left panel's
+// own cut-list grouping — see lib/pcd-fillerpanel-utils.js) collapse into a
+// single line spanning the whole run's total width, emitted once by the
+// first cabinet in that run that's actually selected for import.
+// `allRoomItems` must include obstructions (unlike selectedCabinetItems,
+// which is cabinets-only) so the gap calc can detect one sitting above.
+function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, allRoomItems) {
+  if (!item.has_filler_panel || (item.item_type !== "wall_cabinet" && item.item_type !== "tall_cabinet")) return [];
 
   const span = item.filler_panel_span || "continuous";
-  const heightMm = item.filler_panel_height_mm ?? fillerPanelGapMm(item, room);
+  const heightMm = item.filler_panel_height_mm ?? fillerPanelGapMm(item, room, allRoomItems);
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
 
   let widthMm;
@@ -458,6 +467,58 @@ function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room) 
     unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
     unit_cost_mode: "auto",
   }];
+}
+
+// Underside panels are imported as a standalone "Panel" line, the
+// wall-cabinet mirror of the back-panel portion of
+// endBackPanelLinesForCabinet below — finishes the visible UNDERSIDE of a
+// wall cabinet (or a continuous run of them) instead of a floor-standing
+// cabinet's back face. Since it sits flat under the cabinet, its two
+// dimensions are width × depth, not width × height. A continuous run
+// collapses to the run's total width, split into the run-owner's chosen
+// panel count, each its own line; only emitted once, by the run's first
+// cabinet that's actually selected for import.
+function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
+  if (!item.has_bottom_panel || item.item_type !== "wall_cabinet") return [];
+
+  const lines = [];
+  const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
+  const depthMm = item.depth_mm || 600;
+
+  function pushPanel(name, widthMm) {
+    lines.push({
+      product_type: "Panel",
+      product_name: name,
+      description: traceLabel ? `${name} — ${traceLabel}` : name,
+      notes: "Finished underside panel.",
+      width_mm: widthMm,
+      height_mm: depthMm,
+      qty: 1,
+      material: item.material || "",
+      finish: item.finish || "",
+      colour: item.colour || "",
+      thickness: item.carcass_thickness_mm ? `${item.carcass_thickness_mm}mm` : "",
+      unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
+      unit_cost_mode: "auto",
+    });
+  }
+
+  const span = item.bottom_panel_span || "continuous";
+  if (span === "continuous") {
+    const run = computeBottomPanelRun(item, selectedCabinetItems);
+    if (run.count <= 1 || run.firstItemId === item.id) {
+      const widths = splitBackPanelWidths(run.totalWidth, item.bottom_panel_qty || 1);
+      widths.forEach((w, i) =>
+        pushPanel(widths.length > 1 ? `Underside Panel ${i + 1} of ${widths.length}` : "Underside Panel", w)
+      );
+    }
+    // Otherwise covered by the run's first cabinet — omit here
+  } else {
+    const seg = bottomPanelSegment(item);
+    pushPanel("Underside Panel", seg?.length || item.width_mm || 600);
+  }
+
+  return lines;
 }
 
 // End & back panels — mirrors the left panel's cut-list logic (see
@@ -799,7 +860,10 @@ export async function POST(request, { params }) {
             ...kickboardLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id), roomById.get(item.room_id))
           );
           lines.push(
-            ...fillerPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id), roomById.get(item.room_id))
+            ...fillerPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id), roomById.get(item.room_id), items)
+          );
+          lines.push(
+            ...bottomPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id))
           );
           lines.push(
             ...endBackPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id))
