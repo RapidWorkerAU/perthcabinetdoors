@@ -52,6 +52,8 @@ const WALL_LABELS = {
   right:  "Right Wall",
 };
 const DRAGGABLE_TYPES = new Set(["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "panel", "obstruction"]);
+// Types that can be dragged up/down (mount_height_mm), not just along the wall.
+const VERTICAL_DRAG_TYPES = new Set(["wall_cabinet", "obstruction", "panel"]);
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -115,7 +117,8 @@ function computeYGaps(mountMm, hMm, xMm, wMm, others, roomHeightMm) {
 // wall cabinet's left/right edges should snap to a base cabinet's edges
 // directly below it just as readily as to another wall cabinet, since
 // that's a real, common alignment case (only the vertical/mount snap below
-// is type-restricted, since only wall cabinets have an adjustable height).
+// is type-restricted, to items in VERTICAL_DRAG_TYPES, since not every
+// item type can be moved up/down the wall).
 // Evaluates every candidate edge-pair and keeps the closest within range,
 // rather than the first one encountered, so the snap always favors
 // whichever alignment is actually nearest the cursor.
@@ -142,7 +145,7 @@ function applyEdgeSnap(xMm, mountMm, widthMm, heightMm, others, itemType, wallWi
   if (bestX) { sx = bestX.newX; snapX = bestX.guide; }
   sx = Math.max(0, Math.min(sx, wallWidthMm - widthMm));
 
-  if (itemType === "wall_cabinet" || itemType === "obstruction") {
+  if (VERTICAL_DRAG_TYPES.has(itemType)) {
     let bestY = null;
     for (const o of others) {
       const om = o.mount_height_mm ?? 0;
@@ -597,7 +600,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       let newX     = drag.startXmm + dxMm;
       let newMount = drag.startMount;
 
-      if (drag.item_type === "wall_cabinet" || drag.item_type === "obstruction") {
+      if (VERTICAL_DRAG_TYPES.has(drag.item_type)) {
         newMount = Math.max(0, Math.min(roomHeightMm - drag.height_mm, drag.startMount - dyMm));
       }
 
@@ -635,7 +638,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       newX = resolveCollision1D(newX, drag.width_mm, obstacles, wallWidthMm);
 
       const pos = { x_mm: newX };
-      if (drag.item_type === "wall_cabinet" || drag.item_type === "obstruction") pos.mount_height_mm = newMount;
+      if (VERTICAL_DRAG_TYPES.has(drag.item_type)) pos.mount_height_mm = newMount;
       setLocalPos((prev) => ({ ...prev, [drag.itemId]: pos }));
 
     } else if (drag.type === "shelf") {
@@ -1333,10 +1336,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     label={gapRightNeighbor} horizontal
                   />
                 )}
-                {/* Vertical gaps for wall cabinets — filtered by X-range overlap
+                {/* Vertical gaps for wall cabinets/panels — filtered by X-range overlap
                     (via computeYGaps), not mount-height, so this correctly
                     reaches a base/tall cabinet's top surface below. */}
-                {draggingItem.item_type === "wall_cabinet" && (() => {
+                {(draggingItem.item_type === "wall_cabinet" || draggingItem.item_type === "panel") && (() => {
                   const { gapBot, gapTop, botBound, topBound } =
                     computeYGaps(mountMm, hMm, xMm, wMm, allDragOthers, roomHeightMm);
                   const dimX = ox + (xMm + wMm / 2) * scale;
