@@ -56,6 +56,62 @@
 .viewToggleBtnActive { background: #3b82f6; color: #fff; }
 .viewToggleBtn:disabled { opacity: 0.35; }
 
+/* ---- Elevation wall selector ---- */
+.wallPicker {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: #171c24;
+}
+.wallPickerLabel { font-size: 11px; color: rgba(255,255,255,0.4); flex-shrink: 0; }
+.wallBtn {
+  appearance: none;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.75);
+  border-radius: 8px;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 36px;
+}
+.wallBtnActive { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+.wallBtnCount { opacity: 0.6; font-size: 11px; margin-left: 2px; }
+
+/* ---- Item chip strip (selection) ---- */
+.itemStrip {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: #171c24;
+}
+.itemChip {
+  appearance: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.8);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  min-height: 34px;
+}
+.itemChipActive { border-color: #3b82f6; background: rgba(59,130,246,0.18); color: #fff; }
+.itemChipDot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
 /* ---- Canvas ---- */
 .canvasWrap {
   flex: 1;
@@ -95,6 +151,53 @@
   color: #fde68a;
   font-size: 13px;
   line-height: 1.4;
+}
+
+/* ---- Selection action bar ---- */
+.selectionBar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: #1b212b;
+}
+.selRow { display: flex; align-items: center; gap: 8px; }
+.selName {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.selBtn {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: #e8ecf2;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 38px;
+  flex-shrink: 0;
+}
+.selBtnDanger { border-color: rgba(220,38,38,0.4); color: #f87171; }
+.nudgeRow { display: flex; align-items: center; gap: 8px; }
+.nudgeHint { font-size: 11px; color: rgba(255,255,255,0.4); flex: 1; }
+.nudgeBtn {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: #e8ecf2;
+  border-radius: 8px;
+  width: 48px;
+  height: 40px;
+  font-size: 15px;
+  flex-shrink: 0;
 }
 
 /* ---- Price strip ---- */
@@ -334,6 +437,9 @@
   font-size: 12px;
   line-height: 1.4;
 }
+
+.priceCabinet { margin-bottom: 8px; }
+.priceCabinetTotal { display: inline-flex; gap: 8px; align-items: center; font-variant-numeric: tabular-nums; }
 
 .priceCard {
   margin-top: 16px;

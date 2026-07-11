@@ -126,6 +126,7 @@ function buildRow(payload, projectId) {
           has_bottom_panel:       Boolean(payload.has_bottom_panel ?? false),
           bottom_panel_span:      dbText(payload.bottom_panel_span) || "continuous",
           bottom_panel_qty:       dbInt(payload.bottom_panel_qty) ?? 1,
+          finish_panel_style:     payload.finish_panel_style ?? null,
           front_type:             dbText(payload.front_type) || "none",
           door_config:            payload.door_config ?? null,
           door_style:             payload.door_style  ?? null,

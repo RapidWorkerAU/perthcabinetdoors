@@ -14,7 +14,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
-export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, children }) {
+export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, oneFingerPan = true, children }) {
   const [t, setT] = useState({ scale: 1, x: 0, y: 0 });
   const tRef = useRef(t);
   tRef.current = t;
@@ -42,12 +42,13 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
         startX: cur.x,
         startY: cur.y,
       };
-    } else if (e.touches.length === 1 && tRef.current.scale > 1.01) {
+    } else if (oneFingerPan && e.touches.length === 1 && tRef.current.scale > 1.01) {
       const p = rel(e.touches[0]);
       const cur = tRef.current;
       gesture.current = { mode: "pan", startTouch: p, startX: cur.x, startY: cur.y };
     } else {
-      // Single tap at 1× — let it fall through to the SVG (e.g. select).
+      // Single finger — let it fall through to the SVG (tap-select / drag a
+      // cabinet on the interactive canvas). Two-finger handles zoom + pan.
       gesture.current = { mode: null };
     }
   }
@@ -58,11 +59,13 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
       e.preventDefault();
       const pa = rel(e.touches[0]);
       const pb = rel(e.touches[1]);
+      const curMid = mid(pa, pb);
       const scale = clamp(g.startScale * (dist(pa, pb) / g.startDist), minScale, maxScale);
       const ratio = scale / g.startScale;
-      // Keep the point under the fingers' midpoint stationary while scaling.
-      const x = g.startMid.x - (g.startMid.x - g.startX) * ratio;
-      const y = g.startMid.y - (g.startMid.y - g.startY) * ratio;
+      // Keep the content point that was under the fingers at gesture start under
+      // the fingers' CURRENT midpoint — this zooms and pans together.
+      const x = curMid.x - (g.startMid.x - g.startX) * ratio;
+      const y = curMid.y - (g.startMid.y - g.startY) * ratio;
       setT({ scale, x, y });
     } else if (g.mode === "pan" && e.touches.length === 1) {
       e.preventDefault();
@@ -77,10 +80,15 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
       if (tRef.current.scale <= 1.01) setT({ scale: 1, x: 0, y: 0 });
       gesture.current = { mode: null };
     } else if (e.touches.length === 1) {
-      // Lifting one finger of a pinch → continue as a pan.
-      const p = rel(e.touches[0]);
-      const cur = tRef.current;
-      gesture.current = { mode: "pan", startTouch: p, startX: cur.x, startY: cur.y };
+      // Lifting one finger of a pinch → continue as a pan (only if one-finger
+      // panning is allowed; otherwise end the gesture so the canvas takes over).
+      if (oneFingerPan) {
+        const p = rel(e.touches[0]);
+        const cur = tRef.current;
+        gesture.current = { mode: "pan", startTouch: p, startX: cur.x, startY: cur.y };
+      } else {
+        gesture.current = { mode: null };
+      }
     }
   }
 

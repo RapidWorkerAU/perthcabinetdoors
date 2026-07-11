@@ -10,14 +10,24 @@ import FrontElevationView from "./FrontElevationView";
 import PinchZoom from "./PinchZoom";
 import RoomsModal from "./mobile/RoomsModal";
 import CabinetModal from "./mobile/CabinetModal";
-import CabinetPriceModal from "./mobile/CabinetPriceModal";
+import RoomPriceModal from "./mobile/RoomPriceModal";
 
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
+const TYPE_COLORS = {
+  base_cabinet: "#3b82f6", wall_cabinet: "#22c55e", tall_cabinet: "#f97316",
+  corner_base_cabinet: "#0ea5e9", panel: "#6b7280", scribe: "#ec4899", obstruction: "#57534e",
+};
+const TYPE_SHORT = {
+  base_cabinet: "Base", wall_cabinet: "Wall", tall_cabinet: "Tall",
+  corner_base_cabinet: "Corner", panel: "Panel", scribe: "Scribe", obstruction: "Obstr.",
+};
+const WALLS = ["top", "bottom", "left", "right"];
+const NUDGE_MM = 10;
 
 /**
- * Mobile design shell. Same brain as desktop (useDesignProgram) — a persistent
- * canvas with the two sidebars re-housed as full-screen modals. Restricted to
- * one cabinet per room so the canvas can stay view-only (no touch dragging).
+ * Mobile design shell — full multi-cabinet editor. Same brain as desktop
+ * (useDesignProgram); the two sidebars become full-screen modals and the canvas
+ * is the primary editor. One finger drags a cabinet, two fingers pinch-zoom.
  */
 export default function DesignProgramMobile({ projectId }) {
   const d = useDesignProgram(projectId);
@@ -28,49 +38,53 @@ export default function DesignProgramMobile({ projectId }) {
     selectedRoomId, setSelectedRoomId,
     loading, error, loadAll,
     handleAddRoom, handleUpdateRoom, handleDeleteRoom, handleAddItem,
-    handleItemChange, handleDeleteItem,
+    handleItemChange, handleItemDragEnd, handleDuplicateItem, handleDeleteItem,
   } = d;
 
-  const [openModal, setOpenModal] = useState(null); // 'rooms' | 'cabinet' | 'price'
+  const [openModal, setOpenModal] = useState(null); // 'rooms' | 'item' | 'price'
   const [view, setView] = useState("plan");          // 'plan' | 'elevation'
+  const [elevationWall, setElevationWall] = useState("top");
 
-  // One cabinet per room: the room's cabinet is the sole cabinet-type item.
+  const selectedItem = roomItems.find((i) => i.id === selectedItemId) || null;
   const cabinets = roomItems.filter((i) => CABINET_TYPES.includes(i.item_type));
-  const cabinet = cabinets[0] || null;
-  // A room carrying more than one item was built on desktop — we don't try to
-  // represent it as a single cabinet; we show it read-only with a notice.
-  const isComplexRoom = roomItems.length > 1;
+  const roomTotal = cabinets.reduce((s, c) => s + cabinetMaterialCost(c, roomItems, selectedRoom), 0);
 
   function openRooms() { setOpenModal("rooms"); }
 
-  function openCabinet() {
+  function openAdd() {
     if (!selectedRoom) return;
-    if (cabinet) {
-      setSelectedItemId(cabinet.id);
-      setIsAddingItem(false);
-    } else {
-      setSelectedItemId(null);
-      setIsAddingItem(true);
-    }
-    setOpenModal("cabinet");
+    setSelectedItemId(null);
+    setIsAddingItem(true);
+    setOpenModal("item");
   }
 
-  function closeCabinet() {
+  function editSelected() {
+    if (!selectedItem) return;
+    setIsAddingItem(false);
+    setOpenModal("item");
+  }
+
+  function closeItemModal() {
     setIsAddingItem(false);
     setOpenModal(null);
   }
 
-  async function onAddCabinet(draft) {
-    const created = await handleAddItem(draft);
-    // Stay in the modal — it now shows the edit form for the new cabinet.
-    return created;
+  async function onAddItem(draft) {
+    return handleAddItem(draft); // modal switches to edit for the new item
   }
 
-  // Live price for the strip — full cut-list material cost (carcass + shelves +
-  // doors/fronts + finished panels), matching the price modal exactly.
-  const priceLabel = cabinet
-    ? formatMoney(cabinetMaterialCost(cabinet, roomItems, selectedRoom))
-    : null;
+  function nudge(dx, dy) {
+    if (!selectedItem) return;
+    handleItemDragEnd(selectedItem.id, {
+      x_mm: (Number(selectedItem.x_mm) || 0) + dx,
+      y_mm: (Number(selectedItem.y_mm) || 0) + dy,
+    });
+  }
+
+  function enterElevation() {
+    setElevationWall(selectedItem?.wall && WALLS.includes(selectedItem.wall) ? selectedItem.wall : "top");
+    setView("elevation");
+  }
 
   if (loading) {
     return <div className={mobile.mobileRoot}><div className={mobile.emptyState}><span className={mobile.emptyHint}>Loading…</span></div></div>;
@@ -86,8 +100,6 @@ export default function DesignProgramMobile({ projectId }) {
       </div>
     );
   }
-
-  const canElevation = Boolean(cabinet) && !isComplexRoom;
 
   return (
     <div className={mobile.mobileRoot}>
@@ -106,63 +118,110 @@ export default function DesignProgramMobile({ projectId }) {
           <button
             type="button"
             className={`${mobile.viewToggleBtn} ${view === "elevation" ? mobile.viewToggleBtnActive : ""}`}
-            onClick={() => setView("elevation")}
-            disabled={!canElevation}
+            onClick={enterElevation}
+            disabled={!selectedRoom || roomItems.length === 0}
           >Elevation</button>
         </div>
       </div>
+
+      {/* ---- Elevation wall selector ---- */}
+      {view === "elevation" && selectedRoom && (
+        <div className={mobile.wallPicker}>
+          <span className={mobile.wallPickerLabel}>Wall</span>
+          {WALLS.map((w) => {
+            const count = roomItems.filter((i) => i.wall === w).length;
+            return (
+              <button
+                key={w}
+                type="button"
+                className={`${mobile.wallBtn} ${w === elevationWall ? mobile.wallBtnActive : ""}`}
+                onClick={() => setElevationWall(w)}
+              >
+                {w[0].toUpperCase()}{w.slice(1)} <span className={mobile.wallBtnCount}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ---- Item chip strip (reliable selection) ---- */}
+      {view === "plan" && selectedRoom && roomItems.length > 0 && (
+        <div className={mobile.itemStrip}>
+          {roomItems.map((it) => (
+            <button
+              key={it.id}
+              type="button"
+              className={`${mobile.itemChip} ${it.id === selectedItemId ? mobile.itemChipActive : ""}`}
+              onClick={() => setSelectedItemId(it.id === selectedItemId ? null : it.id)}
+            >
+              <span className={mobile.itemChipDot} style={{ background: TYPE_COLORS[it.item_type] || "#888" }} />
+              {it.label || TYPE_SHORT[it.item_type] || it.item_type}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ---- Canvas ---- */}
       <div className={mobile.canvasWrap}>
         {!selectedRoom ? (
           <div className={mobile.emptyState}>
             <span className={mobile.emptyTitle}>No room yet</span>
-            <span className={mobile.emptyHint}>Add a room to set your dimensions and start a cabinet.</span>
+            <span className={mobile.emptyHint}>Add a room to set your dimensions and start designing.</span>
             <button type="button" className={mobile.primaryBtn} style={{ maxWidth: 200 }} onClick={openRooms}>+ Add room</button>
           </div>
+        ) : view === "elevation" ? (
+          <FrontElevationView
+            interactive={false}
+            zoomable
+            wall={elevationWall}
+            room={selectedRoom}
+            items={roomItems}
+            onClose={() => setView("plan")}
+            onItemChange={handleItemChange}
+            onItemSelect={(id) => setSelectedItemId(id)}
+          />
         ) : (
-          <>
-            {isComplexRoom && (
-              <p className={mobile.multiItemNotice}>
-                This room has multiple items. Mobile supports one cabinet per room —
-                open it on desktop to edit the full layout.
-              </p>
-            )}
-            {view === "elevation" && canElevation ? (
-              <FrontElevationView
-                interactive={false}
-                zoomable
-                wall={cabinet.wall || "top"}
-                room={selectedRoom}
-                items={roomItems}
-                onClose={() => setView("plan")}
-                onItemChange={handleItemChange}
-                onItemSelect={(id) => setSelectedItemId(id)}
-              />
-            ) : (
-              <PinchZoom>
-                <DesignCanvas
-                  interactive={false}
-                  room={selectedRoom}
-                  items={roomItems}
-                  selectedItemId={selectedItemId}
-                  overlappingItemIds={new Set()}
-                  onItemClick={(it) => setSelectedItemId(it.id)}
-                  onDeselect={() => {}}
-                  onItemDragEnd={() => {}}
-                />
-              </PinchZoom>
-            )}
-          </>
+          <PinchZoom oneFingerPan={false}>
+            <DesignCanvas
+              interactive
+              room={selectedRoom}
+              items={roomItems}
+              selectedItemId={selectedItemId}
+              overlappingItemIds={new Set()}
+              onItemClick={(it) => setSelectedItemId(it.id)}
+              onDeselect={() => setSelectedItemId(null)}
+              onItemDragEnd={handleItemDragEnd}
+              onFrontView={(wall) => { setElevationWall(wall); setView("elevation"); }}
+            />
+          </PinchZoom>
         )}
       </div>
 
+      {/* ---- Selection action bar (plan view) ---- */}
+      {view === "plan" && selectedItem && (
+        <div className={mobile.selectionBar}>
+          <div className={mobile.selRow}>
+            <span className={mobile.selName}>{selectedItem.label || TYPE_SHORT[selectedItem.item_type] || selectedItem.item_type}</span>
+            <button type="button" className={mobile.selBtn} onClick={editSelected}>Edit</button>
+            <button type="button" className={mobile.selBtn} onClick={() => handleDuplicateItem(selectedItem.id)}>Duplicate</button>
+            <button type="button" className={`${mobile.selBtn} ${mobile.selBtnDanger}`} onClick={() => handleDeleteItem(selectedItem.id)}>Delete</button>
+          </div>
+          <div className={mobile.nudgeRow}>
+            <span className={mobile.nudgeHint}>Nudge {NUDGE_MM}mm</span>
+            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge(-NUDGE_MM, 0)} aria-label="Left">◀</button>
+            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge(0, -NUDGE_MM)} aria-label="Up">▲</button>
+            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge(0, NUDGE_MM)} aria-label="Down">▼</button>
+            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge(NUDGE_MM, 0)} aria-label="Right">▶</button>
+          </div>
+        </div>
+      )}
+
       {/* ---- Price strip ---- */}
-      {cabinet && !isComplexRoom && (
+      {cabinets.length > 0 && (
         <button type="button" className={mobile.priceStrip} onClick={() => setOpenModal("price")}>
           <span>
-            <span className={mobile.priceStripLabel}>Material cost (ex GST)</span><br />
-            <span className={mobile.priceStripValue}>{priceLabel}</span>
+            <span className={mobile.priceStripLabel}>Room material cost (ex GST)</span><br />
+            <span className={mobile.priceStripValue}>{formatMoney(roomTotal)}</span>
           </span>
           <span className={mobile.priceStripCta}>View price →</span>
         </button>
@@ -177,17 +236,17 @@ export default function DesignProgramMobile({ projectId }) {
         <button
           type="button"
           className={`${mobile.actionBtn} ${mobile.actionBtnPrimary}`}
-          onClick={openCabinet}
-          disabled={!selectedRoom || isComplexRoom}
+          onClick={openAdd}
+          disabled={!selectedRoom}
         >
-          <span className={mobile.actionBtnIcon}>▤</span>
-          {cabinet ? "Cabinet" : "Add cabinet"}
+          <span className={mobile.actionBtnIcon}>＋</span>
+          Add item
         </button>
         <button
           type="button"
           className={mobile.actionBtn}
           onClick={() => setOpenModal("price")}
-          disabled={!cabinet || isComplexRoom}
+          disabled={cabinets.length === 0}
         >
           <span className={mobile.actionBtnIcon}>$</span>
           Price
@@ -207,25 +266,25 @@ export default function DesignProgramMobile({ projectId }) {
         />
       )}
 
-      {openModal === "cabinet" && selectedRoom && (
+      {openModal === "item" && selectedRoom && (
         <CabinetModal
-          item={isAddingItem ? null : cabinet}
+          item={isAddingItem ? null : selectedItem}
           roomItems={roomItems}
           room={selectedRoom}
           materialDefaults={project?.material_defaults}
           isAddingItem={isAddingItem}
-          onAdd={onAddCabinet}
-          onCancelAdd={closeCabinet}
+          onAdd={onAddItem}
+          onCancelAdd={closeItemModal}
           onItemChange={handleItemChange}
-          onDeleteItem={(id) => { handleDeleteItem(id); closeCabinet(); }}
+          onDeleteItem={(id) => { handleDeleteItem(id); closeItemModal(); }}
           onSelectItem={(id) => setSelectedItemId(id)}
-          onClose={closeCabinet}
+          onClose={closeItemModal}
         />
       )}
 
-      {openModal === "price" && cabinet && (
-        <CabinetPriceModal
-          item={cabinet}
+      {openModal === "price" && cabinets.length > 0 && (
+        <RoomPriceModal
+          cabinets={cabinets}
           roomItems={roomItems}
           room={selectedRoom}
           onClose={() => setOpenModal(null)}

@@ -39,14 +39,18 @@ export default async function AdminDashboardPage() {
     supabase.from('pcd_enquiries').select('id, customer_name, customer_email, topic, message, created_at').eq('status', 'new').order('created_at', { ascending: false }).limit(3),
     supabase.from('pcd_quote_requests').select('id, customer_name, source, created_at').in('status', ['new', 'reviewing']).order('created_at', { ascending: false }).limit(3),
     supabase.from('pcd_quotes').select('id, quote_number, customer_name, status, updated_at, created_at').in('status', ['sent', 'viewed']).order('updated_at', { ascending: false }).limit(3),
-    supabase.from('pcd_order_payments').select('id, order_id, payment_type, amount, pcd_orders(order_number, customer_name)').eq('is_paid', false),
+    // Include the parent order's status so cancelled orders can be filtered
+    // out below — a cancelled order is treated as archived.
+    supabase.from('pcd_order_payments').select('id, order_id, payment_type, amount, pcd_orders(order_number, customer_name, status)').eq('is_paid', false),
   ])
 
   const enquiries     = enquiriesData     || []
   const quoteRequests = quoteRequestsData || []
   const sentQuotes    = sentQuotesData    || []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pendingPays   = (pendingPaymentsData || []) as any[]
+  // Exclude payments belonging to cancelled orders (treated as archived) so
+  // they never count toward the pending-payments stat or the attention list.
+  const pendingPays   = ((pendingPaymentsData || []) as any[]).filter(p => p.pcd_orders?.status !== 'cancelled')
 
   const attention = {
     enquiries: enquiries.map(e => ({

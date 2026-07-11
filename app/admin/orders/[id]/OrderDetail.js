@@ -321,6 +321,15 @@ export default function OrderDetail({ orderId }) {
   const [paymentRequestModal, setPaymentRequestModal] = useState(null);
   const [panelNotesModal, setPanelNotesModal] = useState(null);
 
+  // On mobile, open the section menu first rather than dropping straight into
+  // the Overview (customer detail). Runs once on mount, before the loading gate
+  // clears, so there's no flash of the Overview.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      setActiveSection("");
+    }
+  }, []);
+
   const items = useMemo(() => sortedItems(order), [order]);
   const planningRows = useMemo(() => buildOrderPlanningRows(items), [items]);
   const supplierMadeRows = useMemo(() => planningRows.filter((row) => !isPanelMadeInHouse(row)), [planningRows]);

@@ -478,12 +478,29 @@ function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, 
 // collapses to the run's total width, split into the run-owner's chosen
 // panel count, each its own line; only emitted once, by the run's first
 // cabinet that's actually selected for import.
+// Resolves the finishing-panel board (material + rate) for a cabinet's finished
+// end/side/back/underside panels. A finishing panel is its own finished board
+// over the carcass — not carcass material — so it uses finish_panel_style,
+// falling back to the door/front material (its normal match), then carcass.
+function finishPanelBoard(item) {
+  const fp = item.finish_panel_style || {};
+  const d = item.door_style || {};
+  return {
+    material: fp.material || d.material || item.material || "",
+    finish: fp.finish || d.finish || item.finish || "",
+    colour: fp.colour || d.colour || item.colour || "",
+    thicknessMm: fp.thickness_mm || d.thickness_mm || item.carcass_thickness_mm || null,
+    rate: Number(fp.cost_per_sqm) || Number(d.cost_per_sqm) || Number(item.cost_per_sqm_carcass) || 0,
+  };
+}
+
 function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
   if (!item.has_bottom_panel || item.item_type !== "wall_cabinet") return [];
 
   const lines = [];
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
   const depthMm = item.depth_mm || 600;
+  const board = finishPanelBoard(item);
 
   function pushPanel(name, widthMm) {
     lines.push({
@@ -494,11 +511,11 @@ function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       width_mm: widthMm,
       height_mm: depthMm,
       qty: 1,
-      material: item.material || "",
-      finish: item.finish || "",
-      colour: item.colour || "",
-      thickness: item.carcass_thickness_mm ? `${item.carcass_thickness_mm}mm` : "",
-      unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
+      material: board.material,
+      finish: board.finish,
+      colour: board.colour,
+      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
+      unit_cost_per_sqm_ex_gst: board.rate,
       unit_cost_mode: "auto",
     });
   }
@@ -545,6 +562,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
     if (!item.end_panel_left && !item.end_panel_right) return [];
     const underThk = item.has_bottom_panel ? (Number(item.carcass_thickness_mm) || 16) : 0;
     const sideH = (Number(item.height_mm) || 0) + underThk;
+    const board = finishPanelBoard(item);
     const pushSide = (name) => lines.push({
       product_type: "Panel",
       product_name: name,
@@ -553,11 +571,11 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       width_mm: item.depth_mm || 600,
       height_mm: sideH,
       qty: 1,
-      material: item.material || "",
-      finish: item.finish || "",
-      colour: item.colour || "",
-      thickness: item.carcass_thickness_mm ? `${item.carcass_thickness_mm}mm` : "",
-      unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
+      material: board.material,
+      finish: board.finish,
+      colour: board.colour,
+      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
+      unit_cost_per_sqm_ex_gst: board.rate,
       unit_cost_mode: "auto",
     });
     if (item.end_panel_left)  pushSide("Side Panel (Left)");
@@ -568,6 +586,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
   const panelH = item.panel_to_floor
     ? (Number(item.height_mm) || 0) + (Number(item.kickboard_height_mm) || 150)
     : (Number(item.height_mm) || 0);
+  const board = finishPanelBoard(item);
 
   function pushPanel(name, widthMm) {
     lines.push({
@@ -578,11 +597,11 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       width_mm: widthMm,
       height_mm: panelH,
       qty: 1,
-      material: item.material || "",
-      finish: item.finish || "",
-      colour: item.colour || "",
-      thickness: item.carcass_thickness_mm ? `${item.carcass_thickness_mm}mm` : "",
-      unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
+      material: board.material,
+      finish: board.finish,
+      colour: board.colour,
+      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
+      unit_cost_per_sqm_ex_gst: board.rate,
       unit_cost_mode: "auto",
     });
   }
@@ -665,6 +684,7 @@ function cornerBackPanelLinesForCabinet(item, roomName) {
   const panelH = item.panel_to_floor
     ? (Number(item.height_mm) || 0) + (Number(item.kickboard_height_mm) || 150)
     : (Number(item.height_mm) || 0);
+  const board = finishPanelBoard(item);
 
   function pushPanel(name, widthMm) {
     lines.push({
@@ -675,11 +695,11 @@ function cornerBackPanelLinesForCabinet(item, roomName) {
       width_mm: widthMm,
       height_mm: panelH,
       qty: 1,
-      material: item.material || "",
-      finish: item.finish || "",
-      colour: item.colour || "",
-      thickness: item.carcass_thickness_mm ? `${item.carcass_thickness_mm}mm` : "",
-      unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
+      material: board.material,
+      finish: board.finish,
+      colour: board.colour,
+      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
+      unit_cost_per_sqm_ex_gst: board.rate,
       unit_cost_mode: "auto",
     });
   }

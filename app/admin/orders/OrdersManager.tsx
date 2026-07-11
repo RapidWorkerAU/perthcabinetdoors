@@ -61,7 +61,9 @@ export default function OrdersManager() {
     return orders.reduce<Record<string, number>>(
       (counts, order) => {
         const status = order.status || 'active'
-        counts.all = (counts.all || 0) + 1
+        // Cancelled orders are archived — excluded from the "All" count so
+        // they only surface under their own Cancelled tab.
+        if (status !== 'cancelled') counts.all = (counts.all || 0) + 1
         counts[status] = (counts[status] || 0) + 1
         return counts
       },
@@ -70,7 +72,9 @@ export default function OrdersManager() {
   }, [orders])
 
   const visibleOrders = useMemo(() => {
-    if (statusFilter === 'all') return orders
+    // "All" shows every non-cancelled order; cancelled ones are archived and
+    // only appear when the Cancelled tab is explicitly selected.
+    if (statusFilter === 'all') return orders.filter(o => (o.status || 'active') !== 'cancelled')
     return orders.filter(o => (o.status || 'active') === statusFilter)
   }, [orders, statusFilter])
 

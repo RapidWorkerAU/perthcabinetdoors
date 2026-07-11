@@ -778,6 +778,14 @@ export default function QuoteEditor({ quoteId }) {
   const [lineNoteModal, setLineNoteModal] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+
+  // On mobile, open the section menu first rather than dropping straight into
+  // the Information & Contacts (customer) page. Runs once on mount.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      setActiveSection("");
+    }
+  }, []);
   const [isSaving, setIsSaving] = useState(false);
   const [savingLineIndex, setSavingLineIndex] = useState(null);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);

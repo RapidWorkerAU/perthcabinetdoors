@@ -22,10 +22,12 @@ function rateFor(material, rates) {
       return rates.door;
     case "drawer":
       return rates.drawer;
+    case "panel":
+      // Finished end/side/back/underside panels — their own finishing-panel
+      // material (defaults to the door rate, then carcass).
+      return rates.panel;
     default:
-      // undefined (carcass sides/top/bottom), "back", "panel" (finished
-      // end/side/underside), "kickboard", "filler" — all carcass rate, matching
-      // the quote import.
+      // undefined (carcass sides/top/bottom), "back", "kickboard", "filler".
       return rates.carcass;
   }
 }
@@ -46,11 +48,15 @@ function categoryFor(material) {
 
 function ratesFor(item) {
   const carcass = Number(item?.cost_per_sqm_carcass) || 0;
+  const door = Number(item?.door_style?.cost_per_sqm) || 0;
   return {
     carcass,
     shelf: Number(item?.cost_per_sqm_shelf) || carcass,
-    door: Number(item?.door_style?.cost_per_sqm) || 0,
+    door,
     drawer: Number(item?.drawer_style?.cost_per_sqm) || 0,
+    // Finishing panels: own material rate, else the door rate (their default
+    // match), else carcass.
+    panel: Number(item?.finish_panel_style?.cost_per_sqm) || door || carcass,
   };
 }
 

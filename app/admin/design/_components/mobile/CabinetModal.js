@@ -4,10 +4,15 @@ import { useEffect } from "react";
 import styles from "../../design.mobile.module.css";
 import DesignRightPanel from "../DesignRightPanel";
 
-// Mobile is restricted to these cabinet types — no corner, no standalone
-// panels/scribes/obstructions (see the plan). Passed straight to the shared
-// add form via DesignRightPanel's allowedTypes prop.
-const MOBILE_CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet"];
+// Mobile now supports the full item set (matching desktop): base/wall/tall/
+// corner cabinets plus standalone panels, scribes and obstructions. Passing
+// undefined lets DesignRightPanel use its default ADDABLE_TYPES list.
+const MOBILE_ITEM_TYPES = undefined;
+
+const TYPE_LABELS = {
+  base_cabinet: "Base cabinet", wall_cabinet: "Wall cabinet", tall_cabinet: "Tall cabinet",
+  corner_base_cabinet: "Corner cabinet", panel: "Panel", scribe: "Scribe", obstruction: "Obstruction",
+};
 
 /**
  * Full-screen cabinet configurator. Reuses the exact desktop DesignRightPanel
@@ -34,8 +39,8 @@ export default function CabinetModal({
   }, []);
 
   const title = isAddingItem
-    ? "Add cabinet"
-    : (item?.label || "Cabinet");
+    ? "Add item"
+    : (item?.label || TYPE_LABELS[item?.item_type] || "Item");
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
@@ -47,7 +52,7 @@ export default function CabinetModal({
         <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
           <DesignRightPanel
             fullWidth
-            allowedTypes={MOBILE_CABINET_TYPES}
+            allowedTypes={MOBILE_ITEM_TYPES}
             item={item}
             allItems={roomItems}
             room={room}

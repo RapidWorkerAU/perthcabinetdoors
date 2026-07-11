@@ -55,6 +55,7 @@ function buildPatch(payload) {
   int("rangehood_housing_height_mm"); int("rangehood_channel_width_mm");
   if ("door_config" in payload) patch.door_config = payload.door_config ?? null;
   if ("door_style"  in payload) patch.door_style  = payload.door_style  ?? null;
+  if ("finish_panel_style" in payload) patch.finish_panel_style = payload.finish_panel_style ?? null;
   if ("drawer_config"  in payload) patch.drawer_config  = payload.drawer_config  ?? null;
   if ("drawer_style"   in payload) patch.drawer_style   = payload.drawer_style   ?? null;
   if ("section_config" in payload) patch.section_config = payload.section_config ?? null;

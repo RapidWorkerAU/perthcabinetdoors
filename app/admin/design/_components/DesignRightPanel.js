@@ -867,6 +867,51 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     setNow("door_style", { ...prev, ...patch });
   }
 
+  // ---- Finishing (end/side/back/underside) panel material ----
+  // A finished panel is its own board over the carcass side — not carcass
+  // material. Defaults to the door material (finished ends normally match the
+  // doors) until overridden; pricing falls back the same way.
+  function updFinishPanelStyle(patch) {
+    const prev = latestRef.current.finish_panel_style || {};
+    setNow("finish_panel_style", { ...prev, ...patch });
+  }
+  function effectiveFinishPanelStyle() {
+    const fp = draft.finish_panel_style || {};
+    if (fp.material) return fp;
+    const d = draft.door_style || {};
+    return { material: d.material, finish: d.finish, colour: d.colour, thickness_mm: d.thickness_mm, cost_per_sqm: d.cost_per_sqm };
+  }
+  function renderFinishPanelMaterial() {
+    const fp = effectiveFinishPanelStyle();
+    return (
+      <>
+        <MaterialColourPicker
+          label="Finishing panel material"
+          material={fp.material || ""}
+          thickness={fp.thickness_mm ? `${fp.thickness_mm}mm` : ""}
+          finish={fp.finish || ""}
+          colour={fp.colour || ""}
+          onChange={({ material, thickness, finish, colour, costPerSqmExGst }) =>
+            updFinishPanelStyle({
+              material, finish, colour,
+              thickness_mm: parseInt(thickness) || fp.thickness_mm || 18,
+              cost_per_sqm: costPerSqmExGst || fp.cost_per_sqm || 0,
+            })
+          }
+        />
+        <label className={styles.fieldLabel}>
+          Cost per sqm ex GST ($)
+          <input className={styles.fieldInput} type="number" min="0" step="0.01"
+            value={draft.finish_panel_style?.cost_per_sqm ?? fp.cost_per_sqm ?? ""}
+            onChange={(e) => updFinishPanelStyle({ cost_per_sqm: Number(e.target.value) })} />
+        </label>
+        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+          Defaults to the door material — change it if your finishing panels are a different board.
+        </p>
+      </>
+    );
+  }
+
   // Applies the project's material defaults the first time a front type is
   // switched on — only when that style is still genuinely blank, so
   // switching back and forth between front types never clobbers a style
@@ -1506,6 +1551,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                       Side panels extend down to cover the finished underside panel edge.
                     </p>
                   )}
+                  {(draft.end_panel_left || draft.end_panel_right) && renderFinishPanelMaterial()}
                 </>
               )}
 
@@ -1607,6 +1653,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                         Panels run to floor (otherwise carcass height only, kickboard continues underneath)
                       </label>
                     )}
+                    {anyPanel && renderFinishPanelMaterial()}
                   </>
                 );
               })()}
