@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import styles from "../design.module.css";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
+import PinchZoom from "./PinchZoom";
 
 const ITEM_COLORS = {
   base_cabinet:  "#3b82f6",
@@ -410,7 +411,7 @@ const WALL_AXIS = {
   right:  { widthKey: "depth_mm",  label: "Right Wall" },
 };
 
-export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, interactive = true }) {
+export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, interactive = true, zoomable = false }) {
   const [currentWall, setCurrentWall] = useState(initialWall);
   const [selectedId, setSelectedId]   = useState(null);
   const [drag, setDrag]               = useState(null);
@@ -807,6 +808,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
       {/* SVG drawing */}
       <div className={styles.elevationSvgArea}>
+        <PinchZoom enabled={zoomable}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
@@ -1291,10 +1293,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     no axisFlipped mirroring. Back panels aren't shown here —
                     they're on the far side, not visible from the front. */}
                 {(item.end_panel_left || item.end_panel_right) && (() => {
-                  // panel_to_floor: covers the kickboard recess too, same
-                  // as the carcass; otherwise stops at carcass height with
+                  // panel_to_floor (base/tall): covers the kickboard recess too,
+                  // same as the carcass; otherwise stops at carcass height with
                   // the kickboard strip still visible underneath.
-                  const panelH = item.panel_to_floor ? svgH + kbMm * scale : svgH;
+                  // Wall cabinets: when a finished underside panel is present,
+                  // the side panels extend down by its thickness (carcass
+                  // thickness) to cover the underside panel's exposed edge.
+                  const underThk = (item.item_type === "wall_cabinet" && item.has_bottom_panel)
+                    ? (Number(item.carcass_thickness_mm) || 16) * scale
+                    : 0;
+                  const panelH = (item.panel_to_floor ? svgH + kbMm * scale : svgH) + underThk;
                   const t = Math.min(4, svgW);
                   return (
                     <>
@@ -1434,6 +1442,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
           {/* Room height dimension (left) */}
           <ElevDimLine x1={ML - 24} y1={oy} x2={ML - 24} y2={floor} label={roomHeightMm} horizontal={false} />
         </svg>
+        </PinchZoom>
       </div>
     </div>
   );

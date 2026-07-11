@@ -529,10 +529,42 @@ function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
 // each its own line; only emitted once, by the run's first cabinet that's
 // actually selected for import.
 function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
-  if (!["base_cabinet", "tall_cabinet"].includes(item.item_type)) return [];
+  const isBaseTall = ["base_cabinet", "tall_cabinet"].includes(item.item_type);
+  const isWall = item.item_type === "wall_cabinet";
+  if (!isBaseTall && !isWall) return [];
 
   const lines = [];
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
+
+  // Wall cabinets: finished SIDE panels only (depth × height). When a finished
+  // underside panel is present, the side panels extend down by its thickness
+  // (the carcass thickness) to cover its exposed edge. No back panel/kickboard —
+  // wall cabinets aren't floor-standing. Priced like the base/tall end panels
+  // (carcass material + rate) so quotes stay internally consistent.
+  if (isWall) {
+    if (!item.end_panel_left && !item.end_panel_right) return [];
+    const underThk = item.has_bottom_panel ? (Number(item.carcass_thickness_mm) || 16) : 0;
+    const sideH = (Number(item.height_mm) || 0) + underThk;
+    const pushSide = (name) => lines.push({
+      product_type: "Panel",
+      product_name: name,
+      description: traceLabel ? `${name} — ${traceLabel}` : name,
+      notes: "Finished panel.",
+      width_mm: item.depth_mm || 600,
+      height_mm: sideH,
+      qty: 1,
+      material: item.material || "",
+      finish: item.finish || "",
+      colour: item.colour || "",
+      thickness: item.carcass_thickness_mm ? `${item.carcass_thickness_mm}mm` : "",
+      unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
+      unit_cost_mode: "auto",
+    });
+    if (item.end_panel_left)  pushSide("Side Panel (Left)");
+    if (item.end_panel_right) pushSide("Side Panel (Right)");
+    return lines;
+  }
+
   const panelH = item.panel_to_floor
     ? (Number(item.height_mm) || 0) + (Number(item.kickboard_height_mm) || 150)
     : (Number(item.height_mm) || 0);

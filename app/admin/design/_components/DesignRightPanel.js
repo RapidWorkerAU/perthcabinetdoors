@@ -1478,6 +1478,37 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 );
               })()}
 
+              {/* ── Finished side panels — wall cabinets. Match the cabinet's
+                  height × depth; when a finished underside panel is present the
+                  side panels extend down past the cabinet bottom to cover the
+                  underside panel's edge (applied in the cut list + elevation). ── */}
+              {draft.item_type === "wall_cabinet" && (
+                <>
+                  <SectionDivider label="Finished Side Panels" />
+                  <label className={styles.fieldCheckLabel}>
+                    <input
+                      type="checkbox"
+                      checked={draft.end_panel_left ?? false}
+                      onChange={(e) => setNow("end_panel_left", e.target.checked)}
+                    />
+                    Left side panel
+                  </label>
+                  <label className={styles.fieldCheckLabel}>
+                    <input
+                      type="checkbox"
+                      checked={draft.end_panel_right ?? false}
+                      onChange={(e) => setNow("end_panel_right", e.target.checked)}
+                    />
+                    Right side panel
+                  </label>
+                  {(draft.end_panel_left || draft.end_panel_right) && draft.has_bottom_panel && (
+                    <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+                      Side panels extend down to cover the finished underside panel edge.
+                    </p>
+                  )}
+                </>
+              )}
+
               {/* ── End & back panels — base/tall cabinets only. A corner
                   cabinet's "back" isn't a single well-defined side given
                   its L-shape, and wall cabinets aren't floor-standing. ── */}

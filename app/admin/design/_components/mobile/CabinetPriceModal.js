@@ -3,31 +3,24 @@
 import { useMemo, useState } from "react";
 import styles from "../../design.mobile.module.css";
 import MobileModal from "./MobileModal";
-import { calculateCabinetTotals } from "@/lib/pcd-cabinet-utils";
 import { formatMoney } from "@/lib/pcd-quote-utils";
+import { cabinetCutList, cabinetMaterialCost } from "./cabinetPricing";
 
 const MARGIN_KEY = "pcd_mobile_margin_pct";
 
 /**
- * Ephemeral cabinet price calculator. Shows the cut-list material cost (from
- * the same engine used at quote/import time) and lets you apply a margin % to
- * get a potential customer price. Saves nothing — the margin is remembered in
- * localStorage only for convenience, never written to the project.
+ * Ephemeral cabinet price calculator. Shows the full cut list (carcass, shelves
+ * AND doors/drawer fronts + finished panels — the same pieces the desktop panel
+ * lists) with the material cost, then applies a margin % for a potential
+ * customer price. Saves nothing — the margin is remembered in localStorage only
+ * for convenience.
  */
-export default function CabinetPriceModal({ item, onClose }) {
-  const totals = useMemo(
-    () => calculateCabinetTotals({
-      ...item,
-      // Design items encode corner via item_type; the costing engine wants a
-      // boolean. Mobile never creates corners, but this keeps a desktop-made
-      // one priced correctly if it's ever opened here.
-      is_corner: item?.item_type === "corner_base_cabinet",
-    }),
-    [item]
+export default function CabinetPriceModal({ item, roomItems = [], room = null, onClose }) {
+  const cutList = useMemo(() => cabinetCutList(item, roomItems, room), [item, roomItems, room]);
+  const materialCost = useMemo(
+    () => cabinetMaterialCost(item, roomItems, room, cutList),
+    [item, roomItems, room, cutList]
   );
-
-  const materialCost = totals.calculated_material_cost_ex_gst || 0;
-  const cutList = totals.cut_list || [];
 
   const [showCutList, setShowCutList] = useState(true);
   const [marginPct, setMarginPct] = useState(() => {
@@ -61,9 +54,12 @@ export default function CabinetPriceModal({ item, onClose }) {
             )}
             {cutList.map((p, i) => (
               <div key={i} className={styles.cutRow}>
-                <span className={styles.cutDim}>{Math.round(p.width_mm)} × {Math.round(p.height_mm)}</span>
-                {p.qty > 1 && <span className={styles.cutQty}>×{p.qty}</span>}
-                <span className={styles.cutName}>{p.label}</span>
+                <span className={styles.cutDim}>
+                  {Math.round(p.dim1)} <span className={styles.cutQty}>({p.axis1})</span>
+                  {" × "}
+                  {Math.round(p.dim2)} <span className={styles.cutQty}>({p.axis2})</span>
+                </span>
+                <span className={styles.cutName}>{p.name}</span>
               </div>
             ))}
           </div>
@@ -93,8 +89,9 @@ export default function CabinetPriceModal({ item, onClose }) {
         </div>
 
         <p className={styles.priceNote}>
-          Cut-list material cost only — excludes hardware, labour and GST. For
-          on-the-run pricing; nothing here is saved.
+          Cut-list material cost (carcass, shelves, doors/fronts and finished
+          panels) — excludes hardware, labour and GST. For on-the-run pricing;
+          nothing here is saved.
         </p>
       </div>
     </MobileModal>

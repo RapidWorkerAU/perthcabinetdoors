@@ -108,7 +108,11 @@ function computeCornerCutList(item, W, H, D, T, BT, shelfQty) {
   return parts;
 }
 
-function computeCutList(item, allItems = [], room = null) {
+// Exported so the mobile price modal can render/cost the exact same cut list
+// the desktop panel shows. Pieces carry a `material` tag (shelf/door/drawer/
+// panel/back/kickboard/filler or untagged carcass) and, on collapsed
+// door/drawer rows, a numeric `qty` for costing.
+export function computeCutList(item, allItems = [], room = null) {
   const W  = Number(item.width_mm)            || 0;
   const H  = Number(item.height_mm)           || 0;
   const D  = Number(item.depth_mm)            || 0;
@@ -176,12 +180,12 @@ function computeCutList(item, allItems = [], room = null) {
     if (item.front_type === "doors") {
       computeDoorSizes(item).forEach((size) => {
         const suffix = size.qty > 1 ? ` ×${size.qty}` : "";
-        parts.push({ name: `Door${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "door" });
+        parts.push({ name: `Door${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "door", qty: size.qty });
       });
     } else if (item.front_type === "drawers") {
       computeDrawerSizes(item).forEach((size) => {
         const suffix = size.qty > 1 ? ` ×${size.qty}` : "";
-        parts.push({ name: `Drawer Front${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "drawer" });
+        parts.push({ name: `Drawer Front${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "drawer", qty: size.qty });
       });
     } else if (item.front_type === "mixed") {
       const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
@@ -190,12 +194,12 @@ function computeCutList(item, allItems = [], room = null) {
         if (sec.type === "drawers") {
           computeDrawerSizesForConfig(sec.drawer || {}, item.width_mm, sec.height_mm).forEach((size) => {
             const suffix = size.qty > 1 ? ` ×${size.qty}` : "";
-            parts.push({ name: `Drawer Front — ${sectionLabel}${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "drawer" });
+            parts.push({ name: `Drawer Front — ${sectionLabel}${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "drawer", qty: size.qty });
           });
         } else if (sec.type === "doors") {
           computeDoorSizesForConfig(sec.door || {}, item.width_mm, sec.height_mm).forEach((size) => {
             const suffix = size.qty > 1 ? ` ×${size.qty}` : "";
-            parts.push({ name: `Door — ${sectionLabel}${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "door" });
+            parts.push({ name: `Door — ${sectionLabel}${suffix}`, dim1: size.width, axis1: "W", dim2: size.height, axis2: "H", material: "door", qty: size.qty });
           });
         }
         // "open" sections: no board
@@ -284,6 +288,16 @@ function computeCutList(item, allItems = [], room = null) {
       const seg = bottomPanelSegment(item);
       parts.push({ name: "Underside Panel", dim1: seg?.length || W, axis1: "W", dim2: D, axis2: "D", material: "panel" });
     }
+  }
+
+  // Finished side panels — wall cabinets. Match the cabinet's depth × height;
+  // when a finished underside panel is present, the side panels extend down by
+  // its thickness (the carcass thickness) to cover the underside panel's edge.
+  if (item.item_type === "wall_cabinet" && (item.end_panel_left || item.end_panel_right)) {
+    const underThk = item.has_bottom_panel ? (Number(item.carcass_thickness_mm) || 16) : 0;
+    const sideH = H + underThk;
+    if (item.end_panel_left)  parts.push({ name: "Side Panel — Left",  dim1: D, axis1: "D", dim2: sideH, axis2: "H", material: "panel" });
+    if (item.end_panel_right) parts.push({ name: "Side Panel — Right", dim1: D, axis1: "D", dim2: sideH, axis2: "H", material: "panel" });
   }
 
   // End & back panels — base/tall cabinets only (matches BACK_PANEL_TYPES in

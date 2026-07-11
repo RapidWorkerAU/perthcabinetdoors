@@ -717,6 +717,28 @@
   border-left: none;
 }
 
+/* ---- Mobile-only overrides ----
+   These only apply below the desktop breakpoint (the desktop tool is locked to
+   min-width:1280px), so desktop rendering is unaffected. They fix issues that
+   surface when the mobile shell reuses these desktop panels/views on a phone. */
+@media (max-width: 1279px) {
+  /* iOS Safari auto-zooms when focusing an input smaller than 16px — bumping
+     the reused config-form fields prevents that jarring zoom. */
+  .fieldInput,
+  .fieldSelect {
+    font-size: 16px;
+  }
+  /* The elevation toolbar + legend is a wide desktop row; let it wrap and
+     scroll instead of overflowing a narrow screen. */
+  .elevationToolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .elevItemStrip {
+    overflow-x: auto;
+  }
+}
+
 .rightPanelHeader {
   padding: 14px 16px 12px;
   border-bottom: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));

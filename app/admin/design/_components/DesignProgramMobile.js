@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import mobile from "../design.mobile.module.css";
-import { calculateCabinetTotals } from "@/lib/pcd-cabinet-utils";
 import { formatMoney } from "@/lib/pcd-quote-utils";
+import { cabinetMaterialCost } from "./mobile/cabinetPricing";
 import useDesignProgram from "./useDesignProgram";
 import DesignCanvas from "./DesignCanvas";
 import FrontElevationView from "./FrontElevationView";
+import PinchZoom from "./PinchZoom";
 import RoomsModal from "./mobile/RoomsModal";
 import CabinetModal from "./mobile/CabinetModal";
 import CabinetPriceModal from "./mobile/CabinetPriceModal";
@@ -65,12 +66,11 @@ export default function DesignProgramMobile({ projectId }) {
     return created;
   }
 
-  // Live price for the strip (material cut-list cost, ex GST).
-  let priceLabel = null;
-  if (cabinet) {
-    const totals = calculateCabinetTotals({ ...cabinet, is_corner: cabinet.item_type === "corner_base_cabinet" });
-    priceLabel = formatMoney(totals.calculated_material_cost_ex_gst || 0);
-  }
+  // Live price for the strip — full cut-list material cost (carcass + shelves +
+  // doors/fronts + finished panels), matching the price modal exactly.
+  const priceLabel = cabinet
+    ? formatMoney(cabinetMaterialCost(cabinet, roomItems, selectedRoom))
+    : null;
 
   if (loading) {
     return <div className={mobile.mobileRoot}><div className={mobile.emptyState}><span className={mobile.emptyHint}>Loading…</span></div></div>;
@@ -131,6 +131,7 @@ export default function DesignProgramMobile({ projectId }) {
             {view === "elevation" && canElevation ? (
               <FrontElevationView
                 interactive={false}
+                zoomable
                 wall={cabinet.wall || "top"}
                 room={selectedRoom}
                 items={roomItems}
@@ -139,7 +140,7 @@ export default function DesignProgramMobile({ projectId }) {
                 onItemSelect={(id) => setSelectedItemId(id)}
               />
             ) : (
-              <div className={mobile.planFill}>
+              <PinchZoom>
                 <DesignCanvas
                   interactive={false}
                   room={selectedRoom}
@@ -150,7 +151,7 @@ export default function DesignProgramMobile({ projectId }) {
                   onDeselect={() => {}}
                   onItemDragEnd={() => {}}
                 />
-              </div>
+              </PinchZoom>
             )}
           </>
         )}
@@ -223,7 +224,12 @@ export default function DesignProgramMobile({ projectId }) {
       )}
 
       {openModal === "price" && cabinet && (
-        <CabinetPriceModal item={cabinet} onClose={() => setOpenModal(null)} />
+        <CabinetPriceModal
+          item={cabinet}
+          roomItems={roomItems}
+          room={selectedRoom}
+          onClose={() => setOpenModal(null)}
+        />
       )}
     </div>
   );
