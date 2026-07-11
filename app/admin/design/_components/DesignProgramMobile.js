@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import mobile from "../design.mobile.module.css";
 import { formatMoney } from "@/lib/pcd-quote-utils";
 import { cabinetMaterialCost } from "./mobile/cabinetPricing";
@@ -73,12 +73,56 @@ export default function DesignProgramMobile({ projectId }) {
     return handleAddItem(draft); // modal switches to edit for the new item
   }
 
-  function nudge(dx, dy) {
-    if (!selectedItem) return;
-    handleItemDragEnd(selectedItem.id, {
-      x_mm: (Number(selectedItem.x_mm) || 0) + dx,
-      y_mm: (Number(selectedItem.y_mm) || 0) + dy,
-    });
+  // Nudging accumulates each tap onto the latest position immediately
+  // (optimistic), then saves only once the burst settles. Rapid taps used to
+  // jump back: each tap read a stale position and each fired its own PATCH, so
+  // an out-of-order response could overwrite a newer position. Now the move is
+  // applied straight to the items array (so taps accumulate correctly) and the
+  // save is debounced + fire-and-forget — the server stores x/y/mount verbatim
+  // (no snapping), so there's no echo to overwrite the optimistic position.
+  const pendingRef = useRef({});    // itemId -> partial position patch
+  const saveTimerRef = useRef({});  // itemId -> debounce timer
+
+  function applyNudge(id, key, delta) {
+    const item = roomItems.find((i) => i.id === id);
+    if (!item) return;
+    const base = pendingRef.current[id] || {};
+    const current = base[key] != null ? base[key] : (Number(item[key]) || 0);
+    let next = current + delta;
+    if (key === "mount_height_mm") next = Math.max(0, next);
+    pendingRef.current[id] = { ...base, [key]: next };
+    d.setItems((items) => items.map((it) => (it.id === id ? { ...it, [key]: next } : it)));
+
+    clearTimeout(saveTimerRef.current[id]);
+    saveTimerRef.current[id] = setTimeout(() => {
+      const pos = pendingRef.current[id];
+      delete pendingRef.current[id];
+      if (!pos) return;
+      fetch(`/api/admin/design/projects/${projectId}/items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pos),
+      }).catch(() => {});
+    }, 350);
+  }
+
+  // Direction is view-aware: in plan, left/right = x, up/down = y; in elevation,
+  // left/right move the item along its wall and up/down change its mount height.
+  function nudge(dir) {
+    const item = selectedItem;
+    if (!item) return;
+    if (view === "elevation") {
+      const along = (elevationWall === "left" || elevationWall === "right") ? "y_mm" : "x_mm";
+      if (dir === "left")  applyNudge(item.id, along, -NUDGE_MM);
+      if (dir === "right") applyNudge(item.id, along, +NUDGE_MM);
+      if (dir === "up")    applyNudge(item.id, "mount_height_mm", +NUDGE_MM);
+      if (dir === "down")  applyNudge(item.id, "mount_height_mm", -NUDGE_MM);
+    } else {
+      if (dir === "left")  applyNudge(item.id, "x_mm", -NUDGE_MM);
+      if (dir === "right") applyNudge(item.id, "x_mm", +NUDGE_MM);
+      if (dir === "up")    applyNudge(item.id, "y_mm", -NUDGE_MM);
+      if (dir === "down")  applyNudge(item.id, "y_mm", +NUDGE_MM);
+    }
   }
 
   function enterElevation() {
@@ -197,8 +241,8 @@ export default function DesignProgramMobile({ projectId }) {
         )}
       </div>
 
-      {/* ---- Selection action bar (plan view) ---- */}
-      {view === "plan" && selectedItem && (
+      {/* ---- Selection action bar (plan + elevation) ---- */}
+      {selectedItem && (
         <div className={mobile.selectionBar}>
           <div className={mobile.selRow}>
             <span className={mobile.selName}>{selectedItem.label || TYPE_SHORT[selectedItem.item_type] || selectedItem.item_type}</span>
@@ -207,11 +251,11 @@ export default function DesignProgramMobile({ projectId }) {
             <button type="button" className={`${mobile.selBtn} ${mobile.selBtnDanger}`} onClick={() => handleDeleteItem(selectedItem.id)}>Delete</button>
           </div>
           <div className={mobile.nudgeRow}>
-            <span className={mobile.nudgeHint}>Nudge {NUDGE_MM}mm</span>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge(-NUDGE_MM, 0)} aria-label="Left">◀</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge(0, -NUDGE_MM)} aria-label="Up">▲</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge(0, NUDGE_MM)} aria-label="Down">▼</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge(NUDGE_MM, 0)} aria-label="Right">▶</button>
+            <span className={mobile.nudgeHint}>{view === "elevation" ? `Move / height ${NUDGE_MM}mm` : `Nudge ${NUDGE_MM}mm`}</span>
+            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("left")} aria-label="Left">◀</button>
+            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("up")} aria-label="Up">▲</button>
+            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("down")} aria-label="Down">▼</button>
+            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("right")} aria-label="Right">▶</button>
           </div>
         </div>
       )}
