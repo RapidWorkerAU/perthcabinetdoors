@@ -319,9 +319,21 @@
   border-bottom: 1px solid rgba(0,0,0,0.05);
 }
 .cutRow:last-child { border-bottom: 0; }
-.cutDim { font-variant-numeric: tabular-nums; color: #333; }
-.cutName { color: #777; margin-left: auto; text-align: right; }
+.cutDim { font-variant-numeric: tabular-nums; color: #333; flex-shrink: 0; }
+.cutName { color: #777; flex: 1; text-align: left; padding-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cutQty { color: #aaa; font-size: 12px; }
+.cutCost { color: #333; font-variant-numeric: tabular-nums; flex-shrink: 0; font-weight: 600; }
+
+.priceWarn {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(234,179,8,0.12);
+  border: 1px solid rgba(234,179,8,0.35);
+  color: #92610a;
+  font-size: 12px;
+  line-height: 1.4;
+}
 
 .priceCard {
   margin-top: 16px;

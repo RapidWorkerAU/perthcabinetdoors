@@ -4,22 +4,20 @@ import { useMemo, useState } from "react";
 import styles from "../../design.mobile.module.css";
 import MobileModal from "./MobileModal";
 import { formatMoney } from "@/lib/pcd-quote-utils";
-import { cabinetCutList, cabinetMaterialCost } from "./cabinetPricing";
+import { cabinetPricing } from "./cabinetPricing";
 
 const MARGIN_KEY = "pcd_mobile_margin_pct";
 
 /**
- * Ephemeral cabinet price calculator. Shows the full cut list (carcass, shelves
- * AND doors/drawer fronts + finished panels — the same pieces the desktop panel
- * lists) with the material cost, then applies a margin % for a potential
- * customer price. Saves nothing — the margin is remembered in localStorage only
- * for convenience.
+ * Ephemeral cabinet price calculator. Shows every cut-list piece with its own
+ * material cost (carcass, shelves, doors/drawer fronts and finished panels —
+ * each at the same rate the quote uses), category subtotals, then a margin %
+ * for a potential customer price. Saves nothing.
  */
 export default function CabinetPriceModal({ item, roomItems = [], room = null, onClose }) {
-  const cutList = useMemo(() => cabinetCutList(item, roomItems, room), [item, roomItems, room]);
-  const materialCost = useMemo(
-    () => cabinetMaterialCost(item, roomItems, room, cutList),
-    [item, roomItems, room, cutList]
+  const { rows, categories, total } = useMemo(
+    () => cabinetPricing(item, roomItems, room),
+    [item, roomItems, room]
   );
 
   const [showCutList, setShowCutList] = useState(true);
@@ -38,21 +36,31 @@ export default function CabinetPriceModal({ item, roomItems = [], room = null, o
   }
 
   const margin = Number(marginPct) || 0;
-  const customerPrice = materialCost * (1 + margin / 100);
+  const customerPrice = total * (1 + margin / 100);
+
+  // Surface the common gotcha: a front with no per-sqm rate set on its colour.
+  const frontNoRate = rows.some((r) => (r.material === "door" || r.material === "drawer") && r.rate === 0);
 
   return (
     <MobileModal title="Cabinet price" onClose={onClose}>
       <div className={styles.priceSection}>
+        {frontNoRate && (
+          <p className={styles.priceWarn}>
+            ⚠ A door/drawer front has no $/m² rate — pick a door colour that has a
+            price per m² set, or the fronts will cost $0.
+          </p>
+        )}
+
         <button type="button" className={styles.cutListToggle} onClick={() => setShowCutList((s) => !s)}>
-          <span>Cut list ({cutList.length} {cutList.length === 1 ? "piece" : "pieces"})</span>
+          <span>Cut list ({rows.length} {rows.length === 1 ? "piece" : "pieces"})</span>
           <span>{showCutList ? "▲" : "▼"}</span>
         </button>
         {showCutList && (
           <div className={styles.cutList}>
-            {cutList.length === 0 && (
+            {rows.length === 0 && (
               <div className={styles.cutRow}><span className={styles.cutName}>Set dimensions to see the cut list</span></div>
             )}
-            {cutList.map((p, i) => (
+            {rows.map((p, i) => (
               <div key={i} className={styles.cutRow}>
                 <span className={styles.cutDim}>
                   {Math.round(p.dim1)} <span className={styles.cutQty}>({p.axis1})</span>
@@ -60,15 +68,22 @@ export default function CabinetPriceModal({ item, roomItems = [], room = null, o
                   {Math.round(p.dim2)} <span className={styles.cutQty}>({p.axis2})</span>
                 </span>
                 <span className={styles.cutName}>{p.name}</span>
+                <span className={styles.cutCost}>{formatMoney(p.cost)}</span>
               </div>
             ))}
           </div>
         )}
 
         <div className={styles.priceCard}>
+          {categories.map((c) => (
+            <div className={styles.priceLine} key={c.name}>
+              <span className={styles.priceLineLabel}>{c.name}</span>
+              <span className={styles.priceLineValue}>{formatMoney(c.cost)}</span>
+            </div>
+          ))}
           <div className={styles.priceLine}>
-            <span className={styles.priceLineLabel}>Material cost (ex GST)</span>
-            <span className={styles.priceLineValue}>{formatMoney(materialCost)}</span>
+            <span className={styles.priceLineLabel}><strong>Material cost (ex GST)</strong></span>
+            <span className={styles.priceLineValue}><strong>{formatMoney(total)}</strong></span>
           </div>
           <div className={styles.marginField}>
             <label htmlFor="mobile-margin">Margin %</label>
@@ -89,9 +104,10 @@ export default function CabinetPriceModal({ item, roomItems = [], room = null, o
         </div>
 
         <p className={styles.priceNote}>
-          Cut-list material cost (carcass, shelves, doors/fronts and finished
-          panels) — excludes hardware, labour and GST. For on-the-run pricing;
-          nothing here is saved.
+          Material cost only — each piece priced at the same $/m² your quote uses
+          (doors at the door-style rate, carcass/shelves/panels at their rates).
+          Excludes hardware, labour and GST. For on-the-run pricing; nothing here
+          is saved.
         </p>
       </div>
     </MobileModal>

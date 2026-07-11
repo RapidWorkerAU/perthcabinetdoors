@@ -1,47 +1,89 @@
 "use client";
 
 // Mobile "price on the run" costing. Reuses the desktop cut list (the exact
-// pieces shown in the left panel) so the mobile price matches what the designer
-// sees, and costs each piece by its material tag.
-//
-// Rate policy (confirmed with the business):
-//   - shelf                       -> shelf rate  (cost_per_sqm_shelf)
-//   - door / drawer / finished panel -> front rate (unit_cost_per_sqm_ex_gst)
-//   - carcass / back / kickboard / filler -> carcass rate (cost_per_sqm_carcass)
-// Finished end/side/back/underside panels use the door/front rate because
-// they're made to match the door material.
+// pieces the left panel shows) and prices each piece with the SAME per-sqm
+// rates the quote import uses, so the estimate matches what actually gets
+// quoted:
+//   - carcass sides/top/bottom + back + finished panels + kickboard/filler
+//                                    -> cost_per_sqm_carcass
+//   - shelves                        -> cost_per_sqm_shelf (fallback carcass)
+//   - doors                          -> door_style.cost_per_sqm
+//   - drawer fronts                  -> drawer_style.cost_per_sqm
+// (see app/api/admin/design/projects/[projectId]/import/route.js — the source
+// of truth for how each element is costed.)
 import { computeCutList } from "../DesignLeftPanel";
 
+// Which per-sqm rate applies to a cut-list piece, by its material tag.
 function rateFor(material, rates) {
   switch (material) {
     case "shelf":
       return rates.shelf;
     case "door":
+      return rates.door;
     case "drawer":
-    case "panel":
-      return rates.front;
-    default: // undefined (carcass sides/top/bottom), "back", "kickboard", "filler"
+      return rates.drawer;
+    default:
+      // undefined (carcass sides/top/bottom), "back", "panel" (finished
+      // end/side/underside), "kickboard", "filler" — all carcass rate, matching
+      // the quote import.
       return rates.carcass;
   }
 }
 
-export function cabinetCutList(item, roomItems = [], room = null) {
-  if (!item) return [];
-  return computeCutList(item, roomItems, room);
+// Human-friendly cost grouping for the price page.
+function categoryFor(material) {
+  switch (material) {
+    case "shelf": return "Shelves";
+    case "door": return "Doors";
+    case "drawer": return "Drawer fronts";
+    case "panel": return "Finished panels";
+    case "kickboard": return "Kickboards";
+    case "filler": return "Filler panels";
+    case "back": return "Carcass";
+    default: return "Carcass";
+  }
 }
 
-export function cabinetMaterialCost(item, roomItems = [], room = null, parts = null) {
-  if (!item) return 0;
-  const pieces = parts || computeCutList(item, roomItems, room);
-  const carcass = Number(item.cost_per_sqm_carcass) || 0;
-  const rates = {
+function ratesFor(item) {
+  const carcass = Number(item?.cost_per_sqm_carcass) || 0;
+  return {
     carcass,
-    shelf: Number(item.cost_per_sqm_shelf) || carcass,
-    front: Number(item.unit_cost_per_sqm_ex_gst) || 0,
+    shelf: Number(item?.cost_per_sqm_shelf) || carcass,
+    door: Number(item?.door_style?.cost_per_sqm) || 0,
+    drawer: Number(item?.drawer_style?.cost_per_sqm) || 0,
   };
-  return pieces.reduce((sum, p) => {
+}
+
+/**
+ * Full pricing breakdown for a cabinet item.
+ * Returns { rows, categories, total, rates } where each row carries its area,
+ * qty, per-sqm rate and line cost so the UI can show every piece priced.
+ */
+export function cabinetPricing(item, roomItems = [], room = null) {
+  if (!item) return { rows: [], categories: [], total: 0, rates: ratesFor(item) };
+
+  const rates = ratesFor(item);
+  const pieces = computeCutList(item, roomItems, room);
+
+  const rows = pieces.map((p) => {
     const areaSqm = ((Number(p.dim1) || 0) * (Number(p.dim2) || 0)) / 1_000_000;
     const qty = Number(p.qty) || 1;
-    return sum + areaSqm * qty * rateFor(p.material, rates);
-  }, 0);
+    const rate = rateFor(p.material, rates);
+    return { ...p, qty, areaSqm, rate, cost: areaSqm * qty * rate };
+  });
+
+  const catMap = new Map();
+  for (const r of rows) {
+    const key = categoryFor(r.material);
+    catMap.set(key, (catMap.get(key) || 0) + r.cost);
+  }
+  const categories = [...catMap.entries()].map(([name, cost]) => ({ name, cost }));
+
+  const total = rows.reduce((s, r) => s + r.cost, 0);
+  return { rows, categories, total, rates };
+}
+
+// Convenience: just the material-cost total (used by the price strip).
+export function cabinetMaterialCost(item, roomItems = [], room = null) {
+  return cabinetPricing(item, roomItems, room).total;
 }
