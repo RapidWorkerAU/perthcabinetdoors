@@ -410,7 +410,7 @@ const WALL_AXIS = {
   right:  { widthKey: "depth_mm",  label: "Right Wall" },
 };
 
-export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect }) {
+export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, interactive = true }) {
   const [currentWall, setCurrentWall] = useState(initialWall);
   const [selectedId, setSelectedId]   = useState(null);
   const [drag, setDrag]               = useState(null);
@@ -547,6 +547,8 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
   // ---- Pointer handlers ----------------------------------------------------
   function handleItemPointerDown(e, item) {
+    // Read-only (mobile): select on tap, never begin a drag.
+    if (!interactive) { pressedRef.current = true; setSelectedId(item.id); onItemSelect?.(item.id); return; }
     if (!DRAGGABLE_TYPES.has(item.item_type)) return;
     // A corner cabinet's position on its secondary wall is derived, not
     // stored — nothing to drag here. Select it (for the config panel) but
@@ -580,6 +582,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   }
 
   function handleShelfPointerDown(e, item, idx, heightMm) {
+    if (!interactive) return;
     e.stopPropagation();
     pressedRef.current = true;
     const pt = svgPt(e);
@@ -726,7 +729,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
           </span>
         </div>
 
-        {/* Wall switcher */}
+        {/* Wall switcher — hidden on mobile (read-only), which shows only the
+            single elevation for the wall its one cabinet sits on. */}
+        {interactive && (
         <div className={styles.elevWallPicker}>
           {["top", "left", "bottom", "right"].map((w) => {
             const count = items.filter((i) =>
@@ -746,6 +751,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             );
           })}
         </div>
+        )}
         <div className={styles.elevationLegend}>
           {[
             { type: "base_cabinet", label: "Base" },

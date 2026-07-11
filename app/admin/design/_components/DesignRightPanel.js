@@ -124,8 +124,13 @@ function emptyDraft() {
 }
 
 // ---- Add item form ----
-function AddItemForm({ onAdd, onCancel }) {
-  const [draft, setDraft] = useState(() => emptyDraft());
+function AddItemForm({ onAdd, onCancel, allowedTypes = ADDABLE_TYPES }) {
+  const [draft, setDraft] = useState(() => {
+    const d = emptyDraft();
+    // Keep the initial type within the allowed set (mobile restricts to
+    // base/wall/tall — no corner, no standalone panels/scribes/obstructions).
+    return allowedTypes.includes(d.item_type) ? d : { ...d, item_type: allowedTypes[0] };
+  });
   const [busy, setBusy]   = useState(false);
   const [err, setErr]     = useState("");
 
@@ -211,7 +216,7 @@ function AddItemForm({ onAdd, onCancel }) {
         <label className={styles.fieldLabel}>
           Type
           <select className={styles.fieldSelect} value={draft.item_type} onChange={(e) => setType(e.target.value)}>
-            {ADDABLE_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+            {allowedTypes.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
           </select>
         </label>
         <label className={styles.fieldLabel}>
@@ -2175,7 +2180,11 @@ function ObstructionForm({ item, onItemChange }) {
 }
 
 // ---- Right panel container ----
-export default function DesignRightPanel({ item, allItems, room, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem }) {
+export default function DesignRightPanel({ item, allItems, room, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem, allowedTypes, fullWidth = false }) {
+  // `fullWidth` + `allowedTypes` are the mobile hooks: the modal renders the
+  // exact same panel at 100% width and restricts which cabinet types can be
+  // added. Desktop passes neither, so behaviour is unchanged.
+  const panelClass = fullWidth ? `${styles.rightPanel} ${styles.rightPanelFull}` : styles.rightPanel;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmTimer = useRef(null);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -2206,13 +2215,15 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
 
   if (isAddingItem) {
     return (
-      <div className={styles.rightPanel}>
-        <div className={styles.rightPanelHeader}>
-          <p className={styles.rightPanelTitle}>Add Item</p>
-          <p className={styles.rightPanelSubtitle}>Drag to position after adding</p>
-        </div>
+      <div className={panelClass}>
+        {!fullWidth && (
+          <div className={styles.rightPanelHeader}>
+            <p className={styles.rightPanelTitle}>Add Item</p>
+            <p className={styles.rightPanelSubtitle}>Drag to position after adding</p>
+          </div>
+        )}
         <div className={styles.rightScroll}>
-          <AddItemForm onAdd={onAdd} onCancel={onCancelAdd} />
+          <AddItemForm onAdd={onAdd} onCancel={onCancelAdd} allowedTypes={allowedTypes} />
         </div>
       </div>
     );
@@ -2221,11 +2232,13 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
   if (item) {
     const isCabinet = CABINET_TYPES.includes(item.item_type);
     return (
-      <div className={styles.rightPanel}>
-        <div className={styles.rightPanelHeader}>
-          <p className={styles.rightPanelTitle}>{item.label || TYPE_LABELS[item.item_type] || item.item_type}</p>
-          <p className={styles.rightPanelSubtitle}>{TYPE_LABELS[item.item_type]}</p>
-        </div>
+      <div className={panelClass}>
+        {!fullWidth && (
+          <div className={styles.rightPanelHeader}>
+            <p className={styles.rightPanelTitle}>{item.label || TYPE_LABELS[item.item_type] || item.item_type}</p>
+            <p className={styles.rightPanelSubtitle}>{TYPE_LABELS[item.item_type]}</p>
+          </div>
+        )}
         {isOverlapping && (
           <p className={styles.overlapWarning}>
             ⚠ This item overlaps another item on the plan. Drag it (or the other item) to fix the position.
@@ -2239,14 +2252,18 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
           <DoorPanelForm key={item.id} item={item} room={room} onItemChange={onItemChange} />
         )}
         <div className={styles.rightPanelFooter}>
-          <button
-            type="button"
-            className={`${styles.btn} ${styles.btnSecondary}`}
-            onClick={handleDuplicateClick}
-            disabled={isDuplicating}
-          >
-            {isDuplicating ? "Duplicating…" : "Duplicate"}
-          </button>
+          {/* Duplicate would add a second cabinet to the room — hidden on
+              mobile, which is restricted to one cabinet per room. */}
+          {!fullWidth && (
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnSecondary}`}
+              onClick={handleDuplicateClick}
+              disabled={isDuplicating}
+            >
+              {isDuplicating ? "Duplicating…" : "Duplicate"}
+            </button>
+          )}
           <button
             type="button"
             className={`${styles.deleteItemBtn} ${confirmDelete ? styles.deleteItemBtnConfirm : ""}`}
@@ -2260,7 +2277,7 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
   }
 
   return (
-    <div className={styles.rightPanel}>
+    <div className={panelClass}>
       <div className={styles.rightPanelHeader}>
         <p className={styles.rightPanelTitle}>Item Config</p>
         <p className={styles.rightPanelSubtitle}>Select or add an item</p>

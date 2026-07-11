@@ -710,6 +710,13 @@
   overflow: hidden;
 }
 
+/* Mobile: the same right panel rendered full-width inside a modal. Desktop
+   never applies this class. */
+.rightPanelFull {
+  width: 100%;
+  border-left: none;
+}
+
 .rightPanelHeader {
   padding: 14px 16px 12px;
   border-bottom: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));

@@ -1,0 +1,367 @@
+/* Mobile design tool — a separate stylesheet so the desktop module is never
+   touched. Layout: fixed top bar, flexible canvas, price strip, bottom action
+   bar, and full-screen slide-up modals reusing the desktop panels. */
+
+.mobileRoot {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #13171d;
+  color: #e8ecf2;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+/* ---- Top bar ---- */
+.topBar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px calc(10px);
+  padding-top: max(10px, env(safe-area-inset-top));
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: #171c24;
+}
+.topBarTitles { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.topBarProject {
+  font-size: 12px; color: rgba(255,255,255,0.45);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topBarRoom {
+  font-size: 15px; font-weight: 600; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.viewToggle {
+  display: inline-flex;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.viewToggleBtn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  min-height: 36px;
+}
+.viewToggleBtnActive { background: #3b82f6; color: #fff; }
+.viewToggleBtn:disabled { opacity: 0.35; }
+
+/* ---- Canvas ---- */
+.canvasWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+/* Wraps the plan SVG so it fills remaining space alongside the multi-item
+   notice (the SVG's own height:100% would otherwise ignore that sibling). */
+.planFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.emptyState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+.emptyTitle { font-size: 16px; font-weight: 600; color: #fff; }
+.emptyHint { font-size: 13px; color: rgba(255,255,255,0.45); max-width: 260px; }
+
+.multiItemNotice {
+  margin: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(234,179,8,0.12);
+  border: 1px solid rgba(234,179,8,0.3);
+  color: #fde68a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ---- Price strip ---- */
+.priceStrip {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: #171c24;
+  appearance: none;
+  width: 100%;
+  color: inherit;
+  text-align: left;
+}
+.priceStripLabel { font-size: 12px; color: rgba(255,255,255,0.5); }
+.priceStripValue { font-size: 17px; font-weight: 700; color: #fff; }
+.priceStripCta { font-size: 12px; color: #60a5fa; font-weight: 600; }
+
+/* ---- Bottom action bar ---- */
+.bottomBar {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: #171c24;
+}
+.actionBtn {
+  flex: 1;
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: #e8ecf2;
+  border-radius: 10px;
+  padding: 12px 8px;
+  min-height: 48px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.actionBtnPrimary { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+.actionBtn:disabled { opacity: 0.4; }
+.actionBtnIcon { font-size: 18px; line-height: 1; }
+
+/* ---- Full-screen modal ---- */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.modalSheet {
+  background: #fff;
+  color: #1a1a1a;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+.modalHeader {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  background: #fff;
+}
+.modalTitle { font-size: 16px; font-weight: 700; flex: 1; }
+.modalClose {
+  appearance: none;
+  border: 0;
+  background: rgba(0,0,0,0.05);
+  color: #333;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.modalBody {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.modalBodyPad { padding: 14px; }
+
+/* ---- Rooms modal ---- */
+.roomList { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.roomRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 10px;
+  background: #fafafa;
+  text-align: left;
+  width: 100%;
+  appearance: none;
+  min-height: 52px;
+}
+.roomRowActive { border-color: #3b82f6; background: #eff6ff; }
+.roomRowMain { flex: 1; min-width: 0; }
+.roomRowName { font-size: 15px; font-weight: 600; }
+.roomRowDims { font-size: 12px; color: #666; margin-top: 2px; }
+.roomRowCheck { color: #3b82f6; font-weight: 700; }
+
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.fieldRow { display: flex; gap: 10px; }
+.fieldRow .field { flex: 1; }
+.fieldLabel { font-size: 12px; font-weight: 600; color: #555; }
+.input {
+  appearance: none;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 8px;
+  padding: 11px 12px;
+  font-size: 16px; /* >=16px avoids iOS zoom-on-focus */
+  background: #fff;
+  color: #1a1a1a;
+  width: 100%;
+}
+
+.primaryBtn {
+  appearance: none;
+  border: 0;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  width: 100%;
+  min-height: 50px;
+}
+.secondaryBtn {
+  appearance: none;
+  border: 1px solid rgba(0,0,0,0.15);
+  background: #fff;
+  color: #333;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 15px;
+  font-weight: 600;
+  width: 100%;
+  min-height: 50px;
+}
+.dangerBtn {
+  appearance: none;
+  border: 1px solid rgba(220,38,38,0.3);
+  background: #fff;
+  color: #dc2626;
+  border-radius: 10px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  width: 100%;
+}
+.sectionLabel {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  margin: 18px 0 8px;
+}
+.addRoomBtn {
+  appearance: none;
+  width: 100%;
+  border: 1px dashed rgba(0,0,0,0.2);
+  background: #fff;
+  color: #3b82f6;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: 48px;
+}
+
+/* ---- Price modal ---- */
+.priceSection { padding: 14px; }
+.cutListToggle {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f5f5f7;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  min-height: 48px;
+}
+.cutList {
+  border: 1px solid rgba(0,0,0,0.08);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  overflow: hidden;
+}
+.cutRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+.cutRow:last-child { border-bottom: 0; }
+.cutDim { font-variant-numeric: tabular-nums; color: #333; }
+.cutName { color: #777; margin-left: auto; text-align: right; }
+.cutQty { color: #aaa; font-size: 12px; }
+
+.priceCard {
+  margin-top: 16px;
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.priceLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+.priceLineLabel { color: #555; }
+.priceLineValue { font-weight: 600; font-variant-numeric: tabular-nums; }
+.priceLineTotal { background: #eff6ff; }
+.priceLineTotal .priceLineLabel { color: #1e3a8a; font-weight: 600; }
+.priceLineTotal .priceLineValue { color: #1e3a8a; font-size: 18px; font-weight: 800; }
+.marginField {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+.marginField label { font-size: 14px; color: #555; flex: 1; }
+.marginInput {
+  width: 90px;
+  appearance: none;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 16px;
+  text-align: right;
+}
+.priceNote {
+  font-size: 12px;
+  color: #999;
+  padding: 12px 4px 0;
+  line-height: 1.4;
+}

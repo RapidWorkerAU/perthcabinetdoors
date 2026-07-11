@@ -846,6 +846,11 @@ export default function DesignCanvas({
   onDeselect,
   onItemDragEnd,
   onFrontView,
+  // Mobile renders the canvas read-only: tapping a cabinet still selects it,
+  // but dragging-to-position and the in-canvas elevation buttons are disabled
+  // (mobile has its own elevation toggle and one cabinet per room, so there's
+  // nothing to position). Defaults preserve the full desktop behaviour.
+  interactive = true,
 }) {
   const svgRef = useRef(null);
   const itemPressedRef = useRef(false);
@@ -870,6 +875,8 @@ export default function DesignCanvas({
 
   function handleItemPointerDown(e, item) {
     e.preventDefault();
+    // Read-only (mobile): select on tap, but never begin a drag.
+    if (!interactive) { onItemClick(item); return; }
     const pt = toSvgPt(e.clientX, e.clientY);
     itemPressedRef.current = true;
     const { absX, absY } = getAbsPos(item, W, D);
@@ -1199,16 +1206,18 @@ export default function DesignCanvas({
             >
               {wall}
             </text>
-            <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); onFrontView(wall); }}>
-              <rect x={bx} y={by} width={btnW} height={btnH} fill="rgba(255,255,255,0.08)" rx={3}
-                onMouseEnter={(e) => e.currentTarget.setAttribute("fill", "rgba(255,255,255,0.18)")}
-                onMouseLeave={(e) => e.currentTarget.setAttribute("fill", "rgba(255,255,255,0.08)")}
-              />
-              <text x={bx + btnW / 2} y={by + btnH / 2} textAnchor="middle" dominantBaseline="middle"
-                fontSize={8} fill="rgba(255,255,255,0.5)" style={{ userSelect: "none", pointerEvents: "none" }}>
-                ↗ Elevation
-              </text>
-            </g>
+            {interactive && onFrontView && (
+              <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); onFrontView(wall); }}>
+                <rect x={bx} y={by} width={btnW} height={btnH} fill="rgba(255,255,255,0.08)" rx={3}
+                  onMouseEnter={(e) => e.currentTarget.setAttribute("fill", "rgba(255,255,255,0.18)")}
+                  onMouseLeave={(e) => e.currentTarget.setAttribute("fill", "rgba(255,255,255,0.08)")}
+                />
+                <text x={bx + btnW / 2} y={by + btnH / 2} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={8} fill="rgba(255,255,255,0.5)" style={{ userSelect: "none", pointerEvents: "none" }}>
+                  ↗ Elevation
+                </text>
+              </g>
+            )}
           </g>
         );
       })}
