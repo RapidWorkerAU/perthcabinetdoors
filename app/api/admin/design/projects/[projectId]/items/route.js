@@ -1,4 +1,5 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
+import { CABINET_MOUNT_MM } from "../../../../../../../lib/pcd-kickboard-utils";
 
 async function getProjectId(params) {
   const resolved = await Promise.resolve(params);
@@ -22,7 +23,7 @@ function dbText(value) {
   return s || null;
 }
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
 
 // Fills in blank board fields from the project's material_defaults —
 // always just a fallback for a field the payload didn't already set
@@ -49,6 +50,17 @@ function applyMaterialDefaults(payload, defaults) {
       if (blank(merged.shelf_colour))   merged.shelf_colour   = shelf.colour;
       if (blank(merged.shelf_thickness_mm)) merged.shelf_thickness_mm = shelf.thickness_mm;
       if (blank(merged.cost_per_sqm_shelf)) merged.cost_per_sqm_shelf = shelf.cost_per_sqm;
+    }
+  } else if (payload.item_type === "floating_shelf") {
+    // Floating shelves are decorative-board boxes — they store their finish in
+    // the same base/carcass columns a panel/carcass reads back from.
+    const fs = defaults.floating_shelf;
+    if (fs) {
+      if (blank(merged.material)) merged.material = fs.material;
+      if (blank(merged.finish))   merged.finish   = fs.finish;
+      if (blank(merged.colour))   merged.colour   = fs.colour;
+      if (blank(merged.carcass_thickness_mm)) merged.carcass_thickness_mm = fs.thickness_mm;
+      if (blank(merged.cost_per_sqm_carcass)) merged.cost_per_sqm_carcass = fs.cost_per_sqm;
     }
   } else if (payload.item_type === "panel" || payload.item_type === "scribe") {
     // Scribe reuses the same material-defaults bucket as panel — it's
@@ -84,12 +96,21 @@ function buildRow(payload, projectId) {
     height_mm: dbInt(payload.height_mm),
     depth_mm: dbInt(payload.depth_mm),
     secondary_width_mm: dbInt(payload.secondary_width_mm),
+    blind_width_mm: dbInt(payload.blind_width_mm),
+    blind_side: dbText(payload.blind_side),
     qty: dbInt(payload.qty) ?? 1,
     material: dbText(payload.material),
     finish: dbText(payload.finish),
     colour: dbText(payload.colour),
     notes: dbText(payload.notes),
-    mount_height_mm: dbInt(payload.mount_height_mm) ?? 0,
+    // Per-type, not a hard 0. Every reader falls back with
+    // `mount_height_mm ?? CABINET_MOUNT_MM[item_type]` (wall = 1400), but a
+    // stored 0 is not null, so it defeated all of them: the add form never
+    // sends a mount height, so every new wall cabinet was written at floor
+    // level — drawn on the floor in elevation and falsely flagged as
+    // overlapping the base cabinet below it, while the config panel's own
+    // input displayed 1400.
+    mount_height_mm: dbInt(payload.mount_height_mm) ?? CABINET_MOUNT_MM[payload.item_type] ?? 0,
     ...(isObstruction
       ? {}
       : isCabinet
@@ -108,7 +129,7 @@ function buildRow(payload, projectId) {
           unit_cost_per_sqm_ex_gst: dbNum(payload.unit_cost_per_sqm_ex_gst),
           unit_cost_mode: payload.unit_cost_mode === "manual" ? "manual" : "auto",
           has_kickboard:          Boolean(payload.has_kickboard ?? false),
-          kickboard_height_mm:    dbInt(payload.kickboard_height_mm) ?? 150,
+          kickboard_height_mm:    dbInt(payload.kickboard_height_mm) ?? 120,
           kickboard_span:         dbText(payload.kickboard_span) || "continuous",
           kickboard_thickness_mm: dbInt(payload.kickboard_thickness_mm) ?? 16,
           has_filler_panel:          Boolean(payload.has_filler_panel ?? false),
@@ -123,6 +144,13 @@ function buildRow(payload, projectId) {
           back_panel_wall1:       Boolean(payload.back_panel_wall1 ?? false),
           back_panel_wall2:       Boolean(payload.back_panel_wall2 ?? false),
           panel_to_floor:         Boolean(payload.panel_to_floor ?? false),
+          has_benchtop:              Boolean(payload.has_benchtop ?? false),
+          benchtop_span:             dbText(payload.benchtop_span) || "continuous",
+          benchtop_thickness_mm:     dbInt(payload.benchtop_thickness_mm) ?? 40,
+          benchtop_overhang_mm:      dbInt(payload.benchtop_overhang_mm) ?? 20,
+          benchtop_waterfall_left:   Boolean(payload.benchtop_waterfall_left ?? false),
+          benchtop_waterfall_right:  Boolean(payload.benchtop_waterfall_right ?? false),
+          benchtop_cutouts:          Array.isArray(payload.benchtop_cutouts) ? payload.benchtop_cutouts : [],
           has_bottom_panel:       Boolean(payload.has_bottom_panel ?? false),
           bottom_panel_span:      dbText(payload.bottom_panel_span) || "continuous",
           bottom_panel_qty:       dbInt(payload.bottom_panel_qty) ?? 1,
@@ -136,6 +164,16 @@ function buildRow(payload, projectId) {
           has_rangehood:                Boolean(payload.has_rangehood ?? false),
           rangehood_housing_height_mm:  dbInt(payload.rangehood_housing_height_mm),
           rangehood_channel_width_mm:   dbInt(payload.rangehood_channel_width_mm),
+        }
+      : payload.item_type === "floating_shelf"
+      ? {
+          // Reads back through floatingShelfStyle(): finish in the base
+          // material/finish/colour columns, thickness + cost in the carcass
+          // columns. Persisted here so a material default set at creation sticks.
+          carcass_thickness_mm: dbInt(payload.carcass_thickness_mm) ?? 18,
+          cost_per_sqm_carcass: dbNum(payload.cost_per_sqm_carcass),
+          end_panel_left:  Boolean(payload.end_panel_left ?? false),
+          end_panel_right: Boolean(payload.end_panel_right ?? false),
         }
       : {
           thickness: dbText(payload.thickness),
@@ -183,7 +221,7 @@ export async function POST(request, { params }) {
     const projectId = await getProjectId(params);
     const payload = await request.json();
 
-    const VALID_TYPES = [...CABINET_TYPES, "door", "drawer_front", "panel", "scribe", "obstruction"];
+    const VALID_TYPES = [...CABINET_TYPES, "floating_shelf", "door", "drawer_front", "panel", "scribe", "obstruction"];
     if (!VALID_TYPES.includes(payload.item_type)) {
       return Response.json({ ok: false, error: "Invalid item_type." }, { status: 422 });
     }

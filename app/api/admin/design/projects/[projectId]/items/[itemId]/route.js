@@ -34,7 +34,7 @@ function buildPatch(payload) {
   str("shelf_material"); str("shelf_finish"); str("shelf_colour");
   int("x_mm", 0); int("y_mm", 0); int("rotation", 0); int("mount_height_mm");
   int("width_mm"); int("height_mm"); int("depth_mm"); int("qty", 1);
-  int("secondary_width_mm");
+  int("secondary_width_mm"); int("blind_width_mm"); str("blind_side");
   int("sort_order", 0);
   int("carcass_thickness_mm", 16); int("back_panel_thickness_mm", 16);
   int("scribe_thickness_mm", 18);
@@ -43,12 +43,16 @@ function buildPatch(payload) {
   num("unit_cost_per_sqm_ex_gst");
   bool("back_panel_included"); bool("hinge_holes"); bool("hinge_supply");
   bool("has_kickboard");
-  int("kickboard_height_mm", 150); int("kickboard_thickness_mm", 16); str("kickboard_span");
+  int("kickboard_height_mm", 120); int("kickboard_thickness_mm", 16); str("kickboard_span");
   bool("has_filler_panel");
   int("filler_panel_height_mm"); int("filler_panel_thickness_mm", 16); str("filler_panel_span");
   bool("end_panel_left"); bool("end_panel_right"); bool("has_back_panel"); bool("panel_to_floor");
   bool("back_panel_wall1"); bool("back_panel_wall2");
   str("back_panel_span"); int("back_panel_qty", 1);
+  bool("has_benchtop"); str("benchtop_span");
+  int("benchtop_thickness_mm", 40); int("benchtop_overhang_mm", 20);
+  bool("benchtop_waterfall_left"); bool("benchtop_waterfall_right");
+  if ("benchtop_cutouts" in payload) patch.benchtop_cutouts = Array.isArray(payload.benchtop_cutouts) ? payload.benchtop_cutouts : [];
   bool("has_bottom_panel"); str("bottom_panel_span"); int("bottom_panel_qty", 1);
   str("front_type");
   bool("has_rangehood");
@@ -56,6 +60,11 @@ function buildPatch(payload) {
   if ("door_config" in payload) patch.door_config = payload.door_config ?? null;
   if ("door_style"  in payload) patch.door_style  = payload.door_style  ?? null;
   if ("finish_panel_style" in payload) patch.finish_panel_style = payload.finish_panel_style ?? null;
+  // Optional per-piece finishing colour overrides (each defaults to a "match").
+  if ("kickboard_style" in payload) patch.kickboard_style = payload.kickboard_style ?? null;
+  if ("filler_panel_style" in payload) patch.filler_panel_style = payload.filler_panel_style ?? null;
+  if ("bottom_panel_style" in payload) patch.bottom_panel_style = payload.bottom_panel_style ?? null;
+  if ("back_panel_style" in payload) patch.back_panel_style = payload.back_panel_style ?? null;
   if ("drawer_config"  in payload) patch.drawer_config  = payload.drawer_config  ?? null;
   if ("drawer_style"   in payload) patch.drawer_style   = payload.drawer_style   ?? null;
   if ("section_config" in payload) patch.section_config = payload.section_config ?? null;

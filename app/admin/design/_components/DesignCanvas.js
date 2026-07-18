@@ -2,21 +2,52 @@
 
 import { useCallback, useRef, useState } from "react";
 import styles from "../design.module.css";
-import { CABINET_MOUNT_MM } from "./FrontElevationView";
 import { islandVirtualWall } from "../../../../lib/pcd-kickboard-utils";
+import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
+import { endPanelSpanMm, finishPanelThicknessMm } from "../../../../lib/pcd-finishpanel-utils";
+import { benchtopDepthMm, benchtopCutouts, benchtopWaterfallSides, benchtopThicknessMm } from "../../../../lib/pcd-benchtop-utils";
+// The room-space maths lives in lib/pcd-plan-geometry.js. This file keeps only
+// what's genuinely about drawing: SVG rects, polygons, scale.
+import {
+  itemDepthMm,
+  getAbsPos,
+  findOverlappingItemIds,
+  widthRunsVertically,
+  snap,
+  clamp,
+  withCornerWallDetection,
+  snapToWall,
+  resolveCollision1D,
+  resolveCollision2D,
+  findEdgeSnap,
+  occupiedFootprint,
+  islandOccupiedRect,
+  perpendicularGaps,
+  cornerSecondaryFootprint,
+  cabinetVerticalRange,
+  verticalRangesOverlap,
+  computeGaps1D,
+  frontEdgeFor,
+  panelSideEdges,
+  islandEffectiveDims,
+} from "../../../../lib/pcd-plan-geometry";
+
+// Re-exported because DesignRightPanel imports them from here. The definitions
+// moved to the lib; the import path stays put.
+export { itemDepthMm, getAbsPos, findOverlappingItemIds };
 
 const VIEW_W = 1100;
 const VIEW_H = 720;
 const BAND    = 52;
 const MARGIN  = 24;
-const SNAP_MM = 10;
-const WALL_SNAP_MM = 400; // cabinet snaps to wall if back is within this mm of wall edge
 
 const ITEM_COLORS = {
   base_cabinet:  "#3b82f6",
   wall_cabinet:  "#22c55e",
   tall_cabinet:  "#f97316",
   corner_base_cabinet: "#0ea5e9",
+  blind_corner_cabinet: "#06b6d4",
+  floating_shelf: "#14b8a6",
   door:          "#a855f7",
   drawer_front:  "#8b5cf6",
   panel:         "#6b7280",
@@ -29,6 +60,8 @@ const ITEM_SHORT = {
   wall_cabinet:  "Wall",
   tall_cabinet:  "Tall",
   corner_base_cabinet: "Corner",
+  blind_corner_cabinet: "Blind",
+  floating_shelf: "Shelf",
   door:          "Door",
   drawer_front:  "Drwr",
   panel:         "Panel",
@@ -37,16 +70,6 @@ const ITEM_SHORT = {
 };
 
 // --- Geometry helpers ---
-
-// A scribe's plan-view footprint depth (how far it projects from the wall
-// it's against) is its own scribe_thickness_mm — unlike every other item
-// type, which stores its real footprint depth in depth_mm directly. Scribe
-// keeps width_mm at its normal along-wall-span meaning, the mirror image of
-// "panel" (which overloads width_mm as thickness and depth_mm as its span).
-export function itemDepthMm(item) {
-  return item.item_type === "scribe" ? (item.scribe_thickness_mm || 18) : (item.depth_mm || 600);
-}
-
 function computeLayout(room) {
   const W = room.width_mm || 4000;
   const D = room.depth_mm || 3000;
@@ -58,310 +81,6 @@ function computeLayout(room) {
   const ox = BAND + MARGIN + (avW - roomW) / 2;
   const oy = BAND + MARGIN + (avH - roomH) / 2;
   return { scale, roomW, roomH, ox, oy, W, D };
-}
-
-function snap(mm) { return Math.round(mm / SNAP_MM) * SNAP_MM; }
-function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
-
-const CORNER_SNAP_MM = 100; // how close to a perpendicular wall counts as "sitting in that corner"
-
-// For a corner cabinet, detects whether its final dragged position also sits
-// flush against a perpendicular wall and auto-assigns secondary_wall to it —
-// so the L-shape and dual-wall elevation just work once it's dropped into an
-// actual room corner. Only ever SETS a positively-detected second wall —
-// never clears an existing one just because this position isn't near a
-// perpendicular wall. That "against one wall or island" case is exactly
-// when the user is expected to set secondary_wall manually via the config
-// panel, so a plain drag along the same wall must not wipe that choice out
-// from under them.
-function withCornerWallDetection(item, patch, roomWidthMm, roomDepthMm) {
-  if (item.item_type !== "corner_base_cabinet") return patch;
-  const wall = patch.wall ?? item.wall;
-  const widthMm = item.width_mm || 900;
-
-  let detectedWall = "";
-  if (wall === "top" || wall === "bottom") {
-    const xMm = patch.x_mm ?? item.x_mm ?? 0;
-    if (xMm <= CORNER_SNAP_MM) detectedWall = "left";
-    else if (xMm + widthMm >= roomWidthMm - CORNER_SNAP_MM) detectedWall = "right";
-  } else if (wall === "left" || wall === "right") {
-    const yMm = patch.y_mm ?? item.y_mm ?? 0;
-    if (yMm <= CORNER_SNAP_MM) detectedWall = "top";
-    else if (yMm + widthMm >= roomDepthMm - CORNER_SNAP_MM) detectedWall = "bottom";
-  }
-
-  if (!detectedWall) return patch;
-
-  const next = { ...patch, secondary_wall: detectedWall };
-  if (!item.secondary_width_mm) next.secondary_width_mm = 900;
-  return next;
-}
-
-// ---- Absolute position helpers ----
-
-// Returns absolute room-space (absX, absY) for any cabinet, normalising both old and new formats.
-// Old format for left/right: x_mm = position along wall (room-space y), y_mm = 0.
-// New format for left/right: x_mm = 0 (or roomW-depth), y_mm = position along wall.
-export function getAbsPos(item, roomW, roomD) {
-  const x = item.x_mm || 0;
-  const y = item.y_mm || 0;
-  const d = itemDepthMm(item);
-  switch (item.wall) {
-    case "top":    return { absX: x, absY: 0 };
-    case "bottom": return { absX: x, absY: roomD - d };
-    case "left":
-      // x_mm > 0 = old format (x_mm stores the y position); otherwise new format
-      return x > 0 ? { absX: 0, absY: x } : { absX: 0, absY: y };
-    case "right":
-      return x > 0 ? { absX: roomW - d, absY: x } : { absX: roomW - d, absY: y };
-    default:
-      return { absX: x, absY: y };
-  }
-}
-
-// Snaps absolute position to nearest room wall if within WALL_SNAP_MM, else island.
-// Returns {wall, x_mm, y_mm} in new coordinate format.
-function snapToWall(rawAbsX, rawAbsY, itemW, itemD, currentWall, roomW, roomD) {
-  // Bounding box depends on current orientation
-  const isRotated = currentWall === "left" || currentWall === "right";
-  const horizExt  = isRotated ? itemD : itemW;
-  const vertExt   = isRotated ? itemW : itemD;
-
-  const dTop    = rawAbsY;
-  const dBottom = roomD - rawAbsY - vertExt;
-  const dLeft   = rawAbsX;
-  const dRight  = roomW - rawAbsX - horizExt;
-  const minDist = Math.min(dTop, dBottom, dLeft, dRight);
-
-  if (minDist > WALL_SNAP_MM) {
-    return {
-      wall:  "island",
-      x_mm:  clamp(rawAbsX, 0, roomW - itemW),
-      y_mm:  clamp(rawAbsY, 0, roomD - itemD),
-    };
-  }
-  if (dTop <= dBottom && dTop <= dLeft && dTop <= dRight) {
-    return { wall: "top",    x_mm: clamp(rawAbsX, 0, roomW - itemW), y_mm: 0            };
-  }
-  if (dBottom < dTop && dBottom <= dLeft && dBottom <= dRight) {
-    return { wall: "bottom", x_mm: clamp(rawAbsX, 0, roomW - itemW), y_mm: roomD - itemD };
-  }
-  if (dLeft <= dRight) {
-    return { wall: "left",   x_mm: 0,             y_mm: clamp(rawAbsY, 0, roomD - itemW) };
-  }
-  // x_mm must be 0 here (new-format convention, matching "left" above) —
-  // getAbsPos() treats ANY x_mm > 0 on a left/right-wall item as "old
-  // format" and reads the along-wall position from x_mm instead of y_mm.
-  // Writing roomW - itemD here (a real, always-positive value) silently
-  // made every right-wall item look like old-format data forever after,
-  // so its saved y_mm was never actually read back — the cabinet appeared
-  // stuck wherever clamping the stale absY happened to land it.
-  return   { wall: "right",  x_mm: 0,  y_mm: clamp(rawAbsY, 0, roomD - itemW) };
-}
-
-// ---- Collision helpers ----
-
-// Pushes `desired` out of every obstacle it overlaps along a single axis.
-// A single left-to-right pass can resolve overlap with one obstacle by
-// pushing straight into another — most likely when a very thin obstacle
-// (e.g. an 18mm filler panel) sits right next to a wide one, since the
-// push-direction heuristic (whichever side is "closer") can send the item
-// toward the second obstacle without ever re-checking it. So this re-runs
-// full passes until nothing moves (i.e. no obstacle overlaps any more),
-// bounded by obstacle count as a safety cap against pathological inputs.
-function resolveCollision1D(desired, width, obstacles, roomMax) {
-  let x = clamp(desired, 0, roomMax - width);
-  const sorted = obstacles
-    .map((o) => ({ lo: o.x_mm || 0, hi: (o.x_mm || 0) + (o.width_mm || 0) }))
-    .filter((o) => o.hi > o.lo)
-    .sort((a, b) => a.lo - b.lo);
-
-  for (let pass = 0; pass < sorted.length + 2; pass++) {
-    let moved = false;
-    for (const { lo, hi } of sorted) {
-      if (x < hi && x + width > lo) {
-        const pushLeft  = lo - width;
-        const pushRight = hi;
-        const next = (pushLeft >= 0 && x + width / 2 < (lo + hi) / 2) ? pushLeft : pushRight;
-        x = clamp(next, 0, roomMax - width);
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
-  return x;
-}
-
-// Floor footprint of a cabinet in absolute room coordinates (for cross-wall collision).
-function cabinetFootprint(item, roomW, roomD) {
-  const { absX, absY } = getAbsPos(item, roomW, roomD);
-  const w = item.width_mm || 600;
-  const d = itemDepthMm(item);
-  switch (item.wall) {
-    case "top":
-    case "bottom": return { x: absX, y: absY, w,   h: d };
-    case "left":
-    case "right":  return { x: absX, y: absY, w: d, h: w };
-    default:       return null;
-  }
-}
-
-// Floor footprint of a corner cabinet's SECONDARY leg, in absolute room
-// coordinates — the counterpart to cabinetFootprint() for the leg attached
-// to secondary_wall. Without this, collision detection only ever sees a
-// corner cabinet's primary-leg rectangle, so cabinets dragged onto its
-// second wall would overlap the full L-shape (only the small corner-square
-// sliver near the primary leg was ever protected). Not trimmed to exclude
-// the corner-square overlap with the primary footprint — for collision
-// purposes the two rects are just unioned, so overlap is harmless.
-function cornerSecondaryFootprint(item, roomW, roomD) {
-  if (item.item_type !== "corner_base_cabinet" || !item.secondary_wall || item.secondary_wall === item.wall) {
-    return null;
-  }
-  const primary = cabinetFootprint(item, roomW, roomD);
-  if (!primary) return null;
-  const { x, y, w, h } = primary;
-  const depth    = item.depth_mm || 600;
-  const secWidth = item.secondary_width_mm || 900;
-
-  switch (`${item.wall}:${item.secondary_wall}`) {
-    case "top:left":     return { x,              y,                    w: depth,    h: secWidth };
-    case "top:right":    return { x: x + w - depth, y,                  w: depth,    h: secWidth };
-    case "bottom:left":  return { x,              y: y + h - secWidth,  w: depth,    h: secWidth };
-    case "bottom:right": return { x: x + w - depth, y: y + h - secWidth, w: depth,   h: secWidth };
-    case "left:top":     return { x,              y,                    w: secWidth, h: depth };
-    case "left:bottom":  return { x,              y: y + h - depth,     w: secWidth, h: depth };
-    case "right:top":    return { x: x + w - secWidth, y,                w: secWidth, h: depth };
-    case "right:bottom": return { x: x + w - secWidth, y: y + h - depth, w: secWidth, h: depth };
-    default: return null;
-  }
-}
-
-// Same re-run-until-stable fix as resolveCollision1D — a single pass over
-// obstacles can resolve overlap with one by pushing straight into another
-// (e.g. escaping a wide cabinet by moving onto a thin filler panel right
-// beside it), so this loops full passes until a pass makes no changes.
-function resolveCollision2D(desiredX, desiredY, itemW, itemH, obstacles, roomW, roomD) {
-  let x = clamp(desiredX, 0, roomW - itemW);
-  let y = clamp(desiredY, 0, roomD - itemH);
-
-  for (let pass = 0; pass < obstacles.length + 2; pass++) {
-    let moved = false;
-    for (const o of obstacles) {
-      const oX = o.x_mm || 0;
-      const oY = o.y_mm || 0;
-      const oW = o.width_mm  || 0;
-      const oH = o.depth_mm  || 0;
-      const overlapX = Math.min(x + itemW, oX + oW) - Math.max(x, oX);
-      const overlapY = Math.min(y + itemH, oY + oH) - Math.max(y, oY);
-      if (overlapX > 0 && overlapY > 0) {
-        if (overlapX <= overlapY) {
-          x = x + itemW / 2 <= oX + oW / 2 ? oX - itemW : oX + oW;
-          x = clamp(x, 0, roomW - itemW);
-        } else {
-          y = y + itemH / 2 <= oY + oH / 2 ? oY - itemH : oY + oH;
-          y = clamp(y, 0, roomD - itemH);
-        }
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
-  return { x, y };
-}
-
-const PLAN_SNAP_MM = 20;
-
-// Magnetic edge alignment for plan-view drags — evaluates every candidate
-// edge pairing (dragged item's near/far edge against each obstacle's
-// near/far edge) and returns the closest one within PLAN_SNAP_MM, or null.
-// `obstacles` items use generic {pos, len} fields so this same function
-// covers both the along-wall 1D case and the X/Y axes of a freestanding
-// island drag. `guide` is the room-space coordinate to draw the alignment
-// line at (the obstacle's edge that was matched, not the dragged item's).
-function findEdgeSnap(desired, length, obstacles) {
-  let best = null;
-  for (const o of obstacles) {
-    const oPos = o.pos, oLen = o.len;
-    const options = [
-      { newPos: oPos + oLen,          guide: oPos + oLen },
-      { newPos: oPos - length,        guide: oPos },
-      { newPos: oPos,                 guide: oPos },
-      { newPos: oPos + oLen - length, guide: oPos + oLen },
-    ];
-    for (const { newPos, guide } of options) {
-      const dist = Math.abs(newPos - desired);
-      if (dist <= PLAN_SNAP_MM && (!best || dist < best.dist)) best = { dist, newPos, guide };
-    }
-  }
-  return best;
-}
-
-function cabinetVerticalRange(item) {
-  const mount = item.mount_height_mm ?? (CABINET_MOUNT_MM[item.item_type] ?? 0);
-  return [mount, mount + (item.height_mm || 720)];
-}
-function verticalRangesOverlap([a0, a1], [b0, b1]) { return a0 < b1 && a1 > b0; }
-
-function rectsOverlap(a, b) {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-}
-
-// Same footprint/vertical-range rules the interactive drag collision system
-// above uses, but as a static "do these two already-placed items overlap"
-// check with no drag in progress — collision is otherwise only ever
-// evaluated while dragging, so resizing an item via the right panel's
-// number inputs (width/height/depth/mount height) never re-checks it
-// against its neighbours. Returns the Set of item ids currently overlapping
-// at least one other item in the room, for the caller to flag/highlight.
-export function findOverlappingItemIds(items, room) {
-  const W = room?.width_mm || 4000;
-  const D = room?.depth_mm || 3000;
-
-  function footprintsFor(item) {
-    if (item.wall === "island") {
-      const { ew, ed } = islandEffectiveDims(item);
-      return [{ x: item.x_mm || 0, y: item.y_mm || 0, w: ew, h: ed }];
-    }
-    const rects = [];
-    const primary = cabinetFootprint(item, W, D);
-    if (primary) rects.push(primary);
-    const secondary = cornerSecondaryFootprint(item, W, D);
-    if (secondary) rects.push(secondary);
-    return rects;
-  }
-
-  const withFootprints = items
-    .filter((item) => item.wall) // unplaced/freshly-added items have no footprint yet
-    .map((item) => ({
-      item,
-      footprints: footprintsFor(item),
-      vRange: cabinetVerticalRange(item),
-    }));
-
-  const overlapping = new Set();
-  for (let i = 0; i < withFootprints.length; i++) {
-    for (let j = i + 1; j < withFootprints.length; j++) {
-      const a = withFootprints[i];
-      const b = withFootprints[j];
-      if (!verticalRangesOverlap(a.vRange, b.vRange)) continue;
-      const anyOverlap = a.footprints.some((fa) => b.footprints.some((fb) => rectsOverlap(fa, fb)));
-      if (anyOverlap) {
-        overlapping.add(a.item.id);
-        overlapping.add(b.item.id);
-      }
-    }
-  }
-  return overlapping;
-}
-
-function computeGaps1D(xMm, widthMm, others, roomMax) {
-  const right = xMm + widthMm;
-  const leftObs  = others.filter((o) => (o.x_mm || 0) + (o.width_mm || 0) <= xMm);
-  const rightObs = others.filter((o) => (o.x_mm || 0) >= right);
-  const leftBound  = leftObs.length  ? Math.max(...leftObs.map((o) => (o.x_mm || 0) + (o.width_mm || 0))) : 0;
-  const rightBound = rightObs.length ? Math.min(...rightObs.map((o) => o.x_mm || 0)) : roomMax;
-  return { leftGap: xMm - leftBound, rightGap: rightBound - right, leftBoundMm: leftBound, rightBoundMm: rightBound };
 }
 
 // ---- Gap dimension indicator ----
@@ -392,41 +111,6 @@ function GapDimension({ x1, y1, x2, y2, label, horizontal }) {
   );
 }
 
-function frontEdgeFor(wall, rotation) {
-  if (wall === "island") {
-    return ["bottom", "left", "top", "right"][((rotation || 0) / 90) % 4] || "bottom";
-  }
-  switch (wall) {
-    case "top":    return "bottom";
-    case "bottom": return "top";
-    case "left":   return "right";
-    case "right":  return "left";
-    default:       return "bottom";
-  }
-}
-
-// Which rendered rect edge ("top"/"bottom"/"left"/"right") each of a
-// cabinet's left end, right end, and back correspond to. Back is always
-// the opposite edge from the front (frontEdgeFor's output). Left/right use
-// the same axisFlipped convention as the elevation view (facing "bottom"
-// or "left" mirrors the along-wall axis), so "left end panel" here lines
-// up with what you'd see standing in the room facing that wall.
-function panelSideEdges(item) {
-  const front = frontEdgeFor(item.wall, item.rotation);
-  const back  = { bottom: "top", top: "bottom", left: "right", right: "left" }[front];
-  const wall  = item.wall === "island" ? islandVirtualWall(item) : item.wall;
-  const flip  = wall === "bottom" || wall === "left";
-  let leftEdge, rightEdge;
-  if (wall === "top" || wall === "bottom") {
-    leftEdge  = flip ? "right" : "left";
-    rightEdge = flip ? "left"  : "right";
-  } else {
-    leftEdge  = flip ? "bottom" : "top";
-    rightEdge = flip ? "top"    : "bottom";
-  }
-  return { leftEdge, rightEdge, backEdge: back };
-}
-
 function edgeStripRect(rect, edge, t = 4) {
   const { x, y, w, h } = rect;
   switch (edge) {
@@ -438,23 +122,22 @@ function edgeStripRect(rect, edge, t = 4) {
   }
 }
 
-// For a freestanding ("island") cabinet, a 90°/270° rotation swaps which
-// physical dimension runs horizontally vs vertically in plan view — a
-// wall-mounted cabinet's orientation is already fully determined by which
-// wall it's on, so this only applies to wall === "island". Used everywhere
-// an island item's footprint size matters (render, drag start, collision)
-// so the rotation picker actually changes the plan-view shape, not just
-// the front-facing indicator.
-function islandEffectiveDims(item) {
-  const w = item.width_mm || 600;
-  const d = itemDepthMm(item);
-  if (item.wall === "island" && (item.rotation || 0) % 180 === 90) {
-    return { ew: d, ed: w };
+// A strip sitting immediately OUTSIDE `rect` along `edge` — where an applied
+// end panel physically is, and drawn at its real scaled thickness so the
+// board fills the gap the snapping now leaves between two cabinets instead
+// of reading as a mystery void. edgeStripRect()'s inside-the-box strips are
+// still right for the back-panel marker, which isn't modelled dimensionally.
+function outerEdgeStripRect(rect, edge, t) {
+  const { x, y, w, h } = rect;
+  switch (edge) {
+    case "top":    return { x,            y: y - t,  w,    h: t };
+    case "bottom": return { x,            y: y + h,  w,    h: t };
+    case "left":   return { x: x - t,     y,         w: t, h };
+    case "right":  return { x: x + w,     y,         w: t, h };
+    default:       return null;
   }
-  return { ew: w, ed: d };
 }
 
-// Returns {x, y, w, h} in SVG coordinates using absolute room position.
 function cabinetSvgRect(item, lay) {
   const { scale, ox, oy, W, D } = lay;
   const { ew, ed } = islandEffectiveDims(item);
@@ -639,12 +322,66 @@ function FrontFaceStrip({ rect, frontEdge }) {
   );
 }
 
-function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerDown, onPointerUp }) {
+// The dead zone of a blind corner, as a sub-rect of its plan rect.
+//
+// blind_side is stated in VIEWER terms (the end you'd see on your left
+// standing in front of the cabinet), so it goes through the same axisFlipped
+// mapping end panels use — on the bottom and left walls the viewer's left is
+// the HIGH room coordinate. Returns null for anything that isn't a blind
+// corner with a blind width set.
+function blindZoneRect(item, rect, lay) {
+  if (item.item_type !== "blind_corner_cabinet") return null;
+  const blindMm = Math.max(0, Number(item.blind_width_mm) || 0);
+  if (!blindMm) return null;
+  const { leftEdge, rightEdge } = panelSideEdges(item);
+  const edge = (item.blind_side || "left") === "right" ? rightEdge : leftEdge;
+  const { x, y, w, h } = rect;
+  switch (edge) {
+    case "left":   { const t = Math.min(blindMm * lay.scale, w); return { x, y, w: t, h }; }
+    case "right":  { const t = Math.min(blindMm * lay.scale, w); return { x: x + w - t, y, w: t, h }; }
+    case "top":    { const t = Math.min(blindMm * lay.scale, h); return { x, y, w, h: t }; }
+    case "bottom": { const t = Math.min(blindMm * lay.scale, h); return { x, y: y + h - t, w, h: t }; }
+    default: return null;
+  }
+}
+
+// The benchtop, in plan: its front edge, and any cutouts.
+//
+// Only the front EDGE is drawn, not a filled box — partly so the cabinet
+// underneath stays readable, and partly because adjacent cabinets' edges then
+// join into one continuous line with no seam at each join. That means no run
+// detection is needed here at all: each cabinet draws its own stretch and they
+// simply meet.
+//
+// The edge sits benchtopDepthMm from the cabinet's BACK, which is what puts
+// the overhang visibly proud of the doors — the one thing you want to see in
+// plan and the reason the overhang field exists.
+function benchtopPlanGeometry(item, rect, lay) {
+  if (!item.has_benchtop) return null;
+  const depthPx = benchtopDepthMm(item) * lay.scale;
+  const { x, y, w, h } = rect;
+  const front = frontEdgeFor(item.wall, item.rotation);
+
+  // The edge line, plus the axis the cutouts are laid out along.
+  switch (front) {
+    case "bottom": return { line: { x1: x, y1: y + depthPx, x2: x + w, y2: y + depthPx }, horizontal: true, backAt: y, sign: 1 };
+    case "top":    return { line: { x1: x, y1: y + h - depthPx, x2: x + w, y2: y + h - depthPx }, horizontal: true, backAt: y + h, sign: -1 };
+    case "right":  return { line: { x1: x + depthPx, y1: y, x2: x + depthPx, y2: y + h }, horizontal: false, backAt: x, sign: 1 };
+    case "left":   return { line: { x1: x + w - depthPx, y1: y, x2: x + w - depthPx, y2: y + h }, horizontal: false, backAt: x + w, sign: -1 };
+    default:       return null;
+  }
+}
+
+function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerDown, onPointerUp, colourFill, lineOnly, printMode }) {
   const rect = cabinetSvgRect(item, lay);
   if (!rect) return null;
 
   const { x, y, w, h } = rect;
-  const fill      = ITEM_COLORS[item.item_type] || "#888";
+  // When "show colours" is on, paint the footprint with the carcass tile
+  // pattern; otherwise the flat per-type colour. In line-only (schematic) mode
+  // the body is unfilled so just the outline reads. Everything else (labels,
+  // front strip) draws on top regardless.
+  const fill      = lineOnly ? "none" : (colourFill || ITEM_COLORS[item.item_type] || "#888");
   const frontEdge = frontEdgeFor(item.wall, item.rotation);
   const cx = x + w / 2;
   const cy = y + h / 2;
@@ -655,7 +392,7 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
   // translucent + dashed (the standard "hidden line" convention for
   // something above) instead of a solid box, so both stay visible together
   // rather than one opaquely hiding the other.
-  const isWallCab = item.item_type === "wall_cabinet";
+  const isWallCab = item.item_type === "wall_cabinet" || item.item_type === "floating_shelf";
   // Obstruction: a non-manufactured spatial blocker (nib wall, full wall,
   // brick recess) — solid + hazard-hatched so it reads as "structure", not
   // a cabinet, and never gets a front-face strip since it has no front.
@@ -679,7 +416,7 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
           points={footprint.map(([px, py]) => `${px},${py}`).join(" ")}
           fill={fill}
           fillOpacity={dragging ? 0.55 : selected ? 0.95 : 0.82}
-          stroke={selected ? "#fff" : "rgba(255,255,255,0.35)"}
+          stroke={selected ? "#fff" : (printMode ? "#1f2937" : "rgba(255,255,255,0.35)")}
           strokeWidth={selected ? 2 : 1}
           strokeLinejoin="round"
         />
@@ -692,7 +429,7 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
             ? (dragging ? 0.28 : selected ? 0.65 : 0.42)
             : (dragging ? 0.55 : selected ? 0.95 : 0.82)}
           strokeDasharray={isWallCab ? "4 2" : undefined}
-          stroke={selected ? "#fff" : "rgba(255,255,255,0.35)"}
+          stroke={selected ? "#fff" : (printMode ? "#1f2937" : "rgba(255,255,255,0.35)")}
           strokeWidth={selected ? 2 : 1}
         />
       )}
@@ -741,16 +478,87 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
       ) : (
         <FrontFaceStrip rect={rect} frontEdge={frontEdge} />
       )}
-      {/* End / back panel indicators — base/tall cabinets only, matching
-          the same scoping as has_back_panel/end_panel_left/right. */}
-      {!isCorner && (item.end_panel_left || item.end_panel_right || item.has_back_panel) && (() => {
-        const { leftEdge, rightEdge, backEdge } = panelSideEdges(item);
+      {/* Benchtop — drawn, never quoted. The front edge shows where the top
+          lands relative to the doors; the cutouts tell the fabricator where
+          the holes go. */}
+      {(() => {
+        const bt = benchtopPlanGeometry(item, rect, lay);
+        if (!bt) return null;
+        const { x1, y1, x2, y2 } = bt.line;
+        const cutouts = benchtopCutouts(item);
+        // Centred on the cabinet — see benchtopCutouts. Laid out along the
+        // cabinet's own along-wall axis, and inset from the back by the same
+        // margin they'd sit at on a real top.
+        const midAlong = bt.horizontal ? (x1 + x2) / 2 : (y1 + y2) / 2;
+        // Waterfall ends — a solid bold line down the end edge (back to front)
+        // marks where the top drops to the floor. Uses this cabinet's own
+        // left/right flags (each cabinet draws its own stretch in plan).
+        const wf = benchtopWaterfallSides(item, item.wall === "island" ? islandVirtualWall(item) : item.wall);
+        const wfT = benchtopThicknessMm(item) * lay.scale; // overhang the top sits proud by
+        const wfLines = [];
+        if (bt.horizontal) {
+          // low = smaller x (x1), high = larger x (x2); the drop sits just past the end.
+          if (wf.low)  wfLines.push({ x1: x1 - wfT, y1: bt.backAt, x2: x1 - wfT, y2: y1 });
+          if (wf.high) wfLines.push({ x1: x2 + wfT, y1: bt.backAt, x2: x2 + wfT, y2 });
+        } else {
+          if (wf.low)  wfLines.push({ x1: bt.backAt, y1: y1 - wfT, x2: x1, y2: y1 - wfT });
+          if (wf.high) wfLines.push({ x1: bt.backAt, y1: y2 + wfT, x2: x2, y2: y2 + wfT });
+        }
+        return (
+          <g style={{ pointerEvents: "none" }}>
+            <line x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke="rgba(68,64,60,0.75)" strokeWidth={1.2} strokeDasharray="6 3" />
+            {wfLines.map((l, i) => (
+              <line key={`wf-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+                stroke="#78716c" strokeWidth={2.6} strokeLinecap="round" />
+            ))}
+            {cutouts.map((cut, i) => {
+              const alongPx = cut.width_mm * lay.scale;
+              const acrossPx = cut.depth_mm * lay.scale;
+              // Sat roughly centred in the top's depth, which is where a sink
+              // or cooktop actually lands.
+              const acrossStart = bt.backAt + bt.sign * ((benchtopDepthMm(item) * lay.scale - acrossPx) / 2);
+              const r = bt.horizontal
+                ? { x: midAlong - alongPx / 2, y: Math.min(acrossStart, acrossStart + bt.sign * acrossPx), w: alongPx, h: acrossPx }
+                : { x: Math.min(acrossStart, acrossStart + bt.sign * acrossPx), y: midAlong - alongPx / 2, w: acrossPx, h: alongPx };
+              return (
+                <rect key={i} x={r.x} y={r.y} width={Math.max(r.w, 1)} height={Math.max(r.h, 1)}
+                  fill="none" stroke={cut.type === "cooktop" ? "#dc2626" : "#0ea5e9"}
+                  strokeWidth={1.2} strokeDasharray="3 2" rx={2} />
+              );
+            })}
+          </g>
+        );
+      })()}
+      {/* Blind corner dead zone — the part the return cabinet covers, which
+          no door opens onto. Hatched over the front strip so it reads as
+          unreachable rather than as openable frontage. */}
+      {(() => {
+        const bz = blindZoneRect(item, rect, lay);
+        if (!bz) return null;
+        return (
+          <rect
+            x={bz.x} y={bz.y} width={bz.w} height={bz.h}
+            fill="url(#obstructionHatch)"
+            stroke="rgba(255,255,255,0.28)"
+            strokeWidth={1}
+            style={{ pointerEvents: "none" }}
+          />
+        );
+      })()}
+      {/* End panels — drawn OUTSIDE the carcass at true scaled thickness,
+          because that's where an applied finished end actually sits and the
+          space is now reserved for it in the collision/snap geometry (see
+          endPanelSpanMm). Floored at 1.5px so the board stays visible when
+          the room is zoomed out far enough for 16mm to vanish. */}
+      {!isCorner && (item.end_panel_left || item.end_panel_right) && (() => {
+        const { leftEdge, rightEdge } = panelSideEdges(item);
+        const t = Math.max(finishPanelThicknessMm(item) * lay.scale, 1.5);
         const edges = [];
         if (item.end_panel_left)  edges.push({ edge: leftEdge,  key: "left" });
         if (item.end_panel_right) edges.push({ edge: rightEdge, key: "right" });
-        if (item.has_back_panel)  edges.push({ edge: backEdge,  key: "back" });
         return edges.map(({ edge, key }) => {
-          const s = edgeStripRect(rect, edge);
+          const s = outerEdgeStripRect(rect, edge, t);
           if (!s) return null;
           return (
             <rect
@@ -761,6 +569,21 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
             />
           );
         });
+      })()}
+      {/* Back panel marker — still an inside-the-box strip: unlike an end
+          panel it isn't modelled as extra depth, so drawing it outside would
+          claim space the collision geometry doesn't reserve. */}
+      {!isCorner && item.has_back_panel && (() => {
+        const { backEdge } = panelSideEdges(item);
+        const s = edgeStripRect(rect, backEdge);
+        if (!s) return null;
+        return (
+          <rect
+            x={s.x} y={s.y} width={s.w} height={s.h}
+            fill="#a855f7" fillOpacity={0.9}
+            style={{ pointerEvents: "none" }}
+          />
+        );
       })()}
       {/* Corner cabinet back panels — one per leg, manually toggled rather
           than auto-detected (a corner cabinet's second wall is often a
@@ -788,7 +611,7 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
         <text
           x={cx} y={cy + (showDims ? -6 : 0)}
           textAnchor="middle" dominantBaseline="middle"
-          fontSize={fontSize} fontWeight="700" fill="#fff"
+          fontSize={fontSize} fontWeight="700" fill={printMode ? "#1f2937" : "#fff"}
           style={{ pointerEvents: "none", userSelect: "none" }}
         >
           {shortLabel}
@@ -798,7 +621,7 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
         <text
           x={cx} y={cy + 7}
           textAnchor="middle" dominantBaseline="middle"
-          fontSize={7} fill="rgba(255,255,255,0.65)"
+          fontSize={7} fill={printMode ? "#6b7280" : "rgba(255,255,255,0.65)"}
           style={{ pointerEvents: "none", userSelect: "none" }}
         >
           {dimText}
@@ -846,6 +669,10 @@ export default function DesignCanvas({
   onDeselect,
   onItemDragEnd,
   onFrontView,
+  colourImages,
+  showColours = false,
+  lineOnly = false,
+  printMode = false,
   // Mobile renders the canvas read-only: tapping a cabinet still selects it,
   // but dragging-to-position and the in-canvas elevation buttons are disabled
   // (mobile has its own elevation toggle and one cabinet per room, so there's
@@ -935,6 +762,17 @@ export default function DesignCanvas({
       const draggingItem   = items.find((i) => i.id === drag.itemId);
       const draggingVRange = draggingItem ? cabinetVerticalRange(draggingItem) : [0, 720];
 
+      // The dragged item's own applied end panels, measured against the
+      // TARGET wall — dropping onto the bottom/left wall mirrors the
+      // along-wall axis, so which physical end lands on the low coordinate
+      // flips mid-drag. x_mm/y_mm keep meaning the CARCASS edge (that's what
+      // gets saved, and what width_mm is measured from), so the snap and
+      // collision maths below runs in panel-inclusive "span" space and
+      // converts back before the position is stored.
+      const dragWall  = newWall === "island" ? islandVirtualWall(draggingItem || {}) : newWall;
+      const { lowT: dragLowT, highT: dragHighT } = endPanelSpanMm(draggingItem, dragWall);
+      const dragPanelSpan = dragLowT + dragHighT;
+
       // Items on the detected target wall that conflict in height
       const sameWall = items.filter((i) =>
         i.id !== drag.itemId &&
@@ -952,7 +790,7 @@ export default function DesignCanvas({
           verticalRangesOverlap(draggingVRange, cabinetVerticalRange(i))
         )
         .flatMap((other) => {
-          const fp = cabinetFootprint(other, W, D);
+          const fp = occupiedFootprint(other, W, D);
           if (!fp) return [];
           if (newWall === "top" || newWall === "bottom") {
             const dragY0 = newWall === "top" ? 0 : D - dragDepth;
@@ -966,13 +804,16 @@ export default function DesignCanvas({
           return [];
         });
 
-      // Convert same-wall items to 1D obstacle format (position along wall axis)
-      const sameWallObs = sameWall.map((o) => {
-        const { absX: oAbsX, absY: oAbsY } = getAbsPos(o, W, D);
-        return {
-          x_mm:     (newWall === "left" || newWall === "right") ? oAbsY : oAbsX,
-          width_mm: o.width_mm || 600,
-        };
+      // Same-wall items as 1D obstacles (position + length along the wall
+      // axis), taken from each one's occupied footprint so a neighbour's own
+      // end panels claim their space too — snapping to a bare width_mm is
+      // what let a cabinet land on top of the board next door.
+      const sameWallObs = sameWall.flatMap((o) => {
+        const fp = occupiedFootprint(o, W, D);
+        if (!fp) return [];
+        return (newWall === "left" || newWall === "right")
+          ? [{ x_mm: fp.y, width_mm: fp.h }]
+          : [{ x_mm: fp.x, width_mm: fp.w }];
       });
 
       // Corner cabinets whose SECONDARY leg sits on the target wall (their
@@ -1002,15 +843,26 @@ export default function DesignCanvas({
         // collision resolution — an exact edge-flush position never trips
         // the collision push-away against the very obstacle it aligned to,
         // so this and the overlap guard below compose cleanly.
-        const edgeSnap = findEdgeSnap(newX, drag.itemWidthMm, others.map((o) => ({ pos: o.x_mm, len: o.width_mm })));
+        //
+        // The 10mm grid applies ONLY to a free position, and only BEFORE
+        // snapping. findEdgeSnap() and resolveCollision1D() both return
+        // exact flush coordinates — a neighbour's edge, or the outer face of
+        // its end panel — and re-rounding those to the grid afterwards is
+        // what shoved an exactly-flush cabinet back INTO its neighbour
+        // whenever the flush coordinate wasn't a multiple of 10. A run of
+        // real cabinet widths (806 + 994 …) lands off-grid constantly, and
+        // the resulting few-mm overlap is far too small to see at plan zoom.
+        const spanX = newX - dragLowT;
+        const edgeSnap = findEdgeSnap(spanX, drag.itemWidthMm + dragPanelSpan, others.map((o) => ({ pos: o.x_mm, len: o.width_mm })));
         setSnapGuides(edgeSnap ? { x: edgeSnap.guide } : null);
-        if (edgeSnap) newX = edgeSnap.newPos;
-        newX = snap(resolveCollision1D(newX, drag.itemWidthMm, others, W));
+        const desiredX = edgeSnap ? edgeSnap.newPos : snap(spanX);
+        newX = resolveCollision1D(desiredX, drag.itemWidthMm + dragPanelSpan, others, W) + dragLowT;
       } else if (newWall === "left" || newWall === "right") {
-        const edgeSnap = findEdgeSnap(newY, drag.itemWidthMm, others.map((o) => ({ pos: o.x_mm, len: o.width_mm })));
+        const spanY = newY - dragLowT;
+        const edgeSnap = findEdgeSnap(spanY, drag.itemWidthMm + dragPanelSpan, others.map((o) => ({ pos: o.x_mm, len: o.width_mm })));
         setSnapGuides(edgeSnap ? { y: edgeSnap.guide } : null);
-        if (edgeSnap) newY = edgeSnap.newPos;
-        newY = snap(resolveCollision1D(newY, drag.itemWidthMm, others, D));
+        const desiredY = edgeSnap ? edgeSnap.newPos : snap(spanY);
+        newY = resolveCollision1D(desiredY, drag.itemWidthMm + dragPanelSpan, others, D) + dragLowT;
       } else {
         // Island: 2D collision with other island items (rotation-aware —
         // a 90°/270°-rotated island cabinet's footprint is depth-wide, not
@@ -1021,8 +873,8 @@ export default function DesignCanvas({
         const islandObs = items
           .filter((i) => i.id !== drag.itemId && i.wall === "island")
           .map((i) => {
-            const { ew, ed } = islandEffectiveDims(i);
-            return { x_mm: i.x_mm || 0, y_mm: i.y_mm || 0, width_mm: ew, depth_mm: ed };
+            const r = islandOccupiedRect(i);
+            return { x_mm: r.x, y_mm: r.y, width_mm: r.w, depth_mm: r.h };
           });
         const wallCabObs = items
           .filter((i) =>
@@ -1031,22 +883,33 @@ export default function DesignCanvas({
             verticalRangesOverlap(draggingVRange, cabinetVerticalRange(i))
           )
           .flatMap((other) => {
-            const fps = [cabinetFootprint(other, W, D), cornerSecondaryFootprint(other, W, D)].filter(Boolean);
+            const fps = [occupiedFootprint(other, W, D), cornerSecondaryFootprint(other, W, D)].filter(Boolean);
             return fps.map((fp) => ({ x_mm: fp.x, y_mm: fp.y, width_mm: fp.w, depth_mm: fp.h }));
           });
         const islandAndWallObs = [...islandObs, ...wallCabObs];
 
-        const edgeSnapX = findEdgeSnap(rawAbsX, drag.itemWidthMm, islandAndWallObs.map((o) => ({ pos: o.x_mm, len: o.width_mm })));
-        const edgeSnapY = findEdgeSnap(rawAbsY, drag.itemDepthMm, islandAndWallObs.map((o) => ({ pos: o.y_mm, len: o.depth_mm })));
+        // An island's end panels extend along whichever axis its width runs
+        // (rotation-aware, matching islandEffectiveDims), so only that axis
+        // grows and only that axis needs shifting back to the carcass edge.
+        const vert     = widthRunsVertically(draggingItem || {}, dragWall);
+        const spanW    = drag.itemWidthMm + (vert ? 0 : dragPanelSpan);
+        const spanH    = drag.itemDepthMm + (vert ? dragPanelSpan : 0);
+        const offX     = vert ? 0 : dragLowT;
+        const offY     = vert ? dragLowT : 0;
+
+        const edgeSnapX = findEdgeSnap(rawAbsX - offX, spanW, islandAndWallObs.map((o) => ({ pos: o.x_mm, len: o.width_mm })));
+        const edgeSnapY = findEdgeSnap(rawAbsY - offY, spanH, islandAndWallObs.map((o) => ({ pos: o.y_mm, len: o.depth_mm })));
         setSnapGuides((edgeSnapX || edgeSnapY)
           ? { ...(edgeSnapX ? { x: edgeSnapX.guide } : {}), ...(edgeSnapY ? { y: edgeSnapY.guide } : {}) }
           : null);
-        const snappedX = edgeSnapX ? edgeSnapX.newPos : rawAbsX;
-        const snappedY = edgeSnapY ? edgeSnapY.newPos : rawAbsY;
+        // Same rule as the wall branches: grid-quantize only a free position,
+        // never a snapped or collision-resolved one (both are exact).
+        const snappedX = edgeSnapX ? edgeSnapX.newPos : snap(rawAbsX - offX);
+        const snappedY = edgeSnapY ? edgeSnapY.newPos : snap(rawAbsY - offY);
 
-        const resolved = resolveCollision2D(snappedX, snappedY, drag.itemWidthMm, drag.itemDepthMm, islandAndWallObs, W, D);
-        newX = snap(resolved.x);
-        newY = snap(resolved.y);
+        const resolved = resolveCollision2D(snappedX, snappedY, spanW, spanH, islandAndWallObs, W, D);
+        newX = resolved.x + offX;
+        newY = resolved.y + offY;
       }
 
       setLocalPos((p) => ({ ...p, [drag.itemId]: { wall: newWall, x_mm: newX, y_mm: newY } }));
@@ -1073,6 +936,35 @@ export default function DesignCanvas({
   const displayItems = items.map((item) =>
     localPos[item.id] ? { ...item, ...localPos[item.id] } : item
   );
+
+  // "Show colours": one SVG <pattern> per unique carcass tile among the items,
+  // referenced by the footprints. Built here so <defs> and the shapes share
+  // stable ids. Empty (and inert) when the toggle is off or nothing resolves.
+  const srcToPattern = new Map();
+  const tilePatterns = [];
+  if (showColours && colourImages) {
+    for (const item of displayItems) {
+      const src = resolveColourSrc(colourImages, item, "carcass");
+      if (src && !srcToPattern.has(src)) {
+        const id = `ctile-${srcToPattern.size}`;
+        srcToPattern.set(src, id);
+        tilePatterns.push({ id, src });
+      }
+    }
+  }
+  const colourFillFor = (item) => {
+    if (!showColours || !colourImages) return null;
+    const id = srcToPattern.get(resolveColourSrc(colourImages, item, "carcass"));
+    return id ? `url(#${id})` : null;
+  };
+
+  // Export ("print") theme: the on-screen plan is on a dark floor, but the PDF
+  // is a white page, so the floor, grid and dimensions flip to ink-on-white.
+  const pFloor       = printMode ? "#ffffff" : "#1e2940";
+  const pFloorStroke = printMode ? "#1f2937" : "rgba(255,255,255,0.18)";
+  const pFaint       = printMode ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.04)";
+  const pDimLine     = printMode ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.2)";
+  const pDimText     = printMode ? "#374151" : "rgba(255,255,255,0.45)";
 
   // Wall band areas (visual reference + elevation buttons)
   const wallBands = [
@@ -1113,13 +1005,20 @@ export default function DesignCanvas({
         <pattern id="obstructionHatch" width={14} height={14} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1={0} y1={0} x2={0} y2={14} stroke="rgba(255,255,255,0.16)" strokeWidth={3} />
         </pattern>
+        {/* One colour-library tile per unique carcass finish, stretched to fill
+            each footprint it's referenced from (bounding-box units). */}
+        {tilePatterns.map((p) => (
+          <pattern key={p.id} id={p.id} patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width={1} height={1}>
+            <image href={p.src} x={0} y={0} width={1} height={1} preserveAspectRatio="xMidYMid slice" />
+          </pattern>
+        ))}
       </defs>
 
       {/* ---- Room floor ---- */}
       <rect
         x={ox} y={oy} width={roomW} height={roomH}
-        fill="#1e2940"
-        stroke="rgba(255,255,255,0.18)"
+        fill={pFloor}
+        stroke={pFloorStroke}
         strokeWidth={1.5}
         onClick={onDeselect}
         style={{ cursor: "default" }}
@@ -1130,40 +1029,40 @@ export default function DesignCanvas({
         <line key={`gx-${i}`}
           x1={ox + (i + 1) * 600 * scale} y1={oy}
           x2={ox + (i + 1) * 600 * scale} y2={oy + roomH}
-          stroke="rgba(255,255,255,0.04)" strokeWidth={1}
+          stroke={pFaint} strokeWidth={1}
           style={{ pointerEvents: "none" }} />
       ))}
       {Array.from({ length: Math.ceil((room.depth_mm || 3000) / 600) }).map((_, i) => (
         <line key={`gy-${i}`}
           x1={ox} y1={oy + (i + 1) * 600 * scale}
           x2={ox + roomW} y2={oy + (i + 1) * 600 * scale}
-          stroke="rgba(255,255,255,0.04)" strokeWidth={1}
+          stroke={pFaint} strokeWidth={1}
           style={{ pointerEvents: "none" }} />
       ))}
 
       {/* ---- Room dimension labels ---- */}
       {room.width_mm && (
         <>
-          <line x1={ox} y1={oy - BAND - 10} x2={ox + roomW} y2={oy - BAND - 10} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <line x1={ox} y1={oy - BAND - 6} x2={ox} y2={oy - BAND - 14} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <line x1={ox + roomW} y1={oy - BAND - 6} x2={ox + roomW} y2={oy - BAND - 14} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <text x={ox + roomW / 2} y={oy - BAND - 17} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" style={{ pointerEvents: "none" }}>{room.width_mm}mm</text>
-          <line x1={ox} y1={oy + roomH + BAND + 10} x2={ox + roomW} y2={oy + roomH + BAND + 10} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <line x1={ox} y1={oy + roomH + BAND + 6} x2={ox} y2={oy + roomH + BAND + 14} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <line x1={ox + roomW} y1={oy + roomH + BAND + 6} x2={ox + roomW} y2={oy + roomH + BAND + 14} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <text x={ox + roomW / 2} y={oy + roomH + BAND + 22} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" style={{ pointerEvents: "none" }}>{room.width_mm}mm</text>
+          <line x1={ox} y1={oy - BAND - 10} x2={ox + roomW} y2={oy - BAND - 10} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <line x1={ox} y1={oy - BAND - 6} x2={ox} y2={oy - BAND - 14} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <line x1={ox + roomW} y1={oy - BAND - 6} x2={ox + roomW} y2={oy - BAND - 14} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <text x={ox + roomW / 2} y={oy - BAND - 17} textAnchor="middle" fontSize={10} fill={pDimText} style={{ pointerEvents: "none" }}>{room.width_mm}mm</text>
+          <line x1={ox} y1={oy + roomH + BAND + 10} x2={ox + roomW} y2={oy + roomH + BAND + 10} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <line x1={ox} y1={oy + roomH + BAND + 6} x2={ox} y2={oy + roomH + BAND + 14} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <line x1={ox + roomW} y1={oy + roomH + BAND + 6} x2={ox + roomW} y2={oy + roomH + BAND + 14} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <text x={ox + roomW / 2} y={oy + roomH + BAND + 22} textAnchor="middle" fontSize={10} fill={pDimText} style={{ pointerEvents: "none" }}>{room.width_mm}mm</text>
         </>
       )}
       {room.depth_mm && (
         <>
-          <line x1={ox - BAND - 10} y1={oy} x2={ox - BAND - 10} y2={oy + roomH} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <line x1={ox - BAND - 6} y1={oy} x2={ox - BAND - 14} y2={oy} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <line x1={ox - BAND - 6} y1={oy + roomH} x2={ox - BAND - 14} y2={oy + roomH} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <text x={ox - BAND - 17} y={oy + roomH / 2} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" transform={`rotate(-90, ${ox - BAND - 17}, ${oy + roomH / 2})`} style={{ pointerEvents: "none" }}>{room.depth_mm}mm</text>
-          <line x1={ox + roomW + BAND + 10} y1={oy} x2={ox + roomW + BAND + 10} y2={oy + roomH} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <line x1={ox + roomW + BAND + 6} y1={oy} x2={ox + roomW + BAND + 14} y2={oy} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <line x1={ox + roomW + BAND + 6} y1={oy + roomH} x2={ox + roomW + BAND + 14} y2={oy + roomH} stroke="rgba(255,255,255,0.2)" strokeWidth={1} style={{ pointerEvents: "none" }} />
-          <text x={ox + roomW + BAND + 17} y={oy + roomH / 2} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.45)" transform={`rotate(90, ${ox + roomW + BAND + 17}, ${oy + roomH / 2})`} style={{ pointerEvents: "none" }}>{room.depth_mm}mm</text>
+          <line x1={ox - BAND - 10} y1={oy} x2={ox - BAND - 10} y2={oy + roomH} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <line x1={ox - BAND - 6} y1={oy} x2={ox - BAND - 14} y2={oy} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <line x1={ox - BAND - 6} y1={oy + roomH} x2={ox - BAND - 14} y2={oy + roomH} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <text x={ox - BAND - 17} y={oy + roomH / 2} textAnchor="middle" fontSize={10} fill={pDimText} transform={`rotate(-90, ${ox - BAND - 17}, ${oy + roomH / 2})`} style={{ pointerEvents: "none" }}>{room.depth_mm}mm</text>
+          <line x1={ox + roomW + BAND + 10} y1={oy} x2={ox + roomW + BAND + 10} y2={oy + roomH} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <line x1={ox + roomW + BAND + 6} y1={oy} x2={ox + roomW + BAND + 14} y2={oy} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <line x1={ox + roomW + BAND + 6} y1={oy + roomH} x2={ox + roomW + BAND + 14} y2={oy + roomH} stroke={pDimLine} strokeWidth={1} style={{ pointerEvents: "none" }} />
+          <text x={ox + roomW + BAND + 17} y={oy + roomH / 2} textAnchor="middle" fontSize={10} fill={pDimText} transform={`rotate(90, ${ox + roomW + BAND + 17}, ${oy + roomH / 2})`} style={{ pointerEvents: "none" }}>{room.depth_mm}mm</text>
         </>
       )}
 
@@ -1174,8 +1073,8 @@ export default function DesignCanvas({
           <rect
             key={wall}
             x={x} y={y} width={w} height={h}
-            fill={isTarget ? "rgba(99,179,237,0.12)" : "rgba(255,255,255,0.03)"}
-            stroke={isTarget ? "rgba(99,179,237,0.5)" : "rgba(255,255,255,0.08)"}
+            fill={isTarget ? "rgba(99,179,237,0.12)" : "none"}
+            stroke={isTarget ? "rgba(99,179,237,0.5)" : (printMode ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.08)")}
             strokeWidth={1}
             strokeDasharray={isTarget ? "0" : "5 4"}
             rx={4}
@@ -1200,7 +1099,7 @@ export default function DesignCanvas({
               x={x} y={wall === "top" ? y - 10 : wall === "bottom" ? y + 10 : y}
               textAnchor="middle" dominantBaseline="middle"
               fontSize={9} letterSpacing={1}
-              fill={isTarget ? "rgba(99,179,237,0.9)" : "rgba(255,255,255,0.22)"}
+              fill={isTarget ? "rgba(99,179,237,0.9)" : (printMode ? "#6b7280" : "rgba(255,255,255,0.22)")}
               transform={rotate ? `rotate(${rotate}, ${x}, ${y})` : undefined}
               style={{ pointerEvents: "none", userSelect: "none", textTransform: "uppercase" }}
             >
@@ -1232,7 +1131,7 @@ export default function DesignCanvas({
           translucent style — the standard "hidden line" CAD convention for
           something mounted above, not colliding at floor level. */}
       {displayItems
-        .filter((item) => item.item_type !== "wall_cabinet" && item.item_type !== "obstruction")
+        .filter((item) => item.item_type !== "wall_cabinet" && item.item_type !== "floating_shelf" && item.item_type !== "obstruction")
         .map((item) => (
           <CabinetShape
             key={item.id}
@@ -1241,12 +1140,15 @@ export default function DesignCanvas({
             selected={item.id === selectedItemId}
             dragging={drag?.itemId === item.id}
             isOverlapping={Boolean(overlappingItemIds?.has(item.id))}
+            colourFill={colourFillFor(item)}
+            lineOnly={lineOnly}
+            printMode={printMode}
             onPointerDown={handleItemPointerDown}
             onPointerUp={handleItemPointerUp}
           />
         ))}
       {displayItems
-        .filter((item) => item.item_type === "wall_cabinet")
+        .filter((item) => item.item_type === "wall_cabinet" || item.item_type === "floating_shelf")
         .map((item) => (
           <CabinetShape
             key={item.id}
@@ -1255,6 +1157,9 @@ export default function DesignCanvas({
             selected={item.id === selectedItemId}
             dragging={drag?.itemId === item.id}
             isOverlapping={Boolean(overlappingItemIds?.has(item.id))}
+            colourFill={colourFillFor(item)}
+            lineOnly={lineOnly}
+            printMode={printMode}
             onPointerDown={handleItemPointerDown}
             onPointerUp={handleItemPointerUp}
           />
@@ -1271,6 +1176,9 @@ export default function DesignCanvas({
             selected={item.id === selectedItemId}
             dragging={drag?.itemId === item.id}
             isOverlapping={Boolean(overlappingItemIds?.has(item.id))}
+            colourFill={colourFillFor(item)}
+            lineOnly={lineOnly}
+            printMode={printMode}
             onPointerDown={handleItemPointerDown}
             onPointerUp={handleItemPointerUp}
           />
@@ -1310,45 +1218,75 @@ export default function DesignCanvas({
 
         const sameWallItems = items.filter((i) => i.id !== drag.itemId && i.wall === currentWall);
 
+        // Perpendicular (depth) gaps — from the item's front face to the nearest
+        // thing in front (or the far wall) and its back face to the wall behind,
+        // so all four sides are measured. Taken to physical extents, so a
+        // benchtop or applied panel is what the distance reaches. Null (skipped)
+        // for islands, which already show gaps to all four room walls below.
+        const pg = perpendicularGaps(draggingItem, items, W, D);
+        const perpEls = pg ? [
+          ...(pg.frontGap > 1 ? [pg.vertical
+            ? <GapDimension key="pf" x1={ox + pg.alongMid * scale} y1={oy + pg.frontFace * scale} x2={ox + pg.alongMid * scale} y2={oy + pg.frontBound * scale} label={pg.frontGap} horizontal={false} />
+            : <GapDimension key="pf" x1={ox + pg.frontFace * scale} y1={oy + pg.alongMid * scale} x2={ox + pg.frontBound * scale} y2={oy + pg.alongMid * scale} label={pg.frontGap} horizontal />] : []),
+          ...(pg.backGap > 1 ? [pg.vertical
+            ? <GapDimension key="pb" x1={ox + pg.alongMid * scale} y1={oy + pg.backFace * scale} x2={ox + pg.alongMid * scale} y2={oy + pg.backBound * scale} label={pg.backGap} horizontal={false} />
+            : <GapDimension key="pb" x1={ox + pg.backFace * scale} y1={oy + pg.alongMid * scale} x2={ox + pg.backBound * scale} y2={oy + pg.alongMid * scale} label={pg.backGap} horizontal />] : []),
+        ] : null;
+
+        // Gaps are measured between OCCUPIED faces, not carcasses — with an
+        // applied end panel in play those differ by the panel's thickness,
+        // and measuring carcass-to-carcass would report a phantom 16-18mm
+        // gap across a joint that's actually shut tight. The dimension lines
+        // are drawn from the same occupied edges for the same reason, rather
+        // than from the carcass rect.
         if (currentWall === "top" || currentWall === "bottom") {
-          const gapObs = sameWallItems.map((o) => ({
-            x_mm:     getAbsPos(o, W, D).absX,
-            width_mm: o.width_mm || 600,
-          }));
-          const { leftGap, rightGap, leftBoundMm, rightBoundMm } = computeGaps1D(cAbsX, drag.itemWidthMm, gapObs, W);
+          const gapObs = sameWallItems.flatMap((o) => {
+            const fp = occupiedFootprint(o, W, D);
+            return fp ? [{ x_mm: fp.x, width_mm: fp.w }] : [];
+          });
+          const fp = occupiedFootprint(draggingItem, W, D);
+          const pos = fp ? fp.x : cAbsX;
+          const len = fp ? fp.w : drag.itemWidthMm;
+          const { leftGap, rightGap, leftBoundMm, rightBoundMm } = computeGaps1D(pos, len, gapObs, W);
           const midY = r.y + r.h / 2;
           return (
             <>
-              <GapDimension x1={ox + leftBoundMm * scale}  y1={midY} x2={r.x}       y2={midY} label={leftGap}  horizontal />
-              <GapDimension x1={r.x + r.w}                 y1={midY} x2={ox + rightBoundMm * scale} y2={midY} label={rightGap} horizontal />
+              <GapDimension x1={ox + leftBoundMm * scale}  y1={midY} x2={ox + pos * scale} y2={midY} label={leftGap}  horizontal />
+              <GapDimension x1={ox + (pos + len) * scale}  y1={midY} x2={ox + rightBoundMm * scale} y2={midY} label={rightGap} horizontal />
+              {perpEls}
             </>
           );
         }
 
         if (currentWall === "left" || currentWall === "right") {
-          const gapObs = sameWallItems.map((o) => ({
-            x_mm:     getAbsPos(o, W, D).absY,
-            width_mm: o.width_mm || 600,
-          }));
-          const { leftGap, rightGap, leftBoundMm, rightBoundMm } = computeGaps1D(cAbsY, drag.itemWidthMm, gapObs, D);
+          const gapObs = sameWallItems.flatMap((o) => {
+            const fp = occupiedFootprint(o, W, D);
+            return fp ? [{ x_mm: fp.y, width_mm: fp.h }] : [];
+          });
+          const fp = occupiedFootprint(draggingItem, W, D);
+          const pos = fp ? fp.y : cAbsY;
+          const len = fp ? fp.h : drag.itemWidthMm;
+          const { leftGap, rightGap, leftBoundMm, rightBoundMm } = computeGaps1D(pos, len, gapObs, D);
           const midX = r.x + r.w / 2;
           return (
             <>
-              <GapDimension x1={midX} y1={oy + leftBoundMm * scale}  x2={midX} y2={r.y}       label={leftGap}  horizontal={false} />
-              <GapDimension x1={midX} y1={r.y + r.h}                 x2={midX} y2={oy + rightBoundMm * scale} label={rightGap} horizontal={false} />
+              <GapDimension x1={midX} y1={oy + leftBoundMm * scale}  x2={midX} y2={oy + pos * scale} label={leftGap}  horizontal={false} />
+              <GapDimension x1={midX} y1={oy + (pos + len) * scale}  x2={midX} y2={oy + rightBoundMm * scale} label={rightGap} horizontal={false} />
+              {perpEls}
             </>
           );
         }
 
         if (currentWall === "island") {
+          const io   = islandOccupiedRect(draggingItem);
           const midX = r.x + r.w / 2;
           const midY = r.y + r.h / 2;
           return (
             <>
-              <GapDimension x1={ox}           y1={midY} x2={r.x}       y2={midY} label={cAbsX}                horizontal />
-              <GapDimension x1={r.x + r.w}    y1={midY} x2={ox + roomW} y2={midY} label={W - cAbsX - drag.itemWidthMm} horizontal />
-              <GapDimension x1={midX} y1={oy}           x2={midX} y2={r.y}       label={cAbsY}                horizontal={false} />
-              <GapDimension x1={midX} y1={r.y + r.h}   x2={midX} y2={oy + roomH} label={D - cAbsY - drag.itemDepthMm} horizontal={false} />
+              <GapDimension x1={ox}                          y1={midY} x2={ox + io.x * scale}  y2={midY} label={io.x}                horizontal />
+              <GapDimension x1={ox + (io.x + io.w) * scale}  y1={midY} x2={ox + roomW}         y2={midY} label={W - io.x - io.w}    horizontal />
+              <GapDimension x1={midX} y1={oy}                          x2={midX} y2={oy + io.y * scale}  label={io.y}               horizontal={false} />
+              <GapDimension x1={midX} y1={oy + (io.y + io.h) * scale}  x2={midX} y2={oy + roomH}         label={D - io.y - io.h}    horizontal={false} />
             </>
           );
         }

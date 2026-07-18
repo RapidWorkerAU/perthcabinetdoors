@@ -166,7 +166,9 @@ export default function ProductDetailClient({
     if (!String(formData.get("width") || "").trim()) nextErrors.width = "Please enter a width.";
     if (!String(formData.get("height") || "").trim()) nextErrors.height = "Please enter a height.";
     if (!String(formData.get("name") || "").trim()) nextErrors.name = "Please enter your name.";
-    if (!String(formData.get("contact") || "").trim()) nextErrors.contact = "Please enter a phone number or email address.";
+    const contactValue = String(formData.get("contact") || "").trim();
+    if (!contactValue) nextErrors.contact = "Please enter your email address.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactValue)) nextErrors.contact = "Please enter a valid email address.";
     if (hasColourOptions && !selectedColour) nextErrors.colour = "Please choose a colour from the options above.";
 
     if (Object.keys(nextErrors).length) {
@@ -189,8 +191,8 @@ export default function ProductDetailClient({
           productId: product.id,
           productName: product.name,
           customerName: String(formData.get("name") || ""),
-          customerEmail: String(formData.get("contact") || "").includes("@") ? String(formData.get("contact") || "") : "",
-          customerPhone: String(formData.get("contact") || "").includes("@") ? "" : String(formData.get("contact") || ""),
+          customerEmail: String(formData.get("contact") || "").trim(),
+          customerPhone: "",
           deliverySuburb: String(formData.get("deliverySuburb") || ""),
           notes: String(formData.get("notes") || ""),
           lines: [
@@ -544,8 +546,8 @@ export default function ProductDetailClient({
                   {enquiryErrors.name ? <span className={styles.fieldError}>{enquiryErrors.name}</span> : null}
                 </label>
                 <label className={styles.field}>
-                  Phone or email
-                  <input name="contact" type="text" placeholder="How should we reach you?" className={enquiryErrors.contact ? styles.fieldInputError : ""} />
+                  Email
+                  <input name="contact" type="email" required placeholder="you@example.com" className={enquiryErrors.contact ? styles.fieldInputError : ""} />
                   {enquiryErrors.contact ? <span className={styles.fieldError}>{enquiryErrors.contact}</span> : null}
                 </label>
               </div>

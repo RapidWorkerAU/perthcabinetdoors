@@ -2,25 +2,30 @@ import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
 import { saveQuoteLine, deleteQuoteLine } from "../../../../quotes/[id]/_quote-line-save";
 import { roundMoney } from "../../../../../../../lib/pcd-quote-utils";
 import { calculateCabinetTotals, normalizeCabinetConfig } from "../../../../../../../lib/pcd-cabinet-utils";
-import { computeKickboardRun } from "../../../../../../../lib/pcd-kickboard-utils";
+import { computeKickboardRun, kickboardOffsetMm } from "../../../../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, splitBackPanelWidths, backPanelSegment } from "../../../../../../../lib/pcd-backpanel-utils";
 import { computeBottomPanelRun, bottomPanelSegment } from "../../../../../../../lib/pcd-bottompanel-utils";
 import { computeFillerPanelRun, fillerPanelSegment, fillerPanelGapMm } from "../../../../../../../lib/pcd-fillerpanel-utils";
-import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote } from "../../../../../../../lib/pcd-door-utils";
+import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote, frontWidthMm } from "../../../../../../../lib/pcd-door-utils";
+import { runnerLabel } from "../../../../../../../lib/pcd-drawer-utils";
 import { materialLabelForType } from "../../../../../../../lib/pcd-colour-library";
+import { bottomPanelThicknessMm } from "../../../../../../../lib/pcd-finishpanel-utils";
+import { floatingShelfBoards, floatingShelfStyle } from "../../../../../../../lib/pcd-floating-shelf-utils";
+import { missingReason, mergeIdenticalLines } from "../../../../../../../lib/pcd-import-utils";
 
 async function getProjectId(params) {
   const resolved = await Promise.resolve(params);
   return resolved?.projectId;
 }
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
 
 const TYPE_LABELS = {
   base_cabinet: "Base Cabinet",
   wall_cabinet: "Wall Cabinet",
   tall_cabinet: "Tall Cabinet",
   corner_base_cabinet: "Corner Base Cabinet",
+  blind_corner_cabinet: "Blind Corner Cabinet",
   door: "Door",
   drawer_front: "Drawer Front",
   panel: "Panel",
@@ -42,6 +47,54 @@ const QUOTE_PRODUCT_TYPES = {
 
 function itemLabel(item) {
   return item.label || TYPE_LABELS[item.item_type] || item.item_type;
+}
+
+// A cabinet's qty means "make N identical cabinets", so every line it
+// generates — carcass, fronts, panels — scales with it. Previously only the
+// carcass and corner doors did, so a qty-2 cabinet billed 2 carcasses with
+// one set of doors and one kickboard.
+function perCabinetQty(item) {
+  return item.qty || 1;
+}
+
+// The exception: a line merged across a continuous multi-cabinet RUN. That
+// board's length comes from the run's geometry on the plan, which only knows
+// about the one cabinet actually drawn there — there's nowhere for a second
+// copy to sit, so multiplying its share of a shared board would invent
+// material that doesn't exist. Left at 1 and surfaced as a warning instead
+// of guessed at (see the qty-in-a-run check in the pre-flight pass).
+function runAwareQty(item, runCount) {
+  return runCount > 1 ? 1 : perCabinetQty(item);
+}
+
+// Which of this cabinet's panels are merged into a continuous run shared with
+// OTHER cabinets. Those lines can't honour qty (see runAwareQty), so rather
+// than silently pick an interpretation, a qty > 1 cabinet in a run is
+// surfaced in the pre-flight confirmation for the user to resolve.
+function sharedRunPanels(item, selectedCabinetItems, room) {
+  const shared = [];
+  const isContinuous = (span) => (span || "continuous") === "continuous";
+
+  if (item.has_kickboard && item.item_type !== "wall_cabinet" && isContinuous(item.kickboard_span)) {
+    const { legs } = computeKickboardRun(item, selectedCabinetItems, room);
+    if (legs.some((leg) => leg.count > 1)) shared.push("kickboard");
+  }
+  if (item.has_filler_panel &&
+      (item.item_type === "wall_cabinet" || item.item_type === "tall_cabinet") &&
+      isContinuous(item.filler_panel_span) &&
+      computeFillerPanelRun(item, selectedCabinetItems).count > 1) {
+    shared.push("filler panel");
+  }
+  if (item.has_back_panel && isContinuous(item.back_panel_span) &&
+      computeBackPanelRun(item, selectedCabinetItems).count > 1) {
+    shared.push("back panel");
+  }
+  if (item.has_bottom_panel && item.item_type === "wall_cabinet" &&
+      isContinuous(item.bottom_panel_span) &&
+      computeBottomPanelRun(item, selectedCabinetItems).count > 1) {
+    shared.push("underside panel");
+  }
+  return shared;
 }
 
 function cabinetDescription(config) {
@@ -75,7 +128,6 @@ function withCalculatedCabinetCost(line) {
       calculated_cut_list: totals.cut_list,
       calculated_material_cost_ex_gst: totals.calculated_material_cost_ex_gst,
       labour_hours: totals.labour_hours,
-      labour_cost: totals.labour_hours,
       total_cabinet_cost_ex_gst: unitCost,
     },
   };
@@ -118,9 +170,27 @@ function designItemToLine(item) {
   const isPanel = item.item_type === "panel";
   const line = {
     product_type: isCabinet ? "base_cabinet" : (QUOTE_PRODUCT_TYPES[item.item_type] || item.item_type),
-    product_name: item.label || item.item_type,
-    width_mm: isPanel ? item.depth_mm : item.width_mm,
-    height_mm: item.height_mm,
+    // itemLabel, not item_type: an unlabelled wall cabinet used to import with
+    // the product name "wall_cabinet" — the raw column value, straight onto
+    // the quote. TYPE_LABELS existed for exactly this and every description
+    // already used it; only this one line bypassed it.
+    product_name: itemLabel(item),
+    // A cabinet line carries NO dimensions, deliberately — the same state the
+    // quote editor forces on its own cabinet lines (applyProductLinePatch
+    // blanks width_mm/height_mm when product_type becomes base_cabinet).
+    //
+    // A cabinet is priced from its cut list, not as a flat W×H sheet. But the
+    // editor's auto-cost path is `rate × (W × H / 1e6)`, and it overwrites
+    // product_unit_cost_ex_gst whenever that comes out above zero. Blank
+    // dimensions are what keep it at zero and leave the cut-list total alone.
+    // Writing real dimensions here armed it: re-picking the carcass colour
+    // patches the sqm rate, re-runs the auto calc, and silently repriced a
+    // 900×720 carcass from its $139.50 cut-list cost to $29.16 as a flat
+    // sheet — no warning, no undo affordance. The cabinet's real dimensions
+    // live in cabinet_config and its description.
+    ...(isCabinet
+      ? {}
+      : { width_mm: isPanel ? item.depth_mm : item.width_mm, height_mm: item.height_mm }),
     qty: item.qty || 1,
     material: item.material,
     finish: item.finish,
@@ -133,9 +203,20 @@ function designItemToLine(item) {
     const shelfMaterial = item.shelf_material || item.material;
     const shelfFinish = item.shelf_finish || item.finish;
     const shelfColour = item.shelf_colour || item.colour;
-    const shelfCost = Number(item.cost_per_sqm_shelf || 0) || Number(item.cost_per_sqm_carcass || 0) || 0;
+    // "Manual (override)" on the cabinet's Boards tab sets a per-sqm rate
+    // that replaces the carcass board rate for this cabinet's cut list — for
+    // a one-off board, a special order, whatever the picker's rate can't
+    // express. It was persisted and then never read back here, so the line
+    // imported labelled "manual" while priced at the auto rate: the override
+    // silently did nothing. The shelf keeps its own rate, which already has
+    // its own field and its own fallback.
+    const manualRate = item.unit_cost_mode === "manual"
+      ? Number(item.unit_cost_per_sqm_ex_gst) || 0
+      : 0;
+    const carcassRate = manualRate > 0 ? manualRate : (Number(item.cost_per_sqm_carcass) || 0);
+    const shelfCost = Number(item.cost_per_sqm_shelf || 0) || carcassRate || 0;
 
-    line.unit_cost_per_sqm_ex_gst = item.cost_per_sqm_carcass || 0;
+    line.unit_cost_per_sqm_ex_gst = carcassRate;
     line.thickness = item.carcass_thickness_mm ? `${item.carcass_thickness_mm}mm` : "";
     line.cabinet_config = {
       label: item.label,
@@ -161,7 +242,7 @@ function designItemToLine(item) {
       rangehood_housing_height_mm: item.rangehood_housing_height_mm ?? 0,
       rangehood_channel_width_mm: item.rangehood_channel_width_mm ?? 0,
       mount_height_mm: item.mount_height_mm ?? null,
-      cost_per_sqm_carcass: item.cost_per_sqm_carcass,
+      cost_per_sqm_carcass: carcassRate,
       cost_per_sqm_shelf: shelfCost,
       notes: item.notes,
     };
@@ -179,12 +260,6 @@ function designItemToLine(item) {
   return line;
 }
 
-const RUNNER_LABELS = {
-  standard: "Standard ball-bearing",
-  soft_close_undermount: "Soft-close undermount",
-  soft_close_side: "Soft-close side-mount",
-};
-
 // Doors are imported as standalone quote lines (not nested in cabinet_config),
 // grouped per cabinet, one line per unique door size + hinge setup on that cabinet.
 function doorLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
@@ -198,7 +273,7 @@ function doorLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
     : "Door/drawer supply only — base cabinet is out of scope for this quote.";
 
   return sizes.map((size) => {
-    const hingeNote = size.hingeQty > 0 ? formatHingeNote(size.hingeQty, size.hingePositions, size.height) : "";
+    const hingeNote = size.hingeQty > 0 ? formatHingeNote(size.hingeQty, size.hingePositions, size.height, size.hingeSide) : "";
 
     return {
       product_type: QUOTE_PRODUCT_TYPES.door,
@@ -207,7 +282,7 @@ function doorLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
       notes: [scopeNote, hingeNote].filter(Boolean).join(" "),
       width_mm: size.width,
       height_mm: size.height,
-      qty: size.qty,
+      qty: size.qty * (item.qty || 1),
       material: style.material || "",
       finish: style.finish || "",
       colour: style.colour || "",
@@ -278,7 +353,9 @@ function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) 
   const scopeNote = cabinetIncluded
     ? ""
     : "Door/drawer supply only — base cabinet is out of scope for this quote.";
-  const runnerNote = cfg.runner_type ? `Runner: ${RUNNER_LABELS[cfg.runner_type] || cfg.runner_type}.` : "";
+  // Always present — never `cfg.runner_type ? … : ""`. The runner is the spec
+  // for whoever fits the drawer, so a blank one is the failure that matters.
+  const runnerNote = `Runner (supplied with drawer): ${runnerLabel(cfg)}.`;
 
   return computeDrawerSizes(item).map((size) => ({
     product_type: QUOTE_PRODUCT_TYPES.drawer_front,
@@ -287,7 +364,7 @@ function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) 
     notes: [scopeNote, runnerNote].filter(Boolean).join(" "),
     width_mm: size.width,
     height_mm: size.height,
-    qty: size.qty,
+    qty: size.qty * (item.qty || 1),
     material: style.material || "",
     finish: style.finish || "",
     colour: style.colour || "",
@@ -307,7 +384,7 @@ function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) 
 // drawer-type section to another, rather than letting each section pick
 // its own. Each section becomes its own set of lines, labelled by section
 // number so they're traceable back to their position in the cabinet.
-function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
+function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeDoors = true, includeDrawers = true } = {}) {
   if (item.front_type !== "mixed") return [];
 
   const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
@@ -317,7 +394,9 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
   const scopeNote = cabinetIncluded
     ? ""
     : "Door/drawer supply only — base cabinet is out of scope for this quote.";
-  const widthMm = item.width_mm;
+  // frontWidthMm, not width_mm: a blind corner's fronts only span the part
+  // that isn't dead space behind the return cabinet.
+  const widthMm = frontWidthMm(item);
 
   const lines = [];
   sections.forEach((sec, idx) => {
@@ -325,8 +404,9 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
     const heightMm = sec.height_mm;
 
     if (sec.type === "drawers") {
+      if (!includeDrawers) return;
       const cfg = sec.drawer || {};
-      const runnerNote = cfg.runner_type ? `Runner: ${RUNNER_LABELS[cfg.runner_type] || cfg.runner_type}.` : "";
+      const runnerNote = `Runner (supplied with drawer): ${runnerLabel(cfg)}.`;
       computeDrawerSizesForConfig(cfg, widthMm, heightMm).forEach((size) => {
         lines.push({
           product_type: QUOTE_PRODUCT_TYPES.drawer_front,
@@ -335,7 +415,7 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
           notes: [scopeNote, runnerNote].filter(Boolean).join(" "),
           width_mm: size.width,
           height_mm: size.height,
-          qty: size.qty,
+          qty: size.qty * (item.qty || 1),
           material: drawerStyle.material || "",
           finish: drawerStyle.finish || "",
           colour: drawerStyle.colour || "",
@@ -350,9 +430,10 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
     } else if (sec.type === "open") {
       // Blank space (e.g. an oven/microwave recess) — no board to cut, no line to quote.
     } else {
+      if (!includeDoors) return;
       const cfg = sec.door || {};
       computeDoorSizesForConfig(cfg, widthMm, heightMm).forEach((size) => {
-        const hingeNote = size.hingeQty > 0 ? formatHingeNote(size.hingeQty, size.hingePositions, size.height) : "";
+        const hingeNote = size.hingeQty > 0 ? formatHingeNote(size.hingeQty, size.hingePositions, size.height, size.hingeSide) : "";
         lines.push({
           product_type: QUOTE_PRODUCT_TYPES.door,
           product_name: "Door",
@@ -360,7 +441,7 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
           notes: [scopeNote, hingeNote].filter(Boolean).join(" "),
           width_mm: size.width,
           height_mm: size.height,
-          qty: size.qty,
+          qty: size.qty * (item.qty || 1),
           material: doorStyle.material || "",
           finish: doorStyle.finish || "",
           colour: doorStyle.colour || "",
@@ -411,8 +492,8 @@ function kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room) {
       description: traceLabel ? `Kickboard — ${traceLabel}${legSuffix}` : `Kickboard${legSuffix}`,
       notes: "Kickboard panel.",
       width_mm: widthMm,
-      height_mm: item.kickboard_height_mm || 150,
-      qty: 1,
+      height_mm: item.kickboard_height_mm || 120,
+      qty: runAwareQty(item, leg.count),
       material: item.material || "",
       finish: item.finish || "",
       colour: item.colour || "",
@@ -443,10 +524,12 @@ function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, 
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
 
   let widthMm;
+  let runCount = 1;
   if (span === "continuous") {
     const run = computeFillerPanelRun(item, selectedCabinetItems);
     if (run.count > 1 && run.firstItemId !== item.id) return []; // covered by the run's first cabinet
     widthMm = run.totalWidth;
+    runCount = run.count;
   } else {
     const seg = fillerPanelSegment(item);
     widthMm = seg?.length || item.width_mm || 600;
@@ -459,7 +542,7 @@ function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, 
     notes: "Filler panel — closes the gap to the ceiling.",
     width_mm: widthMm,
     height_mm: heightMm,
-    qty: 1,
+    qty: runAwareQty(item, runCount),
     material: item.material || "",
     finish: item.finish || "",
     colour: item.colour || "",
@@ -502,7 +585,7 @@ function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
   const depthMm = item.depth_mm || 600;
   const board = finishPanelBoard(item);
 
-  function pushPanel(name, widthMm) {
+  function pushPanel(name, widthMm, qty = perCabinetQty(item)) {
     lines.push({
       product_type: "Panel",
       product_name: name,
@@ -510,7 +593,7 @@ function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       notes: "Finished underside panel.",
       width_mm: widthMm,
       height_mm: depthMm,
-      qty: 1,
+      qty,
       material: board.material,
       finish: board.finish,
       colour: board.colour,
@@ -526,7 +609,11 @@ function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
     if (run.count <= 1 || run.firstItemId === item.id) {
       const widths = splitBackPanelWidths(run.totalWidth, item.bottom_panel_qty || 1);
       widths.forEach((w, i) =>
-        pushPanel(widths.length > 1 ? `Underside Panel ${i + 1} of ${widths.length}` : "Underside Panel", w)
+        pushPanel(
+          widths.length > 1 ? `Underside Panel ${i + 1} of ${widths.length}` : "Underside Panel",
+          w,
+          runAwareQty(item, run.count)
+        )
       );
     }
     // Otherwise covered by the run's first cabinet — omit here
@@ -555,12 +642,15 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
 
   // Wall cabinets: finished SIDE panels only (depth × height). When a finished
   // underside panel is present, the side panels extend down by its thickness
-  // (the carcass thickness) to cover its exposed edge. No back panel/kickboard —
-  // wall cabinets aren't floor-standing. Priced like the base/tall end panels
-  // (carcass material + rate) so quotes stay internally consistent.
+  // to cover its exposed edge. That thickness is the underside panel's own
+  // board — it used to read carcass_thickness_mm, which is a different board
+  // from the one bottomPanelLinesForCabinet() actually cuts, so the sides came
+  // up short whenever the finish panel was the thicker of the two. No back
+  // panel/kickboard — wall cabinets aren't floor-standing. Priced like the
+  // base/tall end panels (carcass material + rate) so quotes stay consistent.
   if (isWall) {
     if (!item.end_panel_left && !item.end_panel_right) return [];
-    const underThk = item.has_bottom_panel ? (Number(item.carcass_thickness_mm) || 16) : 0;
+    const underThk = bottomPanelThicknessMm(item);
     const sideH = (Number(item.height_mm) || 0) + underThk;
     const board = finishPanelBoard(item);
     const pushSide = (name) => lines.push({
@@ -570,7 +660,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       notes: "Finished panel.",
       width_mm: item.depth_mm || 600,
       height_mm: sideH,
-      qty: 1,
+      qty: perCabinetQty(item),
       material: board.material,
       finish: board.finish,
       colour: board.colour,
@@ -583,12 +673,17 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
     return lines;
   }
 
-  const panelH = item.panel_to_floor
-    ? (Number(item.height_mm) || 0) + (Number(item.kickboard_height_mm) || 150)
-    : (Number(item.height_mm) || 0);
+  // kickboardOffsetMm, not kickboard_height_mm: the column defaults to 120
+  // whether or not has_kickboard is set, so ticking "panels run to floor" on
+  // a cabinet WITHOUT a kickboard billed a phantom 120mm of extra board.
+  // With no kickboard the carcass already sits on the floor — there's
+  // nothing for the panel to run down past.
+  const panelH = (Number(item.height_mm) || 0) + (item.panel_to_floor ? kickboardOffsetMm(item) : 0);
   const board = finishPanelBoard(item);
 
-  function pushPanel(name, widthMm) {
+  // End panels are per-cabinet; a continuous back panel may be shared across
+  // a run, so the caller passes its qty explicitly in that case.
+  function pushPanel(name, widthMm, qty = perCabinetQty(item)) {
     lines.push({
       product_type: "Panel",
       product_name: name,
@@ -596,7 +691,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       notes: "Finished panel.",
       width_mm: widthMm,
       height_mm: panelH,
-      qty: 1,
+      qty,
       material: board.material,
       finish: board.finish,
       colour: board.colour,
@@ -616,7 +711,11 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       if (run.count <= 1 || run.firstItemId === item.id) {
         const widths = splitBackPanelWidths(run.totalWidth, item.back_panel_qty || 1);
         widths.forEach((w, i) =>
-          pushPanel(widths.length > 1 ? `Back Panel ${i + 1} of ${widths.length}` : "Back Panel", w)
+          pushPanel(
+            widths.length > 1 ? `Back Panel ${i + 1} of ${widths.length}` : "Back Panel",
+            w,
+            runAwareQty(item, run.count)
+          )
         );
       }
       // Otherwise covered by the run's first cabinet — omit here
@@ -639,8 +738,8 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
         description: traceLabel ? `${name} — ${traceLabel}` : name,
         notes: "Kickboard panel.",
         width_mm: widthMm,
-        height_mm: item.kickboard_height_mm || 150,
-        qty: 1,
+        height_mm: item.kickboard_height_mm || 120,
+        qty: perCabinetQty(item),
         material: item.material || "",
         finish: item.finish || "",
         colour: item.colour || "",
@@ -681,9 +780,12 @@ function cornerBackPanelLinesForCabinet(item, roomName) {
 
   const lines = [];
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
-  const panelH = item.panel_to_floor
-    ? (Number(item.height_mm) || 0) + (Number(item.kickboard_height_mm) || 150)
-    : (Number(item.height_mm) || 0);
+  // kickboardOffsetMm, not kickboard_height_mm: the column defaults to 120
+  // whether or not has_kickboard is set, so ticking "panels run to floor" on
+  // a cabinet WITHOUT a kickboard billed a phantom 120mm of extra board.
+  // With no kickboard the carcass already sits on the floor — there's
+  // nothing for the panel to run down past.
+  const panelH = (Number(item.height_mm) || 0) + (item.panel_to_floor ? kickboardOffsetMm(item) : 0);
   const board = finishPanelBoard(item);
 
   function pushPanel(name, widthMm) {
@@ -694,7 +796,7 @@ function cornerBackPanelLinesForCabinet(item, roomName) {
       notes: "Finished panel.",
       width_mm: widthMm,
       height_mm: panelH,
-      qty: 1,
+      qty: perCabinetQty(item),
       material: board.material,
       finish: board.finish,
       colour: board.colour,
@@ -717,8 +819,8 @@ function cornerBackPanelLinesForCabinet(item, roomName) {
         description: traceLabel ? `${name} — ${traceLabel}` : name,
         notes: "Kickboard panel.",
         width_mm: widthMm,
-        height_mm: item.kickboard_height_mm || 150,
-        qty: 1,
+        height_mm: item.kickboard_height_mm || 120,
+        qty: perCabinetQty(item),
         material: item.material || "",
         finish: item.finish || "",
         colour: item.colour || "",
@@ -737,6 +839,34 @@ function cornerBackPanelLinesForCabinet(item, roomName) {
   return lines;
 }
 
+// A floating shelf isn't one product — it's a set of decorative board panels
+// (top, bottom, front fascia, plus any end caps), each a Panel line with its
+// finished size and a mitre note, all in the shelf's single board finish.
+function floatingShelfLinesForItem(item, roomName) {
+  if (item.item_type !== "floating_shelf") return [];
+  const style = floatingShelfStyle(item);
+  const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
+  const qty = item.qty || 1;
+  return floatingShelfBoards(item).map((board) => ({
+    product_type: QUOTE_PRODUCT_TYPES.panel,
+    product_name: board.label,
+    description: traceLabel ? `${board.label} — ${traceLabel}` : board.label,
+    // The fabricator's mitre note AND any note the user typed on the shelf
+    // itself — the typed note used to be dropped entirely, replaced by the
+    // auto mitre note. Both matter, so both ride along.
+    notes: [String(item.notes || "").trim(), board.note].filter(Boolean).join(" — "),
+    width_mm: board.width_mm,
+    height_mm: board.height_mm,
+    qty,
+    material: style.material,
+    finish: style.finish,
+    colour: style.colour,
+    thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
+    unit_cost_per_sqm_ex_gst: style.cost_per_sqm || 0,
+    unit_cost_mode: "auto",
+  }));
+}
+
 function isMissingOrZero(value) {
   return !(Number(value) > 0);
 }
@@ -747,6 +877,13 @@ function isMissingOrZero(value) {
 // with no warning at all, understating the quote with nothing for staff to
 // notice.
 function isStandaloneUnconfigured(item) {
+  if (item.item_type === "floating_shelf") {
+    return (
+      !String(item.material || "").trim() ||
+      isMissingOrZero(item.width_mm) || isMissingOrZero(item.depth_mm) || isMissingOrZero(item.height_mm) ||
+      isMissingOrZero(item.cost_per_sqm_carcass)
+    );
+  }
   const isPanel = item.item_type === "panel";
   const widthMissing = isPanel ? isMissingOrZero(item.depth_mm) : isMissingOrZero(item.width_mm);
   return (
@@ -757,15 +894,52 @@ function isStandaloneUnconfigured(item) {
   );
 }
 
+// The specific reason a standalone item (panel, scribe, floating shelf) was
+// flagged — which of material / size / board rate is the problem.
+function standaloneReason(item) {
+  const material = !String(item.material || "").trim();
+  if (item.item_type === "floating_shelf") {
+    return missingReason({
+      material,
+      dims: isMissingOrZero(item.width_mm) || isMissingOrZero(item.depth_mm) || isMissingOrZero(item.height_mm),
+      rate: isMissingOrZero(item.cost_per_sqm_carcass),
+    });
+  }
+  const isPanel = item.item_type === "panel";
+  return missingReason({
+    material,
+    dims: (isPanel ? isMissingOrZero(item.depth_mm) : isMissingOrZero(item.width_mm)) || isMissingOrZero(item.height_mm),
+    rate: isMissingOrZero(item.unit_cost_per_sqm_ex_gst),
+  });
+}
+
 // Resolves what to import for a given item from the client's per-item
 // selection map, defaulting to "include everything" when unspecified so
 // callers that don't pass selections keep importing the whole project.
+// Each part is opt-out (`!== false`) so an older client sending only some keys,
+// or none, still imports the rest.
 function selectionForItem(item, selections) {
   const sel = (selections && selections[item.id]) || {};
   if (CABINET_TYPES.includes(item.item_type)) {
-    return { cabinet: sel.cabinet !== false, doors: sel.doors !== false };
+    return {
+      cabinet:   sel.cabinet   !== false,
+      doors:     sel.doors     !== false,
+      // Older clients bundled drawers under "doors"; fall back to that when the
+      // client didn't send an explicit drawers flag.
+      drawers:   sel.drawers !== undefined ? sel.drawers !== false : sel.doors !== false,
+      kickboard: sel.kickboard !== false,
+      filler:    sel.filler    !== false,
+      panels:    sel.panels    !== false,
+    };
   }
   return { include: sel.include !== false };
+}
+
+// A cabinet is being imported if ANY of its parts is selected — used to build
+// the run set the shared-panel calculations work over.
+function anyPartSelected(item, selections) {
+  const s = selectionForItem(item, selections);
+  return Boolean(s.cabinet || s.doors || s.drawers || s.kickboard || s.filler || s.panels);
 }
 
 export async function POST(request, { params }) {
@@ -818,8 +992,36 @@ export async function POST(request, { params }) {
     const roomNameById = new Map((rooms || []).map((room) => [room.id, room.name]));
     const roomById     = new Map((rooms || []).map((room) => [room.id, room]));
 
+    // Precomputed once so run detection only considers cabinets that are
+    // actually being imported (a partially selected continuous run sums just
+    // the selected cabinets' widths, rather than the whole run). Needed by
+    // the pre-flight pass below as well as line generation.
+    const selectedCabinetItems = importableItems.filter(
+      (i) => CABINET_TYPES.includes(i.item_type) && anyPartSelected(i, selections)
+    );
+
     if (!force) {
       const warnings = [];
+
+      // Re-import REPLACES every line this project previously produced. That's
+      // deliberate — it's what stops duplicates — but it silently destroys any
+      // edit made to those lines since: a negotiated unit cost, a hand-set
+      // markup, a rewritten description, a client note. Until now the only
+      // mention of that was a code comment. Say it before doing it.
+      const { count: previousCount, error: previousCountError } = await context.supabase
+        .from("pcd_quote_line_items")
+        .select("id", { count: "exact", head: true })
+        .eq("quote_id", quoteId)
+        .eq("design_project_id", projectId);
+      if (previousCountError) throw previousCountError;
+      if (previousCount > 0) {
+        warnings.push({
+          itemId: "__reimport__",
+          label: `This quote already has ${previousCount} line${previousCount === 1 ? "" : "s"} imported from this project. ` +
+                 `They will be deleted and re-created — any manual edits to them (prices, markups, descriptions, notes) will be lost.`,
+        });
+      }
+
       for (const item of importableItems) {
         const isCabinet = CABINET_TYPES.includes(item.item_type);
         const sel = selectionForItem(item, selections);
@@ -827,39 +1029,68 @@ export async function POST(request, { params }) {
         const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
 
         if (isCabinet) {
-          if (sel.cabinet && (
-            !String(item.material || "").trim() ||
-            isMissingOrZero(item.width_mm) ||
-            isMissingOrZero(item.height_mm) ||
-            isMissingOrZero(item.depth_mm) ||
-            isMissingOrZero(item.cost_per_sqm_carcass)
-          )) {
-            warnings.push({ itemId: item.id, label: `${traceLabel} (cabinet)` });
+          // A cabinet priced by a manual override has no board rate to check —
+          // the override IS its rate, so warning on a blank cost_per_sqm_carcass
+          // would flag a fully-configured cabinet.
+          const hasRate = item.unit_cost_mode === "manual"
+            ? !isMissingOrZero(item.unit_cost_per_sqm_ex_gst)
+            : !isMissingOrZero(item.cost_per_sqm_carcass);
+          const cabMaterial = !String(item.material || "").trim();
+          const cabDims = isMissingOrZero(item.width_mm) || isMissingOrZero(item.height_mm) || isMissingOrZero(item.depth_mm);
+          if (sel.cabinet && (cabMaterial || cabDims || !hasRate)) {
+            warnings.push({
+              itemId: item.id,
+              label: `${traceLabel} (cabinet) — ${missingReason({ material: cabMaterial, dims: cabDims, rate: !hasRate })}.`,
+            });
           }
-          if (sel.doors && item.front_type === "doors" && (
-            !String(item.door_style?.material || "").trim() ||
-            isMissingOrZero(item.door_style?.cost_per_sqm)
-          )) {
-            warnings.push({ itemId: item.id, label: `${traceLabel} (doors)` });
+          // qty > 1 with a panel merged across a continuous run: the run's
+          // board spans the plan, so it can't be multiplied without inventing
+          // material. Say so rather than quietly counting one.
+          if (sel.cabinet && perCabinetQty(item) > 1) {
+            const shared = sharedRunPanels(item, selectedCabinetItems, roomById.get(item.room_id));
+            if (shared.length) {
+              const list = shared.length > 1
+                ? `${shared.slice(0, -1).join(", ")} and ${shared[shared.length - 1]}`
+                : shared[0];
+              warnings.push({
+                itemId: item.id,
+                label: `${traceLabel} — qty ${perCabinetQty(item)}, but its ${list} ${shared.length > 1 ? "are" : "is"} ` +
+                       `one continuous board shared with neighbouring cabinets. Only ONE will be counted; ` +
+                       `set that panel's span to "individual", or draw the extra cabinets on the plan.`,
+              });
+            }
           }
-          if (sel.doors && item.front_type === "drawers" && (
-            !String(item.drawer_style?.material || "").trim() ||
-            isMissingOrZero(item.drawer_style?.cost_per_sqm)
-          )) {
-            warnings.push({ itemId: item.id, label: `${traceLabel} (drawers)` });
+          if (sel.doors && item.front_type === "doors") {
+            const noMat = !String(item.door_style?.material || "").trim();
+            const noRate = isMissingOrZero(item.door_style?.cost_per_sqm);
+            if (noMat || noRate) {
+              warnings.push({ itemId: item.id, label: `${traceLabel} (doors) — ${missingReason({ material: noMat, rate: noRate })}.` });
+            }
           }
-          if (sel.doors && item.front_type === "mixed") {
+          if (sel.drawers && item.front_type === "drawers") {
+            const noMat = !String(item.drawer_style?.material || "").trim();
+            const noRate = isMissingOrZero(item.drawer_style?.cost_per_sqm);
+            if (noMat || noRate) {
+              warnings.push({ itemId: item.id, label: `${traceLabel} (drawers) — ${missingReason({ material: noMat, rate: noRate })}.` });
+            }
+          }
+          if ((sel.doors || sel.drawers) && item.front_type === "mixed") {
             const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
-            const hasDoors   = sections.some((s) => s.type === "doors");
-            const hasDrawers = sections.some((s) => s.type === "drawers");
+            const hasDoors   = sel.doors   && sections.some((s) => s.type === "doors");
+            const hasDrawers = sel.drawers && sections.some((s) => s.type === "drawers");
             const missingDoorStyle   = hasDoors   && (!String(item.door_style?.material   || "").trim() || isMissingOrZero(item.door_style?.cost_per_sqm));
             const missingDrawerStyle = hasDrawers && (!String(item.drawer_style?.material || "").trim() || isMissingOrZero(item.drawer_style?.cost_per_sqm));
             if (missingDoorStyle || missingDrawerStyle) {
-              warnings.push({ itemId: item.id, label: `${traceLabel} (mixed front)` });
+              const which = [missingDoorStyle && "door", missingDrawerStyle && "drawer"].filter(Boolean).join(" & ");
+              const noMat  = (missingDoorStyle   && !String(item.door_style?.material   || "").trim()) ||
+                             (missingDrawerStyle && !String(item.drawer_style?.material || "").trim());
+              const noRate = (missingDoorStyle   && isMissingOrZero(item.door_style?.cost_per_sqm)) ||
+                             (missingDrawerStyle && isMissingOrZero(item.drawer_style?.cost_per_sqm));
+              warnings.push({ itemId: item.id, label: `${traceLabel} (mixed front — ${which}) — ${missingReason({ material: noMat, rate: noRate })}.` });
             }
           }
         } else if (sel.include && isStandaloneUnconfigured(item)) {
-          warnings.push({ itemId: item.id, label: traceLabel });
+          warnings.push({ itemId: item.id, label: `${traceLabel} — ${standaloneReason(item)}.` });
         }
       }
       if (warnings.length) {
@@ -877,76 +1108,100 @@ export async function POST(request, { params }) {
 
     let sortOrder = (existingLines?.[0]?.sort_order ?? -1) + 1;
 
-    const results = { created: 0, failed: 0, errors: [] };
+    const results = { created: 0, deleted: 0, failed: 0, errors: [] };
 
-    // Precomputed once so kickboard run detection only considers cabinets
-    // that are actually being imported (a partially selected continuous run
-    // sums just the selected cabinets' widths, rather than the whole run).
-    const selectedCabinetItems = importableItems.filter(
-      (i) => CABINET_TYPES.includes(i.item_type) && selectionForItem(i, selections).cabinet
-    );
+    // Re-running an import must replace everything this project previously
+    // produced in this quote, not append duplicates alongside it.
+    //
+    // Done as ONE up-front sweep rather than a delete inside the per-item
+    // loop. The loop could only ever visit items that still exist, so lines
+    // belonging to a DELETED design item were unreachable and stranded on the
+    // quote forever — worst for run-merged panels, where deleting the run's
+    // first cabinet left its whole-run board behind while a surviving cabinet
+    // emitted a fresh one on top.
+    const staleIds = new Set();
+    const { data: byProject, error: byProjectError } = await context.supabase
+      .from("pcd_quote_line_items")
+      .select("id")
+      .eq("quote_id", quoteId)
+      .eq("design_project_id", projectId);
+    if (byProjectError) throw byProjectError;
+    (byProject || []).forEach((row) => staleIds.add(row.id));
 
+    // Safety net for lines imported before design_project_id existed that the
+    // migration's backfill didn't reach. Scoped to items that still exist, so
+    // it can never touch a hand-added line (those have no design_item_id).
+    const currentItemIds = importableItems.map((i) => i.id);
+    if (currentItemIds.length) {
+      const { data: byItem, error: byItemError } = await context.supabase
+        .from("pcd_quote_line_items")
+        .select("id")
+        .eq("quote_id", quoteId)
+        .in("design_item_id", currentItemIds);
+      if (byItemError) throw byItemError;
+      (byItem || []).forEach((row) => staleIds.add(row.id));
+    }
+
+    for (const staleId of staleIds) {
+      await deleteQuoteLine(context.supabase, quoteId, staleId);
+    }
+    results.deleted = staleIds.size;
+
+    // Generate every line first, tagged with its source item, so identical
+    // flat lines can be collapsed into one (qty summed) before any are saved —
+    // e.g. two identical standalone panels, or the same door on two cabinets.
+    const generated = [];
     for (const item of importableItems) {
       const isCabinet = CABINET_TYPES.includes(item.item_type);
       const sel = selectionForItem(item, selections);
       const lines = [];
 
-      // Re-running an import for a project that's already (partly) imported
-      // must replace this item's previously imported lines, not append
-      // duplicates alongside them — every reimport doubled the quote
-      // subtotal until this was tracked.
-      const { data: staleLines, error: staleLinesError } = await context.supabase
-        .from("pcd_quote_line_items")
-        .select("id")
-        .eq("quote_id", quoteId)
-        .eq("design_item_id", item.id);
-      if (staleLinesError) throw staleLinesError;
-      for (const stale of staleLines || []) {
-        await deleteQuoteLine(context.supabase, quoteId, stale.id);
-      }
-
       if (isCabinet) {
-        if (sel.cabinet) {
-          lines.push(designItemToLine(item));
-          lines.push(
-            ...kickboardLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id), roomById.get(item.room_id))
-          );
-          lines.push(
-            ...fillerPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id), roomById.get(item.room_id), items)
-          );
-          lines.push(
-            ...bottomPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id))
-          );
-          lines.push(
-            ...endBackPanelLinesForCabinet(item, selectedCabinetItems, roomNameById.get(item.room_id))
-          );
-          lines.push(
-            ...cornerBackPanelLinesForCabinet(item, roomNameById.get(item.room_id))
-          );
+        const roomName = roomNameById.get(item.room_id);
+        const room = roomById.get(item.room_id);
+        if (sel.cabinet) lines.push(designItemToLine(item));
+        if (sel.kickboard) lines.push(...kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room));
+        if (sel.filler)    lines.push(...fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, items));
+        if (sel.panels) {
+          lines.push(...bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName));
+          lines.push(...endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName));
+          lines.push(...cornerBackPanelLinesForCabinet(item, roomName));
         }
-        if (sel.doors) {
-          const frontLineFn = item.item_type === "corner_base_cabinet"
-            ? cornerDoorLinesForCabinet
-            : { doors: doorLinesForCabinet, drawers: drawerLinesForCabinet, mixed: mixedLinesForCabinet }[item.front_type]
-              || (() => []);
-          lines.push(
-            ...frontLineFn(item, roomNameById.get(item.room_id), { cabinetIncluded: sel.cabinet })
-          );
+        // Fronts — doors and drawer fronts are chosen independently.
+        if (item.item_type === "corner_base_cabinet") {
+          if (sel.doors) lines.push(...cornerDoorLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet }));
+        } else if (item.front_type === "doors") {
+          if (sel.doors) lines.push(...doorLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet }));
+        } else if (item.front_type === "drawers") {
+          if (sel.drawers) lines.push(...drawerLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet }));
+        } else if (item.front_type === "mixed" && (sel.doors || sel.drawers)) {
+          lines.push(...mixedLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet, includeDoors: sel.doors, includeDrawers: sel.drawers }));
         }
       } else if (sel.include) {
-        lines.push(designItemToLine(item));
+        if (item.item_type === "floating_shelf") {
+          lines.push(...floatingShelfLinesForItem(item, roomNameById.get(item.room_id)));
+        } else {
+          lines.push(designItemToLine(item));
+        }
       }
 
-      for (const line of lines) {
-        try {
-          const taggedLine = { ...line, design_item_id: item.id };
-          await saveQuoteLine(context.supabase, quoteId, withCalculatedUnitCost(taggedLine), { sortOrder });
-          sortOrder += 1;
-          results.created += 1;
-        } catch (err) {
-          results.failed += 1;
-          results.errors.push(`Item "${item.label || item.id}": ${err?.message}`);
-        }
+      for (const line of lines) generated.push({ line, itemId: item.id });
+    }
+
+    const mergedById = new Map(importableItems.map((i) => [i.id, i]));
+    for (const { line, itemId } of mergeIdenticalLines(generated)) {
+      try {
+        // design_project_id as well as the item: the item tag alone can't be
+        // swept once its item is deleted, and the project tag is what scopes
+        // the sweep away from other projects' and hand-added lines.
+        const taggedLine = { ...line, design_item_id: itemId, design_project_id: projectId };
+        await saveQuoteLine(context.supabase, quoteId, withCalculatedUnitCost(taggedLine), { sortOrder });
+        sortOrder += 1;
+        results.created += 1;
+      } catch (err) {
+        results.failed += 1;
+        const src = mergedById.get(itemId);
+        results.errors.push(`Item "${src?.label || itemId}": ${err?.message}`);
       }
     }
 

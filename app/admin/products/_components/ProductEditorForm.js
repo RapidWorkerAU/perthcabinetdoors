@@ -1628,7 +1628,7 @@ export default function ProductEditorForm({
                     </div>
                     <div className={productClass("productPreviewFieldRow")}>
                       <label>Your name<input type="text" placeholder="First and last name" disabled /></label>
-                      <label>Phone or email<input type="text" placeholder="How should we reach you?" disabled /></label>
+                      <label>Email<input type="email" placeholder="you@example.com" disabled /></label>
                     </div>
                     <label className={productClass("productPreviewFieldFull")}>Delivery suburb<input type="text" placeholder="e.g. Subiaco" disabled /></label>
                     <label className={productClass("productPreviewFieldFull")}>Anything else?<textarea placeholder="e.g. compatible cabinet range, hinge requirements, delivery suburb..." disabled /></label>

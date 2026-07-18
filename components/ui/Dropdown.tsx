@@ -67,6 +67,9 @@ export interface DropdownProps {
   containerClassName?: string
   maxDisplay?:        number
   autoWidth?:         boolean
+  /** Overrides the panel's z-index. Needed when rendered inside a high z-index
+   *  modal so the panel isn't hidden behind it. Default: the built-in z-[60]. */
+  contentZIndex?:     number
 }
 
 export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
@@ -89,6 +92,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
       containerClassName,
       maxDisplay = 3,
       autoWidth = false,
+      contentZIndex,
     },
     ref
   ) => {
@@ -349,11 +353,12 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                 e.preventDefault()
                 if (isSearchable) searchRef.current?.focus()
               }}
-              style={
-                autoWidth
+              style={{
+                ...(autoWidth
                   ? { minWidth: 'var(--radix-popover-trigger-width)', width: 'max-content', maxWidth: '320px' }
-                  : { width: 'var(--radix-popover-trigger-width)' }
-              }
+                  : { width: 'var(--radix-popover-trigger-width)' }),
+                ...(contentZIndex != null ? { zIndex: contentZIndex } : {}),
+              }}
               className={cn(
                 'z-[60] overflow-hidden rounded-[6px] border border-[#dde1e9] bg-white',
                 'shadow-[0_4px_16px_rgba(0,0,0,0.08)]'

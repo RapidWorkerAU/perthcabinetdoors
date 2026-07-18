@@ -618,6 +618,7 @@
   flex-direction: column;
   overflow: hidden;
   background: #13171d;
+  position: relative; /* anchors the save-error banner */
 }
 
 .canvasToolbar {
@@ -628,6 +629,38 @@
   gap: 12px;
   flex-shrink: 0;
   background: #1a1e24;
+}
+
+/* 3D view button — pushed to the far right of the dark plan toolbar. */
+.view3dBtn {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 5px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e7e5e4;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.view3dBtn:hover {
+  background: rgba(255,255,255,0.16);
+  color: #fff;
+}
+
+/* Second toolbar button (3D view) sits next to the first (Show colours). */
+.view3dBtn + .view3dBtn {
+  margin-left: 8px;
+}
+
+/* "Show colours" while active — a light chip so it reads as toggled on. */
+.view3dBtnActive,
+.view3dBtnActive:hover {
+  background: #fafaf9;
+  color: #1c1917;
+  border-color: #fafaf9;
 }
 
 .canvasToolbarLabel {
@@ -827,6 +860,76 @@
   border-bottom-color: var(--dt-green, #1a2e20);
 }
 
+/* ---- Collapsible config sections (right panel) ----
+   Replaces the tab bar. A horizontal tab strip in a 320px column has a hard
+   ceiling of ~5 tabs, so every new feature had to be stuffed into an existing
+   one — which is how "Back & Shelves" ended up holding more controls than
+   every other tab combined. A vertical stack of collapsible groups has no such
+   ceiling, and the collapsed headers carry a summary so the whole cabinet
+   still reads at a glance without opening anything. */
+.configSection {
+  border-bottom: 1px solid var(--dt-border-soft, rgba(0,0,0,0.08));
+}
+
+.configSectionHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--dt-text, #1c1c1a);
+}
+
+.configSectionHeader:hover {
+  background: var(--dt-bg, #f7f6f3);
+}
+
+.configSectionChevron {
+  flex-shrink: 0;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--dt-text-muted, #888780);
+  transition: transform 0.12s ease;
+}
+
+.configSectionChevronOpen {
+  transform: rotate(90deg);
+}
+
+.configSectionTitle {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The summary only shows while collapsed — it's the section's contents in one
+   line, so a closed panel still answers "what is this cabinet?". Truncates
+   rather than wraps: the header must stay one row high to keep the stack
+   scannable. */
+.configSectionSummary {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--dt-text-muted, #888780);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.configSectionBody {
+  padding: 2px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 /* Form layout inside right panel */
 .formSection {
   padding: 14px 16px;
@@ -931,6 +1034,63 @@
   text-align: right;
 }
 
+/* Canvas-level save failure banner — for drag/elevation saves that have no
+   inline indicator. Sits at the top of the canvas area, above the plan. */
+.saveErrorBanner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 90%;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #fff;
+  background: #b42318;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.saveErrorBanner button {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 4px;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+
+/* A failed save — visible and red, where the old behaviour showed nothing. */
+.saveError {
+  font-size: 11px;
+  color: #b42318;
+  padding: 6px 16px;
+  text-align: right;
+  line-height: 1.4;
+}
+
+.saveRetryBtn {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b42318;
+  background: none;
+  border: 1px solid rgba(180,35,24,0.4);
+  border-radius: 4px;
+  padding: 1px 8px;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+.saveRetryBtn:hover {
+  background: rgba(180,35,24,0.08);
+}
+
 /* Delete item button area */
 .rightPanelFooter {
   padding: 12px 16px;
@@ -995,9 +1155,9 @@
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 24px 64px rgba(0,0,0,0.35);
-  width: 480px;
+  width: 680px;
   max-width: calc(100vw - 48px);
-  max-height: 80vh;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1207,6 +1367,10 @@
 }
 .elevationBackBtn:hover { background: rgba(255,255,255,0.14); color: #fff; }
 
+/* "Show colours" toggle while active — a light chip so it reads as toggled on. */
+.elevColoursActive,
+.elevColoursActive:hover { background: #fafaf9; color: #1c1917; border-color: #fafaf9; }
+
 .elevationToolbarInfo {
   display: flex;
   flex-direction: column;
@@ -1339,3 +1503,118 @@
   flex-shrink: 0;
 }
 
+
+/* ---- ColourField: compact colour control + modal ---- */
+.colourField {
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--dt-border, #e7e5e4);
+  border-radius: 8px;
+  background: var(--dt-panel, #fafaf9);
+}
+.colourFieldTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.colourFieldLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dt-text, #292524);
+}
+.colourFieldBtn {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1c1c1a;
+  background: #fff;
+  border: 1px solid var(--dt-border, #d6d3d1);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.colourFieldBtn:hover { background: #f5f5f4; }
+.colourFieldSummary {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--dt-text, #44403c);
+}
+.colourFieldMuted { color: var(--dt-text-muted, #a8a29e); font-style: italic; }
+
+.colourModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.colourModal {
+  width: min(440px, 96vw);
+  max-height: 90vh;
+  background: #fff;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.colourModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0efec;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1c1c1a;
+}
+.colourModalClose {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: #78716c;
+  padding: 0 4px;
+}
+.colourModalBody { padding: 14px 16px; overflow-y: auto; }
+.colourModalFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #f0efec;
+}
+.colourModalReset {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.colourModalCancel {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #57534e;
+  background: #fff;
+  border: 1px solid #e7e5e4;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.colourModalSave {
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: #1c1917;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}

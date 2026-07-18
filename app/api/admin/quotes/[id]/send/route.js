@@ -119,6 +119,10 @@ export async function POST(request, { params }) {
       .update({
         status: "sent",
         sent_at: new Date().toISOString(),
+        // Reset view tracking on every send — so a pre-send preview (or a
+        // previous send) that already set viewed_at doesn't stop this send's
+        // first genuine client view from being recorded.
+        viewed_at: null,
         deposit_required: depositRequired,
         deposit_percent: depositRequired ? depositPercent : 0,
       })

@@ -12,7 +12,7 @@ import RoomsModal from "./mobile/RoomsModal";
 import CabinetModal from "./mobile/CabinetModal";
 import RoomPriceModal from "./mobile/RoomPriceModal";
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
 const TYPE_COLORS = {
   base_cabinet: "#3b82f6", wall_cabinet: "#22c55e", tall_cabinet: "#f97316",
   corner_base_cabinet: "#0ea5e9", panel: "#6b7280", scribe: "#ec4899", obstruction: "#57534e",
@@ -106,22 +106,51 @@ export default function DesignProgramMobile({ projectId }) {
     }, 350);
   }
 
-  // Direction is view-aware: in plan, left/right = x, up/down = y; in elevation,
-  // left/right move the item along its wall and up/down change its mount height.
+  // Direction is view-aware: in plan the arrows move the item in room space;
+  // in elevation left/right move it along its wall and up/down change its
+  // mount height.
+  //
+  // Both branches must respect which field actually holds the along-wall
+  // position. On the left/right walls that's y_mm, and x_mm has to stay 0 —
+  // getAbsPos() reads ANY x_mm > 0 on those walls as a legacy-format row and
+  // takes the position from it instead. The plan arrows used to write x_mm
+  // unconditionally, so one 10mm tap on a left-wall cabinet at y=800 flipped
+  // it to legacy interpretation and teleported it to y=10.
   function nudge(dir) {
     const item = selectedItem;
     if (!item) return;
+
     if (view === "elevation") {
-      const along = (elevationWall === "left" || elevationWall === "right") ? "y_mm" : "x_mm";
-      if (dir === "left")  applyNudge(item.id, along, -NUDGE_MM);
-      if (dir === "right") applyNudge(item.id, along, +NUDGE_MM);
+      const onSideWall = elevationWall === "left" || elevationWall === "right";
+      const along = onSideWall ? "y_mm" : "x_mm";
+      // The elevation mirrors the bottom and left walls so svg-left is always
+      // the viewer's left (see axisFlipped in FrontElevationView). The arrows
+      // have to mirror with it, or "left" visibly moves the cabinet right.
+      const flip = elevationWall === "bottom" || elevationWall === "left";
+      const step = flip ? -NUDGE_MM : NUDGE_MM;
+      if (dir === "left")  applyNudge(item.id, along, -step);
+      if (dir === "right") applyNudge(item.id, along, +step);
       if (dir === "up")    applyNudge(item.id, "mount_height_mm", +NUDGE_MM);
       if (dir === "down")  applyNudge(item.id, "mount_height_mm", -NUDGE_MM);
-    } else {
+      return;
+    }
+
+    // Plan. An island is free in both axes; a wall-mounted item only has one
+    // meaningful axis — the other is derived from its wall, so writing it
+    // would corrupt the position rather than move the cabinet.
+    if (item.wall === "island") {
       if (dir === "left")  applyNudge(item.id, "x_mm", -NUDGE_MM);
       if (dir === "right") applyNudge(item.id, "x_mm", +NUDGE_MM);
       if (dir === "up")    applyNudge(item.id, "y_mm", -NUDGE_MM);
       if (dir === "down")  applyNudge(item.id, "y_mm", +NUDGE_MM);
+      return;
+    }
+    if (item.wall === "left" || item.wall === "right") {
+      if (dir === "up")   applyNudge(item.id, "y_mm", -NUDGE_MM);
+      if (dir === "down") applyNudge(item.id, "y_mm", +NUDGE_MM);
+    } else {
+      if (dir === "left")  applyNudge(item.id, "x_mm", -NUDGE_MM);
+      if (dir === "right") applyNudge(item.id, "x_mm", +NUDGE_MM);
     }
   }
 

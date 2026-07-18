@@ -1,8 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { IconFolderOpen, IconTrash } from "@tabler/icons-react";
 import { useToast } from "@/components/ui/Toast";
+import { DataTable } from "@/components/ui/DataTable";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
 
 const tw = {
@@ -20,12 +22,12 @@ function statusPillClass(status) {
 
 export default function ProjectsList() {
   const { toast } = useToast();
+  const router = useRouter();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => { loadProjects(); }, []);
 
@@ -68,6 +70,7 @@ export default function ProjectsList() {
   }
 
   async function handleDelete(project) {
+    if (typeof window !== "undefined" && !window.confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
     try {
       const res = await fetch(`/api/admin/design/projects/${project.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Could not delete project.");
@@ -75,9 +78,36 @@ export default function ProjectsList() {
       toast({ title: `"${project.name}" deleted.`, variant: "success" });
     } catch (error) {
       toast({ title: error?.message || "Could not delete project.", variant: "error" });
-    } finally {
-      setConfirmDeleteId(null);
     }
+  }
+
+  const columns = [
+    { key: "name", label: "Project" },
+    {
+      key: "status", label: "Status",
+      render: (row) => (
+        <span className={`inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium ${statusPillClass(row.status)}`}>
+          {formatAdminLabel(row.status || "draft")}
+        </span>
+      ),
+    },
+    {
+      key: "rooms", label: "Rooms",
+      render: (row) => {
+        const count = row.pcd_design_rooms?.length ?? 0;
+        return `${count} room${count !== 1 ? "s" : ""}`;
+      },
+    },
+  ];
+
+  const rowMenuItems = () => [
+    { label: "Open designer", icon: <IconFolderOpen size={14} />, action: "open" },
+    { label: "Delete", icon: <IconTrash size={14} />, action: "delete", variant: "danger" },
+  ];
+
+  function handleRowAction(action, row) {
+    if (action === "open") router.push(`/admin/design/${row.id}`);
+    else if (action === "delete") handleDelete(row);
   }
 
   return (
@@ -123,66 +153,17 @@ export default function ProjectsList() {
         </div>
       )}
 
-      <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-              {["Project", "Status", "Rooms", ""].map((col) => (
-                <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td colSpan={4} className="py-12 text-center text-[13px] text-[#8b8a81]">Loading projects…</td></tr>
-            )}
-            {!loading && !projects.length && (
-              <tr><td colSpan={4} className="py-12 text-center text-[13px] text-[#8b8a81]">No design projects yet.</td></tr>
-            )}
-            {projects.map((project) => {
-              const roomCount = project.pcd_design_rooms?.length ?? 0;
-              const isConfirming = confirmDeleteId === project.id;
-              return (
-                <tr key={project.id} className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0">
-                  <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{project.name}</td>
-                  <td className="px-4 py-[11px]">
-                    <span className={`inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium ${statusPillClass(project.status)}`}>
-                      {formatAdminLabel(project.status || "draft")}
-                    </span>
-                  </td>
-                  <td className="px-4 py-[11px] text-[#1a1a18]">{roomCount} room{roomCount !== 1 ? "s" : ""}</td>
-                  <td className="px-4 py-[11px] text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      {isConfirming ? (
-                        <>
-                          <span className="text-[12px] text-[#5a5a52]">Delete?</span>
-                          <button type="button" className="text-[12px] font-medium text-[#b42318] hover:underline" onClick={() => handleDelete(project)}>
-                            Confirm
-                          </button>
-                          <button type="button" className="text-[12px] font-medium text-[#5a5a52] hover:underline" onClick={() => setConfirmDeleteId(null)}>
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button type="button" className="text-[12px] font-medium text-[#b42318] hover:underline" onClick={() => setConfirmDeleteId(project.id)}>
-                            Delete
-                          </button>
-                          <Link href={`/admin/design/${project.id}`} className="text-[12px] font-medium text-[#6b9e61] hover:underline">
-                            Open
-                          </Link>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        data={projects}
+        loading={loading}
+        searchPlaceholder="Search projects…"
+        emptyTitle="No design projects yet"
+        emptyDescription="Create a project to plan rooms and cabinets."
+        rowMenuItems={rowMenuItems}
+        onRowAction={handleRowAction}
+        onRowClick={(row) => router.push(`/admin/design/${row.id}`)}
+      />
     </div>
   );
 }

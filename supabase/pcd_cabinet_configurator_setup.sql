@@ -45,7 +45,8 @@ create table if not exists public.pcd_cabinet_configs (
   shelf_heights_mm jsonb not null default '[]'::jsonb,
   cost_per_sqm_carcass numeric(12,2) not null default 0,
   cost_per_sqm_shelf numeric(12,2) not null default 0,
-  labour_cost numeric(12,2) not null default 0,
+  -- HOURS, not dollars: priced against worker_hourly_rate at quote time.
+  labour_hours numeric(12,2) not null default 0,
   calculated_cut_list jsonb not null default '[]'::jsonb,
   calculated_material_cost_ex_gst numeric(12,2) not null default 0,
   notes text,
@@ -64,7 +65,7 @@ create table if not exists public.pcd_cabinet_configs (
     check (
       cost_per_sqm_carcass >= 0
       and cost_per_sqm_shelf >= 0
-      and labour_cost >= 0
+      and labour_hours >= 0
       and calculated_material_cost_ex_gst >= 0
     ),
   constraint pcd_cabinet_configs_shelf_qty_non_negative

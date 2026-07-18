@@ -2,6 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { findOverlappingItemIds } from "./DesignCanvas";
+import { buildColourImageMap, COLOUR_IMAGE_MATERIALS } from "../../../../lib/pcd-colour-images";
+
+// Loads the colour library once and builds the name → tile-image lookup the
+// views use for "show colours". Best-effort: any failure just yields an empty
+// map, and every view falls back to its flat type colours.
+async function fetchColourImageMap() {
+  const entries = await Promise.all(
+    COLOUR_IMAGE_MATERIALS.map(async (material) => {
+      try {
+        const res = await fetch(`/api/colour-library?material=${encodeURIComponent(material)}`);
+        const data = await res.json();
+        return { material, groups: data?.colourFamily?.groups || [] };
+      } catch {
+        return { material, groups: [] };
+      }
+    })
+  );
+  return buildColourImageMap(entries);
+}
 
 /**
  * All design-tool state, data loading, and mutations for a single project.
@@ -23,6 +42,12 @@ export default function useDesignProgram(projectId) {
   const [frontViewWall, setFrontViewWall] = useState(null);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState(null);
+  // Surfaced for saves that have no inline indicator of their own — a drag, or
+  // an edit in the elevation view. The config forms show their own error.
+  const [saveError, setSaveError]       = useState(null);
+  // The colour-tile lookup for "show colours", loaded once. Null until ready.
+  const [colourImages, setColourImages] = useState(null);
+  useEffect(() => { let live = true; fetchColourImageMap().then((m) => { if (live) setColourImages(m); }); return () => { live = false; }; }, []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -105,21 +130,51 @@ export default function useDesignProgram(projectId) {
     return data.item;
   }
 
+  // Returns { ok, error } rather than swallowing failures. A silent failure
+  // here is invisibly destructive: "Saving" vanishes as if it worked, the
+  // item never updates so the plan doesn't change, and the next interaction
+  // remounts the form showing the old value — the user's edit is gone with no
+  // signal. The caller is expected to surface the error and keep the draft.
   async function handleItemChange(itemId, patch) {
-    const res = await fetch(`/api/admin/design/projects/${projectId}/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok) return;
-    setItems((it) => it.map((x) => (x.id === itemId ? data.item : x)));
+    try {
+      const res = await fetch(`/api/admin/design/projects/${projectId}/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data.error || `Save failed (${res.status}).` };
+      }
+      setItems((it) => it.map((x) => (x.id === itemId ? data.item : x)));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || "Save failed — network error." };
+    }
   }
 
-  // Optimistic position update then save — called on drag end
+  // Optimistic update, then save, then REVERT if the save fails — used by the
+  // drag and the elevation view, which have no inline save indicator. Without
+  // the revert a failed drag left the cabinet looking moved but unsaved, so it
+  // would silently jump back on the next reload. On failure it also surfaces a
+  // banner, since these paths have nowhere else to show it.
+  function handleOptimisticItemChange(itemId, patch) {
+    let prev = null;
+    setItems((it) => it.map((x) => {
+      if (x.id === itemId) { prev = { ...x }; return { ...x, ...patch }; }
+      return x;
+    }));
+    return handleItemChange(itemId, patch).then((res) => {
+      if (res && res.ok === false) {
+        if (prev) setItems((it) => it.map((x) => (x.id === itemId ? prev : x)));
+        setSaveError(res.error || "Save failed.");
+      }
+      return res;
+    });
+  }
+
   function handleItemDragEnd(itemId, pos) {
-    setItems((it) => it.map((x) => (x.id === itemId ? { ...x, ...pos } : x)));
-    handleItemChange(itemId, pos);
+    return handleOptimisticItemChange(itemId, pos);
   }
 
   // Copies every field of an existing item into a brand new row — same
@@ -191,13 +246,15 @@ export default function useDesignProgram(projectId) {
     materialDefaultsOpen, setMaterialDefaultsOpen,
     frontViewWall, setFrontViewWall,
     loading, error,
+    saveError, dismissSaveError: () => setSaveError(null),
+    colourImages,
     setItems,
     // data
     loadAll,
     // room ops
     handleAddRoom, handleUpdateRoom, handleDeleteRoom,
     // item ops
-    handleAddItem, handleItemChange, handleItemDragEnd,
+    handleAddItem, handleItemChange, handleItemDragEnd, handleOptimisticItemChange,
     handleDuplicateItem, handleDeleteItem,
     // canvas
     handleCanvasItemClick, handleCanvasDeselect,

@@ -35,6 +35,7 @@ export interface DataTableProps<T extends { id: string }> {
   selectable?:        boolean
   onRowAction?:       (action: 'view' | 'quickEdit' | 'fullEdit' | 'delete', row: T) => void
   rowMenuItems?:      (row: T) => Array<{ label: string; icon: React.ReactNode; action: string; variant?: 'danger' }>
+  onRowClick?:        (row: T) => void
   totalCount?:        number
   page?:              number
   pageSize?:          number
@@ -100,6 +101,8 @@ export function DataTable<T extends { id: string }>({
   addLabel = 'Add',
   selectable = false,
   onRowAction,
+  rowMenuItems,
+  onRowClick,
   totalCount,
   page = 1,
   pageSize = 20,
@@ -297,14 +300,16 @@ export function DataTable<T extends { id: string }>({
                     'hover:bg-[#f7f8fa] transition-colors items-center',
                     isSelected && !isEditing && 'bg-[#f0f8f7]',
                     isEditing  && 'bg-white',
+                    onRowClick && !isEditing && 'cursor-pointer',
                   )}
                   style={{
                     gridTemplateColumns: gridCols,
                     ...(isEditing ? { boxShadow: 'inset 3px 0 0 #2d9692' } : {}),
                   }}
+                  onClick={onRowClick && !isEditing ? () => onRowClick(row) : undefined}
                 >
                   {selectable && (
-                    <div className="py-[11px] pr-3 flex items-center">
+                    <div className="py-[11px] pr-3 flex items-center" onClick={e => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -319,7 +324,7 @@ export function DataTable<T extends { id: string }>({
                     </div>
                   ))}
                   {/* Actions column */}
-                  <div className="py-[11px] flex items-center justify-end">
+                  <div className="py-[11px] flex items-center justify-end" onClick={e => e.stopPropagation()}>
                     {isEditing ? (
                       <div className="flex items-center gap-1">
                         <Button variant="primary" size="sm" onClick={() => onEditSave?.(row.id, {} as Partial<T>)}>Save</Button>
@@ -345,26 +350,44 @@ export function DataTable<T extends { id: string }>({
                             data-row-menu
                             className="absolute right-0 top-full mt-1 z-[60] bg-white border border-[#dde1e9] rounded-[6px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] py-1 w-[160px]"
                           >
-                            {[
-                              { label: 'View record', icon: <IconEye size={14} />,  action: 'view'      as const },
-                              { label: 'Quick edit',  icon: <IconEdit size={14} />, action: 'quickEdit' as const },
-                              { label: 'Full edit',   icon: <IconEdit size={14} />, action: 'fullEdit'  as const },
-                            ].map(item => (
-                              <button
-                                key={item.action}
-                                className="flex w-full items-center gap-2 px-3 py-[8px] text-[13px] text-[#1a2533] cursor-pointer hover:bg-[#f7f8fa]"
-                                onClick={() => { setOpenMenuId(null); onRowAction?.(item.action, row) }}
-                              >
-                                {item.icon} {item.label}
-                              </button>
-                            ))}
-                            <div className="my-1 border-t border-[#eef0f4]" />
-                            <button
-                              className="flex w-full items-center gap-2 px-3 py-[8px] text-[13px] text-[#ef4444] cursor-pointer hover:bg-[#fee2e2]"
-                              onClick={() => { setOpenMenuId(null); onRowAction?.('delete', row) }}
-                            >
-                              <IconTrash size={14} /> Delete record
-                            </button>
+                            {rowMenuItems ? (
+                              /* Caller-supplied menu items — each maps to onRowAction(action). */
+                              rowMenuItems(row).map(item => (
+                                <button
+                                  key={item.action}
+                                  className={cn(
+                                    'flex w-full items-center gap-2 px-3 py-[8px] text-[13px] cursor-pointer',
+                                    item.variant === 'danger' ? 'text-[#ef4444] hover:bg-[#fee2e2]' : 'text-[#1a2533] hover:bg-[#f7f8fa]',
+                                  )}
+                                  onClick={() => { setOpenMenuId(null); onRowAction?.(item.action as 'view' | 'quickEdit' | 'fullEdit' | 'delete', row) }}
+                                >
+                                  {item.icon} {item.label}
+                                </button>
+                              ))
+                            ) : (
+                              <>
+                                {[
+                                  { label: 'View record', icon: <IconEye size={14} />,  action: 'view'      as const },
+                                  { label: 'Quick edit',  icon: <IconEdit size={14} />, action: 'quickEdit' as const },
+                                  { label: 'Full edit',   icon: <IconEdit size={14} />, action: 'fullEdit'  as const },
+                                ].map(item => (
+                                  <button
+                                    key={item.action}
+                                    className="flex w-full items-center gap-2 px-3 py-[8px] text-[13px] text-[#1a2533] cursor-pointer hover:bg-[#f7f8fa]"
+                                    onClick={() => { setOpenMenuId(null); onRowAction?.(item.action, row) }}
+                                  >
+                                    {item.icon} {item.label}
+                                  </button>
+                                ))}
+                                <div className="my-1 border-t border-[#eef0f4]" />
+                                <button
+                                  className="flex w-full items-center gap-2 px-3 py-[8px] text-[13px] text-[#ef4444] cursor-pointer hover:bg-[#fee2e2]"
+                                  onClick={() => { setOpenMenuId(null); onRowAction?.('delete', row) }}
+                                >
+                                  <IconTrash size={14} /> Delete record
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -490,12 +513,16 @@ export function DataTable<T extends { id: string }>({
 
         {/* Cards */}
         {!loading && data.map(row => (
-          <div key={row.id} className="bg-white border border-[#dde1e9] rounded-[8px] mb-2 overflow-hidden">
+          <div
+            key={row.id}
+            className={cn('bg-white border border-[#dde1e9] rounded-[8px] mb-2 overflow-hidden', onRowClick && 'cursor-pointer')}
+            onClick={onRowClick ? () => onRowClick(row) : undefined}
+          >
             <div className="p-[14px]">
               <div className="flex items-center justify-between">
                 <span className="text-[12px] font-medium text-[#2d9692]">{row.id}</span>
                 <button
-                  onClick={() => setMobileMenuRow(row)}
+                  onClick={e => { e.stopPropagation(); setMobileMenuRow(row) }}
                   className="w-[28px] h-[28px] rounded-[5px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4]"
                   aria-label="Row actions"
                 >
@@ -517,7 +544,7 @@ export function DataTable<T extends { id: string }>({
                   </span>
                 </div>
               ))}
-              <div className="flex gap-2 border-t border-[#eef0f4] pt-[10px] mt-[10px]">
+              <div className="flex gap-2 border-t border-[#eef0f4] pt-[10px] mt-[10px]" onClick={e => e.stopPropagation()}>
                 <button
                   onClick={() => onRowAction?.('view', row)}
                   className="flex-1 h-[36px] rounded-[6px] border border-[#dde1e9] bg-white text-[12px] font-medium text-[#3d4d5f] flex items-center justify-center gap-1"

@@ -54,7 +54,6 @@ const DEFAULT_CONFIG: CabinetConfig = {
   cost_per_sqm_carcass: 0,
   cost_per_sqm_shelf: 0,
   labour_hours: 0,
-  labour_cost: 0,
   notes: "",
 }
 
@@ -617,7 +616,6 @@ export default function CabinetConfigurator({
       calculated_cut_list:               totals.cut_list,
       calculated_material_cost_ex_gst:   totals.calculated_material_cost_ex_gst,
       labour_hours:                      totals.labour_hours,
-      labour_cost:                       totals.labour_hours,
     }
     const unitPrice = totals.calculated_material_cost_ex_gst
     onSave?.({
@@ -684,7 +682,7 @@ export default function CabinetConfigurator({
                 <input id={carcassCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_carcass} onChange={e => updateConfig("cost_per_sqm_carcass", e.target.value)} />
               </Field>
               <Field label="Labour hours">
-                <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? config.labour_cost} onChange={e => updateConfig("labour_hours", e.target.value)} />
+                <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? config.labour_cost /* legacy key */} onChange={e => updateConfig("labour_hours", e.target.value)} />
               </Field>
             </div>
             <MaterialCostPrompt
@@ -1016,7 +1014,7 @@ export default function CabinetConfigurator({
                     <input id={carcassCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_carcass} onChange={e => updateConfig("cost_per_sqm_carcass", e.target.value)} />
                   </Field>
                   <Field label="Labour hours">
-                    <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? config.labour_cost} onChange={e => updateConfig("labour_hours", e.target.value)} />
+                    <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? config.labour_cost /* legacy key */} onChange={e => updateConfig("labour_hours", e.target.value)} />
                   </Field>
                 </div>
                 <MaterialCostPrompt

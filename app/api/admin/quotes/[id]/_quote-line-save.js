@@ -48,6 +48,10 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     quote_id: quoteId,
     sort_order: sortOrder,
     design_item_id: line.design_item_id || null,
+    // Scopes the importer's orphan sweep to one design project — a quote can
+    // hold lines from several. Null on hand-added lines, which the sweep
+    // therefore can never touch.
+    design_project_id: line.design_project_id || null,
     product_type: dbText(line.product_type),
     product_name: dbText(line.product_name),
     description: dbText(line.description),
@@ -121,7 +125,7 @@ export function cabinetConfigRow(config, quoteId, lineItemId) {
     mount_height_mm: dbNullableNumber(config.mount_height_mm),
     cost_per_sqm_carcass: dbNumber(config.cost_per_sqm_carcass),
     cost_per_sqm_shelf: dbNumber(config.cost_per_sqm_shelf),
-    labour_cost: dbNumber(config.labour_cost),
+    labour_hours: dbNumber(config.labour_hours),
     calculated_cut_list: config.calculated_cut_list || config.cut_list || [],
     calculated_material_cost_ex_gst: dbNumber(config.calculated_material_cost_ex_gst),
     notes: dbText(config.notes),
@@ -250,6 +254,7 @@ export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id
     ...calculateQuoteLine(line, businessDefaults),
     id: lineId || null,
     design_item_id: line?.design_item_id ?? null,
+    design_project_id: line?.design_project_id ?? null,
     cabinet_config: line?.cabinet_config || null,
   };
   const row = quoteLineRow(calculatedLine, quoteId, sortOrder);

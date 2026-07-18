@@ -22,12 +22,20 @@ export async function GET(request) {
       return Response.json({ ok: false, error: "We could not load this quote." }, { status: 404 });
     }
 
-    if (!quote.viewed_at) {
-      await supabase
+    // Only a SENT quote's view counts. Previously this fired on the first load
+    // of the public link at ANY status, so an admin previewing "what the client
+    // sees" before sending (status still 'draft') set viewed_at then — and the
+    // real client view afterwards found viewed_at already set and never flipped
+    // the status to 'viewed'. Gate on 'sent' so pre-send opens don't burn it,
+    // and the first genuine post-send view records the transition.
+    if (quote.status === "sent" && !quote.viewed_at) {
+      const { error: viewError } = await supabase
         .from("pcd_quotes")
-        .update({ viewed_at: new Date().toISOString(), status: quote.status === "sent" ? "viewed" : quote.status })
+        .update({ viewed_at: new Date().toISOString(), status: "viewed" })
         .eq("id", quote.id);
-      await supabase.from("pcd_quote_actions").insert({ quote_id: quote.id, action: "viewed" });
+      if (!viewError) {
+        await supabase.from("pcd_quote_actions").insert({ quote_id: quote.id, action: "viewed" });
+      }
     }
 
     const { data: cabinetConfigs } = await supabase

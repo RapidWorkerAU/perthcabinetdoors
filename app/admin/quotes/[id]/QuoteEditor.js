@@ -1127,6 +1127,7 @@ export default function QuoteEditor({ quoteId }) {
     setLineNoteModal({
       lineIndex: index,
       client_note: line.client_note || "",
+      notes: line.notes || "",
     });
   }
 
@@ -1134,11 +1135,15 @@ export default function QuoteEditor({ quoteId }) {
     setLineNoteModal((current) => (current ? { ...current, client_note: value } : current));
   }
 
+  function updateLineNoteInternal(value) {
+    setLineNoteModal((current) => (current ? { ...current, notes: value } : current));
+  }
+
   async function saveLineNoteModal() {
     if (!lineNoteModal) return;
     const line = form.lines[lineNoteModal.lineIndex];
     if (!line) return;
-    const nextLine = { ...line, client_note: lineNoteModal.client_note };
+    const nextLine = { ...line, client_note: lineNoteModal.client_note, notes: lineNoteModal.notes };
     updateSavedLine(lineNoteModal.lineIndex, () => nextLine);
     const saved = await saveLineAtIndex(lineNoteModal.lineIndex, nextLine, { updateDraft: false });
     if (saved) setLineNoteModal(null);
@@ -2110,9 +2115,16 @@ export default function QuoteEditor({ quoteId }) {
                           )}
                         </td>
 
-                        {/* Finish & colour */}
+                        {/* Finish & colour — gated for cabinet lines the same
+                            way Thickness and W/H already are. A cabinet's
+                            boards are chosen in its configurator, which writes
+                            cabinet_config and re-runs the cut list. Picking a
+                            colour here only patched the LINE's material and
+                            sqm rate, leaving the cut list still costing the
+                            old board: the row would name one colour and be
+                            priced for another. */}
                         <td className={td}>
-                          {isEditable ? (
+                          {isEditable && !isBaseCabinetEditable ? (
                             <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
                           ) : (
                             <>
@@ -2500,6 +2512,15 @@ export default function QuoteEditor({ quoteId }) {
                         <tr>
                           <td colSpan={16} className="px-3 py-[4px] bg-[#f5f8f4] border-b border-[#edf4eb] text-[10px] text-[#5a5a52] italic">
                             Note: {line.client_note}
+                          </td>
+                        </tr>
+                      )}
+                      {/* Internal note row — admin only, not shown to the client. Where
+                          imported design-tool notes (mitres, hinges, runners) land. */}
+                      {!isEditable && line.notes && (
+                        <tr>
+                          <td colSpan={16} className="px-3 py-[4px] bg-[#fbf6ec] border-b border-[#edf4eb] text-[10px] text-[#8a6d3b] italic">
+                            Internal: {line.notes}
                           </td>
                         </tr>
                       )}
@@ -3123,8 +3144,8 @@ export default function QuoteEditor({ quoteId }) {
         <Modal
           open={true}
           onClose={() => setLineNoteModal(null)}
-          title={`Line ${lineNoteModal.lineIndex + 1} note`}
-          subtitle="Client note"
+          title={`Line ${lineNoteModal.lineIndex + 1} notes`}
+          subtitle="Client & internal notes"
           size="md"
           footer={
             <>
@@ -3141,10 +3162,20 @@ export default function QuoteEditor({ quoteId }) {
             Note shown on public quote
             <textarea
               className={styles.textareaInput}
-              rows={6}
+              rows={4}
               value={lineNoteModal.client_note}
               onChange={(event) => updateLineNoteModal(event.target.value)}
               placeholder="Add a short note for the client about this line item."
+            />
+          </label>
+          <label className={styles.fieldLabel} style={{ marginTop: 12 }}>
+            Internal note (admin only — production, mitres, hinges, runners)
+            <textarea
+              className={styles.textareaInput}
+              rows={4}
+              value={lineNoteModal.notes}
+              onChange={(event) => updateLineNoteInternal(event.target.value)}
+              placeholder="Fabrication notes. Imported design-tool notes (e.g. mitre and hinge notes) appear here."
             />
           </label>
         </Modal>

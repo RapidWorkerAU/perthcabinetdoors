@@ -1,15 +1,37 @@
 "use client";
 
+import { useState } from "react";
+import dynamic from "next/dynamic";
 import styles from "../design.module.css";
 import DesignCanvas from "./DesignCanvas";
 import DesignLeftPanel from "./DesignLeftPanel";
 import DesignRightPanel from "./DesignRightPanel";
 import ImportModal from "./ImportModal";
 import MaterialDefaultsModal from "./MaterialDefaultsModal";
+import DesignPlanExportModal from "./DesignPlanExportModal";
 import FrontElevationView from "./FrontElevationView";
 import useDesignProgram from "./useDesignProgram";
 
+// three.js is heavy and only needed once the 3D view is opened, so it's split
+// out of the initial bundle and never server-rendered (r3f is client-only).
+const Design3DView = dynamic(() => import("./Design3DView"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#78716c", fontSize: 13 }}>
+      Loading 3D view…
+    </div>
+  ),
+});
+
 export default function DesignProgram({ projectId }) {
+  const [show3D, setShow3D] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  // Paint panels with the real colour-library tiles instead of the flat
+  // per-type colours. Shared across all three views and OFF by default — the
+  // default look is the familiar coloured-by-type one. Toggle lives in each
+  // view's toolbar; when a tile can't be resolved a panel keeps its type colour.
+  const [showColours, setShowColours] = useState(false);
+  const toggleColours = () => setShowColours((v) => !v);
   const {
     project, setProject,
     rooms, items,
@@ -20,10 +42,12 @@ export default function DesignProgram({ projectId }) {
     materialDefaultsOpen, setMaterialDefaultsOpen,
     frontViewWall, setFrontViewWall,
     loading, error,
+    saveError, dismissSaveError,
+    colourImages,
     setItems,
     loadAll,
     handleAddRoom, handleUpdateRoom, handleDeleteRoom,
-    handleAddItem, handleItemChange, handleItemDragEnd,
+    handleAddItem, handleItemChange, handleItemDragEnd, handleOptimisticItemChange,
     handleDuplicateItem, handleDeleteItem,
     handleCanvasItemClick, handleCanvasDeselect,
     selectedRoom, roomItems, selectedItem,
@@ -71,18 +95,36 @@ export default function DesignProgram({ projectId }) {
       />
 
       <div className={styles.canvasArea}>
-        {frontViewWall && selectedRoom ? (
+        {saveError && (
+          <div className={styles.saveErrorBanner}>
+            <span>Couldn&apos;t save your last change: {saveError}</span>
+            <button type="button" onClick={dismissSaveError}>Dismiss</button>
+          </div>
+        )}
+        {show3D && selectedRoom ? (
+          <Design3DView
+            room={selectedRoom}
+            items={roomItems}
+            onClose={() => setShow3D(false)}
+            colourImages={colourImages}
+            showColours={showColours}
+            onToggleColours={toggleColours}
+            selectedItemId={selectedItemId}
+            onSelectItem={(id) => { setSelectedItemId(id); setIsAddingItem(false); }}
+          />
+        ) : frontViewWall && selectedRoom ? (
           <FrontElevationView
             wall={frontViewWall}
             room={selectedRoom}
             items={roomItems}
             onClose={() => setFrontViewWall(null)}
-            onItemChange={(itemId, patch) => {
-              // Optimistic update so the right panel sees changes immediately on drag release
-              setItems((it) => it.map((x) => (x.id === itemId ? { ...x, ...patch } : x)));
-              handleItemChange(itemId, patch);
-            }}
+            // Optimistic update + revert-and-surface on failure, so an elevation
+            // edit that doesn't save can't silently look applied.
+            onItemChange={handleOptimisticItemChange}
             onItemSelect={(itemId) => { setSelectedItemId(itemId); setIsAddingItem(false); }}
+            colourImages={colourImages}
+            showColours={showColours}
+            onToggleColours={toggleColours}
           />
         ) : selectedRoom ? (
           <>
@@ -92,6 +134,30 @@ export default function DesignProgram({ projectId }) {
               <span className={styles.canvasToolbarHint}>
                 Drag cabinets to position · back of cabinet sets elevation wall · white stripe = front face
               </span>
+              <button
+                type="button"
+                className={`${styles.view3dBtn} ${showColours ? styles.view3dBtnActive : ""}`}
+                onClick={toggleColours}
+                title="Paint cabinets with their real colour-library finishes"
+              >
+                {showColours ? "Colours on" : "Show colours"}
+              </button>
+              <button
+                type="button"
+                className={styles.view3dBtn}
+                onClick={() => setShow3D(true)}
+                title="View this room in 3D (read-only)"
+              >
+                3D view
+              </button>
+              <button
+                type="button"
+                className={styles.view3dBtn}
+                onClick={() => setExportOpen(true)}
+                title="Export a customer PDF: floor plan, elevations, 3D and finishes"
+              >
+                Export PDF
+              </button>
             </div>
             <div className={styles.canvasSvgWrap}>
               <DesignCanvas
@@ -103,6 +169,8 @@ export default function DesignProgram({ projectId }) {
                 onDeselect={handleCanvasDeselect}
                 onItemDragEnd={handleItemDragEnd}
                 onFrontView={(wall) => setFrontViewWall(wall)}
+                colourImages={colourImages}
+                showColours={showColours}
               />
             </div>
           </>
@@ -135,6 +203,18 @@ export default function DesignProgram({ projectId }) {
           items={items}
           rooms={rooms}
           onClose={() => setImportOpen(false)}
+        />
+      )}
+
+      {exportOpen && rooms.length > 0 && (
+        <DesignPlanExportModal
+          projectId={projectId}
+          project={project}
+          rooms={rooms}
+          items={items}
+          currentRoomId={selectedRoomId}
+          colourImages={colourImages}
+          onClose={() => setExportOpen(false)}
         />
       )}
 

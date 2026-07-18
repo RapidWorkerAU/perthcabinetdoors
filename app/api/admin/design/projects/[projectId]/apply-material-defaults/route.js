@@ -10,7 +10,7 @@ function dbText(value) {
   return s || null;
 }
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
 
 // Unlike applyMaterialDefaults() in items/route.js (which only fills blank
 // fields when an item is first created), this OVERWRITES every relevant
@@ -50,7 +50,16 @@ function buildForcedPatch(item, defaults) {
     if (hasMaterial(drawer) && (item.front_type === "drawers" || item.front_type === "mixed")) {
       patch.drawer_style = { ...(item.drawer_style || {}), ...drawer };
     }
-  } else if (item.item_type === "panel") {
+  } else if (item.item_type === "floating_shelf") {
+    const fs = defaults.floating_shelf;
+    if (hasMaterial(fs)) {
+      patch.material = dbText(fs.material);
+      patch.finish = dbText(fs.finish);
+      patch.colour = dbText(fs.colour);
+      if (fs.thickness_mm) patch.carcass_thickness_mm = fs.thickness_mm;
+      if (fs.cost_per_sqm != null) patch.cost_per_sqm_carcass = fs.cost_per_sqm;
+    }
+  } else if (item.item_type === "panel" || item.item_type === "scribe") {
     const panel = defaults.panel;
     if (hasMaterial(panel)) {
       patch.material = dbText(panel.material);
