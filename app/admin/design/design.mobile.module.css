@@ -129,6 +129,14 @@
   display: flex;
 }
 
+/* Gives the read-only 3D viewer a concrete box to fill. Design3DView is
+   width/height:100%, so it needs a flex child with a resolved height. */
+.view3dFill {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
 .emptyState {
   flex: 1;
   display: flex;

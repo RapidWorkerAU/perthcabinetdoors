@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import mobile from "../design.mobile.module.css";
 import { formatMoney } from "@/lib/pcd-quote-utils";
 import { cabinetMaterialCost } from "./mobile/cabinetPricing";
@@ -11,6 +12,18 @@ import PinchZoom from "./PinchZoom";
 import RoomsModal from "./mobile/RoomsModal";
 import CabinetModal from "./mobile/CabinetModal";
 import RoomPriceModal from "./mobile/RoomPriceModal";
+
+// three.js is heavy and client-only (r3f), so it's split out of the initial
+// mobile bundle exactly as the desktop shell does — it loads only when the
+// viewer first opens the 3D tab, never on first paint.
+const Design3DView = dynamic(() => import("./Design3DView"), {
+  ssr: false,
+  loading: () => (
+    <div className={mobile.emptyState}>
+      <span className={mobile.emptyHint}>Loading 3D view…</span>
+    </div>
+  ),
+});
 
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
 const TYPE_COLORS = {
@@ -39,11 +52,16 @@ export default function DesignProgramMobile({ projectId }) {
     loading, error, loadAll,
     handleAddRoom, handleUpdateRoom, handleDeleteRoom, handleAddItem,
     handleItemChange, handleItemDragEnd, handleDuplicateItem, handleDeleteItem,
+    colourImages,
   } = d;
 
   const [openModal, setOpenModal] = useState(null); // 'rooms' | 'item' | 'price'
-  const [view, setView] = useState("plan");          // 'plan' | 'elevation'
+  const [view, setView] = useState("plan");          // 'plan' | 'elevation' | '3d'
   const [elevationWall, setElevationWall] = useState("top");
+  // Paint cabinets with their real colour-library finishes in 3D. Off by
+  // default so the first look is the familiar coloured-by-type one, matching
+  // the desktop tool's default.
+  const [showColours, setShowColours] = useState(false);
 
   const selectedItem = roomItems.find((i) => i.id === selectedItemId) || null;
   const cabinets = roomItems.filter((i) => CABINET_TYPES.includes(i.item_type));
@@ -194,6 +212,12 @@ export default function DesignProgramMobile({ projectId }) {
             onClick={enterElevation}
             disabled={!selectedRoom || roomItems.length === 0}
           >Elevation</button>
+          <button
+            type="button"
+            className={`${mobile.viewToggleBtn} ${view === "3d" ? mobile.viewToggleBtnActive : ""}`}
+            onClick={() => setView("3d")}
+            disabled={!selectedRoom}
+          >3D</button>
         </div>
       </div>
 
@@ -242,6 +266,21 @@ export default function DesignProgramMobile({ projectId }) {
             <span className={mobile.emptyHint}>Add a room to set your dimensions and start designing.</span>
             <button type="button" className={mobile.primaryBtn} style={{ maxWidth: 200 }} onClick={openRooms}>+ Add room</button>
           </div>
+        ) : view === "3d" ? (
+          <div className={mobile.view3dFill}>
+            <Design3DView
+              touch
+              showClose={false}
+              room={selectedRoom}
+              items={roomItems}
+              colourImages={colourImages}
+              showColours={showColours}
+              onToggleColours={() => setShowColours((v) => !v)}
+              selectedItemId={selectedItemId}
+              onSelectItem={(id) => setSelectedItemId(id)}
+              onClose={() => setView("plan")}
+            />
+          </div>
         ) : view === "elevation" ? (
           <FrontElevationView
             interactive={false}
@@ -270,8 +309,8 @@ export default function DesignProgramMobile({ projectId }) {
         )}
       </div>
 
-      {/* ---- Selection action bar (plan + elevation) ---- */}
-      {selectedItem && (
+      {/* ---- Selection action bar (plan + elevation; 3D is read-only) ---- */}
+      {selectedItem && view !== "3d" && (
         <div className={mobile.selectionBar}>
           <div className={mobile.selRow}>
             <span className={mobile.selName}>{selectedItem.label || TYPE_SHORT[selectedItem.item_type] || selectedItem.item_type}</span>

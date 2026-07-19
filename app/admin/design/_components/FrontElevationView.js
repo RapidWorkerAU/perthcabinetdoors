@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import styles from "../design.module.css";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
 import { doorRowGapMm, drawerGapMm, frontRevealMm } from "../../../../lib/pcd-door-utils";
@@ -442,6 +442,23 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     setLocalShelves({});
     setSnapGuides(null);
   }
+
+  // The in-view wall tabs (switchWall) are desktop-only — they render only when
+  // `interactive`. The mobile shell hides them and instead drives the wall from
+  // the outside via the `wall` prop. `currentWall` is seeded from the prop once
+  // at mount, so without this sync a prop change (tapping a different wall in
+  // the mobile picker) never reached the view and the elevation stayed stuck on
+  // the first wall. Fires only when the prop actually changes, so desktop's tab
+  // switcher — which updates currentWall without touching the prop — is
+  // unaffected. All setters here are stable, so the effect is prop-driven only.
+  useEffect(() => {
+    setCurrentWall(initialWall);
+    setSelectedId(null);
+    setDrag(null);
+    setLocalPos({});
+    setLocalShelves({});
+    setSnapGuides(null);
+  }, [initialWall]);
 
   const wall = currentWall;
 
