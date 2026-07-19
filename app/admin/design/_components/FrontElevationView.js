@@ -423,7 +423,7 @@ const WALL_AXIS = {
   right:  { widthKey: "depth_mm",  label: "Right Wall" },
 };
 
-export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false }) {
+export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, chrome = true, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false }) {
   const [currentWall, setCurrentWall] = useState(initialWall);
   const [selectedId, setSelectedId]   = useState(controlledSelectedId ?? null);
   const [drag, setDrag]               = useState(null);
@@ -841,7 +841,8 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   return (
     <div className={styles.elevationInline}>
 
-      {/* Toolbar */}
+      {/* Toolbar — hidden when chrome is off (mobile fullscreen viewer) */}
+      {chrome && (
       <div className={styles.elevationToolbar}>
         <button type="button" className={styles.elevationBackBtn} onClick={onClose}>
           ← Floor Plan
@@ -916,9 +917,11 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
           </span>
         )}
       </div>
+      )}
 
-      {/* Item selector strip — visible even when cabinets overlap in SVG */}
-      {wallItems.length > 0 && (
+      {/* Item selector strip — visible even when cabinets overlap in SVG.
+          Hidden with the rest of the chrome in the mobile fullscreen viewer. */}
+      {chrome && wallItems.length > 0 && (
         <div className={styles.elevItemStrip}>
           {wallItems.map((item) => (
             <button

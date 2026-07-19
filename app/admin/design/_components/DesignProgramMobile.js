@@ -36,6 +36,7 @@ const TYPE_SHORT = {
 };
 const WALLS = ["top", "bottom", "left", "right"];
 const NUDGE_MM = 10;
+const VIEW_LABELS = { plan: "Plan", elevation: "Elevation", "3d": "3D" };
 
 /**
  * Mobile design shell — full multi-cabinet editor. Same brain as desktop
@@ -67,6 +68,14 @@ export default function DesignProgramMobile({ projectId }) {
   // keyed by item id → array of excluded category names. Lifted here so the
   // price strip and the price modal show the same scoped number.
   const [excludedByItem, setExcludedByItem] = useState({});
+  // Fullscreen strips the screen down to just the top bar, the canvas and (in
+  // elevation) the wall picker — for editing on a tiny screen without the
+  // legend, chips, price strip and bottom bar competing for space. The
+  // selection bar and modals still work.
+  const [fullscreen, setFullscreen] = useState(false);
+  // The Plan/Elevation/3D control is a dropdown (was a 3-way segmented toggle)
+  // to free up top-bar space and hold the fullscreen switch.
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
 
   const selectedItem = roomItems.find((i) => i.id === selectedItemId) || null;
   const cabinets = roomItems.filter((i) => CABINET_TYPES.includes(i.item_type));
@@ -185,6 +194,12 @@ export default function DesignProgramMobile({ projectId }) {
     setView("elevation");
   }
 
+  function chooseView(v) {
+    setViewMenuOpen(false);
+    if (v === "elevation") enterElevation();
+    else setView(v);
+  }
+
   if (loading) {
     return <div className={mobile.mobileRoot}><div className={mobile.emptyState}><span className={mobile.emptyHint}>Loading…</span></div></div>;
   }
@@ -208,24 +223,59 @@ export default function DesignProgramMobile({ projectId }) {
           <span className={mobile.topBarProject}>{project?.name || "Design"}</span>
           <span className={mobile.topBarRoom}>{selectedRoom?.name || "No room"}</span>
         </div>
-        <div className={mobile.viewToggle}>
+        <div className={mobile.viewMenuWrap}>
           <button
             type="button"
-            className={`${mobile.viewToggleBtn} ${view === "plan" ? mobile.viewToggleBtnActive : ""}`}
-            onClick={() => setView("plan")}
-          >Plan</button>
-          <button
-            type="button"
-            className={`${mobile.viewToggleBtn} ${view === "elevation" ? mobile.viewToggleBtnActive : ""}`}
-            onClick={enterElevation}
-            disabled={!selectedRoom || roomItems.length === 0}
-          >Elevation</button>
-          <button
-            type="button"
-            className={`${mobile.viewToggleBtn} ${view === "3d" ? mobile.viewToggleBtnActive : ""}`}
-            onClick={() => setView("3d")}
-            disabled={!selectedRoom}
-          >3D</button>
+            className={mobile.viewMenuTrigger}
+            onClick={() => setViewMenuOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={viewMenuOpen}
+          >
+            <span>{VIEW_LABELS[view]}</span>
+            {fullscreen && <span className={mobile.viewMenuFsTag}>Fullscreen</span>}
+            <span className={mobile.viewMenuCaret}>▾</span>
+          </button>
+          {viewMenuOpen && (
+            <>
+              <div className={mobile.viewMenuBackdrop} onClick={() => setViewMenuOpen(false)} />
+              <div className={mobile.viewMenu} role="menu">
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={view === "plan"}
+                  className={`${mobile.viewMenuItem} ${view === "plan" ? mobile.viewMenuItemActive : ""}`}
+                  onClick={() => chooseView("plan")}
+                >Plan</button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={view === "elevation"}
+                  className={`${mobile.viewMenuItem} ${view === "elevation" ? mobile.viewMenuItemActive : ""}`}
+                  onClick={() => chooseView("elevation")}
+                  disabled={!selectedRoom || roomItems.length === 0}
+                >Elevation</button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={view === "3d"}
+                  className={`${mobile.viewMenuItem} ${view === "3d" ? mobile.viewMenuItemActive : ""}`}
+                  onClick={() => chooseView("3d")}
+                  disabled={!selectedRoom}
+                >3D</button>
+                <div className={mobile.viewMenuDivider} />
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={fullscreen}
+                  className={`${mobile.viewMenuItem} ${fullscreen ? mobile.viewMenuItemActive : ""}`}
+                  onClick={() => { setFullscreen((f) => !f); setViewMenuOpen(false); }}
+                >
+                  <span className={mobile.viewMenuCheck}>{fullscreen ? "✓" : ""}</span>
+                  View fullscreen
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -249,8 +299,8 @@ export default function DesignProgramMobile({ projectId }) {
         </div>
       )}
 
-      {/* ---- Item chip strip (reliable selection) ---- */}
-      {view === "plan" && selectedRoom && roomItems.length > 0 && (
+      {/* ---- Item chip strip (reliable selection; hidden in fullscreen) ---- */}
+      {view === "plan" && selectedRoom && roomItems.length > 0 && !fullscreen && (
         <div className={mobile.itemStrip}>
           {roomItems.map((it) => (
             <button
@@ -293,6 +343,7 @@ export default function DesignProgramMobile({ projectId }) {
           <FrontElevationView
             interactive={false}
             zoomable
+            chrome={!fullscreen}
             wall={elevationWall}
             room={selectedRoom}
             items={roomItems}
@@ -344,8 +395,8 @@ export default function DesignProgramMobile({ projectId }) {
         </div>
       )}
 
-      {/* ---- Price strip ---- */}
-      {cabinets.length > 0 && (
+      {/* ---- Price strip (hidden in fullscreen) ---- */}
+      {cabinets.length > 0 && !fullscreen && (
         <button type="button" className={mobile.priceStrip} onClick={() => setOpenModal("price")}>
           <span>
             <span className={mobile.priceStripLabel}>Room material cost (ex GST)</span><br />
@@ -355,7 +406,8 @@ export default function DesignProgramMobile({ projectId }) {
         </button>
       )}
 
-      {/* ---- Bottom action bar ---- */}
+      {/* ---- Bottom action bar (hidden in fullscreen) ---- */}
+      {!fullscreen && (
       <div className={mobile.bottomBar}>
         <button type="button" className={mobile.actionBtn} onClick={openRooms}>
           <span className={mobile.actionBtnIcon}>▦</span>
@@ -380,6 +432,7 @@ export default function DesignProgramMobile({ projectId }) {
           Price
         </button>
       </div>
+      )}
 
       {/* ---- Modals ---- */}
       {openModal === "rooms" && (

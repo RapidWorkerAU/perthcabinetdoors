@@ -56,6 +56,69 @@
 .viewToggleBtnActive { background: #3b82f6; color: #fff; }
 .viewToggleBtn:disabled { opacity: 0.35; }
 
+/* ---- View dropdown (Plan / Elevation / 3D + fullscreen) ---- */
+.viewMenuWrap { position: relative; flex-shrink: 0; }
+.viewMenuTrigger {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  min-height: 38px;
+}
+.viewMenuFsTag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #93c5fd;
+  background: rgba(59,130,246,0.18);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+.viewMenuCaret { font-size: 10px; opacity: 0.7; }
+.viewMenuBackdrop { position: fixed; inset: 0; z-index: 40; }
+.viewMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 41;
+  min-width: 190px;
+  background: #1f2632;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.viewMenuItem {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #e8ecf2;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px 12px;
+  min-height: 44px;
+}
+.viewMenuItemActive { background: rgba(59,130,246,0.9); color: #fff; }
+.viewMenuItem:disabled { opacity: 0.35; }
+.viewMenuDivider { height: 1px; background: rgba(255,255,255,0.1); margin: 4px 2px; }
+.viewMenuCheck { width: 14px; display: inline-block; color: #93c5fd; }
+.viewMenuItemActive .viewMenuCheck { color: #fff; }
+
 /* ---- Elevation wall selector ---- */
 .wallPicker {
   flex-shrink: 0;
