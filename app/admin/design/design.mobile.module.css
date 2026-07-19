@@ -172,6 +172,18 @@
   background: #1b212b;
 }
 .selRow { display: flex; align-items: center; gap: 8px; }
+.selClose {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: #e8ecf2;
+  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+}
 .selName {
   flex: 1;
   font-size: 13px;

@@ -288,6 +288,7 @@ export default function DesignProgramMobile({ projectId }) {
             wall={elevationWall}
             room={selectedRoom}
             items={roomItems}
+            selectedId={selectedItemId}
             onClose={() => setView("plan")}
             onItemChange={handleItemChange}
             onItemSelect={(id) => setSelectedItemId(id)}
@@ -300,7 +301,7 @@ export default function DesignProgramMobile({ projectId }) {
               items={roomItems}
               selectedItemId={selectedItemId}
               overlappingItemIds={new Set()}
-              onItemClick={(it) => setSelectedItemId(it.id)}
+              onItemClick={(it) => setSelectedItemId(it.id === selectedItemId ? null : it.id)}
               onDeselect={() => setSelectedItemId(null)}
               onItemDragEnd={handleItemDragEnd}
               onFrontView={(wall) => { setElevationWall(wall); setView("elevation"); }}
@@ -313,6 +314,13 @@ export default function DesignProgramMobile({ projectId }) {
       {selectedItem && view !== "3d" && (
         <div className={mobile.selectionBar}>
           <div className={mobile.selRow}>
+            <button
+              type="button"
+              className={mobile.selClose}
+              onClick={() => setSelectedItemId(null)}
+              aria-label="Deselect cabinet"
+              title="Deselect"
+            >✕</button>
             <span className={mobile.selName}>{selectedItem.label || TYPE_SHORT[selectedItem.item_type] || selectedItem.item_type}</span>
             <button type="button" className={mobile.selBtn} onClick={editSelected}>Edit</button>
             <button type="button" className={mobile.selBtn} onClick={() => handleDuplicateItem(selectedItem.id)}>Duplicate</button>
