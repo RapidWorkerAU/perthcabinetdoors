@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import mobile from "../design.mobile.module.css";
 import { formatMoney } from "@/lib/pcd-quote-utils";
-import { includedCabinetCost } from "./mobile/cabinetPricing";
+import { includedItemCost } from "./mobile/cabinetPricing";
 import useDesignProgram from "./useDesignProgram";
 import DesignCanvas from "./DesignCanvas";
 import FrontElevationView from "./FrontElevationView";
@@ -78,9 +78,14 @@ export default function DesignProgramMobile({ projectId }) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
 
   const selectedItem = roomItems.find((i) => i.id === selectedItemId) || null;
-  const cabinets = roomItems.filter((i) => CABINET_TYPES.includes(i.item_type));
-  const roomTotal = cabinets.reduce(
-    (s, c) => s + includedCabinetCost(c, roomItems, selectedRoom, new Set(excludedByItem[c.id] || [])),
+  // Everything that carries a material cost: cabinets plus standalone panels and
+  // scribes placed on their own on the plan (loose finishing pieces are a real
+  // line in a refresh job, so they belong in the room price).
+  const priceItems = roomItems.filter(
+    (i) => CABINET_TYPES.includes(i.item_type) || i.item_type === "panel" || i.item_type === "scribe"
+  );
+  const roomTotal = priceItems.reduce(
+    (s, c) => s + includedItemCost(c, roomItems, selectedRoom, new Set(excludedByItem[c.id] || [])),
     0,
   );
 
@@ -396,7 +401,7 @@ export default function DesignProgramMobile({ projectId }) {
       )}
 
       {/* ---- Price strip (hidden in fullscreen) ---- */}
-      {cabinets.length > 0 && !fullscreen && (
+      {priceItems.length > 0 && !fullscreen && (
         <button type="button" className={mobile.priceStrip} onClick={() => setOpenModal("price")}>
           <span>
             <span className={mobile.priceStripLabel}>Room material cost (ex GST)</span><br />
@@ -426,7 +431,7 @@ export default function DesignProgramMobile({ projectId }) {
           type="button"
           className={mobile.actionBtn}
           onClick={() => setOpenModal("price")}
-          disabled={cabinets.length === 0}
+          disabled={priceItems.length === 0}
         >
           <span className={mobile.actionBtnIcon}>$</span>
           Price
@@ -463,9 +468,9 @@ export default function DesignProgramMobile({ projectId }) {
         />
       )}
 
-      {openModal === "price" && cabinets.length > 0 && (
+      {openModal === "price" && priceItems.length > 0 && (
         <RoomPriceModal
-          cabinets={cabinets}
+          items={priceItems}
           roomItems={roomItems}
           room={selectedRoom}
           excludedByItem={excludedByItem}

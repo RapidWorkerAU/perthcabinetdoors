@@ -39,6 +39,7 @@ export function categoryFor(material) {
     case "door": return "Doors";
     case "drawer": return "Drawer fronts";
     case "panel": return "Finished panels";
+    case "scribe": return "Scribes";
     case "kickboard": return "Kickboards";
     case "filler": return "Filler panels";
     case "back": return "Carcass";
@@ -49,7 +50,7 @@ export function categoryFor(material) {
 // Stable display order for the price categories — the ones you usually keep in
 // a refresh first, Carcass (the usual thing to drop) last.
 export const PRICE_CATEGORIES = [
-  "Doors", "Drawer fronts", "Finished panels", "Kickboards", "Filler panels", "Shelves", "Carcass",
+  "Doors", "Drawer fronts", "Finished panels", "Scribes", "Kickboards", "Filler panels", "Shelves", "Carcass",
 ];
 
 function ratesFor(item) {
@@ -95,18 +96,61 @@ export function cabinetPricing(item, roomItems = [], room = null) {
   return { rows, categories, total, rates };
 }
 
+/**
+ * Pricing for a standalone panel or scribe placed on its own on the plan (not
+ * a per-cabinet finishing panel). Priced as face area × the item's own $/m²
+ * rate — the exact maths the quote import uses:
+ *   - a panel stores its face WIDTH in depth_mm (width_mm is the on-edge
+ *     thickness), so its face is depth_mm × height_mm;
+ *   - a scribe keeps its along-wall span in width_mm, so its face is
+ *     width_mm × height_mm.
+ * Returns the same shape as cabinetPricing so the price UI can treat every
+ * priced item uniformly. Non panel/scribe items return an empty breakdown.
+ */
+export function standaloneItemPricing(item) {
+  const empty = { rows: [], categories: [], total: 0, rates: {} };
+  if (!item) return empty;
+  const isPanel = item.item_type === "panel";
+  const isScribe = item.item_type === "scribe";
+  if (!isPanel && !isScribe) return empty;
+
+  const faceW = isPanel ? Number(item.depth_mm) || 0 : Number(item.width_mm) || 0;
+  const height = Number(item.height_mm) || 0;
+  const qty = Number(item.qty) || 1;
+  const rate = Number(item.unit_cost_per_sqm_ex_gst) || 0;
+  const areaSqm = (faceW * height) / 1_000_000;
+  const cost = areaSqm * qty * rate;
+  const material = isScribe ? "scribe" : "panel";
+
+  const rows = [{
+    name: isScribe ? "Scribe" : "Panel",
+    dim1: faceW, axis1: "W", dim2: height, axis2: "H",
+    material, qty, areaSqm, rate, cost,
+  }];
+  return { rows, categories: [{ name: categoryFor(material), cost }], total: cost, rates: {} };
+}
+
+// Price any plan item — a cabinet (full cut list) or a standalone panel/scribe
+// — with one call, so the price strip and modal can iterate a mixed list.
+export function itemPricing(item, roomItems = [], room = null) {
+  if (item?.item_type === "panel" || item?.item_type === "scribe") {
+    return standaloneItemPricing(item);
+  }
+  return cabinetPricing(item, roomItems, room);
+}
+
 // Convenience: just the material-cost total (used by the price strip).
 export function cabinetMaterialCost(item, roomItems = [], room = null) {
   return cabinetPricing(item, roomItems, room).total;
 }
 
-// Material-cost total with a set of excluded categories removed — so the price
-// strip and the price modal agree while the user toggles what's "in scope"
-// (e.g. a door-replacement job that isn't producing the carcasses). Pass a Set
-// of category names (from categoryFor / PRICE_CATEGORIES); empty/omitted means
-// the full total.
-export function includedCabinetCost(item, roomItems = [], room = null, excludedCategories = null) {
-  const { rows } = cabinetPricing(item, roomItems, room);
+// Material-cost total for any item with a set of excluded categories removed —
+// so the price strip and the price modal agree while the user toggles what's
+// "in scope". Handles cabinets and standalone panels/scribes. Pass a Set of
+// category names (from categoryFor / PRICE_CATEGORIES); empty/omitted means the
+// full total.
+export function includedItemCost(item, roomItems = [], room = null, excludedCategories = null) {
+  const { rows } = itemPricing(item, roomItems, room);
   if (!excludedCategories || excludedCategories.size === 0) {
     return rows.reduce((s, r) => s + r.cost, 0);
   }
@@ -115,3 +159,4 @@ export function includedCabinetCost(item, roomItems = [], room = null, excludedC
     0,
   );
 }
+

@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import styles from "../../design.mobile.module.css";
 import MobileModal from "./MobileModal";
 import { formatMoney } from "@/lib/pcd-quote-utils";
-import { cabinetPricing, categoryFor, PRICE_CATEGORIES } from "./cabinetPricing";
+import { itemPricing, categoryFor, PRICE_CATEGORIES } from "./cabinetPricing";
 
 const MARGIN_KEY = "pcd_mobile_margin_pct";
 const TYPE_LABELS = {
   base_cabinet: "Base cabinet", wall_cabinet: "Wall cabinet",
   tall_cabinet: "Tall cabinet", corner_base_cabinet: "Corner cabinet",
+  blind_corner_cabinet: "Blind corner cabinet", panel: "Panel", scribe: "Scribe",
 };
 
 /**
@@ -21,11 +22,12 @@ const TYPE_LABELS = {
  * the odd base cabinet it's actually building. A margin % applies to the room
  * total for a potential customer price. Nothing here is saved.
  */
-export default function RoomPriceModal({ cabinets, roomItems = [], room = null, excludedByItem = {}, onExcludedChange, onClose }) {
-  // Price each cabinet, then group its pieces by category (in display order).
+export default function RoomPriceModal({ items, roomItems = [], room = null, excludedByItem = {}, onExcludedChange, onClose }) {
+  // Price each item (cabinet or standalone panel/scribe), then group its pieces
+  // by category (in display order).
   const priced = useMemo(
-    () => cabinets.map((c) => {
-      const { rows } = cabinetPricing(c, roomItems, room);
+    () => items.map((c) => {
+      const { rows } = itemPricing(c, roomItems, room);
       const groups = new Map();
       for (const r of rows) {
         const cat = categoryFor(r.material);
@@ -37,17 +39,18 @@ export default function RoomPriceModal({ cabinets, roomItems = [], room = null, 
       const ordered = PRICE_CATEGORIES.filter((n) => groups.has(n)).map((n) => groups.get(n));
       return { item: c, groups: ordered };
     }),
-    [cabinets, roomItems, room]
+    [items, roomItems, room]
   );
 
   const isExcluded = (itemId, cat) => (excludedByItem[itemId] || []).includes(cat);
   const itemTotal = (p) => p.groups.reduce((s, g) => (isExcluded(p.item.id, g.name) ? s : s + g.cost), 0);
   const roomTotal = priced.reduce((s, p) => s + itemTotal(p), 0);
 
+  // Warn when a sellable face (door, drawer front, standalone panel or scribe)
+  // has no $/m² rate — it silently costs $0 otherwise.
+  const RATE_CATS = new Set(["Doors", "Drawer fronts", "Finished panels", "Scribes"]);
   const frontNoRate = priced.some((p) =>
-    p.groups.some((g) =>
-      (g.name === "Doors" || g.name === "Drawer fronts") && g.rows.some((r) => r.rate === 0)
-    )
+    p.groups.some((g) => RATE_CATS.has(g.name) && g.rows.some((r) => r.rate === 0))
   );
 
   // Categories that actually appear somewhere in the room, for the room-wide
@@ -113,8 +116,8 @@ export default function RoomPriceModal({ cabinets, roomItems = [], room = null, 
       <div className={styles.priceSection}>
         {frontNoRate && (
           <p className={styles.priceWarn}>
-            ⚠ A door/drawer front has no $/m² rate — pick a door colour with a
-            price per m² set, or those fronts cost $0.
+            ⚠ A door, drawer front, panel or scribe has no $/m² rate — set a
+            price per m² for it, or that piece costs $0.
           </p>
         )}
 
