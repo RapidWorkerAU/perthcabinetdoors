@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import mobile from "../design.mobile.module.css";
 import { formatMoney } from "@/lib/pcd-quote-utils";
-import { cabinetMaterialCost } from "./mobile/cabinetPricing";
+import { includedCabinetCost } from "./mobile/cabinetPricing";
 import useDesignProgram from "./useDesignProgram";
 import DesignCanvas from "./DesignCanvas";
 import FrontElevationView from "./FrontElevationView";
@@ -62,10 +62,18 @@ export default function DesignProgramMobile({ projectId }) {
   // default so the first look is the familiar coloured-by-type one, matching
   // the desktop tool's default.
   const [showColours, setShowColours] = useState(false);
+  // Per-item "pricing scope": which cost categories (Carcass, Doors, …) are
+  // excluded from a cabinet's total. Ephemeral (on-the-run only, not saved),
+  // keyed by item id → array of excluded category names. Lifted here so the
+  // price strip and the price modal show the same scoped number.
+  const [excludedByItem, setExcludedByItem] = useState({});
 
   const selectedItem = roomItems.find((i) => i.id === selectedItemId) || null;
   const cabinets = roomItems.filter((i) => CABINET_TYPES.includes(i.item_type));
-  const roomTotal = cabinets.reduce((s, c) => s + cabinetMaterialCost(c, roomItems, selectedRoom), 0);
+  const roomTotal = cabinets.reduce(
+    (s, c) => s + includedCabinetCost(c, roomItems, selectedRoom, new Set(excludedByItem[c.id] || [])),
+    0,
+  );
 
   function openRooms() { setOpenModal("rooms"); }
 
@@ -407,6 +415,8 @@ export default function DesignProgramMobile({ projectId }) {
           cabinets={cabinets}
           roomItems={roomItems}
           room={selectedRoom}
+          excludedByItem={excludedByItem}
+          onExcludedChange={setExcludedByItem}
           onClose={() => setOpenModal(null)}
         />
       )}

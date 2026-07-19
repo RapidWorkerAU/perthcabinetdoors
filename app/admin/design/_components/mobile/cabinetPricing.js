@@ -33,7 +33,7 @@ function rateFor(material, rates) {
 }
 
 // Human-friendly cost grouping for the price page.
-function categoryFor(material) {
+export function categoryFor(material) {
   switch (material) {
     case "shelf": return "Shelves";
     case "door": return "Doors";
@@ -45,6 +45,12 @@ function categoryFor(material) {
     default: return "Carcass";
   }
 }
+
+// Stable display order for the price categories — the ones you usually keep in
+// a refresh first, Carcass (the usual thing to drop) last.
+export const PRICE_CATEGORIES = [
+  "Doors", "Drawer fronts", "Finished panels", "Kickboards", "Filler panels", "Shelves", "Carcass",
+];
 
 function ratesFor(item) {
   const carcass = Number(item?.cost_per_sqm_carcass) || 0;
@@ -92,4 +98,20 @@ export function cabinetPricing(item, roomItems = [], room = null) {
 // Convenience: just the material-cost total (used by the price strip).
 export function cabinetMaterialCost(item, roomItems = [], room = null) {
   return cabinetPricing(item, roomItems, room).total;
+}
+
+// Material-cost total with a set of excluded categories removed — so the price
+// strip and the price modal agree while the user toggles what's "in scope"
+// (e.g. a door-replacement job that isn't producing the carcasses). Pass a Set
+// of category names (from categoryFor / PRICE_CATEGORIES); empty/omitted means
+// the full total.
+export function includedCabinetCost(item, roomItems = [], room = null, excludedCategories = null) {
+  const { rows } = cabinetPricing(item, roomItems, room);
+  if (!excludedCategories || excludedCategories.size === 0) {
+    return rows.reduce((s, r) => s + r.cost, 0);
+  }
+  return rows.reduce(
+    (s, r) => (excludedCategories.has(categoryFor(r.material)) ? s : s + r.cost),
+    0,
+  );
 }
