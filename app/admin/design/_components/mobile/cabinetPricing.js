@@ -12,6 +12,7 @@
 // (see app/api/admin/design/projects/[projectId]/import/route.js — the source
 // of truth for how each element is costed.)
 import { computeCutList } from "../DesignLeftPanel";
+import { floatingShelfBoards, floatingShelfStyle } from "@/lib/pcd-floating-shelf-utils";
 
 // Which per-sqm rate applies to a cut-list piece, by its material tag.
 function rateFor(material, rates) {
@@ -40,6 +41,7 @@ export function categoryFor(material) {
     case "drawer": return "Drawer fronts";
     case "panel": return "Finished panels";
     case "scribe": return "Scribes";
+    case "floating_shelf": return "Floating shelves";
     case "kickboard": return "Kickboards";
     case "filler": return "Filler panels";
     case "back": return "Carcass";
@@ -50,7 +52,7 @@ export function categoryFor(material) {
 // Stable display order for the price categories — the ones you usually keep in
 // a refresh first, Carcass (the usual thing to drop) last.
 export const PRICE_CATEGORIES = [
-  "Doors", "Drawer fronts", "Finished panels", "Scribes", "Kickboards", "Filler panels", "Shelves", "Carcass",
+  "Doors", "Drawer fronts", "Finished panels", "Scribes", "Floating shelves", "Kickboards", "Filler panels", "Shelves", "Carcass",
 ];
 
 function ratesFor(item) {
@@ -110,6 +112,28 @@ export function cabinetPricing(item, roomItems = [], room = null) {
 export function standaloneItemPricing(item) {
   const empty = { rows: [], categories: [], total: 0, rates: {} };
   if (!item) return empty;
+
+  // A floating shelf is a set of decorative boards (top, bottom, front fascia,
+  // end caps), each priced at the shelf's own $/m² (cost_per_sqm_carcass) — the
+  // same board panels the quote import creates.
+  if (item.item_type === "floating_shelf") {
+    const rate = Number(floatingShelfStyle(item).cost_per_sqm) || 0;
+    const qty = Number(item.qty) || 1;
+    const rows = floatingShelfBoards(item).map((b) => {
+      const [axis1, axis2] = b.part === "front" ? ["W", "H"]
+        : b.part.startsWith("cap") ? ["D", "H"]
+        : ["W", "D"];
+      const areaSqm = ((Number(b.width_mm) || 0) * (Number(b.height_mm) || 0)) / 1_000_000;
+      return {
+        name: b.label,
+        dim1: b.width_mm, axis1, dim2: b.height_mm, axis2,
+        material: "floating_shelf", qty, areaSqm, rate, cost: areaSqm * qty * rate,
+      };
+    });
+    const total = rows.reduce((s, r) => s + r.cost, 0);
+    return { rows, categories: [{ name: "Floating shelves", cost: total }], total, rates: {} };
+  }
+
   const isPanel = item.item_type === "panel";
   const isScribe = item.item_type === "scribe";
   if (!isPanel && !isScribe) return empty;
@@ -133,7 +157,8 @@ export function standaloneItemPricing(item) {
 // Price any plan item — a cabinet (full cut list) or a standalone panel/scribe
 // — with one call, so the price strip and modal can iterate a mixed list.
 export function itemPricing(item, roomItems = [], room = null) {
-  if (item?.item_type === "panel" || item?.item_type === "scribe") {
+  const t = item?.item_type;
+  if (t === "panel" || t === "scribe" || t === "floating_shelf") {
     return standaloneItemPricing(item);
   }
   return cabinetPricing(item, roomItems, room);

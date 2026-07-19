@@ -82,7 +82,8 @@ export default function DesignProgramMobile({ projectId }) {
   // scribes placed on their own on the plan (loose finishing pieces are a real
   // line in a refresh job, so they belong in the room price).
   const priceItems = roomItems.filter(
-    (i) => CABINET_TYPES.includes(i.item_type) || i.item_type === "panel" || i.item_type === "scribe"
+    (i) => CABINET_TYPES.includes(i.item_type)
+      || i.item_type === "panel" || i.item_type === "scribe" || i.item_type === "floating_shelf"
   );
   const roomTotal = priceItems.reduce(
     (s, c) => s + includedItemCost(c, roomItems, selectedRoom, new Set(excludedByItem[c.id] || [])),
@@ -374,8 +375,10 @@ export default function DesignProgramMobile({ projectId }) {
         )}
       </div>
 
-      {/* ---- Selection action bar (plan + elevation; 3D is read-only) ---- */}
-      {selectedItem && view !== "3d" && (
+      {/* ---- Selection action bar (all views). The nudge row is dropped in 3D,
+           which is read-only for position — but Edit/config still opens, so a
+           cabinet tapped in 3D can be configured just like on plan/elevation. */}
+      {selectedItem && (
         <div className={mobile.selectionBar}>
           <div className={mobile.selRow}>
             <button
@@ -390,13 +393,15 @@ export default function DesignProgramMobile({ projectId }) {
             <button type="button" className={mobile.selBtn} onClick={() => handleDuplicateItem(selectedItem.id)}>Duplicate</button>
             <button type="button" className={`${mobile.selBtn} ${mobile.selBtnDanger}`} onClick={() => handleDeleteItem(selectedItem.id)}>Delete</button>
           </div>
-          <div className={mobile.nudgeRow}>
-            <span className={mobile.nudgeHint}>{view === "elevation" ? `Move / height ${NUDGE_MM}mm` : `Nudge ${NUDGE_MM}mm`}</span>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("left")} aria-label="Left">◀</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("up")} aria-label="Up">▲</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("down")} aria-label="Down">▼</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("right")} aria-label="Right">▶</button>
-          </div>
+          {view !== "3d" && (
+            <div className={mobile.nudgeRow}>
+              <span className={mobile.nudgeHint}>{view === "elevation" ? `Move / height ${NUDGE_MM}mm` : `Nudge ${NUDGE_MM}mm`}</span>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("left")} aria-label="Left">◀</button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("up")} aria-label="Up">▲</button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("down")} aria-label="Down">▼</button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("right")} aria-label="Right">▶</button>
+            </div>
+          )}
         </div>
       )}
 

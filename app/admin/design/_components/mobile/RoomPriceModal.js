@@ -11,6 +11,7 @@ const TYPE_LABELS = {
   base_cabinet: "Base cabinet", wall_cabinet: "Wall cabinet",
   tall_cabinet: "Tall cabinet", corner_base_cabinet: "Corner cabinet",
   blind_corner_cabinet: "Blind corner cabinet", panel: "Panel", scribe: "Scribe",
+  floating_shelf: "Floating shelf",
 };
 
 /**
@@ -48,7 +49,7 @@ export default function RoomPriceModal({ items, roomItems = [], room = null, exc
 
   // Warn when a sellable face (door, drawer front, standalone panel or scribe)
   // has no $/m² rate — it silently costs $0 otherwise.
-  const RATE_CATS = new Set(["Doors", "Drawer fronts", "Finished panels", "Scribes"]);
+  const RATE_CATS = new Set(["Doors", "Drawer fronts", "Finished panels", "Scribes", "Floating shelves"]);
   const frontNoRate = priced.some((p) =>
     p.groups.some((g) => RATE_CATS.has(g.name) && g.rows.some((r) => r.rate === 0))
   );
