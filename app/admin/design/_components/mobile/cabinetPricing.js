@@ -12,6 +12,7 @@
 // (see app/api/admin/design/projects/[projectId]/import/route.js — the source
 // of truth for how each element is costed.)
 import { computeCutList } from "../DesignLeftPanel";
+import { floatingShelfBoards, floatingShelfStyle } from "@/lib/pcd-floating-shelf-utils";
 
 // Which per-sqm rate applies to a cut-list piece, by its material tag.
 function rateFor(material, rates) {
@@ -33,18 +34,26 @@ function rateFor(material, rates) {
 }
 
 // Human-friendly cost grouping for the price page.
-function categoryFor(material) {
+export function categoryFor(material) {
   switch (material) {
     case "shelf": return "Shelves";
     case "door": return "Doors";
     case "drawer": return "Drawer fronts";
     case "panel": return "Finished panels";
+    case "scribe": return "Scribes";
+    case "floating_shelf": return "Floating shelves";
     case "kickboard": return "Kickboards";
     case "filler": return "Filler panels";
     case "back": return "Carcass";
     default: return "Carcass";
   }
 }
+
+// Stable display order for the price categories — the ones you usually keep in
+// a refresh first, Carcass (the usual thing to drop) last.
+export const PRICE_CATEGORIES = [
+  "Doors", "Drawer fronts", "Finished panels", "Scribes", "Floating shelves", "Kickboards", "Filler panels", "Shelves", "Carcass",
+];
 
 function ratesFor(item) {
   const carcass = Number(item?.cost_per_sqm_carcass) || 0;
@@ -89,7 +98,90 @@ export function cabinetPricing(item, roomItems = [], room = null) {
   return { rows, categories, total, rates };
 }
 
+/**
+ * Pricing for a standalone panel or scribe placed on its own on the plan (not
+ * a per-cabinet finishing panel). Priced as face area × the item's own $/m²
+ * rate — the exact maths the quote import uses:
+ *   - a panel stores its face WIDTH in depth_mm (width_mm is the on-edge
+ *     thickness), so its face is depth_mm × height_mm;
+ *   - a scribe keeps its along-wall span in width_mm, so its face is
+ *     width_mm × height_mm.
+ * Returns the same shape as cabinetPricing so the price UI can treat every
+ * priced item uniformly. Non panel/scribe items return an empty breakdown.
+ */
+export function standaloneItemPricing(item) {
+  const empty = { rows: [], categories: [], total: 0, rates: {} };
+  if (!item) return empty;
+
+  // A floating shelf is a set of decorative boards (top, bottom, front fascia,
+  // end caps), each priced at the shelf's own $/m² (cost_per_sqm_carcass) — the
+  // same board panels the quote import creates.
+  if (item.item_type === "floating_shelf") {
+    const rate = Number(floatingShelfStyle(item).cost_per_sqm) || 0;
+    const qty = Number(item.qty) || 1;
+    const rows = floatingShelfBoards(item).map((b) => {
+      const [axis1, axis2] = b.part === "front" ? ["W", "H"]
+        : b.part.startsWith("cap") ? ["D", "H"]
+        : ["W", "D"];
+      const areaSqm = ((Number(b.width_mm) || 0) * (Number(b.height_mm) || 0)) / 1_000_000;
+      return {
+        name: b.label,
+        dim1: b.width_mm, axis1, dim2: b.height_mm, axis2,
+        material: "floating_shelf", qty, areaSqm, rate, cost: areaSqm * qty * rate,
+      };
+    });
+    const total = rows.reduce((s, r) => s + r.cost, 0);
+    return { rows, categories: [{ name: "Floating shelves", cost: total }], total, rates: {} };
+  }
+
+  const isPanel = item.item_type === "panel";
+  const isScribe = item.item_type === "scribe";
+  if (!isPanel && !isScribe) return empty;
+
+  const faceW = isPanel ? Number(item.depth_mm) || 0 : Number(item.width_mm) || 0;
+  const height = Number(item.height_mm) || 0;
+  const qty = Number(item.qty) || 1;
+  const rate = Number(item.unit_cost_per_sqm_ex_gst) || 0;
+  const areaSqm = (faceW * height) / 1_000_000;
+  const cost = areaSqm * qty * rate;
+  const material = isScribe ? "scribe" : "panel";
+
+  const rows = [{
+    name: isScribe ? "Scribe" : "Panel",
+    dim1: faceW, axis1: "W", dim2: height, axis2: "H",
+    material, qty, areaSqm, rate, cost,
+  }];
+  return { rows, categories: [{ name: categoryFor(material), cost }], total: cost, rates: {} };
+}
+
+// Price any plan item — a cabinet (full cut list) or a standalone panel/scribe
+// — with one call, so the price strip and modal can iterate a mixed list.
+export function itemPricing(item, roomItems = [], room = null) {
+  const t = item?.item_type;
+  if (t === "panel" || t === "scribe" || t === "floating_shelf") {
+    return standaloneItemPricing(item);
+  }
+  return cabinetPricing(item, roomItems, room);
+}
+
 // Convenience: just the material-cost total (used by the price strip).
 export function cabinetMaterialCost(item, roomItems = [], room = null) {
   return cabinetPricing(item, roomItems, room).total;
 }
+
+// Material-cost total for any item with a set of excluded categories removed —
+// so the price strip and the price modal agree while the user toggles what's
+// "in scope". Handles cabinets and standalone panels/scribes. Pass a Set of
+// category names (from categoryFor / PRICE_CATEGORIES); empty/omitted means the
+// full total.
+export function includedItemCost(item, roomItems = [], room = null, excludedCategories = null) {
+  const { rows } = itemPricing(item, roomItems, room);
+  if (!excludedCategories || excludedCategories.size === 0) {
+    return rows.reduce((s, r) => s + r.cost, 0);
+  }
+  return rows.reduce(
+    (s, r) => (excludedCategories.has(categoryFor(r.material)) ? s : s + r.cost),
+    0,
+  );
+}
+

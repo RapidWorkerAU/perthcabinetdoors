@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import mobile from "../design.mobile.module.css";
 import { formatMoney } from "@/lib/pcd-quote-utils";
-import { cabinetMaterialCost } from "./mobile/cabinetPricing";
+import { includedItemCost } from "./mobile/cabinetPricing";
 import useDesignProgram from "./useDesignProgram";
 import DesignCanvas from "./DesignCanvas";
 import FrontElevationView from "./FrontElevationView";
@@ -11,6 +12,18 @@ import PinchZoom from "./PinchZoom";
 import RoomsModal from "./mobile/RoomsModal";
 import CabinetModal from "./mobile/CabinetModal";
 import RoomPriceModal from "./mobile/RoomPriceModal";
+
+// three.js is heavy and client-only (r3f), so it's split out of the initial
+// mobile bundle exactly as the desktop shell does — it loads only when the
+// viewer first opens the 3D tab, never on first paint.
+const Design3DView = dynamic(() => import("./Design3DView"), {
+  ssr: false,
+  loading: () => (
+    <div className={mobile.emptyState}>
+      <span className={mobile.emptyHint}>Loading 3D view…</span>
+    </div>
+  ),
+});
 
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
 const TYPE_COLORS = {
@@ -23,6 +36,7 @@ const TYPE_SHORT = {
 };
 const WALLS = ["top", "bottom", "left", "right"];
 const NUDGE_MM = 10;
+const VIEW_LABELS = { plan: "Plan", elevation: "Elevation", "3d": "3D" };
 
 /**
  * Mobile design shell — full multi-cabinet editor. Same brain as desktop
@@ -39,15 +53,42 @@ export default function DesignProgramMobile({ projectId }) {
     loading, error, loadAll,
     handleAddRoom, handleUpdateRoom, handleDeleteRoom, handleAddItem,
     handleItemChange, handleItemDragEnd, handleDuplicateItem, handleDeleteItem,
+    colourImages,
   } = d;
 
   const [openModal, setOpenModal] = useState(null); // 'rooms' | 'item' | 'price'
-  const [view, setView] = useState("plan");          // 'plan' | 'elevation'
+  const [view, setView] = useState("plan");          // 'plan' | 'elevation' | '3d'
   const [elevationWall, setElevationWall] = useState("top");
+  // Paint cabinets with their real colour-library finishes in 3D. Off by
+  // default so the first look is the familiar coloured-by-type one, matching
+  // the desktop tool's default.
+  const [showColours, setShowColours] = useState(false);
+  // Per-item "pricing scope": which cost categories (Carcass, Doors, …) are
+  // excluded from a cabinet's total. Ephemeral (on-the-run only, not saved),
+  // keyed by item id → array of excluded category names. Lifted here so the
+  // price strip and the price modal show the same scoped number.
+  const [excludedByItem, setExcludedByItem] = useState({});
+  // Fullscreen strips the screen down to just the top bar, the canvas and (in
+  // elevation) the wall picker — for editing on a tiny screen without the
+  // legend, chips, price strip and bottom bar competing for space. The
+  // selection bar and modals still work.
+  const [fullscreen, setFullscreen] = useState(false);
+  // The Plan/Elevation/3D control is a dropdown (was a 3-way segmented toggle)
+  // to free up top-bar space and hold the fullscreen switch.
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
 
   const selectedItem = roomItems.find((i) => i.id === selectedItemId) || null;
-  const cabinets = roomItems.filter((i) => CABINET_TYPES.includes(i.item_type));
-  const roomTotal = cabinets.reduce((s, c) => s + cabinetMaterialCost(c, roomItems, selectedRoom), 0);
+  // Everything that carries a material cost: cabinets plus standalone panels and
+  // scribes placed on their own on the plan (loose finishing pieces are a real
+  // line in a refresh job, so they belong in the room price).
+  const priceItems = roomItems.filter(
+    (i) => CABINET_TYPES.includes(i.item_type)
+      || i.item_type === "panel" || i.item_type === "scribe" || i.item_type === "floating_shelf"
+  );
+  const roomTotal = priceItems.reduce(
+    (s, c) => s + includedItemCost(c, roomItems, selectedRoom, new Set(excludedByItem[c.id] || [])),
+    0,
+  );
 
   function openRooms() { setOpenModal("rooms"); }
 
@@ -159,6 +200,12 @@ export default function DesignProgramMobile({ projectId }) {
     setView("elevation");
   }
 
+  function chooseView(v) {
+    setViewMenuOpen(false);
+    if (v === "elevation") enterElevation();
+    else setView(v);
+  }
+
   if (loading) {
     return <div className={mobile.mobileRoot}><div className={mobile.emptyState}><span className={mobile.emptyHint}>Loading…</span></div></div>;
   }
@@ -182,18 +229,59 @@ export default function DesignProgramMobile({ projectId }) {
           <span className={mobile.topBarProject}>{project?.name || "Design"}</span>
           <span className={mobile.topBarRoom}>{selectedRoom?.name || "No room"}</span>
         </div>
-        <div className={mobile.viewToggle}>
+        <div className={mobile.viewMenuWrap}>
           <button
             type="button"
-            className={`${mobile.viewToggleBtn} ${view === "plan" ? mobile.viewToggleBtnActive : ""}`}
-            onClick={() => setView("plan")}
-          >Plan</button>
-          <button
-            type="button"
-            className={`${mobile.viewToggleBtn} ${view === "elevation" ? mobile.viewToggleBtnActive : ""}`}
-            onClick={enterElevation}
-            disabled={!selectedRoom || roomItems.length === 0}
-          >Elevation</button>
+            className={mobile.viewMenuTrigger}
+            onClick={() => setViewMenuOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={viewMenuOpen}
+          >
+            <span>{VIEW_LABELS[view]}</span>
+            {fullscreen && <span className={mobile.viewMenuFsTag}>Fullscreen</span>}
+            <span className={mobile.viewMenuCaret}>▾</span>
+          </button>
+          {viewMenuOpen && (
+            <>
+              <div className={mobile.viewMenuBackdrop} onClick={() => setViewMenuOpen(false)} />
+              <div className={mobile.viewMenu} role="menu">
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={view === "plan"}
+                  className={`${mobile.viewMenuItem} ${view === "plan" ? mobile.viewMenuItemActive : ""}`}
+                  onClick={() => chooseView("plan")}
+                >Plan</button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={view === "elevation"}
+                  className={`${mobile.viewMenuItem} ${view === "elevation" ? mobile.viewMenuItemActive : ""}`}
+                  onClick={() => chooseView("elevation")}
+                  disabled={!selectedRoom || roomItems.length === 0}
+                >Elevation</button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={view === "3d"}
+                  className={`${mobile.viewMenuItem} ${view === "3d" ? mobile.viewMenuItemActive : ""}`}
+                  onClick={() => chooseView("3d")}
+                  disabled={!selectedRoom}
+                >3D</button>
+                <div className={mobile.viewMenuDivider} />
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={fullscreen}
+                  className={`${mobile.viewMenuItem} ${fullscreen ? mobile.viewMenuItemActive : ""}`}
+                  onClick={() => { setFullscreen((f) => !f); setViewMenuOpen(false); }}
+                >
+                  <span className={mobile.viewMenuCheck}>{fullscreen ? "✓" : ""}</span>
+                  View fullscreen
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -217,8 +305,8 @@ export default function DesignProgramMobile({ projectId }) {
         </div>
       )}
 
-      {/* ---- Item chip strip (reliable selection) ---- */}
-      {view === "plan" && selectedRoom && roomItems.length > 0 && (
+      {/* ---- Item chip strip (reliable selection; hidden in fullscreen) ---- */}
+      {view === "plan" && selectedRoom && roomItems.length > 0 && !fullscreen && (
         <div className={mobile.itemStrip}>
           {roomItems.map((it) => (
             <button
@@ -242,13 +330,30 @@ export default function DesignProgramMobile({ projectId }) {
             <span className={mobile.emptyHint}>Add a room to set your dimensions and start designing.</span>
             <button type="button" className={mobile.primaryBtn} style={{ maxWidth: 200 }} onClick={openRooms}>+ Add room</button>
           </div>
+        ) : view === "3d" ? (
+          <div className={mobile.view3dFill}>
+            <Design3DView
+              touch
+              showClose={false}
+              room={selectedRoom}
+              items={roomItems}
+              colourImages={colourImages}
+              showColours={showColours}
+              onToggleColours={() => setShowColours((v) => !v)}
+              selectedItemId={selectedItemId}
+              onSelectItem={(id) => setSelectedItemId(id)}
+              onClose={() => setView("plan")}
+            />
+          </div>
         ) : view === "elevation" ? (
           <FrontElevationView
             interactive={false}
             zoomable
+            chrome={!fullscreen}
             wall={elevationWall}
             room={selectedRoom}
             items={roomItems}
+            selectedId={selectedItemId}
             onClose={() => setView("plan")}
             onItemChange={handleItemChange}
             onItemSelect={(id) => setSelectedItemId(id)}
@@ -261,7 +366,7 @@ export default function DesignProgramMobile({ projectId }) {
               items={roomItems}
               selectedItemId={selectedItemId}
               overlappingItemIds={new Set()}
-              onItemClick={(it) => setSelectedItemId(it.id)}
+              onItemClick={(it) => setSelectedItemId(it.id === selectedItemId ? null : it.id)}
               onDeselect={() => setSelectedItemId(null)}
               onItemDragEnd={handleItemDragEnd}
               onFrontView={(wall) => { setElevationWall(wall); setView("elevation"); }}
@@ -270,27 +375,38 @@ export default function DesignProgramMobile({ projectId }) {
         )}
       </div>
 
-      {/* ---- Selection action bar (plan + elevation) ---- */}
+      {/* ---- Selection action bar (all views). The nudge row is dropped in 3D,
+           which is read-only for position — but Edit/config still opens, so a
+           cabinet tapped in 3D can be configured just like on plan/elevation. */}
       {selectedItem && (
         <div className={mobile.selectionBar}>
           <div className={mobile.selRow}>
+            <button
+              type="button"
+              className={mobile.selClose}
+              onClick={() => setSelectedItemId(null)}
+              aria-label="Deselect cabinet"
+              title="Deselect"
+            >✕</button>
             <span className={mobile.selName}>{selectedItem.label || TYPE_SHORT[selectedItem.item_type] || selectedItem.item_type}</span>
             <button type="button" className={mobile.selBtn} onClick={editSelected}>Edit</button>
             <button type="button" className={mobile.selBtn} onClick={() => handleDuplicateItem(selectedItem.id)}>Duplicate</button>
             <button type="button" className={`${mobile.selBtn} ${mobile.selBtnDanger}`} onClick={() => handleDeleteItem(selectedItem.id)}>Delete</button>
           </div>
-          <div className={mobile.nudgeRow}>
-            <span className={mobile.nudgeHint}>{view === "elevation" ? `Move / height ${NUDGE_MM}mm` : `Nudge ${NUDGE_MM}mm`}</span>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("left")} aria-label="Left">◀</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("up")} aria-label="Up">▲</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("down")} aria-label="Down">▼</button>
-            <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("right")} aria-label="Right">▶</button>
-          </div>
+          {view !== "3d" && (
+            <div className={mobile.nudgeRow}>
+              <span className={mobile.nudgeHint}>{view === "elevation" ? `Move / height ${NUDGE_MM}mm` : `Nudge ${NUDGE_MM}mm`}</span>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("left")} aria-label="Left">◀</button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("up")} aria-label="Up">▲</button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("down")} aria-label="Down">▼</button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("right")} aria-label="Right">▶</button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ---- Price strip ---- */}
-      {cabinets.length > 0 && (
+      {/* ---- Price strip (hidden in fullscreen) ---- */}
+      {priceItems.length > 0 && !fullscreen && (
         <button type="button" className={mobile.priceStrip} onClick={() => setOpenModal("price")}>
           <span>
             <span className={mobile.priceStripLabel}>Room material cost (ex GST)</span><br />
@@ -300,7 +416,8 @@ export default function DesignProgramMobile({ projectId }) {
         </button>
       )}
 
-      {/* ---- Bottom action bar ---- */}
+      {/* ---- Bottom action bar (hidden in fullscreen) ---- */}
+      {!fullscreen && (
       <div className={mobile.bottomBar}>
         <button type="button" className={mobile.actionBtn} onClick={openRooms}>
           <span className={mobile.actionBtnIcon}>▦</span>
@@ -319,12 +436,13 @@ export default function DesignProgramMobile({ projectId }) {
           type="button"
           className={mobile.actionBtn}
           onClick={() => setOpenModal("price")}
-          disabled={cabinets.length === 0}
+          disabled={priceItems.length === 0}
         >
           <span className={mobile.actionBtnIcon}>$</span>
           Price
         </button>
       </div>
+      )}
 
       {/* ---- Modals ---- */}
       {openModal === "rooms" && (
@@ -355,11 +473,13 @@ export default function DesignProgramMobile({ projectId }) {
         />
       )}
 
-      {openModal === "price" && cabinets.length > 0 && (
+      {openModal === "price" && priceItems.length > 0 && (
         <RoomPriceModal
-          cabinets={cabinets}
+          items={priceItems}
           roomItems={roomItems}
           room={selectedRoom}
+          excludedByItem={excludedByItem}
+          onExcludedChange={setExcludedByItem}
           onClose={() => setOpenModal(null)}
         />
       )}

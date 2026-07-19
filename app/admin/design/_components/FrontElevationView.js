@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import styles from "../design.module.css";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
 import { doorRowGapMm, drawerGapMm, frontRevealMm } from "../../../../lib/pcd-door-utils";
@@ -423,9 +423,9 @@ const WALL_AXIS = {
   right:  { widthKey: "depth_mm",  label: "Right Wall" },
 };
 
-export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, interactive = true, zoomable = false, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false }) {
+export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, chrome = true, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false }) {
   const [currentWall, setCurrentWall] = useState(initialWall);
-  const [selectedId, setSelectedId]   = useState(null);
+  const [selectedId, setSelectedId]   = useState(controlledSelectedId ?? null);
   const [drag, setDrag]               = useState(null);
   const [localPos, setLocalPos]       = useState({});
   const [localShelves, setLocalShelves] = useState({});
@@ -442,6 +442,32 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     setLocalShelves({});
     setSnapGuides(null);
   }
+
+  // The in-view wall tabs (switchWall) are desktop-only — they render only when
+  // `interactive`. The mobile shell hides them and instead drives the wall from
+  // the outside via the `wall` prop. `currentWall` is seeded from the prop once
+  // at mount, so without this sync a prop change (tapping a different wall in
+  // the mobile picker) never reached the view and the elevation stayed stuck on
+  // the first wall. Fires only when the prop actually changes, so desktop's tab
+  // switcher — which updates currentWall without touching the prop — is
+  // unaffected. All setters here are stable, so the effect is prop-driven only.
+  useEffect(() => {
+    setCurrentWall(initialWall);
+    setSelectedId(null);
+    setDrag(null);
+    setLocalPos({});
+    setLocalShelves({});
+    setSnapGuides(null);
+  }, [initialWall]);
+
+  // When a parent controls the selection (the mobile shell passes `selectedId`
+  // so its action bar and this view's highlight share one source of truth),
+  // mirror the prop into local state. That's what lets the mobile "✕" / tap-
+  // empty deselect also clear the highlight here. Desktop doesn't pass the
+  // prop, so this is inert there and the in-view selection works as before.
+  useEffect(() => {
+    if (controlledSelectedId !== undefined) setSelectedId(controlledSelectedId ?? null);
+  }, [controlledSelectedId]);
 
   const wall = currentWall;
 
@@ -584,8 +610,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
   // ---- Pointer handlers ----------------------------------------------------
   function handleItemPointerDown(e, item) {
-    // Read-only (mobile): select on tap, never begin a drag.
-    if (!interactive) { pressedRef.current = true; setSelectedId(item.id); onItemSelect?.(item.id); return; }
+    // Read-only (mobile): select on tap, never begin a drag. Tapping the
+    // already-selected item toggles it off, so a cabinet can be deselected
+    // without hunting for empty space.
+    if (!interactive) {
+      pressedRef.current = true;
+      const next = item.id === selectedId ? null : item.id;
+      setSelectedId(next);
+      onItemSelect?.(next);
+      return;
+    }
     if (!DRAGGABLE_TYPES.has(item.item_type)) return;
     // A corner cabinet's position on its secondary wall is derived, not
     // stored — nothing to drag here. Select it (for the config panel) but
@@ -807,7 +841,8 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   return (
     <div className={styles.elevationInline}>
 
-      {/* Toolbar */}
+      {/* Toolbar — hidden when chrome is off (mobile fullscreen viewer) */}
+      {chrome && (
       <div className={styles.elevationToolbar}>
         <button type="button" className={styles.elevationBackBtn} onClick={onClose}>
           ← Floor Plan
@@ -882,9 +917,11 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
           </span>
         )}
       </div>
+      )}
 
-      {/* Item selector strip — visible even when cabinets overlap in SVG */}
-      {wallItems.length > 0 && (
+      {/* Item selector strip — visible even when cabinets overlap in SVG.
+          Hidden with the rest of the chrome in the mobile fullscreen viewer. */}
+      {chrome && wallItems.length > 0 && (
         <div className={styles.elevItemStrip}>
           {wallItems.map((item) => (
             <button
@@ -917,7 +954,13 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
           style={{ display: "block", cursor: drag ? "grabbing" : "default" }}
           onClick={(e) => {
             if (pressedRef.current) { pressedRef.current = false; return; }
-            if (e.target === svgRef.current) setSelectedId(null);
+            if (e.target === svgRef.current) {
+              setSelectedId(null);
+              // Notify the parent only when it controls the selection (mobile),
+              // so its action bar closes too. Desktop leaves onItemSelect out of
+              // the background tap, preserving its existing behaviour.
+              if (controlledSelectedId !== undefined) onItemSelect?.(null);
+            }
           }}
           onPointerMove={handleSvgPointerMove}
           onPointerUp={handleSvgPointerUp}

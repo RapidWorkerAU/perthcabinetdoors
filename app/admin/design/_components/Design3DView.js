@@ -939,7 +939,7 @@ function Room({ W, D, H, wallsVisible }) {
   );
 }
 
-export default function Design3DView({ room, items, onClose, colourImages, showColours, onToggleColours, selectedItemId, onSelectItem, onCaptureReady, mono = false }) {
+export default function Design3DView({ room, items, onClose, colourImages, showColours, onToggleColours, selectedItemId, onSelectItem, onCaptureReady, mono = false, touch = false, showClose = true }) {
   const controlsRef = useRef();
   const [wallsVisible, setWallsVisible] = useState(true);
   // The hover handlers set a pointer cursor; make sure it doesn't linger if the
@@ -955,11 +955,23 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
   // unplaced items the same way (item.wall must be set).
   const placed = (items || []).filter((i) => i.wall && ITEM_COLORS[i.item_type]);
 
+  // Touch gets larger tap targets and pinch wording; desktop keeps the compact
+  // overlay. Base style is shared so the three buttons stay visually identical.
+  const btnBase = {
+    padding: touch ? "10px 15px" : "6px 12px",
+    fontSize: touch ? 13 : 12,
+    minHeight: touch ? 40 : undefined,
+    fontWeight: 600, cursor: "pointer",
+    border: "1px solid rgba(0,0,0,0.15)", borderRadius: 6,
+  };
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", background: "#f2f1ee" }}>
-      <div style={{ position: "absolute", top: 12, left: 16, zIndex: 2, display: "flex", gap: 10, alignItems: "center" }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#1c1c1a" }}>3D view · {room?.name}</span>
-        <span style={{ fontSize: 11, color: "#78716c" }}>drag to orbit · scroll to zoom · read-only</span>
+      <div style={{ position: "absolute", top: 12, left: 16, zIndex: 2, display: "flex", gap: 10, alignItems: "center", maxWidth: "45%" }}>
+        {!touch && <span style={{ fontSize: 13, fontWeight: 600, color: "#1c1c1a" }}>3D view · {room?.name}</span>}
+        <span style={{ fontSize: 11, color: "#78716c" }}>
+          {touch ? "drag to orbit · pinch to zoom" : "drag to orbit · scroll to zoom · read-only"}
+        </span>
       </div>
       <div style={{ position: "absolute", top: 12, right: 16, zIndex: 2, display: "flex", gap: 8 }}>
         <button
@@ -967,10 +979,9 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
           onClick={() => setWallsVisible((v) => !v)}
           title="Show or hide the room walls (near walls fade automatically as you orbit)"
           style={{
-            padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+            ...btnBase,
             background: wallsVisible ? "#fff" : "#1c1917",
             color: wallsVisible ? "#1c1c1a" : "#fff",
-            border: "1px solid rgba(0,0,0,0.15)", borderRadius: 6,
           }}
         >
           {wallsVisible ? "Walls on" : "Walls off"}
@@ -981,25 +992,23 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
             onClick={onToggleColours}
             title="Paint cabinets with their real colour-library finishes"
             style={{
-              padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              ...btnBase,
               background: showColours ? "#1c1917" : "#fff",
               color: showColours ? "#fff" : "#1c1c1a",
-              border: "1px solid rgba(0,0,0,0.15)", borderRadius: 6,
             }}
           >
             {showColours ? "Colours on" : "Show colours"}
           </button>
         )}
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-            background: "#fff", border: "1px solid rgba(0,0,0,0.15)", borderRadius: 6,
-          }}
-        >
-          Close 3D
-        </button>
+        {showClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ ...btnBase, background: "#fff", color: "#1c1c1a" }}
+          >
+            Close 3D
+          </button>
+        )}
       </div>
 
       <Canvas
