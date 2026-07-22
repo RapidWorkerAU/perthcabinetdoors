@@ -1963,8 +1963,8 @@ export default function QuoteEditor({ quoteId }) {
     const fiMono = 'font-mono'
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-3">
+      <div className="md:flex md:flex-col md:flex-1 md:min-h-0">
+        <div className="flex items-center justify-between mb-3 flex-shrink-0">
           <span className="text-[12px] text-[#8b8a81]">
             {form.lines.length} line {form.lines.length === 1 ? 'item' : 'items'}
           </span>
@@ -1977,8 +1977,8 @@ export default function QuoteEditor({ quoteId }) {
           </button>
         </div>
 
-        <div className={`hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden ${quoteStyles.quoteItemsTable}`}>
-          <div className="overflow-x-auto" ref={quoteItemsScrollerRef}>
+        <div className={`hidden md:flex md:flex-col md:flex-1 md:min-h-0 bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden ${quoteStyles.quoteItemsTable}`}>
+          <div className="flex-1 min-h-0 overflow-auto" ref={quoteItemsScrollerRef}>
             <table className="w-full border-collapse" style={{minWidth: `${QUOTE_COL_TOTAL}px`, tableLayout: 'fixed'}}>
               <colgroup>
                 {colWidths.map((w, i) => (
@@ -1990,7 +1990,7 @@ export default function QuoteEditor({ quoteId }) {
                   {['', '#', 'Type', 'Material', 'Thickness', 'Finish & colour', 'W mm', 'H mm', 'Edge & profile', 'Hinges', 'Qty', 'Unit cost', 'Markup', 'Unit price', 'Total', ''].map((h, i) => (
                     <th
                       key={i}
-                      className="px-2 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap relative select-none overflow-visible"
+                      className="sticky top-0 z-20 bg-[#f5f8f4] border-b border-[#dbd8cc] px-2 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap relative select-none overflow-visible"
                     >
                       {h}
                       {RESIZE_HANDLE_INDICES.has(i) && (
@@ -2065,11 +2065,29 @@ export default function QuoteEditor({ quoteId }) {
                           )}
                         </td>
 
-                        {/* # */}
+                        {/* # + note indicator */}
                         <td className={td}>
-                          <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[17px] h-[17px] rounded-[3px] flex items-center justify-center flex-shrink-0">
-                            {index + 1}
-                          </span>
+                          <div className="flex flex-col items-center gap-[3px]">
+                            <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[17px] h-[17px] rounded-[3px] flex items-center justify-center flex-shrink-0">
+                              {index + 1}
+                            </span>
+                            {!isEditable && (line.notes || line.client_note) && (
+                              <button
+                                type="button"
+                                onClick={() => openLineNoteModal(index)}
+                                title={[
+                                  line.client_note && `Note: ${line.client_note}`,
+                                  line.notes && `Internal: ${line.notes}`,
+                                ].filter(Boolean).join('\n')}
+                                aria-label="View note"
+                                className="w-[17px] h-[17px] rounded-[3px] flex items-center justify-center text-[#b08b3e] hover:bg-[#fbf6ec] transition-colors"
+                              >
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         </td>
 
                         {/* Type */}
@@ -2506,24 +2524,8 @@ export default function QuoteEditor({ quoteId }) {
                           )}
                         </td>
                       </tr>
-
-                      {/* Client note row */}
-                      {!isEditable && line.client_note && (
-                        <tr>
-                          <td colSpan={16} className="px-3 py-[4px] bg-[#f5f8f4] border-b border-[#edf4eb] text-[10px] text-[#5a5a52] italic">
-                            Note: {line.client_note}
-                          </td>
-                        </tr>
-                      )}
-                      {/* Internal note row — admin only, not shown to the client. Where
-                          imported design-tool notes (mitres, hinges, runners) land. */}
-                      {!isEditable && line.notes && (
-                        <tr>
-                          <td colSpan={16} className="px-3 py-[4px] bg-[#fbf6ec] border-b border-[#edf4eb] text-[10px] text-[#8a6d3b] italic">
-                            Internal: {line.notes}
-                          </td>
-                        </tr>
-                      )}
+                      {/* Notes no longer render as inline rows — a note icon in
+                          the # cell signals a note and opens the note modal. */}
                     </React.Fragment>
                   )
                 })}
@@ -2925,7 +2927,7 @@ export default function QuoteEditor({ quoteId }) {
   );
   return (
     <>
-      <div className="flex flex-col md:flex-row min-h-full">
+      <div className="flex flex-col md:flex-row min-h-full md:h-full md:min-h-0">
 
         {/* Desktop left sidebar nav */}
         <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 border-r border-[#edf4eb] bg-white">
@@ -3020,8 +3022,11 @@ export default function QuoteEditor({ quoteId }) {
         </div>
 
         {/* Desktop right content panel */}
-        <main className="hidden md:flex flex-1 flex-col min-w-0 bg-[#f5f8f4]">
-          <form onSubmit={saveQuote} className="flex-1 p-6">
+        <main className="hidden md:flex flex-1 flex-col min-w-0 min-h-0 bg-[#f5f8f4]">
+          {/* On the Items tab the panel fills the height and lets the table
+              scroll internally (sticky header); other tabs scroll normally so
+              the sidebar stays put either way. */}
+          <form onSubmit={saveQuote} className={`flex-1 min-h-0 p-6 ${activeSection === 'items' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
             {contentPanel}
             {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order.</div> : null}
           </form>
