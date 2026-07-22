@@ -102,6 +102,9 @@ function buildRow(payload, projectId) {
     material: dbText(payload.material),
     finish: dbText(payload.finish),
     colour: dbText(payload.colour),
+    // Per-item display colour override (hex). Base column so it persists for
+    // any item type, incl. obstructions (whose branch below adds nothing).
+    colour_hex: dbText(payload.colour_hex),
     notes: dbText(payload.notes),
     // Per-type, not a hard 0. Every reader falls back with
     // `mount_height_mm ?? CABINET_MOUNT_MM[item_type]` (wall = 1400), but a

@@ -29,7 +29,7 @@ function buildPatch(payload) {
   const num = (key) => { if (key in payload) patch[key] = dbNum(payload[key]); };
   const bool = (key, fb = false) => { if (key in payload) patch[key] = Boolean(payload[key]); };
 
-  str("label"); str("wall"); str("secondary_wall"); str("material"); str("finish"); str("colour"); str("notes");
+  str("label"); str("wall"); str("secondary_wall"); str("material"); str("finish"); str("colour"); str("colour_hex"); str("notes");
   str("thickness"); str("profile_type"); str("profile"); str("edge_mould"); str("hinge_qty");
   str("shelf_material"); str("shelf_finish"); str("shelf_colour");
   int("x_mm", 0); int("y_mm", 0); int("rotation", 0); int("mount_height_mm");

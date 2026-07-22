@@ -43,7 +43,7 @@ import {
   benchtopRunWaterfallEnds,
 } from "../../../../lib/pcd-benchtop-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm } from "../../../../lib/pcd-door-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow } from "../../../../lib/pcd-door-utils";
 
 const M = 1000; // mm → metres
 
@@ -234,7 +234,7 @@ function openCarcassPanels(rect, wall, carc, bottomMm, topMm) {
 
 function CabinetMesh({ item, W, D }) {
   const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
-  const color = useMonoColor(ITEM_COLORS[item.item_type] || "#888");
+  const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   const carcassSrc = usePanelSrc(item, "carcass");
   // An OPEN cabinet (no door/drawer front) is drawn as its actual carcass
   // boards with the front left open, so its real board colour shows and the
@@ -611,6 +611,20 @@ function frontGroups(item, W, D) {
     for (let r = 0; r < rows; r++) {
       const rv0 = v0 + (v1 - v0) * (r / rows);
       const rv1 = v0 + (v1 - v0) * ((r + 1) / rows);
+      // door_config.bays indexes from the TOP, but this loop's r=0 is the
+      // BOTTOM row (v0 = bottomMm), so read the mirrored index. Free bays emit
+      // a single non-door cell instead of the door grid: an appliance recess
+      // gets a mock, "open" carries no front (bare carcass, like a mixed open).
+      const bayType = bayTypeForRow(cfg, rows - 1 - r);
+      if (bayType === "appliance") {
+        const appliance = (cfg.bays && cfg.bays[rows - 1 - r] && cfg.bays[rows - 1 - r].appliance) || "oven";
+        cells.push({ a0: aStart, a1: aStart + aLen, v0: rv0, v1: rv1, grip: null, slot: "appliance", appliance });
+        continue;
+      }
+      if (bayType === "open") {
+        cells.push({ a0: aStart, a1: aStart + aLen, v0: rv0, v1: rv1, grip: null, slot: "open" });
+        continue;
+      }
       let acc = aStart;
       for (let c = 0; c < cols; c++) {
         const a0 = acc;
@@ -715,6 +729,42 @@ function DoorPanel({ basis, cell, src }) {
   );
 }
 
+// A schematic appliance sitting in a freed tall-cabinet bay — a recessed
+// cavity plus a simple dark front (control strip + glass for an oven/microwave)
+// so the 3D view shows "an appliance goes here" rather than a bare hole. Not a
+// manufactured part; deliberately generic.
+function ApplianceMesh({ basis, cell }) {
+  const { a0, a1, v0, v1, appliance } = cell;
+  const box = (ba0, ba1, bv0, bv1, off, depth, color, roughness, extra) => {
+    if (ba1 <= ba0 || bv1 <= bv0) return null;
+    const position = facePoint(basis, (ba0 + ba1) / 2, (bv0 + bv1) / 2, off);
+    const aLen = Math.max((ba1 - ba0) / M, 0.001);
+    const vLen = Math.max((bv1 - bv0) / M, 0.001);
+    const size = basis.alongAxis === "x" ? [aLen, vLen, depth] : [depth, vLen, aLen];
+    return (
+      <mesh position={position}>
+        <boxGeometry args={size} />
+        <meshStandardMaterial color={color} roughness={roughness} {...extra} />
+      </mesh>
+    );
+  };
+  const vH = v1 - v0;
+  const parts = [];
+  // Recessed cavity floor (dark), giving the opening visible depth.
+  parts.push(box(a0, a1, v0, v1, -0.045, 0.006, "#2b2b2b", 0.9));
+  if (appliance === "microwave") {
+    parts.push(box(a0, a0 + (a1 - a0) * 0.66, v0 + vH * 0.1, v1 - vH * 0.1, -0.006, 0.02, "#1a1a1a", 0.35, { metalness: 0.3 }));
+    parts.push(box(a0 + (a1 - a0) * 0.68, a1, v0 + vH * 0.1, v1 - vH * 0.1, -0.004, 0.02, "#4b4b4b", 0.6));
+  } else if (appliance === "cooktop") {
+    parts.push(box(a0, a1, v0, v1, -0.004, 0.016, "#232323", 0.4, { metalness: 0.4 }));
+  } else {
+    // Oven: control strip across the top, dark glass door below.
+    parts.push(box(a0, a1, v1 - vH * 0.2, v1, -0.004, 0.022, "#4b4b4b", 0.6));
+    parts.push(box(a0, a1, v0 + vH * 0.06, v1 - vH * 0.24, -0.006, 0.02, "#141414", 0.3, { metalness: 0.35 }));
+  }
+  return <>{parts.filter(Boolean).map((p, i) => <group key={i}>{p}</group>)}</>;
+}
+
 function FrontDetail({ item, W, D }) {
   const groups = frontGroups(item, W, D);
   // Door/drawer tiles for this cabinet — "" when colours are off or unresolved,
@@ -726,10 +776,18 @@ function FrontDetail({ item, W, D }) {
   const frame = [];
   const grips = [];
   const panels = [];
+  const appliances = [];
   for (const { basis, cells } of groups) {
     for (const cell of cells) {
       const a0 = cell.a0 + inset, a1 = cell.a1 - inset, v0 = cell.v0 + inset, v1 = cell.v1 - inset;
       if (a1 <= a0 || v1 <= v0) continue;
+      // Free bays: an appliance recess gets a schematic mock; "open" leaves the
+      // carcass bare (no front, no outline) exactly like a mixed "open" section.
+      if (cell.slot === "open") continue;
+      if (cell.slot === "appliance") {
+        appliances.push({ basis, cell: { a0, a1, v0, v1, appliance: cell.appliance } });
+        continue;
+      }
       const src = cell.slot === "drawer" ? drawerSrc : doorSrc;
       // When this cell has a coloured door slab, the lines ride just proud of
       // its front face; otherwise they sit on the carcass face as before.
@@ -743,11 +801,12 @@ function FrontDetail({ item, W, D }) {
       if (src) panels.push({ basis, cell: { a0, a1, v0, v1 }, src });
     }
   }
-  if (!frame.length) return null;
+  if (!frame.length && !appliances.length) return null;
   return (
     <>
       {panels.map((pnl, i) => <DoorPanel key={i} basis={pnl.basis} cell={pnl.cell} src={pnl.src} />)}
-      <Line points={frame} segments color={FRONT_LINE_COLOR} lineWidth={1.4} />
+      {appliances.map((ap, i) => <ApplianceMesh key={`ap-${i}`} basis={ap.basis} cell={ap.cell} />)}
+      {frame.length > 0 && <Line points={frame} segments color={FRONT_LINE_COLOR} lineWidth={1.4} />}
       {grips.length > 0 && <Line points={grips} segments color={GRIP_LINE_COLOR} lineWidth={2.4} />}
     </>
   );

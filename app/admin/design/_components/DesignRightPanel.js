@@ -23,7 +23,7 @@ import {
   benchtopCutouts,
 } from "../../../../lib/pcd-benchtop-utils";
 import { computeDrawerFrontHeights, DRAWER_RUNNER_LABELS, resolveRunnerType } from "../../../../lib/pcd-drawer-utils";
-import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm } from "../../../../lib/pcd-door-utils";
+import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow } from "../../../../lib/pcd-door-utils";
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
 
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
@@ -39,6 +39,10 @@ const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_b
 // (unlike panel) width_mm keeps its normal along-wall-span meaning and
 // scribe_thickness_mm is its own dedicated field rather than an overload.
 const ADDABLE_TYPES = [...CABINET_TYPES, "floating_shelf", "panel", "scribe", "obstruction"];
+
+// The default obstruction fill (mirrors ITEM_COLORS.obstruction in the views);
+// shown as the "unset" swatch in the obstruction colour picker.
+const OBSTRUCTION_DEFAULT_HEX = "#57534e";
 
 const TYPE_LABELS = {
   base_cabinet:  "Base Cabinet",
@@ -1093,6 +1097,47 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     set("door_config", { ...prev, ...patch });
   }
 
+  // ---- Tall-cabinet "free bay" helpers ----
+  // door_config.bays is an array aligned to door_config.rows, index 0 = TOP
+  // bay. Each entry is { type: "doors"|"appliance"|"open", appliance? }. Absent
+  // bays means every bay is doors (existing cabinets are untouched).
+  function normalizedBays(cfg, rows) {
+    const cur = Array.isArray(cfg.bays) ? cfg.bays : [];
+    return Array.from({ length: rows }, (_, i) => cur[i] || { type: "doors" });
+  }
+  function setBayType(index, patch) {
+    const prev = latestRef.current.door_config || {};
+    const rows = Math.max(1, prev.rows || 1);
+    const bays = normalizedBays(prev, rows).map((b, i) => {
+      if (i !== index) return b;
+      const next = { ...b, ...patch };
+      if (next.type !== "appliance") delete next.appliance;
+      return next;
+    });
+    setNow("door_config", { ...prev, bays });
+  }
+  // Changing "Rows high" must keep an existing bays array aligned to the new
+  // row count (pad new rows with doors, drop trailing rows). Left absent when
+  // no bays have been set yet, so untouched cabinets stay migration-free.
+  function setDoorRows(rows) {
+    const prev = latestRef.current.door_config || {};
+    const bays = Array.isArray(prev.bays) ? normalizedBays({ ...prev, rows }, rows) : null;
+    setNow("door_config", { ...prev, rows, ...(bays ? { bays } : {}) });
+  }
+  // Maps the per-bay dropdown's flat option value <-> the stored bay object.
+  const BAY_OPTIONS = [
+    { value: "doors",     label: "Doors",       patch: { type: "doors" } },
+    { value: "oven",      label: "Oven",        patch: { type: "appliance", appliance: "oven" } },
+    { value: "microwave", label: "Microwave",   patch: { type: "appliance", appliance: "microwave" } },
+    { value: "cooktop",   label: "Cooktop",     patch: { type: "appliance", appliance: "cooktop" } },
+    { value: "open",      label: "Open space",  patch: { type: "open" } },
+  ];
+  function bayOptionValue(i) {
+    const t = bayTypeForRow(doorCfg, i);
+    if (t === "appliance") return (Array.isArray(doorCfg.bays) && doorCfg.bays[i] && doorCfg.bays[i].appliance) || "oven";
+    return t; // "doors" | "open"
+  }
+
   function updDoorStyle(patch) {
     const prev = latestRef.current.door_style || {};
     setNow("door_style", { ...prev, ...patch });
@@ -2103,16 +2148,46 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 <>
                   {draft.item_type === "tall_cabinet" && (
                     <>
-                      <SectionDivider label="Rows" />
+                      <SectionDivider label="Bays" />
                       <label className={styles.fieldLabel}>
                         Rows high
-                        <select className={styles.fieldSelect} value={doorRows} onChange={(e) => updDoorCfg({ rows: Number(e.target.value) })}>
+                        <select className={styles.fieldSelect} value={doorRows} onChange={(e) => setDoorRows(Number(e.target.value))}>
                           <option value={1}>1</option>
                           <option value={2}>2</option>
                           <option value={3}>3</option>
                           <option value={4}>4</option>
                         </select>
                       </label>
+                      {/* Per-bay type: any bay can be freed for an appliance
+                          recess or open space instead of doors. Bay 1 = top. */}
+                      {Array.from({ length: doorRows }).map((_, i) => {
+                        const val = bayOptionValue(i);
+                        const isFree = val !== "doors";
+                        return (
+                          <div key={i}>
+                            <label className={styles.fieldLabel}>
+                              Bay {i + 1}{i === 0 ? " (top)" : i === doorRows - 1 ? " (bottom)" : ""}
+                              <select
+                                className={styles.fieldSelect}
+                                value={val}
+                                onChange={(e) => {
+                                  const opt = BAY_OPTIONS.find((o) => o.value === e.target.value) || BAY_OPTIONS[0];
+                                  setBayType(i, opt.patch);
+                                }}
+                              >
+                                {BAY_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            {isFree && (
+                              <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
+                                Left free — no board is cut and nothing is quoted for this bay.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </>
                   )}
                   <DoorBankFields cfg={doorCfg} onChangeNow={updDoorCfg} onChange={updDoorCfgDebounced} heightMm={doorHeightMm} />
@@ -2724,6 +2799,32 @@ function ObstructionForm({ item, onItemChange }) {
               <input className={styles.fieldInput} type="number" min="0" value={draft.mount_height_mm ?? 0} onChange={(e) => set("mount_height_mm", e.target.value)} />
             </label>
           </div>
+          {/* Per-obstruction display colour — persists on the design tool only.
+              Empty (null) falls back to the default obstruction grey. */}
+          <label className={styles.fieldLabel}>
+            Colour
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="color"
+                value={draft.colour_hex || OBSTRUCTION_DEFAULT_HEX}
+                onChange={(e) => set("colour_hex", e.target.value)}
+                style={{ width: 44, height: 30, padding: 0, border: "1px solid var(--dt-border-soft, rgba(0,0,0,0.15))", borderRadius: 4, background: "none", cursor: "pointer" }}
+                aria-label="Obstruction colour"
+              />
+              <span style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", fontVariantNumeric: "tabular-nums" }}>
+                {draft.colour_hex ? draft.colour_hex.toUpperCase() : "Default"}
+              </span>
+              {draft.colour_hex && (
+                <button
+                  type="button"
+                  onClick={() => set("colour_hex", null)}
+                  style={{ marginLeft: "auto", background: "none", border: "none", padding: 0, color: "#2563eb", cursor: "pointer", fontSize: 11 }}
+                >
+                  Reset to default
+                </button>
+              )}
+            </div>
+          </label>
           <label className={styles.fieldLabel}>
             Notes
             <textarea className={styles.fieldTextarea} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={4} />

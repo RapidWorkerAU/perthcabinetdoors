@@ -6,6 +6,7 @@ import { islandVirtualWall } from "../../../../lib/pcd-kickboard-utils";
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
 import { endPanelSpanMm, finishPanelThicknessMm } from "../../../../lib/pcd-finishpanel-utils";
 import { benchtopDepthMm, benchtopCutouts, benchtopWaterfallSides, benchtopThicknessMm } from "../../../../lib/pcd-benchtop-utils";
+import { bayTypeForRow } from "../../../../lib/pcd-door-utils";
 // The room-space maths lives in lib/pcd-plan-geometry.js. This file keeps only
 // what's genuinely about drawing: SVG rects, polygons, scale.
 import {
@@ -381,7 +382,7 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
   // pattern; otherwise the flat per-type colour. In line-only (schematic) mode
   // the body is unfilled so just the outline reads. Everything else (labels,
   // front strip) draws on top regardless.
-  const fill      = lineOnly ? "none" : (colourFill || ITEM_COLORS[item.item_type] || "#888");
+  const fill      = lineOnly ? "none" : (colourFill || item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   const frontEdge = frontEdgeFor(item.wall, item.rotation);
   const cx = x + w / 2;
   const cy = y + h / 2;
@@ -478,6 +479,31 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
       ) : (
         <FrontFaceStrip rect={rect} frontEdge={frontEdge} />
       )}
+      {/* Free/appliance bays — invisible in a top-down plan, so flag them with
+          a small badge listing the appliance(s) allocated in this tall unit. */}
+      {item.item_type === "tall_cabinet" && Array.isArray(item.door_config?.bays) && w > 30 && h > 20 && (() => {
+        const rows = Math.max(1, item.door_config.rows || 1);
+        const LABELS = { oven: "OVEN", microwave: "MW", cooktop: "HOB" };
+        const tags = [];
+        for (let r = 0; r < rows; r++) {
+          const t = bayTypeForRow(item.door_config, r);
+          if (t === "appliance") tags.push(LABELS[item.door_config.bays[r]?.appliance] || "OVEN");
+          else if (t === "open") tags.push("OPEN");
+        }
+        if (!tags.length) return null;
+        const text = tags.join(" · ");
+        const bw = Math.min(w - 6, Math.max(20, text.length * 5.4 + 8));
+        return (
+          <g style={{ pointerEvents: "none" }}>
+            <rect x={cx - bw / 2} y={cy + fontSize / 2 + 2} width={bw} height={11}
+              rx={2} fill="rgba(15,23,42,0.72)" />
+            <text x={cx} y={cy + fontSize / 2 + 8} textAnchor="middle" dominantBaseline="middle"
+              fontSize={7.5} fill="#fef3c7" letterSpacing={0.3} fontWeight={700}>
+              {text}
+            </text>
+          </g>
+        );
+      })()}
       {/* Benchtop — drawn, never quoted. The front edge shows where the top
           lands relative to the doors; the cutouts tell the fabricator where
           the holes go. */}

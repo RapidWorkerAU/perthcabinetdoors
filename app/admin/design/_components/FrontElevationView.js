@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import styles from "../design.module.css";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm } from "../../../../lib/pcd-door-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, bayTypeForRow } from "../../../../lib/pcd-door-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { kickboardOffsetMm, wallSpanMm, CABINET_MOUNT_MM } from "../../../../lib/pcd-kickboard-utils";
 import { perpendicularCornerReturns } from "../../../../lib/pcd-plan-geometry";
@@ -367,6 +367,59 @@ function DoorRowWithGap({ x, y, w, h, cfg, fill, scale, floor }) {
       <DoorBankSwing x={x} y={frontY} w={w} h={frontH} cfg={cfg} fill={fill} scale={scale} />
       {gapPx > 0 && <GapHatchZone x={x} y={gapY} w={w} h={gapPx} fill={fill} />}
     </>
+  );
+}
+
+// A free/appliance bay in a tall cabinet. Deliberately simple line-art so it
+// reads as "an appliance goes here", not a manufactured front: a recess
+// outline plus a schematic oven / microwave / cooktop, or a dashed OPEN box.
+function ApplianceMock({ x, y, w, h, appliance, fill }) {
+  if (w <= 0 || h <= 0) return null;
+  const pad = Math.min(w, h) * 0.08;
+  const ix = x + pad, iy = y + pad, iw = w - pad * 2, ih = h - pad * 2;
+  const stroke = fill;
+  const label = appliance === "microwave" ? "MW" : appliance === "cooktop" ? "HOB" : "OVEN";
+  return (
+    <g style={{ pointerEvents: "none" }} stroke={stroke} strokeOpacity={0.55} fill="none">
+      {/* recess outline */}
+      <rect x={x} y={y} width={w} height={h} strokeWidth={0.8} strokeDasharray="4 3" strokeOpacity={0.35} />
+      {appliance === "cooktop" ? (
+        // Cooktop: top-down burners on the recess face.
+        <>
+          <rect x={ix} y={iy} width={iw} height={ih} strokeWidth={0.8} rx={2} />
+          {[[0.3, 0.35], [0.7, 0.35], [0.3, 0.72], [0.7, 0.72]].map(([fx, fy], i) => (
+            <circle key={i} cx={ix + iw * fx} cy={iy + ih * fy} r={Math.min(iw, ih) * 0.12} strokeWidth={0.8} />
+          ))}
+        </>
+      ) : appliance === "microwave" ? (
+        // Microwave: left glass door + right control column.
+        <>
+          <rect x={ix} y={iy} width={iw} height={ih} strokeWidth={0.8} rx={2} />
+          <rect x={ix + iw * 0.06} y={iy + ih * 0.12} width={iw * 0.58} height={ih * 0.76} strokeWidth={0.6} fill={fill} fillOpacity={0.12} />
+          <line x1={ix + iw * 0.72} y1={iy + ih * 0.16} x2={ix + iw * 0.72} y2={iy + ih * 0.84} strokeWidth={0.5} strokeOpacity={0.4} />
+          <line x1={ix + iw * 0.82} y1={iy + ih * 0.16} x2={ix + iw * 0.82} y2={iy + ih * 0.84} strokeWidth={0.5} strokeOpacity={0.4} />
+        </>
+      ) : (
+        // Oven: control strip across the top + glass door below with a handle.
+        <>
+          <rect x={ix} y={iy} width={iw} height={ih * 0.18} strokeWidth={0.7} />
+          {iw > 20 && (
+            <>
+              <circle cx={ix + iw * 0.82} cy={iy + ih * 0.09} r={Math.max(0.8, ih * 0.03)} strokeWidth={0.6} />
+              <circle cx={ix + iw * 0.92} cy={iy + ih * 0.09} r={Math.max(0.8, ih * 0.03)} strokeWidth={0.6} />
+            </>
+          )}
+          <rect x={ix} y={iy + ih * 0.24} width={iw} height={ih * 0.76} strokeWidth={0.8} fill={fill} fillOpacity={0.12} />
+          <line x1={ix + iw * 0.12} y1={iy + ih * 0.33} x2={ix + iw * 0.88} y2={iy + ih * 0.33} strokeWidth={0.7} strokeOpacity={0.5} />
+        </>
+      )}
+      {w > 30 && h > 16 && (
+        <text x={x + w / 2} y={y + h - Math.max(4, h * 0.06)} textAnchor="middle" dominantBaseline="middle"
+          fontSize={6.5} fill={fill} fillOpacity={0.5} stroke="none" letterSpacing={0.5}>
+          {label}
+        </text>
+      )}
+    </g>
   );
 }
 
@@ -1084,7 +1137,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
               : 0;
             // Line mode draws cabinets as ink outlines; colour modes keep the
             // per-type colour for the outlines, panels and label.
-            const fill   = lineOnly ? "#26313f" : (ITEM_COLORS[item.item_type] || "#888");
+            const fill   = lineOnly ? "#26313f" : (item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
             const svgX   = ox + xMm  * scale;
             const svgW   = wMm * scale;
             const svgH   = hMm * scale;
@@ -1372,9 +1425,30 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   const dH   = svgH / rows;
                   return (
                     <>
-                      {Array.from({ length: rows }).map((_, r) => (
-                        <DoorRowWithGap key={r} x={svgX} y={svgY + r * dH} w={svgW} h={dH} cfg={cfg} fill={fill} scale={scale} floor={floor} />
-                      ))}
+                      {Array.from({ length: rows }).map((_, r) => {
+                        const bayType = bayTypeForRow(cfg, r); // r=0 is the top row
+                        const ry = svgY + r * dH;
+                        if (bayType === "appliance") {
+                          const appliance = (cfg.bays && cfg.bays[r] && cfg.bays[r].appliance) || "oven";
+                          return <ApplianceMock key={r} x={svgX} y={ry} w={svgW} h={dH} appliance={appliance} fill={fill} />;
+                        }
+                        if (bayType === "open") {
+                          return (
+                            <g key={r} style={{ pointerEvents: "none" }}>
+                              <rect x={svgX} y={ry} width={svgW} height={dH}
+                                fill="none" stroke={fill} strokeWidth={0.6} strokeDasharray="4 3" strokeOpacity={0.4} />
+                              {svgW > 30 && dH > 14 && (
+                                <text x={svgX + svgW / 2} y={ry + dH / 2}
+                                  textAnchor="middle" dominantBaseline="middle"
+                                  fontSize={7} fill={fill} fillOpacity={0.45} letterSpacing={0.5}>
+                                  OPEN
+                                </text>
+                              )}
+                            </g>
+                          );
+                        }
+                        return <DoorRowWithGap key={r} x={svgX} y={ry} w={svgW} h={dH} cfg={cfg} fill={fill} scale={scale} floor={floor} />;
+                      })}
                     </>
                   );
                 })()}

@@ -1060,7 +1060,9 @@ export async function POST(request, { params }) {
               });
             }
           }
-          if (sel.doors && item.front_type === "doors") {
+          // A tall cabinet whose every bay is freed for an appliance cuts no
+          // door board, so don't nag about a missing door style it won't use.
+          if (sel.doors && item.front_type === "doors" && computeDoorSizes(item).length > 0) {
             const noMat = !String(item.door_style?.material || "").trim();
             const noRate = isMissingOrZero(item.door_style?.cost_per_sqm);
             if (noMat || noRate) {
