@@ -12,6 +12,7 @@ import PinchZoom from "./PinchZoom";
 import RoomsModal from "./mobile/RoomsModal";
 import CabinetModal from "./mobile/CabinetModal";
 import RoomPriceModal from "./mobile/RoomPriceModal";
+import DesignPlanExportModal from "./DesignPlanExportModal";
 
 // three.js is heavy and client-only (r3f), so it's split out of the initial
 // mobile bundle exactly as the desktop shell does — it loads only when the
@@ -56,7 +57,7 @@ export default function DesignProgramMobile({ projectId }) {
     colourImages,
   } = d;
 
-  const [openModal, setOpenModal] = useState(null); // 'rooms' | 'item' | 'price'
+  const [openModal, setOpenModal] = useState(null); // 'rooms' | 'item' | 'price' | 'export'
   const [view, setView] = useState("plan");          // 'plan' | 'elevation' | '3d'
   const [elevationWall, setElevationWall] = useState("top");
   // Paint cabinets with their real colour-library finishes in 3D. Off by
@@ -279,6 +280,16 @@ export default function DesignProgramMobile({ projectId }) {
                   <span className={mobile.viewMenuCheck}>{fullscreen ? "✓" : ""}</span>
                   View fullscreen
                 </button>
+                <div className={mobile.viewMenuDivider} />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={mobile.viewMenuItem}
+                  onClick={() => { setViewMenuOpen(false); setOpenModal("export"); }}
+                  disabled={!rooms.length}
+                >
+                  Export PDF…
+                </button>
               </div>
             </>
           )}
@@ -470,6 +481,18 @@ export default function DesignProgramMobile({ projectId }) {
           onDeleteItem={(id) => { handleDeleteItem(id); closeItemModal(); }}
           onSelectItem={(id) => setSelectedItemId(id)}
           onClose={closeItemModal}
+        />
+      )}
+
+      {openModal === "export" && rooms.length > 0 && (
+        <DesignPlanExportModal
+          projectId={projectId}
+          project={project}
+          rooms={rooms}
+          items={d.items}
+          currentRoomId={selectedRoomId}
+          colourImages={colourImages}
+          onClose={() => setOpenModal(null)}
         />
       )}
 

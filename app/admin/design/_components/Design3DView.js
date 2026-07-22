@@ -243,6 +243,26 @@ function CabinetMesh({ item, W, D }) {
   // cue the plan uses.
   const isOpen = (item.front_type || "none") === "none";
 
+  // An obstruction (pillar, pipe boxing, meter box…) is a solid object, not a
+  // cabinet — render it as one opaque coloured block so its colour reads clearly
+  // and it presents a solid target to click/tap in 3D. Its per-item colour_hex
+  // drives the colour (falling back to the default obstruction grey).
+  if (item.item_type === "obstruction") {
+    return (
+      <>
+        {carcassRects(item, W, D).map((rect, i) => {
+          const { position, size } = boxFromRect(rect, bottomMm, topMm);
+          return (
+            <mesh key={i} position={position}>
+              <boxGeometry args={size} />
+              <PanelMaterial src={carcassSrc} color={color} roughness={0.75} />
+            </mesh>
+          );
+        })}
+      </>
+    );
+  }
+
   if (isOpen) {
     const carc = Number(item.carcass_thickness_mm) || 16;
     return (
@@ -729,6 +749,30 @@ function DoorPanel({ basis, cell, src }) {
   );
 }
 
+// A dark matte panel filling the carcass face behind the coloured door/drawer
+// slabs. Because the slabs stand proud and are inset within their cell, this
+// backing shows through the reveal gap around every front as a soft recessed
+// shadow — the realistic overlay-door look — and replaces the schematic black
+// outline when colours are on. Its front sits a few mm below the door face so
+// the gap has genuine depth (a routed reveal), not a flat drawn line.
+function RevealBacking({ basis, cell }) {
+  const aC = (cell.a0 + cell.a1) / 2;
+  const vC = (cell.v0 + cell.v1) / 2;
+  const depth = Math.max(DOOR_PANEL_THICKNESS - 0.004, 0.002);
+  const position = facePoint(basis, aC, vC, depth / 2);
+  const aLen = Math.max((cell.a1 - cell.a0) / M, 0.001);
+  const vLen = Math.max((cell.v1 - cell.v0) / M, 0.001);
+  const size = basis.alongAxis === "x"
+    ? [aLen, vLen, depth]
+    : [depth, vLen, aLen];
+  return (
+    <mesh position={position}>
+      <boxGeometry args={size} />
+      <meshStandardMaterial color={CUTOUT_COLOR} roughness={0.95} />
+    </mesh>
+  );
+}
+
 // A schematic appliance sitting in a freed tall-cabinet bay — a recessed
 // cavity plus a simple dark front (control strip + glass for an oven/microwave)
 // so the 3D view shows "an appliance goes here" rather than a bare hole. Not a
@@ -776,6 +820,7 @@ function FrontDetail({ item, W, D }) {
   const frame = [];
   const grips = [];
   const panels = [];
+  const backings = [];
   const appliances = [];
   for (const { basis, cells } of groups) {
     for (const cell of cells) {
@@ -793,17 +838,29 @@ function FrontDetail({ item, W, D }) {
       // its front face; otherwise they sit on the carcass face as before.
       const lineOff = src ? DOOR_PANEL_THICKNESS + 0.002 : 0.006;
       const p = (a, v) => facePoint(basis, a, v, lineOff);
-      frame.push(p(a0, v0), p(a1, v0), p(a1, v0), p(a1, v1), p(a1, v1), p(a0, v1), p(a0, v1), p(a0, v0));
+      // A coloured cell makes its seam with the recessed reveal (dark backing
+      // in the gap), so the schematic black outline is dropped for it — the
+      // finish reads realistically. Cells without a resolved colour keep the
+      // outline as before, so they stay legible.
+      if (!src) {
+        frame.push(p(a0, v0), p(a1, v0), p(a1, v0), p(a1, v1), p(a1, v1), p(a0, v1), p(a0, v1), p(a0, v0));
+      }
       if (cell.grip) {
         const gv = cell.grip === "top" ? v1 - 14 : v0 + 14;
         grips.push(p(a0 + 8, gv), p(a1 - 8, gv));
       }
-      if (src) panels.push({ basis, cell: { a0, a1, v0, v1 }, src });
+      if (src) {
+        panels.push({ basis, cell: { a0, a1, v0, v1 }, src });
+        // Backing spans the FULL cell (uninset), so the inset proud door leaves
+        // a dark shadow reveal on all four sides.
+        backings.push({ basis, cell: { a0: cell.a0, a1: cell.a1, v0: cell.v0, v1: cell.v1 } });
+      }
     }
   }
-  if (!frame.length && !appliances.length) return null;
+  if (!frame.length && !panels.length && !appliances.length) return null;
   return (
     <>
+      {backings.map((bk, i) => <RevealBacking key={`bk-${i}`} basis={bk.basis} cell={bk.cell} />)}
       {panels.map((pnl, i) => <DoorPanel key={i} basis={pnl.basis} cell={pnl.cell} src={pnl.src} />)}
       {appliances.map((ap, i) => <ApplianceMesh key={`ap-${i}`} basis={ap.basis} cell={ap.cell} />)}
       {frame.length > 0 && <Line points={frame} segments color={FRONT_LINE_COLOR} lineWidth={1.4} />}

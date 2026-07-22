@@ -82,6 +82,10 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
   function toggleRoom(id) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
+  const selectAllRooms = () => setSelectedIds(roomList.map((r) => r.id));
+  const clearRooms = () => setSelectedIds([]);
+  const onlyRoom = (id) => setSelectedIds([id]);
+  const allSelected = selectedIds.length === roomList.length;
 
   function goToConfigure() {
     if (!selectedIds.length) return;
@@ -202,11 +206,19 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
         {/* ── Step 1: room selection ─────────────────────────────────────── */}
         {step === 1 ? (
           <div style={{ padding: "16px 20px", overflowY: "auto" }}>
-            <div style={sectionLabel}>Rooms to export</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <div style={{ ...sectionLabel, marginBottom: 0 }}>Rooms to export</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button type="button" onClick={selectAllRooms} disabled={allSelected} style={linkBtn}>Select all</button>
+                <span style={{ color: "#d6d3cd" }}>·</span>
+                <button type="button" onClick={clearRooms} disabled={!selectedIds.length} style={linkBtn}>Deselect all</button>
+              </div>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {roomList.map((r) => {
                 const checked = selectedIds.includes(r.id);
                 const count = (itemsByRoom.get(r.id) || []).filter((it) => it.item_type !== "obstruction").length;
+                const isOnly = checked && selectedIds.length === 1;
                 return (
                   <label key={r.id} style={{ ...roomRow, ...(checked ? roomRowActive : null) }}>
                     <input type="checkbox" checked={checked} onChange={() => toggleRoom(r.id)} style={{ width: 16, height: 16 }} />
@@ -215,6 +227,16 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
                       {r.id === currentRoomId && <span style={{ fontSize: 11, color: "#78716c", fontWeight: 500 }}> · current</span>}
                     </span>
                     <span style={{ fontSize: 12, color: "#78716c" }}>{count} item{count === 1 ? "" : "s"}</span>
+                    {/* "Only" isolates this room — selects it and drops the rest. */}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onlyRoom(r.id); }}
+                      disabled={isOnly}
+                      style={{ ...linkBtn, opacity: isOnly ? 0.4 : 1 }}
+                      title="Export only this room"
+                    >
+                      Only
+                    </button>
                   </label>
                 );
               })}
@@ -275,7 +297,7 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
                   3D views — {activeRoom.name || "room"} ({(rendersByRoom[activeRoom.id] || []).length} added)
                 </div>
                 <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-                  <div style={{ width: 460, height: 300, borderRadius: 8, overflow: "hidden", border: "1px solid #e7e5e4", flexShrink: 0, background: "#f2f1ee" }}>
+                  <div style={{ width: "min(460px, 100%)", height: 300, borderRadius: 8, overflow: "hidden", border: "1px solid #e7e5e4", flexShrink: 0, background: "#f2f1ee" }}>
                     <Design3DView
                       key={`3d-${activeRoom.id}`}
                       room={activeRoom}
@@ -319,7 +341,7 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
               ? "The plan, elevations, schedule and finishes are added automatically per room."
               : `Renders capture the current finish view.${totalRenders ? ` ${totalRenders} angle${totalRenders === 1 ? "" : "s"} added.` : ""}`}
           </span>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", flex: "1 1 auto" }}>
             {step === 2 && !singleRoom && (
               <button type="button" onClick={() => setStep(1)} disabled={generating} style={ghostBtn}>Back to rooms</button>
             )}
@@ -393,7 +415,7 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
 const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 };
 const panel = { width: "min(880px, 96vw)", maxHeight: "92vh", background: "#fff", borderRadius: 12, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" };
 const headerRow = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid #f0efec" };
-const footerRow = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderTop: "1px solid #f0efec", gap: 12 };
+const footerRow = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderTop: "1px solid #f0efec", gap: 12, flexWrap: "wrap" };
 const sectionLabel = { fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#a8a29e", marginBottom: 8 };
 const chip = { padding: "8px 14px", fontSize: 13, fontWeight: 600, borderRadius: 8, border: "1px solid #e7e5e4", background: "#fafaf9", color: "#57534e", cursor: "pointer" };
 const chipActive = { background: "#1c1917", color: "#fff", border: "1px solid #1c1917" };
@@ -404,6 +426,7 @@ const tabBadgeActive = { background: "#1c1917", color: "#fff" };
 const roomRow = { display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", border: "1px solid #e7e5e4", borderRadius: 8, background: "#fff", cursor: "pointer" };
 const roomRowActive = { border: "1px solid #d6d3cd", background: "#fafaf9" };
 const smallBtn = { padding: "6px 10px", fontSize: 12, fontWeight: 600, borderRadius: 6, border: "1px solid #e7e5e4", background: "#fff", color: "#1c1c1a", cursor: "pointer" };
+const linkBtn = { background: "none", border: "none", padding: 0, color: "#2563eb", fontSize: 12, fontWeight: 600, cursor: "pointer" };
 const ghostBtn = { padding: "8px 14px", fontSize: 13, fontWeight: 600, borderRadius: 8, border: "1px solid #e7e5e4", background: "#fff", color: "#57534e", cursor: "pointer" };
 const primaryBtn = { padding: "8px 18px", fontSize: 13, fontWeight: 700, borderRadius: 8, border: "none", background: "#1c1917", color: "#fff", cursor: "pointer" };
 const thumbClose = { position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 9, border: "none", background: "#1c1917", color: "#fff", fontSize: 12, lineHeight: "18px", cursor: "pointer", padding: 0 };
