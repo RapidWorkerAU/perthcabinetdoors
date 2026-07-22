@@ -213,12 +213,17 @@ function emptyDraft() {
 }
 
 // ---- Add item form ----
-function AddItemForm({ onAdd, onCancel, allowedTypes = ADDABLE_TYPES }) {
+function AddItemForm({ onAdd, onCancel, allowedTypes = ADDABLE_TYPES, currentWall }) {
   const [draft, setDraft] = useState(() => {
     const d = emptyDraft();
     // Keep the initial type within the allowed set (mobile restricts to
     // base/wall/tall — no corner, no standalone panels/scribes/obstructions).
-    return allowedTypes.includes(d.item_type) ? d : { ...d, item_type: allowedTypes[0] };
+    const typed = allowedTypes.includes(d.item_type) ? d : { ...d, item_type: allowedTypes[0] };
+    // Default the wall to the one being viewed in elevation, so a cabinet added
+    // while looking at a wall lands on THAT wall (not the top wall, which then
+    // had to be dragged across). Plan view passes nothing → keeps "top".
+    const REAL_WALLS = ["top", "bottom", "left", "right"];
+    return currentWall && REAL_WALLS.includes(currentWall) ? { ...typed, wall: currentWall } : typed;
   });
   const [busy, setBusy]   = useState(false);
   const [err, setErr]     = useState("");
@@ -2837,7 +2842,7 @@ function ObstructionForm({ item, onItemChange }) {
 }
 
 // ---- Right panel container ----
-export default function DesignRightPanel({ item, allItems, room, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem, allowedTypes, fullWidth = false }) {
+export default function DesignRightPanel({ item, allItems, room, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem, allowedTypes, currentWall, fullWidth = false }) {
   // `fullWidth` + `allowedTypes` are the mobile hooks: the modal renders the
   // exact same panel at 100% width and restricts which cabinet types can be
   // added. Desktop passes neither, so behaviour is unchanged.
@@ -2893,7 +2898,7 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
           </div>
         )}
         <div className={styles.rightScroll}>
-          <AddItemForm onAdd={onAdd} onCancel={onCancelAdd} allowedTypes={allowedTypes} />
+          <AddItemForm onAdd={onAdd} onCancel={onCancelAdd} allowedTypes={allowedTypes} currentWall={currentWall} />
         </div>
       </div>
     );

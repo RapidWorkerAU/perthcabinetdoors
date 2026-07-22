@@ -30,6 +30,7 @@ export default function CabinetModal({
   onItemChange,
   onDeleteItem,
   onSelectItem,
+  currentWall,
   onClose,
 }) {
   useEffect(() => {
@@ -65,6 +66,7 @@ export default function CabinetModal({
             onDeleteItem={onDeleteItem}
             onDuplicateItem={() => {}}
             onSelectItem={onSelectItem}
+            currentWall={currentWall}
           />
         </div>
       </div>

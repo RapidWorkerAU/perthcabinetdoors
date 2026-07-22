@@ -195,6 +195,7 @@ export default function DesignProgram({ projectId }) {
         onDeleteItem={handleDeleteItem}
         onDuplicateItem={handleDuplicateItem}
         onSelectItem={(id) => { setSelectedItemId(id); setIsAddingItem(false); }}
+        currentWall={frontViewWall}
       />
 
       {importOpen && (

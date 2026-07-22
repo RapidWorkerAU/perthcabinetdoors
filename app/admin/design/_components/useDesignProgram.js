@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { findOverlappingItemIds } from "./DesignCanvas";
 import { buildColourImageMap, COLOUR_IMAGE_MATERIALS } from "../../../../lib/pcd-colour-images";
+import { findFreeWallSlot } from "../../../../lib/pcd-plan-geometry";
 
 // Loads the colour library once and builds the name → tile-image lookup the
 // views use for "show colours". Best-effort: any failure just yields an empty
@@ -116,11 +117,18 @@ export default function useDesignProgram(projectId) {
   // ---- Item ops ----
 
   async function handleAddItem(draft) {
-    // Start at top wall x=0 — user drags to final position which auto-assigns wall
+    const wall = draft.wall || "top";
+    // Drop the new item into the first free slot on its wall (the wall the user
+    // is viewing in elevation, or "top" from the plan) so it never lands on top
+    // of an existing item. Freeform pieces (scribes, islands) keep their own
+    // position — they're placed relative to a cabinet, not a room wall.
+    const placement = (wall === "island" || draft.item_type === "scribe")
+      ? { wall, x_mm: draft.x_mm || 0, y_mm: draft.y_mm || 0 }
+      : findFreeWallSlot(wall, draft, items.filter((i) => i.room_id === selectedRoomId), selectedRoom);
     const res = await fetch(`/api/admin/design/projects/${projectId}/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...draft, wall: draft.wall || "top", x_mm: 0, y_mm: 0, room_id: selectedRoomId, sort_order: items.length }),
+      body: JSON.stringify({ ...draft, ...placement, room_id: selectedRoomId, sort_order: items.length }),
     });
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "Could not add item.");
