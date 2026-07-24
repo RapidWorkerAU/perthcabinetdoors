@@ -75,6 +75,10 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       gst_amount: totals.gst_amount,
       total_inc_gst: totals.total_inc_gst,
       material_cost_ex_gst: totals.material_cost_ex_gst,
+      // manual_labour_hours is the user's base input; labour_hours is the
+      // derived total (base + Σ line labour). Persisting the base separately is
+      // what stops the total feeding back into itself on the next recalc.
+      manual_labour_hours: totals.manual_labour_hours,
       labour_hours: totals.labour_hours,
       worker_hourly_rate: totals.worker_hourly_rate,
       labour_cost_ex_gst: totals.labour_cost_ex_gst,

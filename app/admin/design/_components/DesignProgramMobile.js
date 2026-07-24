@@ -26,14 +26,14 @@ const Design3DView = dynamic(() => import("./Design3DView"), {
   ),
 });
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet"];
 const TYPE_COLORS = {
   base_cabinet: "#3b82f6", wall_cabinet: "#22c55e", tall_cabinet: "#f97316",
-  corner_base_cabinet: "#0ea5e9", panel: "#6b7280", scribe: "#ec4899", obstruction: "#57534e",
+  corner_base_cabinet: "#0ea5e9", corner_tall_cabinet: "#0891b2", panel: "#6b7280", scribe: "#ec4899", obstruction: "#57534e",
 };
 const TYPE_SHORT = {
   base_cabinet: "Base", wall_cabinet: "Wall", tall_cabinet: "Tall",
-  corner_base_cabinet: "Corner", panel: "Panel", scribe: "Scribe", obstruction: "Obstr.",
+  corner_base_cabinet: "Corner", corner_tall_cabinet: "Pantry", panel: "Panel", scribe: "Scribe", obstruction: "Obstr.",
 };
 const WALLS = ["top", "bottom", "left", "right"];
 const NUDGE_MM = 10;

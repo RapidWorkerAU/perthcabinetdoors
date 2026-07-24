@@ -5,7 +5,7 @@ import styles from "../design.module.css";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
 import { doorRowGapMm, drawerGapMm, frontRevealMm, bayTypeForRow } from "../../../../lib/pcd-door-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
-import { kickboardOffsetMm, wallSpanMm, CABINET_MOUNT_MM } from "../../../../lib/pcd-kickboard-utils";
+import { kickboardOffsetMm, wallSpanMm, CABINET_MOUNT_MM, cabinetVerticalSpanMm, isCornerType, isCornerShaped } from "../../../../lib/pcd-kickboard-utils";
 import { perpendicularCornerReturns } from "../../../../lib/pcd-plan-geometry";
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
 import { computeBenchtopRun, benchtopThicknessMm, benchtopWaterfallElevationSides, benchtopRunWaterfallEnds } from "../../../../lib/pcd-benchtop-utils";
@@ -13,14 +13,22 @@ import {
   endPanelElevationSpanMm,
   finishPanelThicknessMm,
   bottomPanelThicknessMm,
+  finishPanelVerticalSpanMm,
 } from "../../../../lib/pcd-finishpanel-utils";
 import PinchZoom from "./PinchZoom";
+import dynamic from "next/dynamic";
+
+// The rendered head-on elevation reuses the whole 3D scene. Design3DView is a
+// three.js/r3f chunk that must stay client-only (ssr:false) — importing it
+// statically here would pull three into the SSR/main bundle and break it.
+const Design3DView = dynamic(() => import("./Design3DView"), { ssr: false });
 
 const ITEM_COLORS = {
   base_cabinet:  "#3b82f6",
   wall_cabinet:  "#22c55e",
   tall_cabinet:  "#f97316",
   corner_base_cabinet: "#0ea5e9",
+  corner_tall_cabinet: "#0891b2",
   blind_corner_cabinet: "#06b6d4",
   floating_shelf: "#14b8a6",
   door:          "#a855f7",
@@ -28,6 +36,10 @@ const ITEM_COLORS = {
   panel:         "#6b7280",
   scribe:        "#ec4899",
   obstruction:   "#57534e",
+  window:        "#38bdf8",
+  door_opening:  "#b45309",
+  appliance:     "#64748b",
+  brick_corner_pantry: "#a0522d",
 };
 
 // Friendly fallback label when an item has no custom label yet — avoids
@@ -37,6 +49,7 @@ const TYPE_LABELS = {
   wall_cabinet:  "Wall Cabinet",
   tall_cabinet:  "Tall Cabinet",
   corner_base_cabinet: "Corner Base Cabinet",
+  corner_tall_cabinet: "Corner Pantry",
   blind_corner_cabinet: "Blind Corner Cabinet",
   floating_shelf: "Floating Shelf",
   door:          "Door",
@@ -44,6 +57,10 @@ const TYPE_LABELS = {
   panel:         "Panel",
   scribe:        "Scribe",
   obstruction:   "Obstruction",
+  window:        "Window",
+  door_opening:  "Doorway",
+  appliance:     "Appliance",
+  brick_corner_pantry: "Brick Corner Pantry",
 };
 
 function itemDisplayLabel(item) {
@@ -63,9 +80,9 @@ const WALL_LABELS = {
   left:   "Left Wall",
   right:  "Right Wall",
 };
-const DRAGGABLE_TYPES = new Set(["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet", "floating_shelf", "panel", "scribe", "obstruction"]);
+const DRAGGABLE_TYPES = new Set(["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "floating_shelf", "panel", "scribe", "obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"]);
 // Types that can be dragged up/down (mount_height_mm), not just along the wall.
-const VERTICAL_DRAG_TYPES = new Set(["wall_cabinet", "floating_shelf", "obstruction", "panel", "scribe"]);
+const VERTICAL_DRAG_TYPES = new Set(["wall_cabinet", "floating_shelf", "obstruction", "panel", "scribe", "window", "door_opening", "appliance", "brick_corner_pantry"]);
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -253,7 +270,7 @@ function islandVirtualWall(itemData) {
 }
 
 function isIslandVirtualView(itemData) {
-  return itemData.wall === "island" && itemData.item_type !== "corner_base_cabinet";
+  return itemData.wall === "island" && !isCornerType(itemData);
 }
 
 // Door-swing visualization for a door-type bank — a dotted V-triangle
@@ -370,52 +387,50 @@ function DoorRowWithGap({ x, y, w, h, cfg, fill, scale, floor }) {
   );
 }
 
-// A free/appliance bay in a tall cabinet. Deliberately simple line-art so it
-// reads as "an appliance goes here", not a manufactured front: a recess
-// outline plus a schematic oven / microwave / cooktop, or a dashed OPEN box.
-function ApplianceMock({ x, y, w, h, appliance, fill }) {
+// A free/appliance bay in a tall cabinet, drawn as a SOLID appliance so it
+// actually reads as an oven / microwave / cooktop rather than line-art over the
+// cabinet colour (which used to show through). Stainless body, black glass,
+// control strip + handle — its own palette, independent of the cabinet finish.
+function ApplianceMock({ x, y, w, h, appliance }) {
   if (w <= 0 || h <= 0) return null;
-  const pad = Math.min(w, h) * 0.08;
-  const ix = x + pad, iy = y + pad, iw = w - pad * 2, ih = h - pad * 2;
-  const stroke = fill;
   const label = appliance === "microwave" ? "MW" : appliance === "cooktop" ? "HOB" : "OVEN";
+  const steel = "#c7ccd2", glass = "#1b1c1f", ctrl = "#2c2f34", metal = "#8a9099";
   return (
-    <g style={{ pointerEvents: "none" }} stroke={stroke} strokeOpacity={0.55} fill="none">
-      {/* recess outline */}
-      <rect x={x} y={y} width={w} height={h} strokeWidth={0.8} strokeDasharray="4 3" strokeOpacity={0.35} />
+    <g style={{ pointerEvents: "none" }}>
       {appliance === "cooktop" ? (
-        // Cooktop: top-down burners on the recess face.
+        // Cooktop: black glass with four burner rings.
         <>
-          <rect x={ix} y={iy} width={iw} height={ih} strokeWidth={0.8} rx={2} />
+          <rect x={x} y={y} width={w} height={h} fill="#232326" rx={2} />
           {[[0.3, 0.35], [0.7, 0.35], [0.3, 0.72], [0.7, 0.72]].map(([fx, fy], i) => (
-            <circle key={i} cx={ix + iw * fx} cy={iy + ih * fy} r={Math.min(iw, ih) * 0.12} strokeWidth={0.8} />
+            <circle key={i} cx={x + w * fx} cy={y + h * fy} r={Math.min(w, h) * 0.13} fill="none" stroke="#7a7a7e" strokeWidth={1} />
           ))}
         </>
       ) : appliance === "microwave" ? (
-        // Microwave: left glass door + right control column.
+        // Microwave: stainless body, glass door left, control column right.
         <>
-          <rect x={ix} y={iy} width={iw} height={ih} strokeWidth={0.8} rx={2} />
-          <rect x={ix + iw * 0.06} y={iy + ih * 0.12} width={iw * 0.58} height={ih * 0.76} strokeWidth={0.6} fill={fill} fillOpacity={0.12} />
-          <line x1={ix + iw * 0.72} y1={iy + ih * 0.16} x2={ix + iw * 0.72} y2={iy + ih * 0.84} strokeWidth={0.5} strokeOpacity={0.4} />
-          <line x1={ix + iw * 0.82} y1={iy + ih * 0.16} x2={ix + iw * 0.82} y2={iy + ih * 0.84} strokeWidth={0.5} strokeOpacity={0.4} />
+          <rect x={x} y={y} width={w} height={h} fill={steel} rx={2} />
+          <rect x={x + w * 0.06} y={y + h * 0.14} width={w * 0.58} height={h * 0.72} fill={glass} rx={1.5} />
+          <rect x={x + w * 0.7} y={y + h * 0.14} width={w * 0.24} height={h * 0.72} fill={ctrl} rx={1.5} />
+          {[0.22, 0.34, 0.46].map((fy, i) => (
+            <rect key={i} x={x + w * 0.74} y={y + h * fy} width={w * 0.16} height={h * 0.05} fill="#5b6068" rx={1} />
+          ))}
         </>
       ) : (
-        // Oven: control strip across the top + glass door below with a handle.
+        // Oven: stainless body, control strip + knobs, black glass door + handle.
         <>
-          <rect x={ix} y={iy} width={iw} height={ih * 0.18} strokeWidth={0.7} />
-          {iw > 20 && (
-            <>
-              <circle cx={ix + iw * 0.82} cy={iy + ih * 0.09} r={Math.max(0.8, ih * 0.03)} strokeWidth={0.6} />
-              <circle cx={ix + iw * 0.92} cy={iy + ih * 0.09} r={Math.max(0.8, ih * 0.03)} strokeWidth={0.6} />
-            </>
-          )}
-          <rect x={ix} y={iy + ih * 0.24} width={iw} height={ih * 0.76} strokeWidth={0.8} fill={fill} fillOpacity={0.12} />
-          <line x1={ix + iw * 0.12} y1={iy + ih * 0.33} x2={ix + iw * 0.88} y2={iy + ih * 0.33} strokeWidth={0.7} strokeOpacity={0.5} />
+          <rect x={x} y={y} width={w} height={h} fill={steel} rx={2} />
+          <rect x={x} y={y} width={w} height={h * 0.2} fill={ctrl} rx={2} />
+          {w > 18 && [0.78, 0.9].map((fx, i) => (
+            <circle key={i} cx={x + w * fx} cy={y + h * 0.1} r={Math.max(1, h * 0.04)} fill={metal} />
+          ))}
+          <rect x={x + w * 0.06} y={y + h * 0.28} width={w * 0.88} height={h * 0.66} fill={glass} rx={2} />
+          <rect x={x + w * 0.14} y={y + h * 0.33} width={w * 0.72} height={Math.max(1.5, h * 0.06)} fill={metal} rx={1.5} />
+          <rect x={x + w * 0.17} y={y + h * 0.5} width={w * 0.66} height={h * 0.34} fill="#2a2c30" rx={1.5} />
         </>
       )}
       {w > 30 && h > 16 && (
         <text x={x + w / 2} y={y + h - Math.max(4, h * 0.06)} textAnchor="middle" dominantBaseline="middle"
-          fontSize={6.5} fill={fill} fillOpacity={0.5} stroke="none" letterSpacing={0.5}>
+          fontSize={6.5} fill="#e5e7eb" fillOpacity={0.85} stroke="none" letterSpacing={0.5}>
           {label}
         </text>
       )}
@@ -483,6 +498,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   const [localPos, setLocalPos]       = useState({});
   const [localShelves, setLocalShelves] = useState({});
   const [snapGuides, setSnapGuides]   = useState(null); // { x?: mm, y?: mm }
+  // Rendered head-on mode: swap the schematic SVG for the 3D scene viewed dead-on
+  // at this wall. Desktop-only (needs the interactive chrome / a real canvas).
+  const [rendered, setRendered] = useState(false);
   const svgRef      = useRef(null);
   const pressedRef  = useRef(false);
 
@@ -556,7 +574,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   // than its primary one — e.g. a corner cabinet whose primary leg is on the
   // "top" wall but is also visible here on the "left" wall's elevation.
   function isSecondaryWallView(itemData) {
-    return itemData.item_type === "corner_base_cabinet" && itemData.secondary_wall === wall && itemData.wall !== wall;
+    return isCornerShaped(itemData) && itemData.secondary_wall === wall && itemData.wall !== wall;
   }
 
   // True for the two walls whose elevation axis runs opposite to raw
@@ -881,6 +899,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       registerSrc(resolveColourSrc(colourImages, item, faceSlot(item)));
       registerSrc(resolveColourSrc(colourImages, item, "filler"));
       registerSrc(resolveColourSrc(colourImages, item, "kickboard"));
+      registerSrc(resolveColourSrc(colourImages, item, "benchtop"));
     }
   }
   const tileFillFor = (item, slot) => {
@@ -908,6 +927,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             title="Paint cabinets with their real colour-library finishes"
           >
             {showColours ? "Colours on" : "Show colours"}
+          </button>
+        )}
+        {interactive && (
+          <button
+            type="button"
+            className={`${styles.elevationBackBtn} ${rendered ? styles.elevColoursActive : ""}`}
+            onClick={() => setRendered((r) => !r)}
+            title="Show this wall as a true-to-life rendered view, head-on"
+          >
+            {rendered ? "Rendered on" : "Rendered view"}
           </button>
         )}
         <div className={styles.elevationToolbarInfo}>
@@ -946,7 +975,11 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             { type: "wall_cabinet", label: "Wall" },
             { type: "tall_cabinet", label: "Tall" },
             { type: "corner_base_cabinet", label: "Corner" },
+            { type: "corner_tall_cabinet", label: "Pantry" },
             { type: "obstruction", label: "Obstruction" },
+            { type: "window", label: "Window" },
+            { type: "door_opening", label: "Doorway" },
+            { type: "appliance", label: "Appliance" },
           ].map(({ type, label }) => (
             <div key={type} className={styles.elevationLegendItem}>
               <span className={styles.elevationLegendDot} style={{ background: ITEM_COLORS[type] }} />
@@ -995,7 +1028,24 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
         </div>
       )}
 
-      {/* SVG drawing */}
+      {/* Rendered head-on view: the actual 3D scene, camera locked to this wall.
+          Reuses every mesh (real doors + reveals, appliances, benchtops) so it's
+          exactly the 3D look, flat-on. */}
+      {rendered ? (
+        <div className={styles.elevationSvgArea}>
+          <Design3DView
+            room={room}
+            items={items}
+            elevationWall={wall}
+            colourImages={colourImages}
+            showColours={showColours}
+            onToggleColours={onToggleColours}
+            selectedItemId={selectedId}
+            onSelectItem={(id) => { setSelectedId(id); onItemSelect?.(id); }}
+            showClose={false}
+          />
+        </div>
+      ) : (
       <div className={styles.elevationSvgArea}>
         <PinchZoom enabled={zoomable}>
         <svg
@@ -1096,7 +1146,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const rw = depthMm * scale;
             const ry = floor - topMm * scale;
             const rh = (topMm - bottomMm) * scale;
-            const fill = lineOnly ? "#26313f" : (ITEM_COLORS[item.item_type] || "#888");
+            const fill = lineOnly ? "#26313f" : (item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
             return (
               <g key={`return-${item.id}`} style={{ pointerEvents: "none" }}>
                 <rect x={rx} y={ry} width={rw} height={rh}
@@ -1117,7 +1167,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const dis    = getDisp(item);
             const xMm    = dis.x_mm;
             const mountH = dis.mount_height_mm;
-            const isCorner = item.item_type === "corner_base_cabinet";
+            const isCorner = isCornerShaped(item);
             const isSecondaryView = isSecondaryWallView(item);
             // For a corner cabinet, width_mm is the primary leg's footprint
             // along its own wall — secondary_width_mm is the equivalent for
@@ -1132,7 +1182,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const kbMm   = kickboardOffsetMm(item);
             // Filler panel closes the gap between a wall/tall cabinet's top
             // and the ceiling, or the nearest obstruction above it if closer
-            const fillerMm = ((item.item_type === "wall_cabinet" || item.item_type === "tall_cabinet") && item.has_filler_panel)
+            const fillerMm = ((item.item_type === "wall_cabinet" || item.item_type === "tall_cabinet" || item.item_type === "corner_tall_cabinet") && item.has_filler_panel)
               ? (item.filler_panel_height_mm ?? fillerPanelGapMm(item, room, items))
               : 0;
             // Line mode draws cabinets as ink outlines; colour modes keep the
@@ -1171,6 +1221,12 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const fs = Math.min(Math.max(svgW / (shortLabel.length * 0.72), 7), 12);
             const canDrag = DRAGGABLE_TYPES.has(item.item_type);
             const isObstruction = item.item_type === "obstruction";
+            // Windows & doorways are decorative architectural items — no
+            // manufactured carcass, front or cut list; drawn with their own
+            // frame/glass symbol instead of the obstruction hazard hatch.
+            const isWindow = item.item_type === "window";
+            const isDoorway = item.item_type === "door_opening";
+            const isDecorative = isObstruction || isWindow || isDoorway || item.item_type === "appliance" || item.item_type === "brick_corner_pantry";
 
             // For a corner cabinet with both walls set, the wall the OTHER
             // leg is on determines where the "return" zone sits on THIS
@@ -1201,7 +1257,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   rx={2} />
                 {/* Colour-tile face wash (under the door/drawer detail, over
                     the body tint) — only when "show colours" resolves a tile. */}
-                {faceFillFor(item) && !isObstruction && (
+                {faceFillFor(item) && !isDecorative && (
                   <rect x={svgX} y={svgY} width={svgW} height={svgH}
                     fill={faceFillFor(item)} fillOpacity={isDragging ? 0.55 : 0.9}
                     rx={2} style={{ pointerEvents: "none" }} />
@@ -1210,6 +1266,22 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   <rect x={svgX} y={svgY} width={svgW} height={svgH}
                     fill="url(#obstructionHatchElev)"
                     style={{ pointerEvents: "none" }} />
+                )}
+                {/* Window — glass tint + a mullion cross inside the frame. */}
+                {isWindow && (
+                  <g style={{ pointerEvents: "none" }}>
+                    <rect x={svgX} y={svgY} width={svgW} height={svgH} fill={fill} fillOpacity={0.18} rx={2} />
+                    <line x1={svgX} y1={svgY + svgH / 2} x2={svgX + svgW} y2={svgY + svgH / 2} stroke={fill} strokeWidth={1} strokeOpacity={0.6} />
+                    <line x1={svgX + svgW / 2} y1={svgY} x2={svgX + svgW / 2} y2={svgY + svgH} stroke={fill} strokeWidth={1} strokeOpacity={0.6} />
+                  </g>
+                )}
+                {/* Doorway — an inset panel outline with a handle dot. */}
+                {isDoorway && svgW > 8 && svgH > 8 && (
+                  <g style={{ pointerEvents: "none" }}>
+                    <rect x={svgX + 3} y={svgY + 3} width={Math.max(svgW - 6, 1)} height={Math.max(svgH - 6, 1)}
+                      fill="none" stroke={fill} strokeWidth={1} strokeOpacity={0.6} rx={1} />
+                    <circle cx={svgX + svgW - 8} cy={svgY + svgH / 2} r={2} fill={fill} fillOpacity={0.7} />
+                  </g>
                 )}
 
                 {/* Corner cabinet "return" zone — the depth of the OTHER leg poking into
@@ -1253,7 +1325,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     style={{ pointerEvents: "none" }} />
                 )}
 
-                {!isObstruction && (
+                {!isDecorative && (
                   <>
                     {/* Side panels */}
                     <rect x={svgX} y={svgY} width={T} height={svgH}
@@ -1368,7 +1440,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     leaf; the fold-joint between the two leaves sits at the corner
                     itself and is never drilled, so the hinge side is the opposite of
                     wherever the return zone is, not the same side. */}
-                {isCorner && item.front_type === "doors" && doorZoneW > 10 && svgH > 20 && (() => {
+                {isCorner && item.corner_style !== "diagonal" && item.front_type === "doors" && doorZoneW > 10 && svgH > 20 && (() => {
                   const cfg = item.door_config || {};
                   const legKey = isSecondaryView ? "secondary" : "primary";
                   const isHingeLeg = (cfg.hinge_wall || "primary") === legKey;
@@ -1417,6 +1489,22 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     </g>
                   );
                 })()}
+
+                {/* Diagonal corner: the single flat door is on the angled face,
+                    which isn't in this wall's plane — so here it's marked with a
+                    diagonal across the door zone (the true face shows in plan/3D). */}
+                {isCorner && item.corner_style === "diagonal" && (item.front_type === "doors" || item.item_type === "brick_corner_pantry") && doorZoneW > 10 && svgH > 20 && (
+                  <g style={{ pointerEvents: "none" }}>
+                    <rect x={doorZoneX} y={svgY} width={doorZoneW} height={svgH}
+                      fill="none" stroke={fill} strokeWidth={0.6} strokeOpacity={0.4} />
+                    <line x1={doorZoneX} y1={svgY + svgH} x2={doorZoneX + doorZoneW} y2={svgY}
+                      stroke={fill} strokeWidth={0.9} strokeDasharray="4 2" strokeOpacity={0.6} />
+                    {doorZoneW > 34 && svgH > 30 && (
+                      <text x={doorZoneX + doorZoneW / 2} y={svgY + svgH / 2} textAnchor="middle" dominantBaseline="middle"
+                        fontSize={7} fill={fill} fillOpacity={0.6} style={{ userSelect: "none" }}>diagonal ↘</text>
+                    )}
+                  </g>
+                )}
 
                 {/* Door swing visualization — dotted V-triangle pointing to the opening edge, plus X marks at hinge positions */}
                 {!isCorner && item.front_type === "doors" && svgW > 20 && svgH > 20 && (() => {
@@ -1577,19 +1665,22 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   // and the panel's outer face lines up with the overhang edge.
                   const leftExt = low ? topH : 0;
                   const rightExt = high ? topH : 0;
+                  // Visual benchtop colour (design-tool only): a compact-laminate
+                  // tile when "show colours" is on, else a flat hex, else grey.
+                  const benchtopFill = tileFillFor(item, "benchtop") || item.benchtop_colour_hex || "rgba(120,113,108,0.55)";
                   return (
                     <g style={{ pointerEvents: "none" }}>
                       <rect x={svgX - leftExt} y={topY} width={topW + leftExt + rightExt} height={topH}
-                        fill="rgba(120,113,108,0.55)" stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
+                        fill={benchtopFill} stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
                       {/* The drop runs the full way to the floor, past the
                           kickboard, on the outside of the cabinet end. */}
                       {low && (
                         <rect x={svgX - topH} y={topY} width={topH} height={waterfallH}
-                          fill="rgba(120,113,108,0.55)" stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
+                          fill={benchtopFill} stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
                       )}
                       {high && (
                         <rect x={svgX + topW} y={topY} width={topH} height={waterfallH}
-                          fill="rgba(120,113,108,0.55)" stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
+                          fill={benchtopFill} stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
                       )}
                     </g>
                   );
@@ -1624,23 +1715,54 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     panels aren't shown here — they're on the far side, not
                     visible from the front. */}
                 {(item.end_panel_left || item.end_panel_right) && (() => {
-                  // panel_to_floor (base/tall): covers the kickboard recess too,
-                  // same as the carcass; otherwise stops at carcass height with
-                  // the kickboard strip still visible underneath.
-                  // Wall cabinets: the side panels run past a finished underside
-                  // to cover its exposed edge, so they extend by its thickness.
-                  const underThk = bottomPanelThicknessMm(item) * scale;
-                  const panelH = (item.panel_to_floor ? svgH + kbMm * scale : svgH) + underThk;
+                  // Height from the shared finishPanelVerticalSpanMm() so the
+                  // elevation, the quote import and the 3D view draw the same
+                  // panel: panel_to_floor covers the kickboard recess, a wall
+                  // cabinet's side runs past a finished underside by its
+                  // thickness, and panel_to_ceiling runs the panel UP to the
+                  // ceiling. topMm − carcass top is how far above svgY (the
+                  // carcass top) the panel reaches; 0 unless run-to-ceiling.
+                  const { topMm, heightMm } = finishPanelVerticalSpanMm(item, roomHeightMm);
+                  const [, carcassTopMm] = cabinetVerticalSpanMm(item);
+                  const panelTopY = svgY - Math.max(0, topMm - carcassTopMm) * scale;
+                  const panelH = heightMm * scale;
                   const t = Math.max(finishPanelThicknessMm(item) * scale, 1.5);
                   return (
                     <>
                       {item.end_panel_left && (
-                        <rect x={svgX - t} y={svgY} width={t} height={panelH}
+                        <rect x={svgX - t} y={panelTopY} width={t} height={panelH}
                           fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
                       )}
                       {item.end_panel_right && (
-                        <rect x={svgX + svgW} y={svgY} width={t} height={panelH}
+                        <rect x={svgX + svgW} y={panelTopY} width={t} height={panelH}
                           fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
+                      )}
+                    </>
+                  );
+                })()}
+
+                {/* Attached side fillers — fill the gap beside the cabinet, at
+                    the measured gap width, same vertical extent as an end panel
+                    (so run-to-floor / run-to-ceiling carry through). svg-left is
+                    always the viewer's left here, matching the end panels. */}
+                {(item.side_filler_left || item.side_filler_right) && (() => {
+                  const { topMm, heightMm } = finishPanelVerticalSpanMm(item, roomHeightMm);
+                  const [, carcassTopMm] = cabinetVerticalSpanMm(item);
+                  const panelTopY = svgY - Math.max(0, topMm - carcassTopMm) * scale;
+                  const panelH = heightMm * scale;
+                  const lw = (Number(item.side_filler_left_width_mm) || 0) * scale;
+                  const rw = (Number(item.side_filler_right_width_mm) || 0) * scale;
+                  return (
+                    <>
+                      {item.side_filler_left && lw > 0 && (
+                        <rect x={svgX - lw} y={panelTopY} width={lw} height={panelH}
+                          fill="rgba(245,158,11,0.4)" stroke="rgba(245,158,11,0.7)" strokeWidth={0.5}
+                          style={{ pointerEvents: "none" }} />
+                      )}
+                      {item.side_filler_right && rw > 0 && (
+                        <rect x={svgX + svgW} y={panelTopY} width={rw} height={panelH}
+                          fill="rgba(245,158,11,0.4)" stroke="rgba(245,158,11,0.7)" strokeWidth={0.5}
+                          style={{ pointerEvents: "none" }} />
                       )}
                     </>
                   );
@@ -1789,6 +1911,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
         </svg>
         </PinchZoom>
       </div>
+      )}
     </div>
   );
 }

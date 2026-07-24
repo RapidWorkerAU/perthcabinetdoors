@@ -170,7 +170,7 @@ function formFromQuote(quote) {
     customer_phone: quote.customer_phone || "",
     site_address: quote.site_address || "",
     project_name: quote.project_name || "",
-    labour_hours: quote.labour_hours ?? "",
+    labour_hours: quote.manual_labour_hours ?? quote.labour_hours ?? "",
     worker_hourly_rate: quote.worker_hourly_rate ?? "",
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
@@ -203,7 +203,7 @@ function mergeQuoteIntoForm(current, quote) {
     customer_phone: quote.customer_phone || "",
     site_address: quote.site_address || "",
     project_name: quote.project_name || "",
-    labour_hours: quote.labour_hours ?? "",
+    labour_hours: quote.manual_labour_hours ?? quote.labour_hours ?? "",
     worker_hourly_rate: quote.worker_hourly_rate ?? "",
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
@@ -840,7 +840,9 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   const totals = useMemo(
-    () => calculateQuoteTotals(form.lines, form.gst_rate, { ...form, business_defaults: businessDefaults }),
+    // form.labour_hours is the MANUAL base here (the "Hours" input); pass it as
+    // manual_labour_hours so the total = base + Σ line labour, never base×2.
+    () => calculateQuoteTotals(form.lines, form.gst_rate, { ...form, manual_labour_hours: form.labour_hours, business_defaults: businessDefaults }),
     [
       form.lines,
       form.gst_rate,
@@ -1507,7 +1509,9 @@ export default function QuoteEditor({ quoteId }) {
       const response = await fetch(`/api/admin/quotes/${quoteId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(nextForm),
+        // form.labour_hours is the MANUAL base — persist it as manual_labour_hours.
+        // The server derives labour_hours (base + Σ line labour) on recalc.
+        body: JSON.stringify({ ...nextForm, manual_labour_hours: nextForm.labour_hours }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -2671,7 +2675,7 @@ export default function QuoteEditor({ quoteId }) {
             <div className={tw.cardBody}>
               <div className={tw.grid2}>
                 <label className={tw.fieldLabel}>
-                  Hours
+                  Manual hours
                   <input className={tw.fieldInput + " font-mono"} type="number" min="0" step="0.01" value={form.labour_hours} onChange={e => updateForm("labour_hours", e.target.value)} />
                 </label>
                 <label className={tw.fieldLabel}>
@@ -2682,6 +2686,12 @@ export default function QuoteEditor({ quoteId }) {
                   </div>
                 </label>
               </div>
+              {totals.line_labour_hours > 0 && (
+                <p className="text-[11px] text-[#8b8a81] mt-2 leading-snug">
+                  + <span className="font-mono">{totals.line_labour_hours}h</span> from cabinets (auto, per-cabinet default) on top of your manual hours.
+                  Total labour: <strong className="font-mono">{totals.labour_hours}h</strong>.
+                </p>
+              )}
             </div>
           </div>
           <div className={tw.card}>

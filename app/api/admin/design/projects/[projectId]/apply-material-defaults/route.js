@@ -10,7 +10,7 @@ function dbText(value) {
   return s || null;
 }
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet"];
 
 // Unlike applyMaterialDefaults() in items/route.js (which only fills blank
 // fields when an item is first created), this OVERWRITES every relevant

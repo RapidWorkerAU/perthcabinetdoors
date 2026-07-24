@@ -15,7 +15,7 @@
 
 import { Component, Suspense, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls, Billboard, Text, Grid, Line, Edges, useTexture } from "@react-three/drei";
+import { OrbitControls, OrthographicCamera, Billboard, Text, Grid, Line, Edges, useTexture } from "@react-three/drei";
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
 
 import {
@@ -31,7 +31,10 @@ import {
   islandVirtualWall,
   getWallAxisPos,
   kickboardOffsetMm,
+  isCornerType,
+  isCornerShaped,
 } from "../../../../lib/pcd-kickboard-utils";
+import { finishPanelVerticalSpanMm } from "../../../../lib/pcd-finishpanel-utils";
 import {
   computeBenchtopRun,
   benchtopDepthMm,
@@ -53,11 +56,16 @@ const ITEM_COLORS = {
   wall_cabinet:  "#22c55e",
   tall_cabinet:  "#f97316",
   corner_base_cabinet: "#0ea5e9",
+  corner_tall_cabinet: "#0891b2",
   blind_corner_cabinet: "#06b6d4",
   floating_shelf: "#14b8a6",
   panel:         "#6b7280",
   scribe:        "#ec4899",
   obstruction:   "#57534e",
+  window:        "#38bdf8",
+  door_opening:  "#b45309",
+  appliance:     "#64748b",
+  brick_corner_pantry: "#a0522d",
 };
 const BENCHTOP_COLOR = "#787066";
 const CUTOUT_COLOR = "#1c1917";
@@ -137,11 +145,101 @@ function cabinetLegs(item, W, D) {
   const legs = [];
   const primary = cabinetFootprint(item, W, D);
   if (primary) legs.push({ rect: primary, wall: item.wall });
-  if (item.item_type === "corner_base_cabinet" && item.secondary_wall) {
+  if (isCornerShaped(item) && item.secondary_wall) {
     const secondary = cornerSecondaryFootprint(item, W, D);
     if (secondary) legs.push({ rect: secondary, wall: item.secondary_wall });
   }
   return legs;
+}
+
+// The two endpoints (room-space mm) of a diagonal corner's chamfered front
+// edge — the line the single diagonal door sits on. Mirrors the plan's
+// cornerDiagonalFootprintPoints (the L outline minus its re-entrant vertex):
+// these are the two points that flank the removed concave corner. `d` is the
+// depth, `s` the secondary width; the primary footprint rect encodes the wall
+// orientation (w/h already swapped for left/right walls).
+function diagonalDoorEndpoints(item, W, D) {
+  const r = cabinetFootprint(item, W, D);
+  if (!r || !item.secondary_wall || item.secondary_wall === item.wall) return null;
+  const { x, y, w, h } = r;
+  const d = item.depth_mm || 600;
+  const s = item.secondary_width_mm || 900;
+  let p1, p2;
+  switch (`${item.wall}:${item.secondary_wall}`) {
+    case "top:left":     p1 = [x + w, y + h];     p2 = [x + d, y + s];     break;
+    case "top:right":    p1 = [x + w, y + s];     p2 = [x + w - d, y + h]; break;
+    case "bottom:left":  p1 = [x, y + h - s];     p2 = [x + d, y];         break;
+    case "bottom:right": p1 = [x + w, y + h - s]; p2 = [x + w - d, y];     break;
+    case "left:top":     p1 = [x + s, y];         p2 = [x + w, y + d];     break;
+    case "left:bottom":  p1 = [x + w, y + h - d]; p2 = [x + s, y + h];     break;
+    case "right:top":    p1 = [x, y + d];         p2 = [x + w - s, y];     break;
+    case "right:bottom": p1 = [x + w - s, y + h]; p2 = [x, y + h - d];     break;
+    default: return null;
+  }
+  return { p1: { x: p1[0], y: p1[1] }, p2: { x: p2[0], y: p2[1] } };
+}
+
+// The right triangle (room-mm) that fills the re-entrant NOTCH of a diagonal
+// corner — the gap between the two leg boxes and the diagonal door. Its
+// hypotenuse is the door line (p1→p2); its right-angle vertex is the L's
+// concave corner. Filling it turns the two-box carcass into one solid pentagon
+// body (with a visible top and bottom) instead of an open-cornered "L + door".
+// The concave vertex is whichever of the two axis-aligned candidates lies
+// inside BOTH legs (i.e. in the corner overlap square); the other candidate is
+// the far bounding-box corner, outside the L.
+function notchTriangle(item, W, D) {
+  if (item.corner_style !== "diagonal") return null;
+  const ep = diagonalDoorEndpoints(item, W, D);
+  if (!ep) return null;
+  const Rp = cabinetFootprint(item, W, D);
+  const Rs = cornerSecondaryFootprint(item, W, D);
+  if (!Rp || !Rs) return null;
+  const c1 = { x: ep.p1.x, y: ep.p2.y };
+  const c2 = { x: ep.p2.x, y: ep.p1.y };
+  const inRect = (pt, r) => pt.x >= r.x - 1 && pt.x <= r.x + r.w + 1 && pt.y >= r.y - 1 && pt.y <= r.y + r.h + 1;
+  const concave = (inRect(c1, Rp) && inRect(c1, Rs)) ? c1 : c2;
+  return [ep.p1, concave, ep.p2];
+}
+
+// The vertical triangular prism (a declarative bufferGeometry — no `three`
+// import, per the webpack note) that closes a diagonal corner's notch. Built
+// non-indexed with normals computed on the geometry ref; double-sided so
+// winding never matters. Rendered with the carcass material so it reads as one
+// continuous body with the two leg boxes.
+function DiagonalNotchFill({ item, W, D, color, src, opacity = 0.92 }) {
+  const geoRef = useRef();
+  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  const tri = notchTriangle(item, W, D);
+  const geoKey = tri
+    ? `${bottomMm},${topMm},${tri.map((p) => `${Math.round(p.x)}:${Math.round(p.y)}`).join("|")}`
+    : "none";
+  const positions = useMemo(() => {
+    if (!tri) return null;
+    const yb = bottomMm / M, yt = topMm / M;
+    const p = tri.map((pt) => [pt.x / M, pt.y / M]); // [x, z]
+    const v = (i, y) => [p[i][0], y, p[i][1]];
+    const A = v(0, yb), B = v(1, yb), C = v(2, yb);
+    const A2 = v(0, yt), B2 = v(1, yt), C2 = v(2, yt);
+    const faces = [
+      A, C, B,            // bottom cap
+      A2, B2, C2,         // top cap
+      A, B, B2, A, B2, A2, // side A→B
+      B, C, C2, B, C2, B2, // side B→C
+      C, A, A2, C, A2, C2, // side C→A
+    ];
+    return new Float32Array(faces.flat());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geoKey]);
+  useEffect(() => { if (geoRef.current) geoRef.current.computeVertexNormals(); }, [geoKey]);
+  if (!positions) return null;
+  return (
+    <mesh>
+      <bufferGeometry ref={geoRef}>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <PanelMaterial src={src} color={color} transparent opacity={opacity} roughness={0.7} depthWrite side={2} />
+    </mesh>
+  );
 }
 
 // Extends a footprint frontward (away from the wall it backs onto) by `delta`.
@@ -232,7 +330,221 @@ function openCarcassPanels(rect, wall, carc, bottomMm, topMm) {
   return panels;
 }
 
-function CabinetMesh({ item, W, D }) {
+// A window drawn as a real glazed unit: a translucent glass pane, a perimeter
+// frame and a cross mullion, built in a local frame on the wall's room face
+// (local +X across the opening, +Y up from the sill, +Z out to the room) so it
+// reads correctly whichever wall it's on — same basis as the appliance mesh.
+function WindowMesh({ item, W, D, color }) {
+  const rect = carcassRects(item, W, D)[0];
+  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  if (!rect) return null;
+  const wall = item.wall === "island" ? islandVirtualWall(item) : item.wall;
+  let alongMm, cx, cz, rotY;
+  if (wall === "bottom")     { alongMm = rect.w; cx = rect.x + rect.w / 2; cz = rect.y;              rotY = Math.PI; }
+  else if (wall === "left")  { alongMm = rect.h; cx = rect.x + rect.w;     cz = rect.y + rect.h / 2; rotY = Math.PI / 2; }
+  else if (wall === "right") { alongMm = rect.h; cx = rect.x;              cz = rect.y + rect.h / 2; rotY = -Math.PI / 2; }
+  else                       { alongMm = rect.w; cx = rect.x + rect.w / 2; cz = rect.y + rect.h;     rotY = 0; }
+
+  const a = alongMm / M;
+  const hMet = Math.max(topMm - bottomMm, 1) / M;
+  const half = a / 2;
+  const glass = color || "#9ec6d8";
+  const frameColor = "#e9ebed";
+  const fw = Math.min(0.045, a * 0.08, hMet * 0.08); // frame bar width
+  const ft = 0.06;                                    // frame proud of glass
+  const bar = (key, x, y, sx, sy, z = 0.012, col = frameColor) => (
+    <mesh key={key} position={[x, y, z]}>
+      <boxGeometry args={[sx, sy, ft]} />
+      <meshStandardMaterial color={col} roughness={0.5} metalness={0.2} />
+    </mesh>
+  );
+  return (
+    <group position={[cx / M, bottomMm / M, cz / M]} rotation={[0, rotY, 0]}>
+      {/* glass pane, just behind the frame face */}
+      <mesh position={[0, hMet / 2, 0]}>
+        <boxGeometry args={[a, hMet, 0.02]} />
+        <meshStandardMaterial color={glass} transparent opacity={0.4} roughness={0.05} metalness={0.1} />
+      </mesh>
+      {/* perimeter frame */}
+      {bar("top", 0, hMet - fw / 2, a, fw)}
+      {bar("bot", 0, fw / 2, a, fw)}
+      {bar("lef", -half + fw / 2, hMet / 2, fw, hMet)}
+      {bar("rig", half - fw / 2, hMet / 2, fw, hMet)}
+      {/* cross mullion, a touch thinner and proud of the glass */}
+      {bar("mv", 0, hMet / 2, fw * 0.6, hMet, 0.01)}
+      {bar("mh", 0, hMet / 2, a, fw * 0.6, 0.01)}
+    </group>
+  );
+}
+
+// A doorway/opening — a subtle architrave frame plus reveals running back into
+// the wall depth, with an OPEN (see-through) interior, so it reads as a hole in
+// the wall rather than a solid coloured block. Floor-standing, no sill. Same
+// front-face local frame as the window/appliance meshes.
+function DoorwayMesh({ item, W, D }) {
+  const rect = carcassRects(item, W, D)[0];
+  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  if (!rect) return null;
+  const wall = item.wall === "island" ? islandVirtualWall(item) : item.wall;
+  let alongMm, depthMm, cx, cz, rotY;
+  if (wall === "bottom")     { alongMm = rect.w; depthMm = rect.h; cx = rect.x + rect.w / 2; cz = rect.y;              rotY = Math.PI; }
+  else if (wall === "left")  { alongMm = rect.h; depthMm = rect.w; cx = rect.x + rect.w;     cz = rect.y + rect.h / 2; rotY = Math.PI / 2; }
+  else if (wall === "right") { alongMm = rect.h; depthMm = rect.w; cx = rect.x;              cz = rect.y + rect.h / 2; rotY = -Math.PI / 2; }
+  else                       { alongMm = rect.w; depthMm = rect.h; cx = rect.x + rect.w / 2; cz = rect.y + rect.h;     rotY = 0; }
+
+  const a = alongMm / M;
+  const hMet = Math.max(topMm - bottomMm, 1) / M;
+  const dep = Math.max(depthMm / M, 0.05);
+  const half = a / 2;
+  const jt = 0.045; // architrave bar width
+  const frameColor = "#cfccc4";
+  const revealColor = "#b7b4ac";
+  const bar = (key, x, y, z, sx, sy, sz, col) => (
+    <mesh key={key} position={[x, y, z]}>
+      <boxGeometry args={[sx, sy, sz]} />
+      <meshStandardMaterial color={col} roughness={0.85} />
+    </mesh>
+  );
+  return (
+    <group position={[cx / M, bottomMm / M, cz / M]} rotation={[0, rotY, 0]}>
+      {/* Architrave (front, proud): two jambs + head, no sill. */}
+      {bar("lj", -half - jt / 2, hMet / 2, 0.02, jt, hMet + jt, 0.03, frameColor)}
+      {bar("rj", half + jt / 2, hMet / 2, 0.02, jt, hMet + jt, 0.03, frameColor)}
+      {bar("hd", 0, hMet + jt / 2, 0.02, a + 2 * jt, jt, 0.03, frameColor)}
+      {/* Reveals — the opening's inner faces going back into the wall depth, so
+          the opening reads with real thickness (a hole, not a flat outline). */}
+      {bar("lr", -half + 0.01, hMet / 2, -dep / 2, 0.02, hMet, dep, revealColor)}
+      {bar("rr", half - 0.01, hMet / 2, -dep / 2, 0.02, hMet, dep, revealColor)}
+      {bar("tr", 0, hMet - 0.01, -dep / 2, a, 0.02, dep, revealColor)}
+      {/* Faint floor threshold across the opening. */}
+      {bar("th", 0, 0.006, -dep / 2, a, 0.012, dep, revealColor)}
+    </group>
+  );
+}
+
+// A freestanding appliance drawn to read as that appliance, not a bare block.
+// The stainless body is one box; the kind-specific detail is built in a local
+// frame on the FRONT face (local +X across the front, +Y up from the floor, +Z
+// out to the room) so doors/handles land correctly whatever wall it's on:
+//   • fridge / freezer — single / double / French-door layout (door_config
+//     .fridge_style) with reveal gaps + handles;
+//   • dishwasher — a top control strip + a bar handle;
+//   • rangehood — a canopy with a chimney flue running up to the ceiling.
+function StandaloneApplianceMesh({ item, W, D, roomHmm, color, src }) {
+  const rect = carcassRects(item, W, D)[0];
+  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  if (!rect) return null;
+  const kind = item.appliance_kind || "fridge";
+  const wall = item.wall === "island" ? islandVirtualWall(item) : item.wall;
+
+  // Front-face frame: centre + Y-rotation so local +Z is the outward normal.
+  let alongMm, depthMm, cx, cz, rotY;
+  if (wall === "bottom")     { alongMm = rect.w; depthMm = rect.h; cx = rect.x + rect.w / 2; cz = rect.y;              rotY = Math.PI; }
+  else if (wall === "left")  { alongMm = rect.h; depthMm = rect.w; cx = rect.x + rect.w;     cz = rect.y + rect.h / 2; rotY = Math.PI / 2; }
+  else if (wall === "right") { alongMm = rect.h; depthMm = rect.w; cx = rect.x;              cz = rect.y + rect.h / 2; rotY = -Math.PI / 2; }
+  else                       { alongMm = rect.w; depthMm = rect.h; cx = rect.x + rect.w / 2; cz = rect.y + rect.h;     rotY = 0; }
+
+  const a = alongMm / M;
+  const hMet = Math.max(topMm - bottomMm, 1) / M;
+  const dMet = Math.max(depthMm, 1) / M;
+  const steel = item.colour_hex || color || "#c7ccd1";
+  const dark = "#5b6169";
+  const metal = "#8a9099";
+  const body = boxFromRect(rect, bottomMm, topMm);
+
+  const vGap = (key, x, y0, y1) => (
+    <mesh key={key} position={[x, (y0 + y1) / 2, 0.006]}>
+      <boxGeometry args={[0.006, Math.max(y1 - y0, 0.001), 0.006]} />
+      <meshStandardMaterial color={dark} roughness={0.85} />
+    </mesh>
+  );
+  const hGap = (key, x0, x1, y) => (
+    <mesh key={key} position={[(x0 + x1) / 2, y, 0.006]}>
+      <boxGeometry args={[Math.max(x1 - x0, 0.001), 0.006, 0.006]} />
+      <meshStandardMaterial color={dark} roughness={0.85} />
+    </mesh>
+  );
+  const vHandle = (key, x, y0, y1) => (
+    <mesh key={key} position={[x, (y0 + y1) / 2, 0.022]}>
+      <boxGeometry args={[0.02, Math.max(y1 - y0, 0.01), 0.024]} />
+      <meshStandardMaterial color={metal} roughness={0.35} metalness={0.6} />
+    </mesh>
+  );
+  const hHandle = (key, x0, x1, y) => (
+    <mesh key={key} position={[(x0 + x1) / 2, y, 0.022]}>
+      <boxGeometry args={[Math.max(x1 - x0, 0.01), 0.02, 0.024]} />
+      <meshStandardMaterial color={metal} roughness={0.35} metalness={0.6} />
+    </mesh>
+  );
+
+  const details = [];
+  if (kind === "fridge" || kind === "freezer") {
+    const style = item.door_config?.fridge_style || "double";
+    const inset = 0.03;
+    if (style === "single") {
+      const frz = hMet * 0.32;
+      details.push(hGap("h", -a / 2 + inset, a / 2 - inset, frz));
+      details.push(vHandle("hu", a / 2 - 0.06, frz + 0.1, hMet - 0.1));
+      details.push(vHandle("hd", a / 2 - 0.06, 0.08, frz - 0.08));
+    } else if (style === "french") {
+      const midY = hMet * 0.45;
+      details.push(hGap("h", -a / 2 + inset, a / 2 - inset, midY));
+      details.push(vGap("v", 0, midY + 0.02, hMet - 0.02));
+      details.push(vHandle("hl", -0.06, midY + 0.1, hMet - 0.1));
+      details.push(vHandle("hr", 0.06, midY + 0.1, hMet - 0.1));
+      details.push(hHandle("dr", -0.12, 0.12, midY - 0.08));
+    } else { // double (side-by-side)
+      details.push(vGap("v", 0, 0.02, hMet - 0.02));
+      details.push(vHandle("hl", -0.06, 0.12, hMet - 0.12));
+      details.push(vHandle("hr", 0.06, 0.12, hMet - 0.12));
+    }
+  } else if (kind === "dishwasher") {
+    details.push(
+      <mesh key="ctrl" position={[0, hMet - 0.03, 0.011]}>
+        <boxGeometry args={[a * 0.94, 0.05, 0.014]} />
+        <meshStandardMaterial color={metal} roughness={0.5} metalness={0.4} />
+      </mesh>
+    );
+    details.push(hHandle("hh", -a * 0.35, a * 0.35, hMet - 0.1));
+  } else if (kind === "rangehood") {
+    details.push(
+      <mesh key="lip" position={[0, 0.02, 0.011]}>
+        <boxGeometry args={[a * 0.96, 0.04, 0.02]} />
+        <meshStandardMaterial color={metal} roughness={0.5} metalness={0.5} />
+      </mesh>
+    );
+  }
+
+  const chimney = kind === "rangehood" ? (() => {
+    const ceilY = (roomHmm - bottomMm) / M;
+    const chimH = ceilY - hMet;
+    if (chimH <= 0.02) return null;
+    const chimW = Math.min(a * 0.42, 0.35);
+    const chimD = Math.min(dMet * 0.6, 0.24);
+    const backZ = -dMet + chimD / 2 + 0.005;
+    return (
+      <mesh position={[0, hMet + chimH / 2, backZ]}>
+        <boxGeometry args={[chimW, chimH, chimD]} />
+        <PanelMaterial src={src} color={steel} roughness={0.4} metalness={0.25} />
+      </mesh>
+    );
+  })() : null;
+
+  return (
+    <>
+      <mesh position={body.position}>
+        <boxGeometry args={body.size} />
+        <PanelMaterial src={src} color={steel} roughness={0.4} metalness={0.25} />
+      </mesh>
+      <group position={[cx / M, bottomMm / M, cz / M]} rotation={[0, rotY, 0]}>
+        {details}
+        {chimney}
+      </group>
+    </>
+  );
+}
+
+function CabinetMesh({ item, W, D, roomHmm, elevationWall = null }) {
   const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
   const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   const carcassSrc = usePanelSrc(item, "carcass");
@@ -247,6 +559,47 @@ function CabinetMesh({ item, W, D }) {
   // cabinet — render it as one opaque coloured block so its colour reads clearly
   // and it presents a solid target to click/tap in 3D. Its per-item colour_hex
   // drives the colour (falling back to the default obstruction grey).
+  // Windows & doorways render like an obstruction — a decorative block, no
+  // carcass — but a window is translucent glass rather than a solid panel.
+  // A bricked-in corner pantry: a solid decorative mass (the L-shaped brick
+  // legs filling the corner) with a normal door on the chamfered diagonal
+  // face. Never cabinetry — no carcass hollow, no drawer/door grid.
+  if (item.item_type === "brick_corner_pantry") {
+    return (
+      <>
+        {cabinetLegs(item, W, D).map((leg, i) => {
+          const { position, size } = boxFromRect(leg.rect, bottomMm, topMm);
+          return (
+            <mesh key={i} position={position}>
+              <boxGeometry args={size} />
+              <PanelMaterial src={carcassSrc} color={color} roughness={0.95} />
+            </mesh>
+          );
+        })}
+        <DiagonalNotchFill item={item} W={W} D={D} color={color} src={carcassSrc} opacity={1} />
+        <BrickPantryDoor item={item} W={W} D={D} />
+      </>
+    );
+  }
+
+  // A freestanding appliance — drawn to actually read as the appliance (fridge /
+  // dishwasher / rangehood), not a bare block.
+  if (item.item_type === "appliance") {
+    return <StandaloneApplianceMesh item={item} W={W} D={D} roomHmm={roomHmm} color={color} src={carcassSrc} />;
+  }
+
+  // A window — a proper glazed unit: frame + cross mullion + glass, so it reads
+  // like a window in the rendered elevation, not a flat blue rectangle.
+  if (item.item_type === "window") {
+    return <WindowMesh item={item} W={W} D={D} color={color} />;
+  }
+
+  // A doorway — an OPENING, not a solid block: a subtle architrave frame with
+  // reveals into the wall depth and an open, see-through interior.
+  if (item.item_type === "door_opening") {
+    return <DoorwayMesh item={item} W={W} D={D} />;
+  }
+
   if (item.item_type === "obstruction") {
     return (
       <>
@@ -294,6 +647,13 @@ function CabinetMesh({ item, W, D }) {
           </mesh>
         );
       })}
+      {/* Diagonal corner: fill the notch so the body is one solid pentagon
+          (visible top + bottom), not two L-boxes with an open gap. Skipped in a
+          rendered elevation — head-on, that pentagon body reads as a busy 3D top
+          above the door; the flat legs + diagonal door alone are cleaner. */}
+      {isCornerType(item) && item.corner_style === "diagonal" && !elevationWall && (
+        <DiagonalNotchFill item={item} W={W} D={D} color={color} src={carcassSrc} opacity={opacity} />
+      )}
     </>
   );
 }
@@ -337,6 +697,11 @@ function benchtopSlabs(item, items, W, D) {
 }
 
 function BenchtopMesh({ item, items, W, D }) {
+  // Visual benchtop colour (design-tool only): a compact-laminate tile when
+  // "show colours" is on and one is picked, otherwise a flat hex, otherwise the
+  // default grey. usePanelSrc is a hook, so it's called before any early return.
+  const benchtopSrc = usePanelSrc(item, "benchtop");
+  const benchtopColor = useMonoColor(item.benchtop_colour_hex || BENCHTOP_COLOR);
   const bt = benchtopSlabs(item, items, W, D);
   if (!bt) return null;
   const { rects, thickness, underside } = bt;
@@ -371,41 +736,125 @@ function BenchtopMesh({ item, items, W, D }) {
   // straight top and for a corner's primary leg (a corner sink lands there).
   const alongX = bt.corner ? true : bt.alongX;
   const cRect = cabinetLegs(item, W, D)[0].rect;
-  const cutMeshes = benchtopCutouts(item).map((cut, i) => {
+  const topSurfaceY = (underside + thickness) / M;
+  const cutWall = bt.wall || item.wall;
+  const cuts = benchtopCutouts(item);
+  const cutFixtures = cuts.map((cut, i) => {
     const aw = (alongX ? cut.width_mm : cut.depth_mm) / M;
     const ad = (alongX ? cut.depth_mm : cut.width_mm) / M;
+    // Spread multiple cutouts along the cabinet run rather than stacking them.
+    const frac = cuts.length > 1 ? (i + 1) / (cuts.length + 1) : 0.5;
+    const alongPos = alongX ? cRect.x + cRect.w * frac : cRect.y + cRect.h * frac;
+    const crossPos = alongX ? cRect.y + cRect.h / 2 : cRect.x + cRect.w / 2;
     return {
       key: i,
-      position: [(cRect.x + cRect.w / 2) / M, (underside + thickness) / M, (cRect.y + cRect.h / 2) / M],
-      size: [aw, thickness / M + 0.002, ad],
-      cooktop: cut.type === "cooktop",
+      type: cut.type,
+      cx: (alongX ? alongPos : crossPos) / M,
+      cz: (alongX ? crossPos : alongPos) / M,
+      aw, ad,
     };
   });
 
   return (
     <>
       {slabRects.map((rect, i) => {
-        const slab = boxFromRect(rect, underside, underside + thickness);
+        // A corner benchtop is two leg slabs that OVERLAP at the corner square.
+        // Their tops were coplanar — invisible when both were flat grey, but a
+        // colour/texture makes them z-fight into stripes across the corner. Drop
+        // each successive slab a hair so the first (primary leg) wins the overlap
+        // cleanly; the ~0.5mm step at the join is imperceptible.
+        const drop = i * 0.5;
+        const slab = boxFromRect(rect, underside - drop, underside + thickness - drop);
         return (
           <mesh key={`slab-${i}`} position={slab.position}>
             <boxGeometry args={slab.size} />
-            <meshStandardMaterial color={BENCHTOP_COLOR} roughness={0.35} metalness={0.05} />
+            <PanelMaterial src={benchtopSrc} color={benchtopColor} roughness={0.35} metalness={0.05} />
           </mesh>
         );
       })}
       {waterfalls.map((w, i) => (
         <mesh key={`wf-${i}`} position={w.position}>
           <boxGeometry args={w.size} />
-          <meshStandardMaterial color={BENCHTOP_COLOR} roughness={0.35} metalness={0.05} />
+          <PanelMaterial src={benchtopSrc} color={benchtopColor} roughness={0.35} metalness={0.05} />
         </mesh>
       ))}
-      {cutMeshes.map((c) => (
-        <mesh key={`cut-${c.key}`} position={c.position}>
-          <boxGeometry args={c.size} />
-          <meshStandardMaterial color={c.cooktop ? "#b91c1c" : CUTOUT_COLOR} roughness={0.5} />
-        </mesh>
+      {cutFixtures.map((c) => (
+        c.type === "cooktop"
+          ? <CooktopMesh key={`cut-${c.key}`} cx={c.cx} cz={c.cz} topY={topSurfaceY} aw={c.aw} ad={c.ad} />
+          : <SinkMesh key={`cut-${c.key}`} cx={c.cx} cz={c.cz} topY={topSurfaceY} aw={c.aw} ad={c.ad} wall={cutWall} />
       ))}
     </>
+  );
+}
+
+// A cooktop set into the benchtop: a black glass hob sitting just proud of the
+// stone, with four burner rings printed on it. Reads as a cooktop from above
+// (the main view a kitchen plan gets) rather than a flat red rectangle.
+function CooktopMesh({ cx, cz, topY, aw, ad }) {
+  const br = Math.min(aw, ad) * 0.16;
+  const burners = [[-0.24, -0.22], [0.24, -0.22], [-0.24, 0.22], [0.24, 0.22]];
+  return (
+    <group position={[cx, topY, cz]}>
+      <mesh position={[0, 0.006, 0]}>
+        <boxGeometry args={[aw, 0.012, ad]} />
+        <meshStandardMaterial color="#161618" roughness={0.15} metalness={0.2} />
+      </mesh>
+      {burners.map(([fx, fz], i) => (
+        <mesh key={i} position={[fx * aw, 0.014, fz * ad]}>
+          <cylinderGeometry args={[br, br, 0.003, 28]} />
+          <meshStandardMaterial color="#3a3a3d" roughness={0.35} metalness={0.3} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// A sink set into the benchtop: a stainless rim flush with the stone, a recessed
+// basin below, and a mixer tap standing at the back edge (toward the wall).
+function SinkMesh({ cx, cz, topY, aw, ad, wall }) {
+  const basinW = aw * 0.86, basinD = ad * 0.82, basinDepth = 0.16;
+  // Tap sits ON the sink's back edge, reaching forward over the basin. The back
+  // edge is along the axis PERPENDICULAR to the wall — Z for a top/bottom wall
+  // (dim = ad), X for a left/right wall (dim = aw). Using the wrong one placed
+  // the tap well off the side of the sink. Short deck fixture, not a tall post.
+  const sideWall = wall === "left" || wall === "right";
+  const perpDim = sideWall ? aw : ad;
+  const edge = Math.max(0.02, perpDim * 0.5 - 0.02);
+  const postH = 0.11;
+  let tapX = 0, tapZ = 0, spoutAxis = "z", spoutSign = 1;
+  if (wall === "top")         { tapZ = -edge; spoutAxis = "z"; spoutSign = 1; }
+  else if (wall === "bottom") { tapZ = edge;  spoutAxis = "z"; spoutSign = -1; }
+  else if (wall === "left")   { tapX = -edge; spoutAxis = "x"; spoutSign = 1; }
+  else if (wall === "right")  { tapX = edge;  spoutAxis = "x"; spoutSign = -1; }
+  else                        { tapZ = -edge; spoutAxis = "z"; spoutSign = 1; }
+  // Low metalness so it reads as light chrome — a high-metal surface renders
+  // near-black in this scene (no environment map to reflect).
+  const chrome = "#d3d7db";
+  const spoutLen = 0.07;
+  const spoutPos = spoutAxis === "z" ? [tapX, postH, tapZ + spoutSign * spoutLen / 2] : [tapX + spoutSign * spoutLen / 2, postH, tapZ];
+  const spoutSize = spoutAxis === "z" ? [0.018, 0.018, spoutLen] : [spoutLen, 0.018, 0.018];
+  return (
+    <group position={[cx, topY, cz]}>
+      {/* stainless rim flush with the bench */}
+      <mesh position={[0, 0.004, 0]}>
+        <boxGeometry args={[aw, 0.01, ad]} />
+        <meshStandardMaterial color="#b9bec4" roughness={0.3} metalness={0.5} />
+      </mesh>
+      {/* recessed basin */}
+      <mesh position={[0, -basinDepth / 2, 0]}>
+        <boxGeometry args={[basinW, basinDepth, basinD]} />
+        <meshStandardMaterial color="#8f959c" roughness={0.45} metalness={0.4} />
+      </mesh>
+      {/* mixer tap: short post + forward spout, on the back edge */}
+      <mesh position={[tapX, postH / 2, tapZ]}>
+        <cylinderGeometry args={[0.011, 0.011, postH, 16]} />
+        <meshStandardMaterial color={chrome} roughness={0.3} metalness={0.4} />
+      </mesh>
+      <mesh position={spoutPos}>
+        <boxGeometry args={spoutSize} />
+        <meshStandardMaterial color={chrome} roughness={0.3} metalness={0.4} />
+      </mesh>
+    </group>
   );
 }
 
@@ -518,12 +967,15 @@ function edgeBoardRect(rect, edge, t) {
 // default to the DOOR finish (via the "endpanel" slot); only the sides the user
 // enabled are drawn. panelSideEdges maps viewer left/right to the room-space
 // footprint edge, matching the plan and elevation.
-function EndPanelMesh({ item, W, D }) {
+function EndPanelMesh({ item, room, W, D }) {
   const src = usePanelSrc(item, "endpanel");
   const color = useMonoColor(ITEM_COLORS[item.item_type] || "#888");
   if (item.item_type === "obstruction" || (!item.end_panel_left && !item.end_panel_right)) return null;
   const { leftEdge, rightEdge } = panelSideEdges(item);
-  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  // Shared vertical span so the 3D end/side panel matches the quote and the
+  // elevation: extends past a finished underside (wall), down to the floor
+  // (panel_to_floor) and up to the ceiling (panel_to_ceiling).
+  const { bottomMm, topMm } = finishPanelVerticalSpanMm(item, room?.height_mm);
   const t = Number(item.finish_panel_style?.thickness_mm) || 18;
   const rect = cabinetLegs(item, W, D)[0]?.rect;
   if (!rect) return null;
@@ -538,6 +990,38 @@ function EndPanelMesh({ item, W, D }) {
           <mesh key={i} position={box.position}>
             <boxGeometry args={box.size} />
             <PanelMaterial src={src} color={color} roughness={0.55} />
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
+// Attached side fillers — the board that closes the gap beside a cabinet, at
+// the measured gap width. Same edge anchor and vertical span as an end panel
+// (so run-to-floor / run-to-ceiling carry through), but the board's along-wall
+// dimension is the gap width, not a thin thickness. Rendered in the filler
+// amber so it reads as infill rather than a finished end.
+function SideFillerMesh({ item, room, W, D }) {
+  const color = useMonoColor("#f59e0b");
+  if (item.item_type === "obstruction" || (!item.side_filler_left && !item.side_filler_right)) return null;
+  const { leftEdge, rightEdge } = panelSideEdges(item);
+  const { bottomMm, topMm } = finishPanelVerticalSpanMm(item, room?.height_mm);
+  const rect = cabinetLegs(item, W, D)[0]?.rect;
+  if (!rect) return null;
+  const lw = Number(item.side_filler_left_width_mm) || 0;
+  const rw = Number(item.side_filler_right_width_mm) || 0;
+  const boards = [];
+  if (item.side_filler_left && lw > 0)  boards.push(edgeBoardRect(rect, leftEdge, lw));
+  if (item.side_filler_right && rw > 0) boards.push(edgeBoardRect(rect, rightEdge, rw));
+  return (
+    <>
+      {boards.filter(Boolean).map((r, i) => {
+        const box = boxFromRect(r, bottomMm, topMm);
+        return (
+          <mesh key={i} position={box.position}>
+            <boxGeometry args={box.size} />
+            <PanelMaterial src={null} color={color} roughness={0.55} />
           </mesh>
         );
       })}
@@ -671,8 +1155,11 @@ function frontGroups(item, W, D) {
 
   // A corner cabinet: one bi-fold leaf per leg. Each leaf covers the leg minus
   // the depth-square at the inner corner, so it sits at the outer end.
-  if (item.item_type === "corner_base_cabinet") {
+  if (isCornerType(item)) {
     if (ft !== "doors") return [];
+    // Diagonal corner: a single flat door on the angled face — rendered by
+    // DiagonalDoorMesh (a rotated slab), not the axis-aligned bi-fold leaves.
+    if (item.corner_style === "diagonal") return [];
     const cfg = item.door_config || {};
     const depth = item.depth_mm || 600;
     const grip = doorRowGapMm(cfg) > 0 ? (((bottomMm + topMm) / 2 <= BENCH_HEIGHT_MM) ? "top" : "bottom") : null;
@@ -749,6 +1236,117 @@ function DoorPanel({ basis, cell, src }) {
   );
 }
 
+// The single flat door on a DIAGONAL corner's angled face — a standalone slab
+// centred on the chamfer line and rotated about the vertical axis to lie along
+// it. The other doors use the axis-locked faceBasis, but a diagonal face isn't
+// parallel to any wall, so this one is placed and rotated directly.
+function DiagonalDoorMesh({ item, W, D }) {
+  const src = usePanelSrc(item, "door");
+  if (!isCornerType(item) || item.corner_style !== "diagonal" || (item.front_type || "none") !== "doors") return null;
+  const ep = diagonalDoorEndpoints(item, W, D);
+  if (!ep) return null;
+  const dx = ep.p2.x - ep.p1.x;
+  const dy = ep.p2.y - ep.p1.y;
+  const L = Math.hypot(dx, dy);
+  if (L <= 1) return null;
+  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  const t = Number(item.door_style?.thickness_mm) || 18;
+  const position = [
+    (ep.p1.x + ep.p2.x) / 2 / M,
+    (bottomMm + (topMm - bottomMm) / 2) / M,
+    (ep.p1.y + ep.p2.y) / 2 / M,
+  ];
+  // three.js +Y rotation maps local +X to (cos, 0, -sin); align it with the
+  // chamfer direction (dx, dz=dy) → rotY = atan2(-dy, dx).
+  const rotY = Math.atan2(-dy, dx);
+  return (
+    <mesh position={position} rotation={[0, rotY, 0]}>
+      <boxGeometry args={[L / M, Math.max(topMm - bottomMm, 1) / M, t / M]} />
+      <PanelMaterial src={src} color="#e7e5e4" roughness={0.5} />
+    </mesh>
+  );
+}
+
+// A proper bricked-in door on the pantry's diagonal face: an architrave frame
+// (two jambs + head) with a door leaf and a handle, sized by door_config
+// (width_mm/height_mm/handle_side) and CENTRED on the diagonal wall. Width and
+// height default to an auto fit when unset. Everything is built in a local
+// frame rotated onto the diagonal plane — local +X runs along the diagonal
+// (door centred at x=0), +Y is up from the floor, +Z faces the room. rotY is
+// flipped by π when needed so the frame/leaf/handle sit on the room side, not
+// buried in the brick.
+function BrickPantryDoor({ item, W, D }) {
+  const doorSrc = usePanelSrc(item, "door");
+  const ep = diagonalDoorEndpoints(item, W, D);
+  if (!ep) return null;
+  const dx = ep.p2.x - ep.p1.x;
+  const dy = ep.p2.y - ep.p1.y;
+  const L = Math.hypot(dx, dy);
+  if (L <= 1) return null;
+
+  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  const wallHmm = Math.max(topMm - bottomMm, 1);
+
+  const cfg = item.door_config || {};
+  const frameMm = 60; // architrave width on each side / head
+  const maxDoorWmm = Math.max(200, L - 2 * frameMm - 20);
+  const maxDoorHmm = Math.max(300, wallHmm - frameMm - 20);
+  const autoWmm = Math.min(820, maxDoorWmm);
+  const autoHmm = Math.min(2040, maxDoorHmm);
+  const doorWmm = Math.min(Math.max(Number(cfg.width_mm) || autoWmm, 150), maxDoorWmm);
+  const doorHmm = Math.min(Math.max(Number(cfg.height_mm) || autoHmm, 250), maxDoorHmm);
+  const handleRight = cfg.handle_side === "right";
+
+  // Orient so local +Z faces the room. The candidate normal for rotY below is
+  // (-dy, dx) in room space; if it points away from the room centre, flip.
+  const midX = (ep.p1.x + ep.p2.x) / 2;
+  const midY = (ep.p1.y + ep.p2.y) / 2;
+  let rotY = Math.atan2(-dy, dx);
+  if ((-dy) * (W / 2 - midX) + dx * (D / 2 - midY) < 0) rotY += Math.PI;
+
+  // metres
+  const dwm = doorWmm / M, dhm = doorHmm / M, frameW = frameMm / M;
+  const leafZ = 0.014;   // door face proud of the brick diagonal
+  const frameZ = 0.024;  // architrave stands a touch further out
+  const groupPos = [midX / M, bottomMm / M, midY / M];
+
+  const frameColor = "#f2efe8";
+  const doorColor = "#e9e5dd";
+  const handleColor = "#b0893f";
+  // +Z faces the room, so a viewer looks along -Z with +X to their right
+  // (standard camera basis) — handle "right" → local +X, "left" → local -X.
+  const handleX = (handleRight ? 1 : -1) * (dwm / 2 - 0.06);
+  const handleY = Math.min(1.0, dhm - 0.15);
+
+  return (
+    <group position={groupPos} rotation={[0, rotY, 0]}>
+      {/* Architrave: left jamb, right jamb, head. */}
+      <mesh position={[-(dwm / 2 + frameW / 2), dhm / 2, frameZ]}>
+        <boxGeometry args={[frameW, dhm + frameW, 0.035]} />
+        <meshStandardMaterial color={frameColor} roughness={0.6} />
+      </mesh>
+      <mesh position={[dwm / 2 + frameW / 2, dhm / 2, frameZ]}>
+        <boxGeometry args={[frameW, dhm + frameW, 0.035]} />
+        <meshStandardMaterial color={frameColor} roughness={0.6} />
+      </mesh>
+      <mesh position={[0, dhm + frameW / 2, frameZ]}>
+        <boxGeometry args={[dwm + 2 * frameW, frameW, 0.035]} />
+        <meshStandardMaterial color={frameColor} roughness={0.6} />
+      </mesh>
+      {/* Door leaf. */}
+      <mesh position={[0, dhm / 2, leafZ]}>
+        <boxGeometry args={[dwm, dhm, 0.02]} />
+        <PanelMaterial src={doorSrc} color={doorColor} roughness={0.5} />
+      </mesh>
+      {/* Lever handle. */}
+      <mesh position={[handleX, handleY, leafZ + 0.02]}>
+        <boxGeometry args={[0.02, 0.12, 0.03]} />
+        <meshStandardMaterial color={handleColor} roughness={0.35} metalness={0.6} />
+      </mesh>
+    </group>
+  );
+}
+
 // A dark matte panel filling the carcass face behind the coloured door/drawer
 // slabs. Because the slabs stand proud and are inset within their cell, this
 // backing shows through the reveal gap around every front as a soft recessed
@@ -793,18 +1391,22 @@ function ApplianceMesh({ basis, cell }) {
     );
   };
   const vH = v1 - v0;
+  const aw = a1 - a0;
   const parts = [];
   // Recessed cavity floor (dark), giving the opening visible depth.
   parts.push(box(a0, a1, v0, v1, -0.045, 0.006, "#2b2b2b", 0.9));
   if (appliance === "microwave") {
-    parts.push(box(a0, a0 + (a1 - a0) * 0.66, v0 + vH * 0.1, v1 - vH * 0.1, -0.006, 0.02, "#1a1a1a", 0.35, { metalness: 0.3 }));
-    parts.push(box(a0 + (a1 - a0) * 0.68, a1, v0 + vH * 0.1, v1 - vH * 0.1, -0.004, 0.02, "#4b4b4b", 0.6));
+    parts.push(box(a0, a0 + aw * 0.66, v0 + vH * 0.1, v1 - vH * 0.1, -0.006, 0.02, "#1a1a1a", 0.35, { metalness: 0.3 }));
+    parts.push(box(a0 + aw * 0.68, a1, v0 + vH * 0.1, v1 - vH * 0.1, -0.004, 0.02, "#4b4b4b", 0.6));
   } else if (appliance === "cooktop") {
     parts.push(box(a0, a1, v0, v1, -0.004, 0.016, "#232323", 0.4, { metalness: 0.4 }));
   } else {
-    // Oven: control strip across the top, dark glass door below.
+    // Oven: control strip + knobs across the top, black glass door with a
+    // window and a proud stainless handle bar below.
     parts.push(box(a0, a1, v1 - vH * 0.2, v1, -0.004, 0.022, "#4b4b4b", 0.6));
     parts.push(box(a0, a1, v0 + vH * 0.06, v1 - vH * 0.24, -0.006, 0.02, "#141414", 0.3, { metalness: 0.35 }));
+    parts.push(box(a0 + aw * 0.16, a1 - aw * 0.16, v0 + vH * 0.14, v1 - vH * 0.36, -0.002, 0.01, "#26262a", 0.2, { metalness: 0.4 }));
+    parts.push(box(a0 + aw * 0.12, a1 - aw * 0.12, v1 - vH * 0.30, v1 - vH * 0.26, 0.012, 0.02, "#9aa0a6", 0.35, { metalness: 0.6 }));
   }
   return <>{parts.filter(Boolean).map((p, i) => <group key={i}>{p}</group>)}</>;
 }
@@ -960,6 +1562,51 @@ function ItemLabel({ item, W, D }) {
 // a JPEG data URL; setAngle(preset) parks the camera at a named isometric angle
 // first. Lives inside the Canvas so it can reach the renderer, camera and
 // controls. Requires the Canvas's preserveDrawingBuffer so toDataURL works.
+// Locks the view to a true head-on ORTHOGRAPHIC elevation of one wall — the
+// "rendered elevation" mode. Positions the camera dead in front of the wall and
+// sizes the ortho frustum (via zoom, since r3f's ortho maps 1 unit = 1px) to
+// fit the wall's width×height into the canvas. OrbitControls keeps pan+zoom but
+// has rotation disabled, so the wall never tips out of plane. Remounted per wall
+// (keyed on elevationWall by the caller) so switching walls re-frames cleanly.
+function ElevationCamera({ wall, W, D, H }) {
+  const size = useThree((s) => s.size);
+  const w = W / M, d = D / M, h = H / M;
+  // Camera sits OUTSIDE the room, dead in front of the wall, so the ENTIRE room
+  // depth is in front of it — every cabinet on the two returning (perpendicular)
+  // walls renders and shows its carcass end/cross-section at the edge, wherever
+  // it sits along that wall. The caller excludes the OPPOSITE wall's cabinets so
+  // they can't occlude the wall we're facing. Ortho: this distance doesn't
+  // change the framing (that's `zoom`), only what's in front vs behind.
+  const span = Math.max(w, d, h) * 2;
+  let position;
+  if (wall === "top")         position = [w / 2, h / 2, d + span];
+  else if (wall === "bottom") position = [w / 2, h / 2, -span];
+  else if (wall === "left")   position = [w + span, h / 2, d / 2];
+  else                        position = [-span, h / 2, d / 2]; // right
+  const frustW = (wall === "top" || wall === "bottom") ? w : d;
+  const margin = 1.14;
+  const zoom = Math.max(1, Math.min(size.width / (frustW * margin), size.height / (h * margin)));
+  // Geometry sits between ~span (near returning-wall ends) and ~span+axisLen
+  // (the far wall) from the camera. Keep near/far snug around that so the depth
+  // buffer stays precise and proud door panels don't z-fight the carcass.
+  const axisLen = (wall === "top" || wall === "bottom") ? d : w;
+  return <OrthographicCamera makeDefault position={position} zoom={zoom} near={span * 0.4} far={(span + axisLen) * 1.3} />;
+}
+
+// The wall's outline in a rendered elevation — a crisp rectangle at the wall
+// plane (ceiling top, floor bottom, the two corner edges) so the extent of the
+// wall reads, the way the schematic elevation frames it. The floor plane the
+// Room already draws gives the ground; this adds the boundary.
+function ElevationBounds({ wall, W, D, H }) {
+  const w = W / M, d = D / M, h = H / M;
+  let pts;
+  if (wall === "top")         pts = [[0, 0, 0], [w, 0, 0], [w, h, 0], [0, h, 0], [0, 0, 0]];
+  else if (wall === "bottom") pts = [[0, 0, d], [w, 0, d], [w, h, d], [0, h, d], [0, 0, d]];
+  else if (wall === "left")   pts = [[0, 0, 0], [0, 0, d], [0, h, d], [0, h, 0], [0, 0, 0]];
+  else                        pts = [[w, 0, 0], [w, 0, d], [w, h, d], [w, h, 0], [w, 0, 0]]; // right
+  return <Line points={pts} color="#9ca3af" lineWidth={1.5} />;
+}
+
 function CaptureRig({ onReady, center, dims }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
@@ -1055,9 +1702,10 @@ function Room({ W, D, H, wallsVisible }) {
   );
 }
 
-export default function Design3DView({ room, items, onClose, colourImages, showColours, onToggleColours, selectedItemId, onSelectItem, onCaptureReady, mono = false, touch = false, showClose = true }) {
+export default function Design3DView({ room, items, onClose, colourImages, showColours, onToggleColours, selectedItemId, onSelectItem, onCaptureReady, mono = false, touch = false, showClose = true, elevationWall = null }) {
   const controlsRef = useRef();
   const [wallsVisible, setWallsVisible] = useState(true);
+  const [labelsVisible, setLabelsVisible] = useState(true);
   // The hover handlers set a pointer cursor; make sure it doesn't linger if the
   // view closes while the cursor is over a cabinet.
   useEffect(() => () => { document.body.style.cursor = "auto"; }, []);
@@ -1067,9 +1715,39 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
   const w = W / M, d = D / M, h = H / M;
   const center = [w / 2, h * 0.35, d / 2];
 
+  // In rendered-elevation mode the OrbitControls target is the centre of the
+  // wall we're facing (at mid-height), so pan/zoom stay anchored to that wall.
+  const elevTarget = elevationWall === "top" ? [w / 2, h / 2, 0]
+    : elevationWall === "bottom" ? [w / 2, h / 2, d]
+    : elevationWall === "left" ? [0, h / 2, d / 2]
+    : elevationWall === "right" ? [w, h / 2, d / 2]
+    : center;
+
   // Only the item types that have a physical footprint — the plan filters
   // unplaced items the same way (item.wall must be set).
-  const placed = (items || []).filter((i) => i.wall && ITEM_COLORS[i.item_type]);
+  let placed = (items || []).filter((i) => i.wall && ITEM_COLORS[i.item_type]);
+  // A rendered elevation shows only the wall we're facing — like a real
+  // elevation drawing. Keep items whose PRIMARY or SECONDARY (corner return) leg
+  // is on this wall, plus an island facing it. That keeps the wall's cabinets
+  // and any corner cabinet that belongs to it (its return still shows as a thin
+  // carcass cross-section at the edge), but drops standalone cabinets on the
+  // adjacent/opposite walls — a full-height pantry on a side wall was projecting
+  // a big box across the view and occluding this wall.
+  if (elevationWall) {
+    // A blind corner cabinet is a single-wall base cabinet (no secondary leg),
+    // so it isn't caught by the secondary_wall test the L-corners use. But it
+    // IS a corner piece — like other returning cabinets it should show its
+    // carcass cross-section from the adjacent wall — so keep blind corners that
+    // sit on a wall perpendicular to the one we're viewing.
+    const perpWalls = (elevationWall === "top" || elevationWall === "bottom")
+      ? ["left", "right"] : ["top", "bottom"];
+    placed = placed.filter((i) =>
+      i.wall === elevationWall ||
+      i.secondary_wall === elevationWall ||
+      (i.wall === "island" && islandVirtualWall(i) === elevationWall) ||
+      (i.item_type === "blind_corner_cabinet" && perpWalls.includes(i.wall))
+    );
+  }
 
   // Touch gets larger tap targets and pinch wording; desktop keeps the compact
   // overlay. Base style is shared so the three buttons stay visually identical.
@@ -1083,6 +1761,7 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", background: "#f2f1ee" }}>
+      {!elevationWall && (<>
       <div style={{ position: "absolute", top: 12, left: 16, zIndex: 2, display: "flex", gap: 10, alignItems: "center", maxWidth: "45%" }}>
         {!touch && <span style={{ fontSize: 13, fontWeight: 600, color: "#1c1c1a" }}>3D view · {room?.name}</span>}
         <span style={{ fontSize: 11, color: "#78716c" }}>
@@ -1101,6 +1780,18 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
           }}
         >
           {wallsVisible ? "Walls on" : "Walls off"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setLabelsVisible((v) => !v)}
+          title="Show or hide the cabinet name labels"
+          style={{
+            ...btnBase,
+            background: labelsVisible ? "#fff" : "#1c1917",
+            color: labelsVisible ? "#1c1c1a" : "#fff",
+          }}
+        >
+          {labelsVisible ? "Labels on" : "Labels off"}
         </button>
         {onToggleColours && (
           <button
@@ -1126,6 +1817,7 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
           </button>
         )}
       </div>
+      </>)}
 
       <Canvas
         shadows
@@ -1165,7 +1857,9 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
           fadeDistance={Math.max(w, d) * 3}
           infiniteGrid={false}
         />
-        <Room W={W} D={D} H={H} wallsVisible={wallsVisible} />
+        <Room W={W} D={D} H={H} wallsVisible={elevationWall ? false : wallsVisible} />
+        {elevationWall && <ElevationCamera key={elevationWall} wall={elevationWall} W={W} D={D} H={H} />}
+        {elevationWall && <ElevationBounds wall={elevationWall} W={W} D={D} H={H} />}
         {onCaptureReady && <CaptureRig onReady={onCaptureReady} center={center} dims={{ w, h, d }} />}
 
         {(() => {
@@ -1173,9 +1867,8 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
             <group
               key={item.id}
               // A genuine click (not an orbit drag — r3f only fires onClick when
-              // the pointer barely moved) selects the cabinet, which drives the
-              // right sidebar. stopPropagation so only the front-most cabinet
-              // under the cursor is picked, not the ones behind it.
+              // the pointer barely moved) selects the cabinet. stopPropagation so
+              // only the front-most cabinet under the cursor is picked.
               onClick={(e) => { e.stopPropagation(); onSelectItem?.(item.id); }}
               onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
               onPointerOut={() => { document.body.style.cursor = "auto"; }}
@@ -1184,19 +1877,21 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
                 <FloatingShelfMesh item={item} W={W} D={D} />
               ) : (
                 <>
-                  <CabinetMesh item={item} W={W} D={D} />
+                  <CabinetMesh item={item} W={W} D={D} roomHmm={H} elevationWall={elevationWall} />
                   <KickboardMesh item={item} W={W} D={D} />
                   <FillerMesh item={item} room={room} items={placed} W={W} D={D} />
-                  <EndPanelMesh item={item} W={W} D={D} />
+                  <EndPanelMesh item={item} room={room} W={W} D={D} />
+                  <SideFillerMesh item={item} room={room} W={W} D={D} />
                   <UndersidePanelMesh item={item} W={W} D={D} />
                   <BackPanelMesh item={item} W={W} D={D} />
                   <BenchtopMesh item={item} items={placed} W={W} D={D} />
                   <ShelfMesh item={item} W={W} D={D} />
                   <FrontDetail item={item} W={W} D={D} />
+                  <DiagonalDoorMesh item={item} W={W} D={D} />
                 </>
               )}
               {item.id === selectedItemId && <SelectionHighlight item={item} W={W} D={D} />}
-              <ItemLabel item={item} W={W} D={D} />
+              {!elevationWall && labelsVisible && <ItemLabel item={item} W={W} D={D} />}
             </group>
           ));
           return (
@@ -1212,12 +1907,14 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
         })()}
 
         <OrbitControls
+          key={`oc-${elevationWall || "orbit"}`}
           ref={controlsRef}
-          target={center}
+          target={elevationWall ? elevTarget : center}
           makeDefault
           enablePan
-          minDistance={0.8}
-          maxDistance={Math.max(w, d, h) * 4}
+          enableRotate={!elevationWall}
+          minDistance={elevationWall ? 0.01 : 0.8}
+          maxDistance={Math.max(w, d, h) * (elevationWall ? 12 : 4)}
           maxPolarAngle={Math.PI / 2.05}
         />
       </Canvas>

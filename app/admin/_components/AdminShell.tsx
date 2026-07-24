@@ -50,6 +50,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure    },
   { label: 'Products',       href: '/admin/products',       icon: IconBox             },
   { label: 'Options',        href: '/admin/options',        icon: IconPalette         },
+  { label: 'Benchtop Materials', href: '/admin/benchtop-materials', icon: IconRulerMeasure },
+  { label: 'Hardware',       href: '/admin/hardware',       icon: IconBox             },
+  { label: 'Business Defaults', href: '/admin/business-defaults', icon: IconSettings   },
   { label: 'Settings',       href: '/admin/settings',       icon: IconSettings        },
 ]
 
@@ -66,6 +69,9 @@ const BOTTOM_MORE: NavItem[] = [
   { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure},
   { label: 'Products',       href: '/admin/products',       icon: IconBox         },
   { label: 'Options',        href: '/admin/options',        icon: IconPalette     },
+  { label: 'Benchtop Materials', href: '/admin/benchtop-materials', icon: IconRulerMeasure },
+  { label: 'Hardware',       href: '/admin/hardware',       icon: IconBox         },
+  { label: 'Business Defaults', href: '/admin/business-defaults', icon: IconSettings },
   { label: 'Settings',       href: '/admin/settings',       icon: IconSettings    },
 ]
 
@@ -80,6 +86,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/orders':         'Orders',
   '/admin/products':       'Products',
   '/admin/options':        'Colour Library',
+  '/admin/benchtop-materials': 'Benchtop Materials',
+  '/admin/hardware':       'Hardware',
+  '/admin/business-defaults': 'Business Defaults',
   '/admin/settings':       'Settings',
   '/admin/design':         'Design Tool',
   '/admin/projects':       'Projects',

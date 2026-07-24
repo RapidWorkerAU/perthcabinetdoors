@@ -11,7 +11,7 @@ const MOBILE_ITEM_TYPES = undefined;
 
 const TYPE_LABELS = {
   base_cabinet: "Base cabinet", wall_cabinet: "Wall cabinet", tall_cabinet: "Tall cabinet",
-  corner_base_cabinet: "Corner cabinet", panel: "Panel", scribe: "Scribe", obstruction: "Obstruction",
+  corner_base_cabinet: "Corner cabinet", corner_tall_cabinet: "Corner pantry", panel: "Panel", scribe: "Scribe", obstruction: "Obstruction",
 };
 
 /**

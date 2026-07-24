@@ -105,6 +105,7 @@ export function cabinetConfigRow(config, quoteId, lineItemId) {
     width_mm: dbNumber(config.width_mm),
     depth_mm: dbNumber(config.depth_mm),
     is_corner: Boolean(config.is_corner),
+    corner_style: config.corner_style === "diagonal" ? "diagonal" : "l_shape",
     secondary_width_mm: dbNumber(config.secondary_width_mm),
     carcass_material: dbText(config.carcass_material),
     carcass_finish: dbText(config.carcass_finish),

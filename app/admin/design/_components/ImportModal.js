@@ -6,13 +6,14 @@ import { useRouter } from "next/navigation";
 import styles from "../design.module.css";
 import { Dropdown } from "@/components/ui/Dropdown";
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet"];
 
 const TYPE_LABELS = {
   base_cabinet: "Base Cabinet",
   wall_cabinet: "Wall Cabinet",
   tall_cabinet: "Tall Cabinet",
   corner_base_cabinet: "Corner Base Cabinet",
+  corner_tall_cabinet: "Corner Pantry",
   blind_corner_cabinet: "Blind Corner Cabinet",
   door: "Door",
   drawer_front: "Drawer Front",
@@ -29,7 +30,7 @@ function itemLabel(item) {
 // A mixed cabinet contributes to both from its sections; a corner is one
 // bi-fold door per wall it touches.
 function frontCounts(item) {
-  if (item.item_type === "corner_base_cabinet") return { doors: item.secondary_wall ? 2 : 1, drawers: 0 };
+  if (item.item_type === "corner_base_cabinet" || item.item_type === "corner_tall_cabinet") return { doors: item.secondary_wall ? 2 : 1, drawers: 0 };
   const ft = item.front_type;
   if (ft === "doors") {
     const cfg = item.door_config || {};
@@ -116,7 +117,7 @@ export default function ImportModal({ projectId, items: allItems, rooms, onClose
   const router = useRouter();
   // Obstructions are spatial-only (walls, nib walls, recesses) — never
   // manufactured or quoted, so they never appear in the import list at all.
-  const items = useMemo(() => allItems.filter((i) => i.item_type !== "obstruction"), [allItems]);
+  const items = useMemo(() => allItems.filter((i) => !["obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"].includes(i.item_type)), [allItems]);
   const [quotes, setQuotes]       = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading]     = useState(true);

@@ -31,7 +31,7 @@ const SECTIONS = [
 
 function emptyDefaults() {
   return {
-    carcass: { base_cabinet: {}, wall_cabinet: {}, tall_cabinet: {}, corner_base_cabinet: {}, blind_corner_cabinet: {} },
+    carcass: { base_cabinet: {}, wall_cabinet: {}, tall_cabinet: {}, corner_base_cabinet: {}, corner_tall_cabinet: {}, blind_corner_cabinet: {} },
     floating_shelf: {},
     shelf: {},
     door: {},

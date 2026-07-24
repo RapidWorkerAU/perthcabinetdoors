@@ -9,7 +9,7 @@ import { itemPricing, categoryFor, PRICE_CATEGORIES } from "./cabinetPricing";
 const MARGIN_KEY = "pcd_mobile_margin_pct";
 const TYPE_LABELS = {
   base_cabinet: "Base cabinet", wall_cabinet: "Wall cabinet",
-  tall_cabinet: "Tall cabinet", corner_base_cabinet: "Corner cabinet",
+  tall_cabinet: "Tall cabinet", corner_base_cabinet: "Corner cabinet", corner_tall_cabinet: "Corner pantry",
   blind_corner_cabinet: "Blind corner cabinet", panel: "Panel", scribe: "Scribe",
   floating_shelf: "Floating shelf",
 };

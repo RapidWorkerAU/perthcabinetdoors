@@ -30,6 +30,7 @@ function buildPatch(payload) {
   const bool = (key, fb = false) => { if (key in payload) patch[key] = Boolean(payload[key]); };
 
   str("label"); str("wall"); str("secondary_wall"); str("material"); str("finish"); str("colour"); str("colour_hex"); str("notes");
+  str("corner_style"); str("appliance_kind");
   str("thickness"); str("profile_type"); str("profile"); str("edge_mould"); str("hinge_qty");
   str("shelf_material"); str("shelf_finish"); str("shelf_colour");
   int("x_mm", 0); int("y_mm", 0); int("rotation", 0); int("mount_height_mm");
@@ -37,7 +38,7 @@ function buildPatch(payload) {
   int("secondary_width_mm"); int("blind_width_mm"); str("blind_side");
   int("sort_order", 0);
   int("carcass_thickness_mm", 16); int("back_panel_thickness_mm", 16);
-  int("scribe_thickness_mm", 18);
+  int("scribe_thickness_mm", 18); int("panel_thickness_mm");
   int("shelf_qty", 0); int("shelf_thickness_mm", 16);
   num("cost_per_sqm_carcass"); num("cost_per_sqm_shelf");
   num("unit_cost_per_sqm_ex_gst");
@@ -47,14 +48,21 @@ function buildPatch(payload) {
   bool("has_filler_panel");
   int("filler_panel_height_mm"); int("filler_panel_thickness_mm", 16); str("filler_panel_span");
   bool("end_panel_left"); bool("end_panel_right"); bool("has_back_panel"); bool("panel_to_floor");
+  bool("panel_to_ceiling");
+  bool("side_filler_left"); bool("side_filler_right");
+  int("side_filler_left_width_mm"); int("side_filler_right_width_mm"); int("side_filler_thickness_mm", 18);
   bool("back_panel_wall1"); bool("back_panel_wall2");
   str("back_panel_span"); int("back_panel_qty", 1);
   bool("has_benchtop"); str("benchtop_span");
+  str("benchtop_material"); num("benchtop_cost_per_sqm");
+  str("benchtop_colour_hex");
+  if ("benchtop_colour_style" in payload) patch.benchtop_colour_style = payload.benchtop_colour_style ?? null;
   int("benchtop_thickness_mm", 40); int("benchtop_overhang_mm", 20);
   bool("benchtop_waterfall_left"); bool("benchtop_waterfall_right");
   if ("benchtop_cutouts" in payload) patch.benchtop_cutouts = Array.isArray(payload.benchtop_cutouts) ? payload.benchtop_cutouts : [];
   bool("has_bottom_panel"); str("bottom_panel_span"); int("bottom_panel_qty", 1);
   str("front_type");
+  str("handle_name"); num("handle_cost_ex_gst"); str("hinge_model"); num("hinge_cost_ex_gst");
   bool("has_rangehood");
   int("rangehood_housing_height_mm"); int("rangehood_channel_width_mm");
   if ("door_config" in payload) patch.door_config = payload.door_config ?? null;

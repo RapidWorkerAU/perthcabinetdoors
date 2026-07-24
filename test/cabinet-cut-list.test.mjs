@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateCabinetCutList } from "../lib/pcd-cabinet-utils.js";
+import { isCornerType } from "../lib/pcd-kickboard-utils.js";
 
 const piece = (cfg, label) => calculateCabinetCutList(cfg).find((p) => p.label === label);
 
@@ -13,6 +14,49 @@ const CORNER = {
   is_corner: true, width_mm: 900, secondary_width_mm: 900, depth_mm: 600, height_mm: 720,
   carcass_thickness_mm: 16, back_panel_included: true, back_panel_thickness_mm: 16, shelf_qty: 1,
 };
+
+// Corner pantry (audit p2-5): a tall L-shaped corner. The cut-list is driven by
+// the is_corner flag, which the import sets from isCornerType — so corner_tall
+// must be recognised as a corner and must reuse the L-shape path, not a box.
+test("corner_tall is a corner type (drives is_corner → corner cut-list)", () => {
+  assert.equal(isCornerType({ item_type: "corner_base_cabinet" }), true);
+  assert.equal(isCornerType({ item_type: "corner_tall_cabinet" }), true);
+  assert.equal(isCornerType("corner_tall_cabinet"), true);
+  assert.equal(isCornerType({ item_type: "tall_cabinet" }), false);
+  assert.equal(isCornerType({ item_type: "base_cabinet" }), false);
+});
+
+test("corner_tall reuses the L-shape corner cut-list, not a straight box", () => {
+  const tallCorner  = { ...CORNER, height_mm: 2100 };
+  const straightBox = { ...CORNER, is_corner: false, height_mm: 2100 };
+  const cornerPieces = calculateCabinetCutList(tallCorner);
+  const boxPieces    = calculateCabinetCutList(straightBox);
+  // The L-shape produces more pieces (two legs' worth) than a straight box, and
+  // the tall height flows through to the side panels.
+  assert.ok(cornerPieces.length > boxPieces.length, "corner should have more pieces than a box");
+  const anySide = cornerPieces.find((p) => /side/i.test(p.label));
+  assert.ok(anySide && anySide.height_mm === 2100, "side height should be the tall height");
+});
+
+test("diagonal corner cuts a chamfered carcass (returns + pentagon top), not the L-shape", () => {
+  const diag = { ...CORNER, corner_style: "diagonal" };
+  const pieces = calculateCabinetCutList(diag);
+  assert.ok(pieces.some((p) => /outer end/i.test(p.label)), "should have return side panels");
+  assert.ok(pieces.some((p) => /Top panel \(diagonal/i.test(p.label)), "should have a diagonal top panel");
+  // The pentagon top is cut from the bounding sheet (width_mm × secondary_width_mm, less back).
+  const top = pieces.find((p) => /Top panel \(diagonal/i.test(p.label));
+  assert.equal(top.width_mm, 900 - 16);   // width_mm - back thickness
+  assert.equal(top.height_mm, 900 - 16);  // secondary_width_mm - back thickness
+  // The chamfer instruction rides in the piece notes: legs = width-depth and
+  // secondary_width-depth, hypotenuse = the door width. CORNER is 900/900/600.
+  assert.match(top.notes, /chamfer/i, "diagonal top panel carries a chamfer note");
+  assert.match(top.notes, /300mm.*×.*300mm/, "chamfer legs = width-depth (900-600)");
+  assert.match(top.notes, /424mm/, "diagonal face = hypot(300,300) ≈ 424, = the door");
+  // Distinct from the L-shape output.
+  const lLabels = calculateCabinetCutList({ ...CORNER, corner_style: "l_shape" }).map((p) => p.label).sort().join("|");
+  const dLabels = pieces.map((p) => p.label).sort().join("|");
+  assert.notEqual(dLabels, lLabels, "diagonal and L-shape cut-lists should differ");
+});
 
 test("corner: the wall-2 back spans its whole face", () => {
   // The `secondary_width - depth` subtraction correctly tiles the FOOTPRINT

@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import styles from "../design.module.css";
-import { islandVirtualWall } from "../../../../lib/pcd-kickboard-utils";
+import { islandVirtualWall, isCornerType, isCornerShaped } from "../../../../lib/pcd-kickboard-utils";
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
 import { endPanelSpanMm, finishPanelThicknessMm } from "../../../../lib/pcd-finishpanel-utils";
 import { benchtopDepthMm, benchtopCutouts, benchtopWaterfallSides, benchtopThicknessMm } from "../../../../lib/pcd-benchtop-utils";
@@ -47,6 +47,7 @@ const ITEM_COLORS = {
   wall_cabinet:  "#22c55e",
   tall_cabinet:  "#f97316",
   corner_base_cabinet: "#0ea5e9",
+  corner_tall_cabinet: "#0891b2",
   blind_corner_cabinet: "#06b6d4",
   floating_shelf: "#14b8a6",
   door:          "#a855f7",
@@ -54,6 +55,10 @@ const ITEM_COLORS = {
   panel:         "#6b7280",
   scribe:        "#ec4899",
   obstruction:   "#57534e",
+  window:        "#38bdf8",
+  door_opening:  "#b45309",
+  appliance:     "#64748b",
+  brick_corner_pantry: "#a0522d",
 };
 
 const ITEM_SHORT = {
@@ -61,6 +66,7 @@ const ITEM_SHORT = {
   wall_cabinet:  "Wall",
   tall_cabinet:  "Tall",
   corner_base_cabinet: "Corner",
+  corner_tall_cabinet: "Pantry",
   blind_corner_cabinet: "Blind",
   floating_shelf: "Shelf",
   door:          "Door",
@@ -68,6 +74,10 @@ const ITEM_SHORT = {
   panel:         "Panel",
   scribe:        "Scribe",
   obstruction:   "Obstr.",
+  window:        "Window",
+  door_opening:  "Doorway",
+  appliance:     "Appliance",
+  brick_corner_pantry: "Brick",
 };
 
 // --- Geometry helpers ---
@@ -211,6 +221,40 @@ function cornerFootprintPoints(item, rect, lay) {
   }
 }
 
+// The DIAGONAL corner outline (5 points): the same L-shape as above but with
+// the re-entrant (concave) inner corner removed, so the two front edges are
+// joined by a single straight diagonal — the chamfered face the diagonal door
+// sits on. Each case is cornerFootprintPoints' 6 points minus the concave
+// vertex.
+function cornerDiagonalFootprintPoints(item, rect, lay) {
+  if (!item.secondary_wall || item.secondary_wall === item.wall) return null;
+  const { scale } = lay;
+  const { x, y, w, h } = rect;
+  const d = Math.max((item.depth_mm || 600) * scale, 4);
+  const s = Math.max((item.secondary_width_mm || 900) * scale, 4);
+
+  switch (`${item.wall}:${item.secondary_wall}`) {
+    case "top:left":
+      return [[x, y], [x + w, y], [x + w, y + h], [x + d, y + s], [x, y + s]];
+    case "top:right":
+      return [[x, y], [x + w, y], [x + w, y + s], [x + w - d, y + h], [x, y + h]];
+    case "bottom:left":
+      return [[x, y + h - s], [x + d, y], [x + w, y], [x + w, y + h], [x, y + h]];
+    case "bottom:right":
+      return [[x + w, y + h - s], [x + w - d, y], [x, y], [x, y + h], [x + w, y + h]];
+    case "left:top":
+      return [[x, y], [x + s, y], [x + w, y + d], [x + w, y + h], [x, y + h]];
+    case "left:bottom":
+      return [[x, y], [x + w, y], [x + w, y + h - d], [x + s, y + h], [x, y + h]];
+    case "right:top":
+      return [[x + w - s, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y + d]];
+    case "right:bottom":
+      return [[x, y], [x + w, y], [x + w, y + h], [x + w - s, y + h], [x, y + h - d]];
+    default:
+      return null;
+  }
+}
+
 // The secondary leg's own bounding rect (depth × secondary_width), used for
 // marking its back panel — the primary rect (cabinetSvgRect's own output)
 // already IS the primary leg's rect, but there's no standalone rect for the
@@ -246,6 +290,9 @@ function cornerSecondaryRect(item, rect, lay) {
 // than lining up, so a single strip would misrepresent the return zone as
 // open. Returns null if not a valid corner pair.
 function cornerFrontSegments(item, rect, lay) {
+  // A diagonal corner has no L-shaped front faces — its single door sits on the
+  // chamfered diagonal edge (the pentagon outline), so skip the L door strips.
+  if (item.corner_style === "diagonal") return null;
   if (!item.secondary_wall || item.secondary_wall === item.wall) return null;
   const { scale } = lay;
   const { x, y, w, h } = rect;
@@ -386,8 +433,12 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
   const frontEdge = frontEdgeFor(item.wall, item.rotation);
   const cx = x + w / 2;
   const cy = y + h / 2;
-  const isCorner  = item.item_type === "corner_base_cabinet";
-  const footprint = isCorner ? cornerFootprintPoints(item, rect, lay) : null;
+  const isCorner  = isCornerType(item);
+  const footprint = isCornerShaped(item)
+    ? (item.corner_style === "diagonal"
+        ? cornerDiagonalFootprintPoints(item, rect, lay)
+        : cornerFootprintPoints(item, rect, lay))
+    : null;
   // Wall cabinets are mounted above the floor, so their plan footprint can
   // legitimately sit right over a base/tall cabinet below — render them
   // translucent + dashed (the standard "hidden line" convention for
@@ -398,6 +449,11 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
   // brick recess) — solid + hazard-hatched so it reads as "structure", not
   // a cabinet, and never gets a front-face strip since it has no front.
   const isObstruction = item.item_type === "obstruction";
+  // Windows & doorways are decorative architectural items — like an obstruction
+  // they have no front face, cut list or quote line, so they skip the
+  // front-face strip; they read by their own colour (blue / tan) and label
+  // rather than the obstruction hazard hatch.
+  const isDecorative = isObstruction || item.item_type === "window" || item.item_type === "door_opening" || item.item_type === "appliance" || item.item_type === "brick_corner_pantry";
 
   const label      = item.label || ITEM_SHORT[item.item_type] || "?";
   const shortLabel = label.length > 12 ? label.slice(0, 11) + "…" : label;
@@ -466,7 +522,7 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
           style={{ pointerEvents: "none" }}
         />
       )}
-      {isObstruction ? null : footprint ? (
+      {isDecorative ? null : footprint ? (
         cornerFrontSegments(item, rect, lay)?.map((seg, i) => (
           <rect
             key={i}
@@ -532,8 +588,10 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
         }
         return (
           <g style={{ pointerEvents: "none" }}>
+            {/* A flat benchtop colour tints the front-edge line (the only
+                benchtop mark in plan); a library colour shows in elevation/3D. */}
             <line x1={x1} y1={y1} x2={x2} y2={y2}
-              stroke="rgba(68,64,60,0.75)" strokeWidth={1.2} strokeDasharray="6 3" />
+              stroke={item.benchtop_colour_hex || "rgba(68,64,60,0.75)"} strokeWidth={item.benchtop_colour_hex ? 2 : 1.2} strokeDasharray="6 3" />
             {wfLines.map((l, i) => (
               <line key={`wf-${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
                 stroke="#78716c" strokeWidth={2.6} strokeLinecap="round" />
@@ -547,10 +605,36 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
               const r = bt.horizontal
                 ? { x: midAlong - alongPx / 2, y: Math.min(acrossStart, acrossStart + bt.sign * acrossPx), w: alongPx, h: acrossPx }
                 : { x: Math.min(acrossStart, acrossStart + bt.sign * acrossPx), y: midAlong - alongPx / 2, w: acrossPx, h: alongPx };
+              const rw = Math.max(r.w, 1), rh = Math.max(r.h, 1);
+              const isCooktop = cut.type === "cooktop";
+              const col = isCooktop ? "#dc2626" : "#0ea5e9";
+              // Tap sits on the edge nearest the wall (the back), reaching in.
+              let tapCx = r.x + rw / 2, tapCy = r.y + rh / 2;
+              if (bt.horizontal) {
+                const nearY = Math.abs(r.y - bt.backAt) <= Math.abs(r.y + rh - bt.backAt) ? r.y : r.y + rh;
+                tapCy = nearY + (nearY === r.y ? 1 : -1) * rh * 0.14;
+              } else {
+                const nearX = Math.abs(r.x - bt.backAt) <= Math.abs(r.x + rw - bt.backAt) ? r.x : r.x + rw;
+                tapCx = nearX + (nearX === r.x ? 1 : -1) * rw * 0.14;
+              }
               return (
-                <rect key={i} x={r.x} y={r.y} width={Math.max(r.w, 1)} height={Math.max(r.h, 1)}
-                  fill="none" stroke={cut.type === "cooktop" ? "#dc2626" : "#0ea5e9"}
-                  strokeWidth={1.2} strokeDasharray="3 2" rx={2} />
+                <g key={i}>
+                  <rect x={r.x} y={r.y} width={rw} height={rh}
+                    fill={isCooktop ? "rgba(28,25,23,0.5)" : "rgba(14,165,233,0.12)"}
+                    stroke={col} strokeWidth={1.2} rx={isCooktop ? 2 : Math.min(rw, rh) * 0.22} />
+                  {isCooktop
+                    ? [[0.3, 0.32], [0.7, 0.32], [0.3, 0.68], [0.7, 0.68]].map(([fx, fy], bi) => (
+                        <circle key={bi} cx={r.x + rw * fx} cy={r.y + rh * fy} r={Math.min(rw, rh) * 0.14}
+                          fill="none" stroke="#e5e7eb" strokeWidth={1} />
+                      ))
+                    : (
+                        <>
+                          <rect x={r.x + rw * 0.14} y={r.y + rh * 0.16} width={rw * 0.72} height={rh * 0.68}
+                            fill="none" stroke={col} strokeWidth={1} rx={Math.min(rw, rh) * 0.14} />
+                          <circle cx={tapCx} cy={tapCy} r={Math.max(1.5, Math.min(rw, rh) * 0.08)} fill={col} />
+                        </>
+                      )}
+                </g>
               );
             })}
           </g>
@@ -591,6 +675,29 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
               key={key}
               x={s.x} y={s.y} width={s.w} height={s.h}
               fill="#a855f7" fillOpacity={0.9}
+              style={{ pointerEvents: "none" }}
+            />
+          );
+        });
+      })()}
+      {/* Attached side fillers — an outside-the-box strip like the end panel,
+          but at the measured gap width rather than a board thickness, in the
+          filler amber. Non-corner only, matching the end-panel strip above. */}
+      {!isCorner && (item.side_filler_left || item.side_filler_right) && (() => {
+        const { leftEdge, rightEdge } = panelSideEdges(item);
+        const edges = [];
+        if (item.side_filler_left && Number(item.side_filler_left_width_mm) > 0)
+          edges.push({ edge: leftEdge,  key: "sfl", t: Number(item.side_filler_left_width_mm) * lay.scale });
+        if (item.side_filler_right && Number(item.side_filler_right_width_mm) > 0)
+          edges.push({ edge: rightEdge, key: "sfr", t: Number(item.side_filler_right_width_mm) * lay.scale });
+        return edges.map(({ edge, key, t }) => {
+          const s = outerEdgeStripRect(rect, edge, Math.max(t, 1.5));
+          if (!s) return null;
+          return (
+            <rect
+              key={key}
+              x={s.x} y={s.y} width={s.w} height={s.h}
+              fill="rgba(245,158,11,0.55)" stroke="rgba(245,158,11,0.8)" strokeWidth={0.5}
               style={{ pointerEvents: "none" }}
             />
           );
@@ -849,7 +956,7 @@ export default function DesignCanvas({
       const secondaryLegObs = items
         .filter((i) =>
           i.id !== drag.itemId &&
-          i.item_type === "corner_base_cabinet" &&
+          isCornerShaped(i) &&
           i.secondary_wall === newWall &&
           i.wall !== newWall &&
           verticalRangesOverlap(draggingVRange, cabinetVerticalRange(i))

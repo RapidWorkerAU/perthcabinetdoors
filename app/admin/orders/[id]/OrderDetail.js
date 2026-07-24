@@ -243,7 +243,9 @@ function buildOrderPlanningRows(items) {
               thickness: piece.thickness_mm ? `${piece.thickness_mm}mm` : item.thickness || "-",
               material: cutMaterialDisplay(item, piece),
               edging: cutEdgingDisplay(item, piece),
-              notes: panelPlanFor(item, panelKey).notes,
+              // The piece's own cutting instruction (e.g. a diagonal corner's
+              // chamfer) comes first, then any manual per-panel planning note.
+              notes: [piece.notes, panelPlanFor(item, panelKey).notes].filter(Boolean).join(" — "),
             });
           }
         });

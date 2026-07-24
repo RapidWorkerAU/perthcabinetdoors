@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState, useRef } from "react";
 import styles from "../design.module.css";
-import { computeKickboardRun, computeAllKickboardRuns, kickboardSegments, kickboardOffsetMm } from "../../../../lib/pcd-kickboard-utils";
+import StageQuoteModal from "./StageQuoteModal";
+import { computeKickboardRun, computeAllKickboardRuns, kickboardSegments, kickboardOffsetMm, isCornerType } from "../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, computeAllBackPanelRuns, splitBackPanelWidths, backPanelSegment } from "../../../../lib/pcd-backpanel-utils";
 import { computeBottomPanelRun, computeAllBottomPanelRuns, bottomPanelSegment } from "../../../../lib/pcd-bottompanel-utils";
 import { computeFillerPanelRun, computeAllFillerPanelRuns, fillerPanelSegment, fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
@@ -16,12 +17,17 @@ const ITEM_COLORS = {
   wall_cabinet:  "#22c55e",
   tall_cabinet:  "#f97316",
   corner_base_cabinet: "#0ea5e9",
+  corner_tall_cabinet: "#0891b2",
   blind_corner_cabinet: "#06b6d4",
   door:          "#a855f7",
   drawer_front:  "#8b5cf6",
   panel:         "#6b7280",
   scribe:        "#ec4899",
   obstruction:   "#57534e",
+  window:        "#38bdf8",
+  door_opening:  "#b45309",
+  appliance:     "#64748b",
+  brick_corner_pantry: "#a0522d",
 };
 
 const TYPE_SHORT = {
@@ -29,12 +35,17 @@ const TYPE_SHORT = {
   wall_cabinet:  "wall",
   tall_cabinet:  "tall",
   corner_base_cabinet: "corner",
+  corner_tall_cabinet: "pantry",
   blind_corner_cabinet: "blind",
   door:          "door",
   drawer_front:  "drwr",
   panel:         "panel",
   scribe:        "scribe",
   obstruction:   "obstr.",
+  window:        "window",
+  door_opening:  "doorway",
+  appliance:     "appl.",
+  brick_corner_pantry: "brick",
 };
 
 // Friendly fallback label when an item has no custom label yet (every item
@@ -45,19 +56,24 @@ const TYPE_LABELS = {
   wall_cabinet:  "Wall Cabinet",
   tall_cabinet:  "Tall Cabinet",
   corner_base_cabinet: "Corner Base Cabinet",
+  corner_tall_cabinet: "Corner Pantry",
   blind_corner_cabinet: "Blind Corner Cabinet",
   door:          "Door",
   drawer_front:  "Drawer Front",
   panel:         "Panel",
   scribe:        "Scribe",
   obstruction:   "Obstruction",
+  window:        "Window",
+  door_opening:  "Doorway",
+  appliance:     "Appliance",
+  brick_corner_pantry: "Brick Corner Pantry",
 };
 
 function itemDisplayLabel(item) {
   return item.label || TYPE_LABELS[item.item_type] || item.item_type;
 }
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "blind_corner_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet"];
 
 /**
  * Computes the board cut list for a cabinet item, mirroring
@@ -77,9 +93,45 @@ const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_b
 // implementation here since this function's shape (dim1/axis1/dim2/axis2 for
 // the left panel's UI display) differs from that one's (width_mm/height_mm/
 // area_sqm for quote line costing).
+// Diagonal (chamfered) corner — mirrors calculateDiagonalCornerCutList in
+// lib/pcd-cabinet-utils.js so this preview matches the imported quote lines.
+// The top/bottom/shelves are pentagons cut from a rectangular blank; the
+// chamfer note tells the bench where to trim the angled front (legs = the
+// projection past depth on each wall, hypotenuse = the door width).
+function computeDiagonalCornerCutList(item, W, H, D, T, BT, shelfQty, secW) {
+  const returnDepth = Math.max(0, D - BT);
+  const topW = Math.max(0, W - BT);
+  const topD = Math.max(0, secW - BT);
+  const leg1 = Math.max(0, W - D);
+  const leg2 = Math.max(0, secW - D);
+  const hyp = Math.round(Math.hypot(leg1, leg2));
+  const note = (leg1 > 0 && leg2 > 0)
+    ? `Chamfer: trim ${Math.round(leg1)}×${Math.round(leg2)}mm off the room corner (diagonal ${hyp}mm = door).`
+    : "Chamfered pentagon — cut from the rectangular blank; see plan.";
+  const parts = [
+    { name: "Side — Wall 1 outer end", dim1: H, axis1: "H", dim2: returnDepth, axis2: "D" },
+    { name: "Side — Wall 2 outer end", dim1: H, axis1: "H", dim2: returnDepth, axis2: "D" },
+    { name: "Top (pentagon — cut from sheet)", dim1: topW, axis1: "W", dim2: topD, axis2: "D", note },
+    { name: "Bottom (pentagon — cut from sheet)", dim1: topW, axis1: "W", dim2: topD, axis2: "D", note },
+  ];
+  if (BT > 0) {
+    parts.push({ name: "Back — Wall 1", dim1: W, axis1: "W", dim2: H, axis2: "H", material: "back" });
+    parts.push({ name: "Back — Wall 2", dim1: Math.max(0, secW - BT), axis1: "W", dim2: H, axis2: "H", material: "back" });
+  }
+  for (let i = 0; i < shelfQty; i++) {
+    const suffix = shelfQty === 1 ? "" : ` ${i + 1}`;
+    parts.push({ name: `Shelf${suffix} (pentagon — cut from sheet)`, dim1: topW, axis1: "W", dim2: topD, axis2: "D", material: "shelf", note });
+  }
+  return parts;
+}
+
 function computeCornerCutList(item, W, H, D, T, BT, shelfQty) {
   const secW = Number(item.secondary_width_mm) || 0;
   if (!secW) return [];
+
+  if (item.corner_style === "diagonal") {
+    return computeDiagonalCornerCutList(item, W, H, D, T, BT, shelfQty, secW);
+  }
 
   const legAPanelDepth = Math.max(0, D - BT);
   const legBWidth = Math.max(0, secW - D);
@@ -147,11 +199,11 @@ export function computeCutList(item, allItems = [], room = null) {
   const innerW = W - 2 * T;
   const carcassPanelDepth = Math.max(0, D - BT);
 
-  const parts = item.item_type === "corner_base_cabinet"
+  const parts = isCornerType(item)
     ? computeCornerCutList(item, W, H, D, T, BT, shelfQty)
     : [];
 
-  if (item.item_type !== "corner_base_cabinet") {
+  if (!isCornerType(item)) {
     parts.push({ name: "Left Side",  dim1: H, axis1: "H", dim2: carcassPanelDepth, axis2: "D" });
     parts.push({ name: "Right Side", dim1: H, axis1: "H", dim2: carcassPanelDepth, axis2: "D" });
     parts.push({ name: "Top",    dim1: innerW, axis1: "W", dim2: carcassPanelDepth, axis2: "D" });
@@ -246,7 +298,7 @@ export function computeCutList(item, allItems = [], room = null) {
   if (item.has_kickboard && item.item_type !== "wall_cabinet") {
     const kH    = Number(item.kickboard_height_mm) || 120;
     const kSpan = item.kickboard_span || "continuous";
-    const isCorner = item.item_type === "corner_base_cabinet";
+    const isCorner = isCornerType(item);
 
     if (kSpan === "continuous") {
       const { legs } = computeKickboardRun(item, allItems, room);
@@ -388,7 +440,7 @@ export function computeCutList(item, allItems = [], room = null) {
   // front, there's no return-zone carve-out on the back. Standalone per
   // leg (no continuous-run merging with neighbouring cabinets, unlike the
   // regular-cabinet back panel system).
-  if (item.item_type === "corner_base_cabinet" && (item.back_panel_wall1 || item.back_panel_wall2)) {
+  if (isCornerType(item) && (item.back_panel_wall1 || item.back_panel_wall2)) {
     const panelH = H + (item.panel_to_floor ? kickboardOffsetMm(item) : 0);
     const secW = Number(item.secondary_width_mm) || 0;
 
@@ -422,7 +474,7 @@ const MAT_DOT_COLOR = {
 function CutListRow({ part }) {
   const dotColor = MAT_DOT_COLOR[part.material] || null;
   return (
-    <div className={styles.cutListRow}>
+    <div className={styles.cutListRow} style={part.note ? { flexWrap: "wrap" } : undefined}>
       {dotColor && <span className={styles.cutListMatDot} style={{ background: dotColor }} />}
       <span className={styles.cutListDim}>
         {part.dim1} <span className={styles.cutListAxis}>({part.axis1})</span>
@@ -430,6 +482,11 @@ function CutListRow({ part }) {
         {part.dim2} <span className={styles.cutListAxis}>({part.axis2})</span>
       </span>
       <span className={styles.cutListName}>{part.name}</span>
+      {part.note && (
+        <span style={{ flexBasis: "100%", fontSize: 10, color: "var(--dt-text-muted, #888780)", lineHeight: 1.35, marginTop: 2 }}>
+          ⤷ {part.note}
+        </span>
+      )}
     </div>
   );
 }
@@ -468,7 +525,7 @@ function KickboardRunItem({ run, runId, openItems, toggleItem }) {
               </span>
               <span className={styles.cutListName}>
                 {itemDisplayLabel(seg.item)}
-                {seg.leg === "secondary" ? " (Wall 2)" : seg.item.item_type === "corner_base_cabinet" ? " (Wall 1)" : ""}
+                {seg.leg === "secondary" ? " (Wall 2)" : isCornerType(seg.item) ? " (Wall 1)" : ""}
               </span>
             </div>
           ))}
@@ -689,6 +746,7 @@ export default function DesignLeftPanel({
   const [newRoomName, setNewRoomName]     = useState("");
   const [roomBusy, setRoomBusy]           = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // { type: "room"|"item", id }
+  const [stageOpen, setStageOpen]         = useState(false);
   const confirmTimerRef                   = useRef(null);
 
   function toggleRoom(id) {
@@ -862,7 +920,16 @@ export default function DesignLeftPanel({
           <button
             type="button"
             className={styles.importBtn}
+            onClick={() => setStageOpen(true)}
+            title="Pick what to quote — room, cabinet or part — and see it priced live, then commit"
+          >
+            Stage Quote
+          </button>
+          <button
+            type="button"
+            className={styles.importBtn}
             onClick={onOpenImport}
+            title="The older direct-import modal"
           >
             Import to Quote
           </button>
@@ -1104,6 +1171,10 @@ export default function DesignLeftPanel({
           </button>
         )}
       </div>
+
+      {stageOpen && project?.id && (
+        <StageQuoteModal projectId={project.id} onClose={() => setStageOpen(false)} />
+      )}
     </div>
   );
 }

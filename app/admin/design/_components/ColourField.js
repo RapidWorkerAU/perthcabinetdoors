@@ -28,6 +28,7 @@ export default function ColourField({
   matchHint,       // shown (muted) when nothing is set — e.g. "Matches carcass"
   canReset = false, // show a "Reset to match" action (for override fields)
   thicknessDefault = 16,
+  hideCost = false, // for visual-only selections (e.g. the benchtop colour)
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value || {});
@@ -92,14 +93,16 @@ export default function ColourField({
                   }))
                 }
               />
-              <label className={styles.fieldLabel}>
-                Cost per sqm ex GST ($)
-                <input
-                  className={styles.fieldInput} type="number" min="0" step="0.01"
-                  value={draft.cost_per_sqm ?? ""}
-                  onChange={(e) => setDraft((d) => ({ ...d, cost_per_sqm: Number(e.target.value) }))}
-                />
-              </label>
+              {!hideCost && (
+                <label className={styles.fieldLabel}>
+                  Cost per sqm ex GST ($)
+                  <input
+                    className={styles.fieldInput} type="number" min="0" step="0.01"
+                    value={draft.cost_per_sqm ?? ""}
+                    onChange={(e) => setDraft((d) => ({ ...d, cost_per_sqm: Number(e.target.value) }))}
+                  />
+                </label>
+              )}
             </div>
             <div className={styles.colourModalFooter}>
               {canReset && (hasColour(value) || hasColour(draft)) && (
@@ -116,8 +119,11 @@ export default function ColourField({
   );
 }
 
-// Builds the "match an existing finish" list from every colour already used on
-// the project (this cabinet's parts first, then the rest), de-duplicated.
+// Builds the "match an existing finish" list from EVERY library colour used
+// anywhere in the design — carcass, doors, drawers, shelves, every applied
+// panel and the benchtop — this cabinet's parts first, then the rest,
+// de-duplicated. (Flat hex colours aren't library finishes, so they're not
+// offered here — there's nothing for the library picker to copy.)
 export function collectMatchOptions(allItems, draft) {
   const out = [];
   const seen = new Set();
@@ -129,16 +135,21 @@ export function collectMatchOptions(allItems, draft) {
     const name = [style.colour, style.finish].filter(Boolean).join(" ") || style.material;
     out.push({ label: `${role}: ${name}`, style: { material: style.material, finish: style.finish, colour: style.colour, thickness_mm: style.thickness_mm, cost_per_sqm: style.cost_per_sqm } });
   };
-  if (draft) {
-    add("This cabinet — carcass", { material: draft.material, finish: draft.finish, colour: draft.colour, thickness_mm: draft.carcass_thickness_mm, cost_per_sqm: draft.cost_per_sqm_carcass });
-    add("This cabinet — doors", draft.door_style);
-    add("This cabinet — drawers", draft.drawer_style);
-  }
-  for (const it of allItems || []) {
-    add("Carcass", { material: it.material, finish: it.finish, colour: it.colour, thickness_mm: it.carcass_thickness_mm });
-    add("Doors", it.door_style);
-    add("Drawers", it.drawer_style);
-    add("End panel", it.finish_panel_style);
-  }
+  // Every library finish one item carries, across all its parts.
+  const addItem = (prefix, it) => {
+    if (!it) return;
+    add(`${prefix}carcass`, { material: it.material, finish: it.finish, colour: it.colour, thickness_mm: it.carcass_thickness_mm, cost_per_sqm: it.cost_per_sqm_carcass });
+    add(`${prefix}doors`, it.door_style);
+    add(`${prefix}drawers`, it.drawer_style);
+    add(`${prefix}shelf`, { material: it.shelf_material, finish: it.shelf_finish, colour: it.shelf_colour, thickness_mm: it.shelf_thickness_mm });
+    add(`${prefix}end panel`, it.finish_panel_style);
+    add(`${prefix}filler`, it.filler_panel_style);
+    add(`${prefix}kickboard`, it.kickboard_style);
+    add(`${prefix}underside`, it.bottom_panel_style);
+    add(`${prefix}back panel`, it.back_panel_style);
+    add(`${prefix}benchtop`, it.benchtop_colour_style);
+  };
+  addItem("This cabinet — ", draft);
+  for (const it of allItems || []) addItem("", it);
   return out;
 }
