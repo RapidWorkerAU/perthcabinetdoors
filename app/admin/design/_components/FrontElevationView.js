@@ -911,7 +911,21 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
   // ---- Render --------------------------------------------------------------
   return (
-    <div className={styles.elevationInline}>
+    <div className={styles.elevationInline} style={{ position: "relative" }}>
+
+      {/* Rendered-view toggle — when the full toolbar is off (the unified
+          top-bar layout), keep this one control as a floating button so the
+          true-to-life head-on render is still one tap away. */}
+      {!chrome && interactive && (
+        <button
+          type="button"
+          onClick={() => setRendered((r) => !r)}
+          title="Show this wall as a true-to-life rendered view, head-on"
+          style={{ position: "absolute", top: 10, right: 10, zIndex: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${rendered ? "#1f6f4a" : "rgba(0,0,0,0.15)"}`, background: rendered ? "#1f6f4a" : "rgba(255,255,255,0.95)", color: rendered ? "#fff" : "#26251f", cursor: "pointer", font: "inherit", fontSize: 12.5, fontWeight: 600, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
+        >
+          {rendered ? "🎬 Rendered on" : "🎬 Rendered view"}
+        </button>
+      )}
 
       {/* Toolbar — hidden when chrome is off (mobile fullscreen viewer) */}
       {chrome && (

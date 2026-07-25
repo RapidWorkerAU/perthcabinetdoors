@@ -28,11 +28,29 @@ const Design3DView = dynamic(() => import("./Design3DView"), {
   ),
 });
 
+// One row in the "Quote & Export" kebab menu — dark, full-width, hover-lit.
+function ActionMenuItem({ onClick, disabled = false, children }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "rgba(255,255,255,0.10)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+      style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", borderRadius: 7, border: "none", background: "transparent", color: disabled ? "rgba(243,241,234,0.4)" : "#f3f1ea", cursor: disabled ? "default" : "pointer", font: "inherit", fontSize: 13, whiteSpace: "nowrap" }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function DesignProgram({ projectId }) {
   const [show3D, setShow3D] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
   const [roomCutListOpen, setRoomCutListOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false); // "Quote & Export" kebab menu
   // The desktop "Add item" picker lives in the LEFT rail now (the card
   // catalogue); the chosen type is held here so the right panel can show its
   // size form. Cleared whenever add-mode ends (see effect below).
@@ -128,9 +146,22 @@ export default function DesignProgram({ projectId }) {
         right={<>
           <button type="button" style={barButton} onClick={() => setRoomCutListOpen(true)} disabled={!selectedRoom} title="See every cabinet's cut list plus the shared kickboard / panel runs for this room">Cut list</button>
           <button type="button" style={barButton} onClick={() => setMaterialDefaultsOpen(true)} title="Set project-wide starting materials for new cabinets, shelves, doors, drawers and panels">Material Defaults</button>
-          <button type="button" style={barButton} onClick={() => setStageOpen(true)} title="Pick what to quote — room, cabinet or part — and see it priced live, then commit">Stage Quote</button>
-          <button type="button" style={barButton} onClick={() => setImportOpen(true)} title="The older direct-import modal">Import to Quote</button>
-          <button type="button" style={barButton} onClick={() => setExportOpen(true)} disabled={rooms.length === 0} title="Export a customer PDF: floor plan, elevations, 3D and finishes">Export PDF</button>
+          {/* Quote + export functions collapsed into a kebab menu to keep the bar tidy. */}
+          <span style={{ position: "relative" }}>
+            <button type="button" style={{ ...barButton, display: "inline-flex", alignItems: "center", gap: 7 }} onClick={() => setActionsOpen((o) => !o)} aria-haspopup="menu" aria-expanded={actionsOpen} title="Quote and export functions">
+              Quote &amp; Export <span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1, letterSpacing: "-1px" }}>⋮</span>
+            </button>
+            {actionsOpen && (
+              <>
+                <div onClick={() => setActionsOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
+                <div role="menu" style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 21, background: "#2f302c", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, minWidth: 210, padding: 6, boxShadow: "0 14px 36px rgba(0,0,0,0.45)" }}>
+                  <ActionMenuItem onClick={() => { setStageOpen(true); setActionsOpen(false); }}>Stage Quote</ActionMenuItem>
+                  <ActionMenuItem onClick={() => { setImportOpen(true); setActionsOpen(false); }}>Import to Quote</ActionMenuItem>
+                  <ActionMenuItem disabled={rooms.length === 0} onClick={() => { setExportOpen(true); setActionsOpen(false); }}>Export PDF</ActionMenuItem>
+                </div>
+              </>
+            )}
+          </span>
         </>}
       />
 

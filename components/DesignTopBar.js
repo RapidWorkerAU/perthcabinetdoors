@@ -20,7 +20,7 @@ function Segmented({ value, options, onChange }) {
   return (
     <div style={{ display: "inline-flex", border: `1px solid ${C.edge}`, borderRadius: 8, overflow: "hidden" }}>
       {options.map((o) => (
-        <button key={o.v} type="button" onClick={() => onChange(o.v)}
+        <button key={o.v} type="button" onClick={() => onChange(o.v)} title={o.title || o.label}
           style={{ ...barButton, border: "none", borderRadius: 0, background: value === o.v ? C.active : "transparent" }}>
           {o.label}
         </button>
@@ -30,7 +30,9 @@ function Segmented({ value, options, onChange }) {
 }
 
 const VIEWS = [{ v: "plan", label: "Plan" }, { v: "elevation", label: "Elevation" }, { v: "3d", label: "3D" }];
-const WALLS = [{ v: "top", label: "Back" }, { v: "left", label: "Left" }, { v: "right", label: "Right" }, { v: "bottom", label: "Front" }];
+// Single-letter wall buttons (full word on hover) so the elevation wall switch
+// stays compact when it appears.
+const WALLS = [{ v: "top", label: "B", title: "Back" }, { v: "left", label: "L", title: "Left" }, { v: "right", label: "R", title: "Right" }, { v: "bottom", label: "F", title: "Front" }];
 
 export default function DesignTopBar({ view, onView, elevWall, onElevWall, showColours, onToggleColours, left, right }) {
   return (
