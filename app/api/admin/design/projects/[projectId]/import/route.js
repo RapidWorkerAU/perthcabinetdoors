@@ -851,7 +851,14 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
 // Standalone per leg (no continuous-run merging with neighbouring
 // cabinets, unlike the regular-cabinet back panel system).
 function cornerBackPanelLinesForCabinet(item, roomName, room) {
-  if (!isCornerType(item) || (!item.back_panel_wall1 && !item.back_panel_wall2)) return [];
+  if (!isCornerType(item)) return [];
+  const hasBacks = item.back_panel_wall1 || item.back_panel_wall2;
+  // A corner's finished END panels sit on each leg's exposed OUTER end (the end
+  // away from the room corner) — end_panel_left = Wall 1 leg, end_panel_right =
+  // Wall 2 leg, each depth_mm wide. Same finished board + vertical span as the
+  // straight-cabinet end panels, so floor/ceiling reach carries through.
+  const hasEnds = item.end_panel_left || item.end_panel_right;
+  if (!hasBacks && !hasEnds) return [];
 
   const lines = [];
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
@@ -884,6 +891,10 @@ function cornerBackPanelLinesForCabinet(item, roomName, room) {
     pushPanel("Back Panel — Wall 2", item.secondary_width_mm);
   }
 
+  // Finished end panels on the legs' exposed outer ends (depth × height).
+  if (item.end_panel_left)  pushPanel("End Panel — Wall 1", item.depth_mm || 600);
+  if (item.end_panel_right) pushPanel("End Panel — Wall 2", item.depth_mm || 600);
+
   if (item.has_kickboard && !item.panel_to_floor) {
     function pushKickboard(name, widthMm) {
       lines.push({
@@ -907,6 +918,8 @@ function cornerBackPanelLinesForCabinet(item, roomName, room) {
     if (item.back_panel_wall2 && item.secondary_wall && item.secondary_width_mm) {
       pushKickboard("Kickboard — Wall 2 Back", item.secondary_width_mm);
     }
+    if (item.end_panel_left)  pushKickboard("Kickboard — Wall 1 End", item.depth_mm || 600);
+    if (item.end_panel_right) pushKickboard("Kickboard — Wall 2 End", item.depth_mm || 600);
   }
 
   return lines;

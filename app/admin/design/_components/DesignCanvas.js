@@ -740,6 +740,32 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
             fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
         ));
       })()}
+      {/* Corner cabinet finished END panels — a strip on each leg's exposed
+          OUTER end (the end away from the room corner): end_panel_left = Wall 1
+          (primary) leg, end_panel_right = Wall 2 (secondary). The corner sits
+          toward the OTHER leg's wall, so the outer end is this leg's opposite
+          end. Matches the 3D EndPanelMesh corner branch and the quote. */}
+      {isCorner && (item.end_panel_left || item.end_panel_right) && (() => {
+        const t = Math.max(finishPanelThicknessMm(item) * lay.scale, 1.5);
+        const outerEdge = (legWall, cornerWall) =>
+          (legWall === "top" || legWall === "bottom")
+            ? (cornerWall === "left" ? "right" : "left")
+            : (cornerWall === "top" ? "bottom" : "top");
+        const strips = [];
+        if (item.end_panel_left) {
+          const s = outerEdgeStripRect(rect, outerEdge(item.wall, item.secondary_wall), t);
+          if (s) strips.push({ ...s, key: "end1" });
+        }
+        if (item.end_panel_right && item.secondary_wall && item.secondary_wall !== item.wall) {
+          const secRect = cornerSecondaryRect(item, rect, lay);
+          const s = secRect ? outerEdgeStripRect(secRect, outerEdge(item.secondary_wall, item.wall), t) : null;
+          if (s) strips.push({ ...s, key: "end2" });
+        }
+        return strips.map(({ key, x: sx, y: sy, w: sw, h: sh }) => (
+          <rect key={key} x={sx} y={sy} width={sw} height={sh}
+            fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
+        ));
+      })()}
       {w > 22 && h > 18 && (
         <text
           x={cx} y={cy + (showDims ? -6 : 0)}

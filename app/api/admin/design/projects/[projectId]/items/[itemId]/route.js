@@ -1,85 +1,9 @@
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
+import { buildItemPatch } from "../../../../../../../../lib/pcd-design-item-io";
 
 async function getIds(params) {
   const resolved = await Promise.resolve(params);
   return { projectId: resolved?.projectId, itemId: resolved?.itemId };
-}
-
-function dbInt(value, fallback = null) {
-  if (value === "" || value === null || value === undefined) return fallback;
-  const n = parseInt(value, 10);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function dbNum(value, fallback = null) {
-  if (value === "" || value === null || value === undefined) return fallback;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function dbText(value) {
-  const s = String(value ?? "").trim();
-  return s || null;
-}
-
-function buildPatch(payload) {
-  const patch = {};
-  const str = (key) => { if (key in payload) patch[key] = dbText(payload[key]); };
-  const int = (key, fb = null) => { if (key in payload) patch[key] = dbInt(payload[key], fb); };
-  const num = (key) => { if (key in payload) patch[key] = dbNum(payload[key]); };
-  const bool = (key, fb = false) => { if (key in payload) patch[key] = Boolean(payload[key]); };
-
-  str("label"); str("wall"); str("secondary_wall"); str("material"); str("finish"); str("colour"); str("colour_hex"); str("notes");
-  str("corner_style"); str("appliance_kind");
-  str("thickness"); str("profile_type"); str("profile"); str("edge_mould"); str("hinge_qty");
-  str("shelf_material"); str("shelf_finish"); str("shelf_colour");
-  int("x_mm", 0); int("y_mm", 0); int("rotation", 0); int("mount_height_mm");
-  int("width_mm"); int("height_mm"); int("depth_mm"); int("qty", 1);
-  int("secondary_width_mm"); int("blind_width_mm"); str("blind_side");
-  int("sort_order", 0);
-  int("carcass_thickness_mm", 16); int("back_panel_thickness_mm", 16);
-  int("scribe_thickness_mm", 18); int("panel_thickness_mm");
-  int("shelf_qty", 0); int("shelf_thickness_mm", 16);
-  num("cost_per_sqm_carcass"); num("cost_per_sqm_shelf");
-  num("unit_cost_per_sqm_ex_gst");
-  bool("back_panel_included"); bool("hinge_holes"); bool("hinge_supply");
-  bool("has_kickboard");
-  int("kickboard_height_mm", 120); int("kickboard_thickness_mm", 16); str("kickboard_span");
-  bool("has_filler_panel");
-  int("filler_panel_height_mm"); int("filler_panel_thickness_mm", 16); str("filler_panel_span");
-  bool("end_panel_left"); bool("end_panel_right"); bool("has_back_panel"); bool("panel_to_floor");
-  bool("panel_to_ceiling");
-  bool("side_filler_left"); bool("side_filler_right");
-  int("side_filler_left_width_mm"); int("side_filler_right_width_mm"); int("side_filler_thickness_mm", 18);
-  bool("back_panel_wall1"); bool("back_panel_wall2");
-  str("back_panel_span"); int("back_panel_qty", 1);
-  bool("has_benchtop"); str("benchtop_span");
-  str("benchtop_material"); num("benchtop_cost_per_sqm");
-  str("benchtop_colour_hex");
-  if ("benchtop_colour_style" in payload) patch.benchtop_colour_style = payload.benchtop_colour_style ?? null;
-  int("benchtop_thickness_mm", 40); int("benchtop_overhang_mm", 20);
-  bool("benchtop_waterfall_left"); bool("benchtop_waterfall_right");
-  if ("benchtop_cutouts" in payload) patch.benchtop_cutouts = Array.isArray(payload.benchtop_cutouts) ? payload.benchtop_cutouts : [];
-  bool("has_bottom_panel"); str("bottom_panel_span"); int("bottom_panel_qty", 1);
-  str("front_type");
-  str("handle_name"); num("handle_cost_ex_gst"); str("hinge_model"); num("hinge_cost_ex_gst");
-  bool("has_rangehood");
-  int("rangehood_housing_height_mm"); int("rangehood_channel_width_mm");
-  if ("door_config" in payload) patch.door_config = payload.door_config ?? null;
-  if ("door_style"  in payload) patch.door_style  = payload.door_style  ?? null;
-  if ("finish_panel_style" in payload) patch.finish_panel_style = payload.finish_panel_style ?? null;
-  // Optional per-piece finishing colour overrides (each defaults to a "match").
-  if ("kickboard_style" in payload) patch.kickboard_style = payload.kickboard_style ?? null;
-  if ("filler_panel_style" in payload) patch.filler_panel_style = payload.filler_panel_style ?? null;
-  if ("bottom_panel_style" in payload) patch.bottom_panel_style = payload.bottom_panel_style ?? null;
-  if ("back_panel_style" in payload) patch.back_panel_style = payload.back_panel_style ?? null;
-  if ("drawer_config"  in payload) patch.drawer_config  = payload.drawer_config  ?? null;
-  if ("drawer_style"   in payload) patch.drawer_style   = payload.drawer_style   ?? null;
-  if ("section_config" in payload) patch.section_config = payload.section_config ?? null;
-  if ("room_id" in payload) patch.room_id = payload.room_id || null;
-  if ("shelf_heights_mm" in payload) patch.shelf_heights_mm = Array.isArray(payload.shelf_heights_mm) ? payload.shelf_heights_mm : [];
-  if ("unit_cost_mode" in payload) patch.unit_cost_mode = payload.unit_cost_mode === "manual" ? "manual" : "auto";
-  return patch;
 }
 
 export async function PATCH(request, { params }) {
@@ -89,7 +13,7 @@ export async function PATCH(request, { params }) {
   try {
     const { projectId, itemId } = await getIds(params);
     const payload = await request.json();
-    const patch = buildPatch(payload);
+    const patch = buildItemPatch(payload);
 
     if (!Object.keys(patch).length) {
       return Response.json({ ok: false, error: "No fields to update." }, { status: 422 });

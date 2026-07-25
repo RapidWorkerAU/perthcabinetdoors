@@ -1,0 +1,64 @@
+// PUBLIC design session — add an item. Guardrails: session scoped by code, the
+// item_type must be in the consumer allowlist, a per-session item cap, and all
+// cost/hardware fields are stripped (the public tool shows no prices). Reuses
+// the shared buildItemRow so a public cabinet row is identical to an admin one.
+
+import { createSupabaseAdminClient } from "../../../../../../lib/supabase/admin";
+import {
+  resolvePublicProject,
+  PUBLIC_ITEM_TYPES,
+  MAX_ITEMS_PER_SESSION,
+  stripForbiddenItemFields,
+} from "../../../../../../lib/pcd-public-design";
+import { applyMaterialDefaults, buildItemRow } from "../../../../../../lib/pcd-design-item-io";
+
+export const dynamic = "force-dynamic";
+
+async function getCode(params) {
+  const resolved = await Promise.resolve(params);
+  return resolved?.code;
+}
+
+export async function POST(request, { params }) {
+  try {
+    const code = await getCode(params);
+    const payload = await request.json();
+    const supabase = createSupabaseAdminClient();
+
+    const project = await resolvePublicProject(supabase, code);
+    if (!project) return Response.json({ ok: false, error: "Design not found." }, { status: 404 });
+
+    if (!PUBLIC_ITEM_TYPES.includes(payload?.item_type)) {
+      return Response.json({ ok: false, error: "That item can't be added here." }, { status: 422 });
+    }
+
+    const { count } = await supabase
+      .from("pcd_design_items")
+      .select("id", { count: "exact", head: true })
+      .eq("design_project_id", project.id);
+    if ((count ?? 0) >= MAX_ITEMS_PER_SESSION) {
+      return Response.json({ ok: false, error: `This design has reached the ${MAX_ITEMS_PER_SESSION}-item limit.` }, { status: 422 });
+    }
+
+    // Force the item onto the session's own room, ignore any client-sent
+    // project/room ids, and drop cost/hardware fields.
+    const { data: room } = await supabase
+      .from("pcd_design_rooms").select("id").eq("design_project_id", project.id)
+      .order("sort_order", { ascending: true }).limit(1).maybeSingle();
+
+    const clean = stripForbiddenItemFields(payload);
+    clean.room_id = room?.id || null;
+    const defaulted = applyMaterialDefaults(clean, project.material_defaults);
+
+    const { data, error } = await supabase
+      .from("pcd_design_items")
+      .insert(buildItemRow(defaulted, project.id))
+      .select("*")
+      .single();
+    if (error) throw error;
+
+    return Response.json({ ok: true, item: data }, { status: 201 });
+  } catch (error) {
+    return Response.json({ ok: false, error: error?.message || "Could not add the item." }, { status: 500 });
+  }
+}

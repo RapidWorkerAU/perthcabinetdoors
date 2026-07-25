@@ -971,17 +971,32 @@ function EndPanelMesh({ item, room, W, D }) {
   const src = usePanelSrc(item, "endpanel");
   const color = useMonoColor(ITEM_COLORS[item.item_type] || "#888");
   if (item.item_type === "obstruction" || (!item.end_panel_left && !item.end_panel_right)) return null;
-  const { leftEdge, rightEdge } = panelSideEdges(item);
   // Shared vertical span so the 3D end/side panel matches the quote and the
   // elevation: extends past a finished underside (wall), down to the floor
   // (panel_to_floor) and up to the ceiling (panel_to_ceiling).
   const { bottomMm, topMm } = finishPanelVerticalSpanMm(item, room?.height_mm);
   const t = Number(item.finish_panel_style?.thickness_mm) || 18;
-  const rect = cabinetLegs(item, W, D)[0]?.rect;
-  if (!rect) return null;
+
   const edges = [];
-  if (item.end_panel_left) edges.push(edgeBoardRect(rect, leftEdge, t));
-  if (item.end_panel_right) edges.push(edgeBoardRect(rect, rightEdge, t));
+  if (isCornerType(item)) {
+    // Corner: a board on each leg's exposed OUTER end (the end away from the
+    // room corner). end_panel_left = Wall 1 (primary) leg, end_panel_right =
+    // Wall 2 (secondary). The corner sits toward the OTHER leg's wall, so the
+    // outer end is the opposite end of this leg.
+    const legs = cabinetLegs(item, W, D);
+    const outerEdge = (legWall, cornerWall) =>
+      (legWall === "top" || legWall === "bottom")
+        ? (cornerWall === "left" ? "right" : "left")
+        : (cornerWall === "top" ? "bottom" : "top");
+    if (item.end_panel_left && legs[0]) edges.push(edgeBoardRect(legs[0].rect, outerEdge(legs[0].wall, item.secondary_wall), t));
+    if (item.end_panel_right && legs[1]) edges.push(edgeBoardRect(legs[1].rect, outerEdge(legs[1].wall, item.wall), t));
+  } else {
+    const { leftEdge, rightEdge } = panelSideEdges(item);
+    const rect = cabinetLegs(item, W, D)[0]?.rect;
+    if (!rect) return null;
+    if (item.end_panel_left) edges.push(edgeBoardRect(rect, leftEdge, t));
+    if (item.end_panel_right) edges.push(edgeBoardRect(rect, rightEdge, t));
+  }
   return (
     <>
       {edges.filter(Boolean).map((r, i) => {

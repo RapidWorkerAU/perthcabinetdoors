@@ -56,7 +56,7 @@ function handleDot(cx, cy) {
   return <circle cx={cx} cy={cy} r="1.1" fill={STROKE} />;
 }
 
-function Mockup({ type, kind }) {
+export function Mockup({ type, kind }) {
   const svg = (children) => (
     <svg viewBox="0 0 72 52" width="100%" height="100%" role="img" aria-hidden="true" style={{ display: "block" }}>
       {children}

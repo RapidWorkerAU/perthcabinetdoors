@@ -2353,6 +2353,32 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
           </>
         )}
 
+        {/* End panels — corner cabinets: a finished board on each leg's exposed
+            OUTER end (Wall 1 = primary leg, Wall 2 = secondary). Reuses the
+            end_panel_left/right flags; rendered in 3D (EndPanelMesh corner
+            branch) and quoted via cornerBackPanelLinesForCabinet. */}
+        {isCorner && (
+          <>
+          <SectionDivider label="End panels" />
+          <div className={styles.fieldGroup}>
+            <label className={styles.fieldCheckLabel}>
+              <input type="checkbox" checked={draft.end_panel_left ?? false} onChange={(e) => setNow("end_panel_left", e.target.checked)} />
+              Wall 1 end panel
+            </label>
+            <label className={styles.fieldCheckLabel}>
+              <input type="checkbox" checked={draft.end_panel_right ?? false} onChange={(e) => setNow("end_panel_right", e.target.checked)} />
+              Wall 2 end panel
+            </label>
+            {(draft.end_panel_left || draft.end_panel_right) && (
+              <label className={styles.fieldCheckLabel}>
+                <input type="checkbox" checked={draft.panel_to_floor ?? false} onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
+                End panels run to the floor (past the kickboard recess)
+              </label>
+            )}
+          </div>
+          </>
+        )}
+
         {/* End & back panels — base/tall/blind-corner cabinets. A blind corner
             is a plain floor-standing box (see v16 migration), so it takes the
             same finished ends/back as a base cabinet; the geometry helpers

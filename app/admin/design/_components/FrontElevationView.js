@@ -1727,13 +1727,19 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   const panelTopY = svgY - Math.max(0, topMm - carcassTopMm) * scale;
                   const panelH = heightMm * scale;
                   const t = Math.max(finishPanelThicknessMm(item) * scale, 1.5);
+                  // For a corner, only the leg on the VIEWED wall shows here:
+                  // Wall 1 (end_panel_left) on the primary view, Wall 2
+                  // (end_panel_right) on the secondary. Drawing both would put
+                  // the OTHER leg's end panel on this leg's box.
+                  const showLeft  = isCorner ? (!isSecondaryView && item.end_panel_left)  : item.end_panel_left;
+                  const showRight = isCorner ? (isSecondaryView  && item.end_panel_right) : item.end_panel_right;
                   return (
                     <>
-                      {item.end_panel_left && (
+                      {showLeft && (
                         <rect x={svgX - t} y={panelTopY} width={t} height={panelH}
                           fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
                       )}
-                      {item.end_panel_right && (
+                      {showRight && (
                         <rect x={svgX + svgW} y={panelTopY} width={t} height={panelH}
                           fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
                       )}
