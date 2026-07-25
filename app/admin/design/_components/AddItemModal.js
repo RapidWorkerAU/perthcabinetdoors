@@ -14,7 +14,7 @@ import styles from "../design.module.css";
 // One catalog row per addable type: which category it belongs to and a short
 // "what it adds" blurb. Labels come in via props (the canonical TYPE_LABELS)
 // so this list never drifts from the rest of the tool.
-const CATALOG = [
+export const CATALOG = [
   { type: "base_cabinet",         category: "cabinets",   desc: "Floor cabinet with a benchtop over — doors or drawers." },
   { type: "wall_cabinet",         category: "cabinets",   desc: "Upper cabinet mounted above the benchtop." },
   { type: "tall_cabinet",         category: "cabinets",   desc: "Full-height cabinet — pantry or oven / broom tower." },
@@ -34,7 +34,7 @@ const CATALOG = [
   { type: "appliance", kind: "other",      category: "appliances", label: "Other appliance",  desc: "Freestanding box — washing machine, oven, etc." },
 ];
 
-const CATEGORIES = [
+export const CATEGORIES = [
   { key: "all",        label: "All" },
   { key: "cabinets",   label: "Cabinets" },
   { key: "features",   label: "Room Features" },

@@ -7,13 +7,18 @@
 // already used elsewhere on the project.
 
 import { useState } from "react";
-import MaterialColourPicker from "./MaterialColourPicker";
+import ColourPickerModal from "../../../../components/ColourPickerModal";
+import { styleColourSrc } from "../../../../lib/pcd-colour-images";
 import styles from "../design.module.css";
 
+// The clean subtitle the public tool shows: just the colour name, plus the
+// thickness (the one bit of extra detail the backend carries that the public
+// doesn't) — not the full material · finish · board chain.
 function styleSummary(style) {
   if (!style) return null;
-  const parts = [style.colour, style.finish, style.material].filter(Boolean);
-  return parts.length ? parts.join(" · ") : null;
+  const name = style.colour || style.material;
+  if (!name) return null;
+  return style.thickness_mm ? `${name} · ${style.thickness_mm}mm` : name;
 }
 
 function hasColour(style) {
@@ -29,91 +34,63 @@ export default function ColourField({
   canReset = false, // show a "Reset to match" action (for override fields)
   thicknessDefault = 16,
   hideCost = false, // for visual-only selections (e.g. the benchtop colour)
+  colourImages = null, // map for resolving the swatch image (optional)
+  hex = null,          // a flat colour swatch fallback (e.g. benchtop flat colour)
+  allowFlat = false,   // offer a "flat colour" option inside the picker modal
+  onFlat = null,       // called with a hex when a flat colour is picked
+  notice = null,       // when set, opening shows this message in the modal (no picker)
 }) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(value || {});
+  const summary = styleSummary(value) || (hex ? "Flat colour" : null);
+  const src = styleColourSrc(colourImages, value);
 
-  const summary = styleSummary(value);
-
-  function openModal() { setDraft(value || {}); setOpen(true); }
-  function save() {
-    onChange(hasColour(draft) ? draft : null);
-    setOpen(false);
-  }
-  function reset() { onChange(null); setOpen(false); }
-
+  // A clean row — swatch · bold name · muted colour name · Change — matching
+  // the public planner (no boxed card). Any extra config (door profile / edge
+  // mould, benchtop material) is rendered by the caller under this row.
   return (
-    <div className={styles.colourField}>
-      <div className={styles.colourFieldTop}>
-        <span className={styles.colourFieldLabel}>{label}</span>
-        <button type="button" className={styles.colourFieldBtn} onClick={openModal}>
-          {summary ? "Change" : "Set colour"}
-        </button>
-      </div>
-      <div className={styles.colourFieldSummary}>
-        {summary || <span className={styles.colourFieldMuted}>{matchHint || "Not set"}</span>}
+    <div style={{ padding: "7px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 38, height: 38, borderRadius: 8, flexShrink: 0,
+            border: "1px solid var(--dt-border, rgba(0,0,0,0.14))",
+            background: src ? `center/cover no-repeat url(${src})` : (hex || "var(--dt-bg, #f1efe9)"),
+          }}
+        />
+        <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--dt-text, #292524)" }}>{label}</span>
+          <span style={{ fontSize: 11.5, color: "var(--dt-text-muted, #a8a29e)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {summary || (matchHint || "Not set")}
+          </span>
+        </span>
+        <span style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+          <button type="button" className={styles.colourFieldBtn} onClick={() => setOpen(true)}>
+            {summary ? "Change" : "Set colour"}
+          </button>
+        </span>
       </div>
 
       {open && (
-        <div className={styles.colourModalOverlay} onClick={() => setOpen(false)}>
-          <div className={styles.colourModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.colourModalHeader}>
-              <span>Set {label}</span>
-              <button type="button" className={styles.colourModalClose} onClick={() => setOpen(false)} aria-label="Close">×</button>
-            </div>
-            <div className={styles.colourModalBody}>
-              {matchOptions.length > 0 && (
-                <label className={styles.fieldLabel}>
-                  Match an existing finish
-                  <select
-                    className={styles.fieldSelect}
-                    value=""
-                    onChange={(e) => {
-                      const opt = matchOptions[Number(e.target.value)];
-                      if (opt) setDraft({ ...opt.style });
-                    }}
-                  >
-                    <option value="">— copy a colour used elsewhere —</option>
-                    {matchOptions.map((o, i) => <option key={i} value={i}>{o.label}</option>)}
-                  </select>
-                </label>
-              )}
-              <MaterialColourPicker
-                label="Material & colour"
-                material={draft.material || ""}
-                thickness={draft.thickness_mm ? `${draft.thickness_mm}mm` : ""}
-                finish={draft.finish || ""}
-                colour={draft.colour || ""}
-                onChange={({ material, thickness, finish, colour, costPerSqmExGst }) =>
-                  setDraft((d) => ({
-                    ...d,
-                    material, finish, colour,
-                    thickness_mm: parseInt(thickness) || d.thickness_mm || thicknessDefault,
-                    cost_per_sqm: Number(costPerSqmExGst) || 0,
-                  }))
-                }
-              />
-              {!hideCost && (
-                <label className={styles.fieldLabel}>
-                  Cost per sqm ex GST ($)
-                  <input
-                    className={styles.fieldInput} type="number" min="0" step="0.01"
-                    value={draft.cost_per_sqm ?? ""}
-                    onChange={(e) => setDraft((d) => ({ ...d, cost_per_sqm: Number(e.target.value) }))}
-                  />
-                </label>
-              )}
-            </div>
-            <div className={styles.colourModalFooter}>
-              {canReset && (hasColour(value) || hasColour(draft)) && (
-                <button type="button" className={styles.colourModalReset} onClick={reset}>Reset to match</button>
-              )}
-              <span style={{ flex: 1 }} />
-              <button type="button" className={styles.colourModalCancel} onClick={() => setOpen(false)}>Cancel</button>
-              <button type="button" className={styles.colourModalSave} onClick={save}>Save</button>
-            </div>
-          </div>
-        </div>
+        <ColourPickerModal
+          mode="admin"
+          title={label}
+          value={value}
+          matchOptions={matchOptions}
+          thicknessDefault={thicknessDefault}
+          showCost={!hideCost}
+          allowFlat={allowFlat}
+          flatValue={hex}
+          onPickFlat={onFlat ? (h) => { onFlat(h); setOpen(false); } : undefined}
+          canReset={canReset}
+          onClear={canReset ? () => { onChange(null); setOpen(false); } : undefined}
+          notice={notice}
+          // Merge the picked colour INTO the existing style so sibling fields
+          // (profile on a door style, etc.) are preserved — exactly as the old
+          // draft-merge did.
+          onPick={(picked) => { onChange(hasColour(picked) ? { ...(value || {}), ...picked } : null); setOpen(false); }}
+          onClose={() => setOpen(false)}
+        />
       )}
     </div>
   );

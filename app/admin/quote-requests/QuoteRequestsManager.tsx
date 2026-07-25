@@ -43,6 +43,7 @@ interface QuoteRequest {
   notes?:                          string
   created_at?:                     string
   converted_quote_id?:             string | null
+  design_project_id?:              string | null
   pcd_quote_request_line_items?:   LineItem[]
 }
 
@@ -124,6 +125,19 @@ function QuoteRequestPreviewModal({
                 </div>
               ))}
             </dl>
+            {request.design_project_id && (
+              <div className="mt-3 pt-3 border-t border-[#dbd8cc]">
+                <a
+                  href={`/admin/design/${request.design_project_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[12px] font-medium text-[#2f7a4d] underline"
+                >
+                  Open customer&apos;s design ↗
+                </a>
+                <p className="text-[11px] text-[#8b8a81] mt-1">Built in the website planner — open it and use Stage Quote to price it.</p>
+              </div>
+            )}
           </div>
 
           {/* Right column — status + notes stacked */}

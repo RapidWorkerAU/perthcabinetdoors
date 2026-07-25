@@ -481,6 +481,7 @@ export default function DesignProgramMobile({ projectId }) {
           onDeleteItem={(id) => { handleDeleteItem(id); closeItemModal(); }}
           onSelectItem={(id) => setSelectedItemId(id)}
           currentWall={view === "elevation" ? elevationWall : undefined}
+          colourImages={colourImages}
           onClose={closeItemModal}
         />
       )}

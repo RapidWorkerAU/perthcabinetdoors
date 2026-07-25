@@ -13,6 +13,8 @@ import DesignCanvas from "../../admin/design/_components/DesignCanvas";
 import FrontElevationView from "../../admin/design/_components/FrontElevationView";
 import { Mockup } from "../../admin/design/_components/AddItemModal";
 import PublicColourModal from "./PublicColourModal";
+import DesignTopBar, { barButton } from "../../../components/DesignTopBar";
+import AddItemRail from "../../../components/AddItemRail";
 import { resolveColourSrc, slotColourFields } from "../../../lib/pcd-colour-images";
 import usePublicDesign from "./usePublicDesign";
 
@@ -22,11 +24,15 @@ const Design3DView = dynamic(() => import("../../admin/design/_components/Design
 });
 
 const CATALOGUE = [
-  { type: "base_cabinet", label: "Base cabinet", desc: "Floor unit with a benchtop" },
-  { type: "wall_cabinet", label: "Wall cabinet", desc: "Upper / overhead unit" },
-  { type: "tall_cabinet", label: "Tall / pantry", desc: "Full-height tower" },
-  { type: "corner_base_cabinet", label: "Corner cabinet", desc: "Wraps a corner" },
-  { type: "floating_shelf", label: "Floating shelf", desc: "Wall-mounted open shelf" },
+  { type: "base_cabinet", label: "Base cabinet", desc: "Floor unit with a benchtop", category: "cabinets" },
+  { type: "wall_cabinet", label: "Wall cabinet", desc: "Upper / overhead unit", category: "cabinets" },
+  { type: "tall_cabinet", label: "Tall / pantry", desc: "Full-height tower", category: "cabinets" },
+  { type: "corner_base_cabinet", label: "Corner cabinet", desc: "Wraps a corner", category: "cabinets" },
+  { type: "floating_shelf", label: "Floating shelf", desc: "Wall-mounted open shelf", category: "shelving" },
+];
+const CATALOGUE_CATEGORIES = [
+  { key: "cabinets", label: "Cabinets" },
+  { key: "shelving", label: "Shelving" },
 ];
 const TYPE_LABELS = Object.fromEntries(CATALOGUE.map((c) => [c.type, c.label]));
 const HAS_BENCHTOP = new Set(["base_cabinet", "corner_base_cabinet"]);
@@ -38,7 +44,12 @@ const isCorner = (item) => item?.item_type === "corner_base_cabinet";
 // after the doors are changed, exactly as a real white-carcass unit).
 const CARCASS_WHITE = "#efece3";
 
-const frontStyle = (item) => (item?.front_type === "drawers" ? item?.drawer_style : item?.door_style);
+const frontStyle = (item) =>
+  item?.front_type === "drawers" ? item?.drawer_style
+    : item?.front_type === "mixed" ? (item?.door_style || item?.drawer_style)
+    : item?.door_style;
+// Cabinets that can use the multi-bay ("mixed") front in the public tool.
+const CAN_BAYS = new Set(["tall_cabinet", "base_cabinet"]);
 
 // Whether the cabinet has any finished side/back/underside panel switched on.
 const hasFinishPanels = (item) => Boolean(item?.end_panel_left || item?.end_panel_right || item?.has_back_panel || item?.has_bottom_panel);
@@ -63,7 +74,7 @@ function targetsFor(item) {
   if (isShelf(item)) return [{ key: "body", label: "Shelf" }];
   const open = isOpenFront(item);
   return [
-    ...(open ? [] : [{ key: "front", label: item.front_type === "drawers" ? "Drawers" : "Doors" }]),
+    ...(open ? [] : [{ key: "front", label: item.front_type === "drawers" ? "Drawers" : item.front_type === "mixed" ? "Fronts" : "Doors" }]),
     ...(open && Number(item.shelf_qty) > 0 ? [{ key: "shelf", label: "Shelves" }] : []),
     { key: "body", label: "Carcass" },
     ...(item.has_kickboard ? [{ key: "kickboard", label: "Kickboard" }] : []),
@@ -103,7 +114,6 @@ const C = {
   soft: "#7a766c", green: "#1f6f4a", stage: "#eceae3",
 };
 const btn = { padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.edge}`, background: "#fff", cursor: "pointer", font: "inherit", fontSize: 13.5, color: C.ink };
-const btnGhost = { ...btn, background: "transparent", border: `1px solid rgba(255,255,255,0.28)`, color: C.barText };
 const btnPrimary = { ...btn, background: C.green, color: "#fff", borderColor: C.green, fontWeight: 600 };
 
 export default function PublicDesignClient() {
@@ -114,6 +124,7 @@ export default function PublicDesignClient() {
   const [colourTarget, setColourTarget] = useState("front");
   const [colourModalOpen, setColourModalOpen] = useState(false);
   const [savePanel, setSavePanel] = useState(false);
+  const [submitOpen, setSubmitOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false); // narrow: room sheet
 
@@ -149,6 +160,7 @@ export default function PublicDesignClient() {
     else if (colourTarget === "panels") d.updateItem(item.id, { finish_panel_style: mfcS, back_panel_style: mfcS, bottom_panel_style: mfcS });
     else if (colourTarget === "benchtop") d.updateItem(item.id, { benchtop_colour_style: mfcS, benchtop_colour_hex: "" });
     else if (item.front_type === "drawers") d.updateItem(item.id, { drawer_style: { ...(item.drawer_style || {}), ...mfcS } });
+    else if (item.front_type === "mixed") d.updateItem(item.id, { door_style: { ...(item.door_style || {}), ...mfcS }, drawer_style: { ...(item.drawer_style || {}), ...mfcS } });
     else d.updateItem(item.id, { front_type: "doors", door_style: { ...(item.door_style || {}), ...mfcS } });
     setColourModalOpen(false);
   }
@@ -220,55 +232,52 @@ export default function PublicDesignClient() {
 
   return (
     <div style={shell}>
-      {/* Top bar */}
-      <div style={{ height: 54, flexShrink: 0, background: C.bar, color: C.barText, display: "flex", alignItems: "center", gap: 10, padding: "0 12px" }}>
-        <Link href="/" style={{ color: C.barText, textDecoration: "none", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>Perth Cabinet Doors</Link>
-        <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>·</span>
-        <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", whiteSpace: "nowrap" }}>Kitchen planner</span>
-
-        <div style={{ flex: 1 }} />
-
-        <div style={{ display: "inline-flex", border: "1px solid rgba(255,255,255,0.28)", borderRadius: 8, overflow: "hidden" }}>
-          {[{ v: "plan", label: "Plan" }, { v: "elevation", label: "Elevation" }, { v: "3d", label: "3D" }].map((o) => (
-            <button key={o.v} type="button" onClick={() => setView(o.v)} style={{ ...btnGhost, border: "none", borderRadius: 0, background: view === o.v ? "rgba(255,255,255,0.16)" : "transparent" }}>{o.label}</button>
-          ))}
-        </div>
-        {view === "elevation" && (
-          <div style={{ display: "inline-flex", border: "1px solid rgba(255,255,255,0.28)", borderRadius: 8, overflow: "hidden" }} title="Which wall to view">
-            {[{ v: "top", label: "Back" }, { v: "left", label: "Left" }, { v: "right", label: "Right" }, { v: "bottom", label: "Front" }].map((o) => (
-              <button key={o.v} type="button" onClick={() => setElevWall(o.v)} style={{ ...btnGhost, border: "none", borderRadius: 0, background: elevWall === o.v ? "rgba(255,255,255,0.16)" : "transparent" }}>{o.label}</button>
-            ))}
-          </div>
-        )}
-        <button type="button" style={btnGhost} onClick={() => setShowColours((s) => !s)} title="Show colours">{showColours ? "🎨 On" : "🎨 Off"}</button>
-        {narrow && <button type="button" style={btnGhost} onClick={() => setRoomOpen(true)}>Room</button>}
-        <div style={{ position: "relative" }}>
-          <button type="button" style={btnGhost} onClick={() => setSavePanel((s) => !s)}>Save / share</button>
-          {savePanel && (
-            <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 300, background: "#fff", color: C.ink, border: `1px solid ${C.edge}`, borderRadius: 10, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", padding: 14, zIndex: 5 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Saved automatically. Copy this private link to come back on any device:</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ ...btn, flex: 1, minWidth: 0, cursor: "text", color: C.soft }} />
-                <button type="button" style={btnPrimary} onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy</button>
+      {/* Top bar — the shared full-width bar (same one the admin tool uses) */}
+      <DesignTopBar
+        view={view} onView={setView}
+        elevWall={elevWall} onElevWall={setElevWall}
+        showColours={showColours} onToggleColours={() => setShowColours((s) => !s)}
+        left={<>
+          <Link href="/" style={{ color: "#f3f1ea", textDecoration: "none", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>Perth Cabinet Doors</Link>
+          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>·</span>
+          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", whiteSpace: "nowrap" }}>Kitchen planner</span>
+        </>}
+        right={<>
+          {narrow && <button type="button" style={barButton} onClick={() => setRoomOpen(true)}>Room</button>}
+          <span style={{ position: "relative" }}>
+            <button type="button" style={barButton} onClick={() => setSavePanel((s) => !s)}>Save / share</button>
+            {savePanel && (
+              <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 300, background: "#fff", color: C.ink, border: `1px solid ${C.edge}`, borderRadius: 10, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", padding: 14, zIndex: 5 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Saved automatically. Copy this private link to come back on any device:</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ ...btn, flex: 1, minWidth: 0, cursor: "text", color: C.soft }} />
+                  <button type="button" style={btnPrimary} onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy</button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-        <button type="button" style={btnGhost} onClick={() => { if (confirm("Start a new design? Your current one stays saved under its link.")) d.startOver(); }}>Start over</button>
-      </div>
+            )}
+          </span>
+          <button type="button" style={barButton} onClick={() => { if (confirm("Start a new design? Your current one stays saved under its link.")) d.startOver(); }}>Start over</button>
+          <button type="button" style={{ ...btnPrimary, fontWeight: 700 }} onClick={() => setSubmitOpen(true)} disabled={d.items.length === 0} title={d.items.length === 0 ? "Add something first" : "Send your design to PCD for a quote"}>Send to PCD</button>
+        </>}
+      />
 
       {/* Body */}
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        {/* Catalogue rail (wide only) */}
+        {/* Catalogue rail (wide only) — the shared AddItemRail (same one the
+            admin tool uses), themed light. */}
         {!narrow && (
           <div style={{ width: 236, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.edge}`, display: "flex", flexDirection: "column" }}>
-            <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
-              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: C.soft, marginBottom: 10 }}>Add to your kitchen</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {CATALOGUE.map((c) => <AddCard key={c.type} row={c} onClick={() => addCabinet(c.type)} />)}
-              </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <AddItemRail
+                theme="light"
+                title="Add to your kitchen"
+                catalogue={CATALOGUE}
+                categories={CATALOGUE_CATEGORIES}
+                renderMockup={(type, kind) => <Mockup type={type} kind={kind} />}
+                onPick={(type) => addCabinet(type)}
+              />
             </div>
-            <div style={{ borderTop: `1px solid ${C.edge}`, padding: 14 }}>
+            <div style={{ borderTop: `1px solid ${C.edge}`, padding: 14, flexShrink: 0 }}>
               <button type="button" style={{ ...btn, width: "100%" }} onClick={() => setRoomOpen(true)}>Edit room size</button>
             </div>
           </div>
@@ -319,22 +328,74 @@ export default function PublicDesignClient() {
       {roomOpen && (
         <RoomModal room={d.room} onUpdateRoom={d.updateRoom} onClose={() => setRoomOpen(false)} />
       )}
+
+      {submitOpen && (
+        <SubmitModal onSubmit={d.submitToPcd} onClose={() => setSubmitOpen(false)} />
+      )}
     </div>
   );
 }
 
-function AddCard({ row, onClick }) {
+// "Send my design to PCD" — collects contact details and submits the design as
+// a quote request, then shows a confirmation.
+function SubmitModal({ onSubmit, onClose }) {
+  const [form, setForm] = useState({ name: "", email: "", phone: "", suburb: "", notes: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const upd = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function submit() {
+    if (!form.name.trim()) { setError("Please enter your name."); return; }
+    if (!form.email.trim() && !form.phone.trim()) { setError("Please enter an email or phone number."); return; }
+    setBusy(true); setError("");
+    const res = await onSubmit(form);
+    setBusy(false);
+    if (res?.ok) setDone(true);
+    else setError(res?.error || "Could not send — please try again.");
+  }
+
+  const field = { ...btn, width: "100%", boxSizing: "border-box", cursor: "text" };
+
   return (
-    <button type="button" onClick={onClick}
-      style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 10, border: `1px solid ${C.edge}`, background: "#faf8f3", cursor: "pointer", textAlign: "left" }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.green; }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.edge; }}>
-      <span style={{ width: 46, height: 34, flexShrink: 0 }}><Mockup type={row.type} /></span>
-      <span style={{ display: "flex", flexDirection: "column" }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{row.label}</span>
-        <span style={{ fontSize: 11, color: C.soft }}>{row.desc}</span>
-      </span>
-    </button>
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000 }} />
+      <div role="dialog" aria-modal="true" aria-label="Send your design to PCD"
+        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 1001, width: "min(440px, 94vw)", maxHeight: "90vh", overflowY: "auto", background: "#fff", borderRadius: 14, boxShadow: "0 24px 64px rgba(0,0,0,0.35)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", borderBottom: `1px solid ${C.edge}` }}>
+          <strong style={{ fontSize: 15, color: C.ink }}>{done ? "Design sent" : "Send your design to PCD"}</strong>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.edge}`, background: "#fff", cursor: "pointer", color: C.soft }}>✕</button>
+        </div>
+        {done ? (
+          <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12, alignItems: "center", textAlign: "center" }}>
+            <div style={{ fontSize: 32 }}>✅</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>Thanks! We&apos;ve got your design.</div>
+            <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.5 }}>Our team will review it and get back to you with a quote, usually within 1–3 business days. Your design stays saved under its link.</div>
+            <button type="button" style={{ ...btnPrimary, marginTop: 4 }} onClick={onClose}>Back to my design</button>
+          </div>
+        ) : (
+          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 12.5, color: C.soft, margin: 0, lineHeight: 1.5 }}>Send us your design and we&apos;ll prepare a quote. No obligation — we&apos;ll just get in touch.</p>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: C.soft }}>Name *<input style={field} value={form.name} onChange={(e) => upd("name", e.target.value)} /></label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: C.soft }}>Email<input type="email" style={field} value={form.email} onChange={(e) => upd("email", e.target.value)} /></label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: C.soft }}>Phone<input style={field} value={form.phone} onChange={(e) => upd("phone", e.target.value)} /></label>
+            </div>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: C.soft }}>Suburb<input style={field} value={form.suburb} onChange={(e) => upd("suburb", e.target.value)} /></label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: C.soft }}>Anything else?<textarea rows={3} style={{ ...field, resize: "vertical" }} value={form.notes} onChange={(e) => upd("notes", e.target.value)} /></label>
+            {error && <div style={{ fontSize: 12.5, color: "#a03f2c" }}>{error}</div>}
+            <button type="button" style={{ ...btnPrimary, marginTop: 2 }} disabled={busy} onClick={submit}>{busy ? "Sending…" : "Send my design"}</button>
+            <div style={{ fontSize: 11, color: "#a29d92", textAlign: "center" }}>Prices are indicative only until we confirm your quote.</div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -361,10 +422,36 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
 
   const isDrawers = item.front_type === "drawers";
   const isOpen = isOpenFront(item);
+  const isBays = item.front_type === "mixed";
+  const canBays = CAN_BAYS.has(item.item_type);
+  const bays = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
+
+  // ---- Multi-bay ("mixed" front) helpers ----
+  const withEqualHeights = (secs) => {
+    const n = Math.max(1, secs.length);
+    const each = Math.round((Number(item.height_mm) || 720) / n);
+    return secs.map((s) => ({ ...s, height_mm: each }));
+  };
+  const commitBays = (secs) => set({ front_type: "mixed", section_config: { sections: withEqualHeights(secs) } });
+  const bayForType = (type) =>
+    type === "doors" ? { type: "doors", door: { columns: 1, rows: 1 } }
+      : type === "drawers" ? { type: "drawers", drawer: { heights_mm: [1, 1, 1] } }
+      : { type };
+  const bayCount = (b) => (b.type === "doors" ? Math.max(1, b.door?.columns || 1) : b.type === "drawers" ? ((b.drawer?.heights_mm || []).length || 1) : 0);
+  const addBay = () => commitBays([...bays, bayForType("doors")]);
+  const removeBay = (i) => commitBays(bays.filter((_, x) => x !== i));
+  const setBayType = (i, type) => commitBays(bays.map((b, x) => (x === i ? bayForType(type) : b)));
+  const setBayCount = (i, n) => commitBays(bays.map((b, x) => {
+    if (x !== i) return b;
+    if (b.type === "doors") return { ...b, door: { ...(b.door || {}), columns: n, rows: 1 } };
+    if (b.type === "drawers") return { ...b, drawer: { ...(b.drawer || {}), heights_mm: Array.from({ length: n }, () => 1) } };
+    return b;
+  }));
 
   function setFront(type) {
     if (type === "drawers") set({ front_type: "drawers", drawer_config: { ...(item.drawer_config || {}), heights_mm: equalDrawers(item.height_mm, Math.max(2, (item.drawer_config?.heights_mm || []).length || 3)) } });
     else if (type === "open") set({ front_type: "none", shelf_qty: Number(item.shelf_qty) > 0 ? item.shelf_qty : 3 });
+    else if (type === "bays") commitBays(bays.length ? bays : [bayForType("drawers"), bayForType("doors")]);
     else set({ front_type: "doors", door_config: item.door_config || { columns: 1, rows: 1 } });
   }
 
@@ -378,8 +465,10 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
   const setFinger = (on) => (isDrawers
     ? set({ drawer_config: { ...(item.drawer_config || {}), gap_enabled: on } })
     : set({ door_config: { ...(item.door_config || {}), row_gap_enabled: on } }));
-  const frontValue = isOpen ? "open" : isDrawers ? "drawers" : "doors";
-  const styleSummary = `${isOpen ? `Open · ${shelfCount} shelf${shelfCount === 1 ? "" : "ves"}` : isDrawers ? `${drawerCount} drawers` : `${doorCount} door${doorCount > 1 ? "s" : ""}`}${!isOpen && fingerOn ? " · finger pull" : ""}`;
+  const frontValue = isBays ? "bays" : isOpen ? "open" : isDrawers ? "drawers" : "doors";
+  const styleSummary = isBays
+    ? `${bays.length} bay${bays.length === 1 ? "" : "s"}`
+    : `${isOpen ? `Open · ${shelfCount} shelf${shelfCount === 1 ? "" : "ves"}` : isDrawers ? `${drawerCount} drawers` : `${doorCount} door${doorCount > 1 ? "s" : ""}`}${!isOpen && fingerOn ? " · finger pull" : ""}`;
 
   const anyFinishPanel = item.end_panel_left || item.end_panel_right || item.has_back_panel || item.has_bottom_panel;
   const panelCount = [item.has_kickboard, item.end_panel_left, item.end_panel_right, item.has_back_panel, item.has_bottom_panel].filter(Boolean).length;
@@ -412,8 +501,42 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
       {/* Style */}
       {!shelf && !corner && (
         <AccSection k="style" label="Style" summary={styleSummary} openKey={open} setOpen={setOpen}>
-          <Segmented value={frontValue} options={[{ v: "doors", label: "Doors" }, { v: "drawers", label: "Drawers" }, { v: "open", label: "Open" }]} onChange={setFront} />
-          {isOpen ? (
+          <Segmented
+            value={frontValue}
+            options={[
+              { v: "doors", label: "Doors" },
+              { v: "drawers", label: "Drawers" },
+              { v: "open", label: "Open" },
+              ...(canBays ? [{ v: "bays", label: "Bays" }] : []),
+            ]}
+            onChange={setFront}
+          />
+          {isBays ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11, color: C.soft, marginBottom: 8 }}>Bays, top to bottom</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {bays.map((b, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: C.soft, width: 12, flexShrink: 0 }}>{i + 1}</span>
+                    <select value={b.type || "doors"} onChange={(e) => setBayType(i, e.target.value)} style={{ ...btn, flex: 1, minWidth: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
+                      <option value="doors">Doors</option>
+                      <option value="drawers">Drawers</option>
+                      <option value="appliance">Oven</option>
+                      <option value="open">Open</option>
+                    </select>
+                    {(b.type === "doors" || b.type === "drawers") && (
+                      <select value={String(bayCount(b))} onChange={(e) => setBayCount(i, Number(e.target.value))} style={{ ...btn, width: 52, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
+                        {(b.type === "doors" ? [1, 2] : [2, 3, 4]).map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    )}
+                    <button type="button" onClick={() => removeBay(i)} disabled={bays.length <= 1}
+                      style={{ border: "none", background: "none", cursor: bays.length <= 1 ? "default" : "pointer", color: bays.length <= 1 ? "#ccc" : "#a03f2c", fontSize: 14, padding: "0 2px", flexShrink: 0 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={addBay} style={{ ...btn, marginTop: 8, width: "100%", fontSize: 12 }}>+ Add bay</button>
+            </div>
+          ) : isOpen ? (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>How many shelves?</div>
               <Segmented value={String(shelfCount)} options={[{ v: "0", label: "0" }, { v: "1", label: "1" }, { v: "2", label: "2" }, { v: "3", label: "3" }, { v: "4", label: "4" }]} onChange={(v) => setShelfCount(Number(v))} />
@@ -429,7 +552,7 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
               <Segmented value={String(doorCount)} options={[{ v: "1", label: "1" }, { v: "2", label: "2" }]} onChange={(v) => setDoorCount(Number(v))} />
             </div>
           )}
-          {!isOpen && (
+          {!isOpen && !isBays && (
             <div style={{ marginTop: 12, paddingTop: 8, borderTop: `1px solid ${C.edge}` }}>
               <Toggle label="Finger pull (handleless)" checked={fingerOn} onChange={setFinger} />
             </div>

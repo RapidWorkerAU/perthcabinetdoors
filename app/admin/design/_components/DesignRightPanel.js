@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import styles from "../design.module.css";
-import MaterialColourPicker from "./MaterialColourPicker";
 import ColourField, { collectMatchOptions } from "./ColourField";
 import AddItemModal from "./AddItemModal";
+import CutListModal from "./CutListModal";
+import { CabinetCutRows, itemDisplayLabel } from "./CutListView";
+import ConfigSection from "../../../../components/ConfigSection";
+import ConfigWindow from "../../../../components/ConfigWindow";
+import { Toggle } from "../../../../components/ConfigControls";
 import {
-  edgeProfilesForMaterial,
   profileNamesForSelection,
   profileTypesForSelection,
 } from "../../../../lib/quote-form-data";
@@ -22,6 +25,7 @@ import {
   benchtopOverhangMm,
   benchtopDepthMm,
   benchtopCutouts,
+  computeBenchtopRun,
 } from "../../../../lib/pcd-benchtop-utils";
 import { computeDrawerFrontHeights, DRAWER_RUNNER_LABELS, resolveRunnerType } from "../../../../lib/pcd-drawer-utils";
 import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow } from "../../../../lib/pcd-door-utils";
@@ -184,28 +188,11 @@ function SectionDivider({ label }) {
   );
 }
 
-// One collapsible group in the config panel.
-//
-// `summary` shows only while collapsed and is the point of the whole pattern:
-// it states what's inside in one line, so a fully-collapsed panel still reads
-// as a spec sheet ("Front · 2 doors 447×717 L/R") rather than a row of names
-// you have to open one by one to interrogate.
-function CollapsibleSection({ title, summary, open, onToggle, children }) {
-  return (
-    <div className={styles.configSection}>
-      <button
-        type="button"
-        className={styles.configSectionHeader}
-        onClick={onToggle}
-        aria-expanded={open}
-      >
-        <span className={`${styles.configSectionChevron} ${open ? styles.configSectionChevronOpen : ""}`}>▶</span>
-        <span className={styles.configSectionTitle}>{title}</span>
-        {!open && summary ? <span className={styles.configSectionSummary}>{summary}</span> : null}
-      </button>
-      {open ? <div className={styles.configSectionBody}>{children}</div> : null}
-    </div>
-  );
+// Small helpers for the Panels window: a link back to a continuous run's owner,
+// and the hint shown for a panel that's switched off.
+const runLinkStyle = { background: "none", border: "none", padding: 0, color: "var(--dt-accent, #2f7a4d)", textDecoration: "underline", cursor: "pointer", font: "inherit" };
+function PanelOffHint() {
+  return <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: 0 }}>Switch this on in the sidebar to set its sizes.</p>;
 }
 
 const ROTATION_OPTIONS = [
@@ -647,7 +634,11 @@ function FingerPullGapFields({ cfg, onChangeNow, onChange, label, note }) {
   );
 }
 
-function DoorBankFields({ cfg, onChangeNow, onChange, heightMm }) {
+function DoorBankFields({ cfg, onChangeNow, onChange, heightMm, part = null }) {
+  // `part` lets the door/drawer window show one sub-group at a time as a
+  // left-menu item ("layout" | "drilling" | "reveal"); null renders everything
+  // (used inline for a mixed front's per-section editor).
+  const show = (p) => !part || part === p;
   const cols     = Math.max(1, cfg.columns || 1);
   const hinges   = cfg.hinges || Array(cols).fill("L");
   const eqW      = cfg.equal_width !== false;
@@ -728,6 +719,7 @@ function DoorBankFields({ cfg, onChangeNow, onChange, heightMm }) {
 
   return (
     <>
+      {show("layout") && (<>
       <SectionDivider label="Layout" />
       <label className={styles.fieldLabel}>
         Doors across
@@ -750,7 +742,9 @@ function DoorBankFields({ cfg, onChangeNow, onChange, heightMm }) {
           </select>
         </label>
       ))}
+      </>)}
 
+      {show("drilling") && (<>
       <SectionDivider label="Hinge Drilling" />
       {cols > 1 && (
         <label className={styles.fieldCheckLabel}>
@@ -811,8 +805,9 @@ function DoorBankFields({ cfg, onChangeNow, onChange, heightMm }) {
         Hinge quantity is imported directly into the quote's hinge drilling fields. Positions are recorded
         here for manufacturing reference and carried into the imported line's notes.
       </p>
+      </>)}
 
-      {cols > 1 && (
+      {show("layout") && cols > 1 && (
         <>
           <label className={styles.fieldCheckLabel}>
             <input type="checkbox"
@@ -842,6 +837,7 @@ function DoorBankFields({ cfg, onChangeNow, onChange, heightMm }) {
         </>
       )}
 
+      {show("reveal") && (<>
       <RevealField cfg={cfg} onChange={onChange} />
       <FingerPullGapFields
         cfg={cfg}
@@ -853,6 +849,7 @@ function DoorBankFields({ cfg, onChangeNow, onChange, heightMm }) {
               never reaching above a door near the top of a tall cabinet to find the grip. On a multi-row tall cabinet
               this applies per row."
       />
+      </>)}
     </>
   );
 }
@@ -863,7 +860,8 @@ function DoorBankFields({ cfg, onChangeNow, onChange, heightMm }) {
 // bank is always a single column — a wide bank of drawers you'd see
 // side-by-side is actually two separate cabinets, not one cabinet with
 // multiple drawer columns.
-function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm }) {
+function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm, part = null }) {
+  const show = (p) => !part || part === p;
   const heights = Array.isArray(cfg.heights_mm) && cfg.heights_mm.length ? cfg.heights_mm : [heightMm || 720];
   const count = heights.length;
   const gapEnabled = cfg.gap_enabled || false;
@@ -889,6 +887,7 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm }) {
 
   return (
     <>
+      {show("layout") && (<>
       <SectionDivider label="Layout" />
       <label className={styles.fieldLabel}>
         Number of drawers
@@ -916,7 +915,9 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm }) {
                ${DEFAULT_DOOR_REVEAL_MM}mm is the full-overlay standard. Where a finger-pull gap is on it
                replaces the reveal on that edge rather than adding to it.`}
       />
+      </>)}
 
+      {show("finger") && (<>
       <SectionDivider label="Finger-Pull Gap" />
       <label className={styles.fieldCheckLabel}>
         <input type="checkbox" checked={gapEnabled} onChange={(e) => onChangeNow({
@@ -938,7 +939,9 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm }) {
           which recesses below the cabinet's top edge. Front heights: {frontHeights.map((h) => Math.round(h)).join(", ")}mm.
         </p>
       )}
+      </>)}
 
+      {show("runners") && (<>
       <SectionDivider label="Runners" />
       <label className={styles.fieldLabel}>
         Runner type
@@ -951,6 +954,7 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm }) {
       <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
         Supplied with the drawer, not costed separately — carried onto the quote line as the fit spec.
       </p>
+      </>)}
     </>
   );
 }
@@ -960,21 +964,22 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm }) {
 // only in practice, but written generically) a "mixed" front's shared
 // per-type style. `style` is a door_style/drawer_style-shaped object;
 // `onChange` merges a patch into it, always saved immediately (this is all
-// discrete select/picker input, no free-typed text worth debouncing except
-// cost, which MaterialColourPicker itself already debounces internally).
+// discrete select/picker input from the shared colour modal, no free-typed
+// text worth debouncing).
 // Exported so MaterialDefaultsModal.js can reuse the exact same door/drawer
-// style picker (including profile/edge mould) for project-level defaults.
-export function FrontStyleFields({ label, style, onChange, matchOptions = [] }) {
+// style picker for project-level defaults. Edge mould is NOT set here — it's
+// left to the quote editor. `simplified` (used in the cabinet Colours & finishes
+// section) hides the profile selects so it reads as a clean public-style colour
+// row; the project-defaults modal leaves it off to keep profile selection.
+export function FrontStyleFields({ label, style, onChange, matchOptions = [], colourImages = null, simplified = false }) {
   const mat = style.material || "";
   const thk = style.thickness_mm ? `${style.thickness_mm}mm` : "";
   // The material picker stores lowercase values (e.g. "decorative board")
-  // but the profile/edge-mould lookup tables key off the Title Case labels
-  // the quote editor uses (e.g. "Decorative Board") — convert before
-  // looking up, otherwise these options are always empty.
+  // but the profile lookup tables key off the Title Case labels the quote
+  // editor uses (e.g. "Decorative Board") — convert before looking up.
   const matLabel = materialLabelForType(mat);
-  const profTypes = profileTypesForSelection(matLabel, thk);
-  const profNames = profileNamesForSelection(style.profile_type || "", matLabel, thk);
-  const edgeProfs = edgeProfilesForMaterial(matLabel);
+  const profTypes = simplified ? [] : profileTypesForSelection(matLabel, thk);
+  const profNames = simplified ? [] : profileNamesForSelection(style.profile_type || "", matLabel, thk);
 
   return (
     <>
@@ -983,6 +988,7 @@ export function FrontStyleFields({ label, style, onChange, matchOptions = [] }) 
         value={style?.material || style?.colour ? style : null}
         matchOptions={matchOptions}
         thicknessDefault={18}
+        colourImages={colourImages}
         onChange={(s) =>
           onChange({
             material: s?.material || "",
@@ -1013,67 +1019,14 @@ export function FrontStyleFields({ label, style, onChange, matchOptions = [] }) 
           )}
         </>
       )}
-      {edgeProfs.length > 0 ? (
-        <label className={styles.fieldLabel}>
-          Edge mould
-          <select className={styles.fieldSelect} value={style.edge_mould || ""} onChange={(e) => onChange({ edge_mould: e.target.value })}>
-            <option value="">None</option>
-            {edgeProfs.map((ep) => <option key={ep} value={ep}>{ep}</option>)}
-          </select>
-        </label>
-      ) : (
-        <label className={styles.fieldLabel}>
-          Edge mould
-          <input className={styles.fieldInput} value={style.edge_mould || ""} onChange={(e) => onChange({ edge_mould: e.target.value })} placeholder="e.g. 1mm PVC bevel" />
-        </label>
-      )}
     </>
   );
 }
 
 // ---- Cabinet config form ----
-// Benchtop material picker (audit p2-2) — reads the pcd_benchtop_materials
-// catalogue and, on pick, sets the item's benchtop_material + its frozen
-// $/m² rate. Module-level cache so switching between cabinets doesn't refetch.
-let _benchtopMaterialsCache = null;
-function BenchtopMaterialField({ value, onPick }) {
-  const [materials, setMaterials] = useState(_benchtopMaterialsCache || []);
-  useEffect(() => {
-    if (_benchtopMaterialsCache) return;
-    let alive = true;
-    fetch("/api/admin/benchtop-materials")
-      .then((r) => r.json())
-      .then((d) => {
-        if (alive && d?.ok) { _benchtopMaterialsCache = d.materials || []; setMaterials(_benchtopMaterialsCache); }
-      })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
-  const active = materials.filter((m) => m.is_active);
-  const knownValue = !value || active.some((m) => m.name === value);
-  return (
-    <label className={styles.fieldLabel}>
-      Benchtop material
-      <select
-        className={styles.fieldSelect}
-        value={value || ""}
-        onChange={(e) => {
-          const name = e.target.value;
-          const m = materials.find((x) => x.name === name);
-          onPick({ name, rate: m ? Number(m.cost_per_sqm_ex_gst) || 0 : 0 });
-        }}
-      >
-        <option value="">Drawn only — not quoted</option>
-        {active.map((m) => (
-          <option key={m.id} value={m.name}>
-            {m.name} — ${Number(m.cost_per_sqm_ex_gst).toFixed(0)}/m²
-          </option>
-        ))}
-        {!knownValue && <option value={value}>{value}</option>}
-      </select>
-    </label>
-  );
-}
+// (The benchtop material picker was removed — we don't manufacture benchtops, so
+// the design tool never quotes them. The pcd_benchtop_materials catalogue stays
+// as-is for elsewhere; the benchtop here is drawn-only, visual colour only.)
 
 // Handle / hinge picker (audit p2-3b) — reads the pcd_hardware catalogue for a
 // given type and, on pick, sets the item's name + frozen unit cost. Cache keyed
@@ -1116,7 +1069,7 @@ function HardwareField({ type, label, value, onPick }) {
   );
 }
 
-function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChange, onSelectItem, openSections, toggleSection }) {
+function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChange, onSelectItem, openSection, toggleSection, fullWidth = false, colourImages = null }) {
   const [draft, setDraft]         = useState(item);
   const [saving, setSaving]       = useState(false);
   const [saveError, setSaveError]  = useState(null);
@@ -1233,7 +1186,6 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   summary.boards = [
     draft.colour || draft.material || "no board",
     draft.carcass_thickness_mm ? `${draft.carcass_thickness_mm}mm` : "",
-    draft.unit_cost_mode === "manual" ? "manual rate" : "",
   ].filter(Boolean).join(" · ");
 
   summary.carcass = [
@@ -1353,6 +1305,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
         canReset
         matchOptions={matchOptions}
         thicknessDefault={18}
+        colourImages={colourImages}
         onChange={(style) => setNow("finish_panel_style", style)}
       />
     );
@@ -1369,6 +1322,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
         matchHint={matchHint}
         canReset
         matchOptions={matchOptions}
+        colourImages={colourImages}
         onChange={(style) => setNow(key, style)}
       />
     );
@@ -1538,14 +1492,423 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   }
 
   const section = (id) => ({
-    open: Boolean(openSections[id]),
+    open: openSection === id,
     onToggle: () => toggleSection(id),
+    theme: "light",
   });
+
+  // Which heavy-config window is open (deep settings live in a 2-column window;
+  // the sidebar keeps the everyday controls + on/off toggles). null = none.
+  const [openWin, setOpenWin] = useState(null); // "front" | "panels" | "cutouts"
+  const [panelPart, setPanelPart] = useState(null);
+  const [frontPart, setFrontPart] = useState(null);
+
+  // ── The Doors & drawers window: the deep front-layout controls, broken into
+  //    left-menu sub-parts so each shows on its own instead of one long list. ──
+  const frontParts = (() => {
+    const fp = [];
+    if (draft.front_type === "doors") {
+      if (isCorner) { fp.push({ id: "corner", label: "Corner door" }); return fp; }
+      if (draft.item_type === "tall_cabinet") fp.push({ id: "bays", label: "Bays" });
+      fp.push({ id: "layout", label: "Doors" }, { id: "drilling", label: "Hinge drilling" }, { id: "reveal", label: "Reveal & finger-pull" });
+    } else if (draft.front_type === "drawers" && !isCorner) {
+      fp.push({ id: "layout", label: "Drawers" }, { id: "finger", label: "Finger-pull" }, { id: "runners", label: "Runners" });
+    } else if (draft.front_type === "mixed" && !isCorner) {
+      sections.forEach((s, i) => fp.push({ id: `sec-${i}`, label: `Section ${i + 1}` }));
+    }
+    return fp;
+  })();
+
+  const renderCornerDoorFields = () => (
+    <div className={styles.fieldGroup}>
+      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+        A corner cabinet has one door split into two leaves that fold around the corner. Only the leaf hinged to the cabinet frame needs hinge drilling — the other leaf folds off it.
+      </p>
+      <label className={styles.fieldLabel}>
+        Frame-hinged leaf
+        <select className={styles.fieldSelect} value={cornerHingeWall} onChange={(e) => setCornerHingeWall(e.target.value)}>
+          <option value="primary">Wall 1 ({draft.wall || "—"})</option>
+          <option value="secondary">Wall 2 ({draft.secondary_wall || "—"})</option>
+        </select>
+      </label>
+      <label className={styles.fieldLabel}>
+        Hinge qty
+        <select className={styles.fieldSelect} value={cornerHingeQty} onChange={(e) => setCornerHingeQty(Number(e.target.value))}>
+          <option value={2}>2 hinges</option>
+          <option value={3}>3 hinges</option>
+          <option value={4}>4 hinges</option>
+        </select>
+      </label>
+      {Array.from({ length: cornerHingeQty }).map((_, hIdx) => {
+        const isTop = hIdx === cornerHingeQty - 1 && cornerHingeQty > 1;
+        const isMiddle = hIdx > 0 && hIdx < cornerHingeQty - 1;
+        const stored = cornerHingePositions[hIdx] ?? "";
+        const displayValue = isTop && stored !== "" ? Math.max(0, Math.round((cornerDoorHeightMm || 0) - stored)) : stored;
+        return (
+          <label key={hIdx} className={styles.fieldLabel}>
+            {isMiddle ? `Hinge ${hIdx + 1} — evenly spaced between top & bottom (auto)` : isTop ? `Hinge ${hIdx + 1} — distance from top (mm)` : `Hinge ${hIdx + 1} — distance from bottom (mm)`}
+            <input className={styles.fieldInput} type="number" min="0" max={cornerDoorHeightMm || undefined} value={displayValue} disabled={isMiddle}
+              onChange={isMiddle ? undefined : (e) => {
+                const raw = e.target.value;
+                const storedVal = isTop && raw !== "" ? (cornerDoorHeightMm || 0) - Number(raw) : raw;
+                setCornerHingePosition(hIdx, storedVal);
+              }} />
+          </label>
+        );
+      })}
+      <RevealField cfg={cornerDoorCfg} onChange={(patch) => updCornerDoorCfg(patch, false)} />
+      <FingerPullGapFields cfg={cornerDoorCfg} onChangeNow={(patch) => updCornerDoorCfg(patch, true)} onChange={(patch) => updCornerDoorCfg(patch, false)}
+        label="Include a negative gap across the corner door"
+        note="One reveal shortens both leaves equally, so they still line up when the door folds around the corner. A corner base cabinet sits under the 900mm bench-height line, so the grip is at the top." />
+    </div>
+  );
+
+  const renderTallBays = () => (
+    <div className={styles.fieldGroup}>
+      <label className={styles.fieldLabel}>
+        Rows high
+        <select className={styles.fieldSelect} value={doorRows} onChange={(e) => setDoorRows(Number(e.target.value))}>
+          <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
+        </select>
+      </label>
+      {Array.from({ length: doorRows }).map((_, i) => {
+        const val = bayOptionValue(i);
+        const isFree = val !== "doors";
+        return (
+          <div key={i}>
+            <label className={styles.fieldLabel}>
+              Bay {i + 1}{i === 0 ? " (top)" : i === doorRows - 1 ? " (bottom)" : ""}
+              <select className={styles.fieldSelect} value={val} onChange={(e) => { const opt = BAY_OPTIONS.find((o) => o.value === e.target.value) || BAY_OPTIONS[0]; setBayType(i, opt.patch); }}>
+                {BAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            {isFree && <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>Left free — no board is cut and nothing is quoted for this bay.</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderMixedSection = (idx) => {
+    const sec = sections[idx];
+    if (!sec) return null;
+    return (
+      <div className={styles.fieldGroup}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--dt-text-muted, #888780)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Section {idx + 1} (top {idx === 0 ? "" : `+${sections.slice(0, idx).reduce((s, x) => s + (Number(x.height_mm) || 0), 0)}mm`})
+          </span>
+          <button type="button" onClick={() => { removeSection(idx); setFrontPart("sec-0"); }} style={{ background: "none", border: "none", padding: 0, color: "#c0392b", cursor: "pointer", fontSize: 11 }}>Remove</button>
+        </div>
+        <p style={{ fontSize: 10, color: sectionsTotal === (draft.height_mm || 0) ? "var(--dt-text-muted, #888780)" : "#c0392b", margin: "0 0 4px", lineHeight: 1.4 }}>
+          {sectionsTotal === (draft.height_mm || 0) ? `All sections total ${sectionsTotal}mm — matches the cabinet height.` : `All sections total ${sectionsTotal}mm — ${Math.abs((draft.height_mm || 0) - sectionsTotal)}mm ${sectionsTotal < (draft.height_mm || 0) ? "short of" : "over"} the ${draft.height_mm || 0}mm cabinet height.`}
+        </p>
+        <div className={styles.fieldRow}>
+          <label className={styles.fieldLabel}>
+            Height mm
+            <input className={styles.fieldInput} type="number" min="1" value={sec.height_mm || ""} onChange={(e) => updateSection(idx, { height_mm: Number(e.target.value) }, false)} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Type
+            <select className={styles.fieldSelect} value={sec.type || "doors"} onChange={(e) => updateSectionType(idx, e.target.value)}>
+              <option value="doors">Doors</option>
+              <option value="drawers">Drawers</option>
+              <option value="appliance">Oven / appliance</option>
+              <option value="open">Open space</option>
+            </select>
+          </label>
+        </div>
+        {(sec.type === "open" || sec.type === "appliance") ? (
+          <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+            {sec.type === "appliance" ? "Oven / appliance recess — left open for a customer-supplied appliance (shown as an oven in 3D). No board is cut or quoted." : "Left blank — e.g. an oven or microwave recess. No board is cut and nothing is quoted for this section."}
+          </p>
+        ) : sec.type === "drawers" ? (
+          <DrawerBankFields cfg={sec.drawer || {}} heightMm={sec.height_mm} onChangeNow={(patch) => updateSectionSubConfig(idx, "drawer", patch, true)} onChange={(patch) => updateSectionSubConfig(idx, "drawer", patch, false)} />
+        ) : (
+          <DoorBankFields cfg={sec.door || {}} heightMm={sec.height_mm} onChangeNow={(patch) => updateSectionSubConfig(idx, "door", patch, true)} onChange={(patch) => updateSectionSubConfig(idx, "door", patch, false)} />
+        )}
+      </div>
+    );
+  };
+
+  const renderFrontPart = (partId) => {
+    if (draft.front_type === "none") {
+      return <p style={{ fontSize: 12, color: "var(--dt-text-muted, #888780)" }}>No front on this cabinet — pick Doors, Drawers or Doors + Drawers first.</p>;
+    }
+    if (draft.front_type === "doors" && isCorner) return renderCornerDoorFields();
+    if (draft.front_type === "doors") {
+      if (partId === "bays") return renderTallBays();
+      return <div className={styles.fieldGroup}><DoorBankFields cfg={doorCfg} onChangeNow={updDoorCfg} onChange={updDoorCfgDebounced} heightMm={doorHeightMm} part={partId} /></div>;
+    }
+    if (draft.front_type === "drawers") {
+      return <div className={styles.fieldGroup}><DrawerBankFields cfg={drawerCfg} onChangeNow={updDrawerCfg} onChange={updDrawerCfgDebounced} heightMm={draft.height_mm} part={partId} /></div>;
+    }
+    if (draft.front_type === "mixed") {
+      return renderMixedSection(Number(String(partId).replace("sec-", "")));
+    }
+    return null;
+  };
+
+  // ── Panel detail renderers (numbers/spans/runs) — shown in the Panels window.
+  //    The on/off toggles live on the sidebar. ──
+  const renderKickboardDetail = () => {
+    if (!draft.has_kickboard) return <PanelOffHint />;
+    const isContinuous = (draft.kickboard_span ?? "continuous") === "continuous";
+    const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
+    const run = isContinuous ? computeKickboardRun(draft, liveItems, room) : null;
+    const sharedLeg = run?.legs?.find((l) => l.count > 1 && l.firstItemId !== draft.id);
+    const isFirstInRun = !sharedLeg;
+    const firstItem = sharedLeg ? liveItems.find((i) => i.id === sharedLeg.firstItemId) : null;
+    return (
+      <div className={styles.fieldGroup}>
+        {isFirstInRun ? (
+          <div className={styles.fieldRow}>
+            <label className={styles.fieldLabel}>Height mm
+              <input className={styles.fieldInput} type="number" min="1" value={draft.kickboard_height_mm ?? 120} onChange={(e) => set("kickboard_height_mm", e.target.value)} />
+            </label>
+            <label className={styles.fieldLabel}>Thickness mm
+              <input className={styles.fieldInput} type="number" min="1" value={draft.kickboard_thickness_mm ?? 16} onChange={(e) => set("kickboard_thickness_mm", e.target.value)} />
+            </label>
+          </div>
+        ) : (
+          <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+            Continuous kickboard run ({sharedLeg.count} cabinets, {firstItem?.kickboard_height_mm ?? 120}mm high) — height &amp; thickness are set on{" "}
+            <button type="button" onClick={() => onSelectItem?.(sharedLeg.firstItemId)} style={runLinkStyle}>{firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}</button>.
+          </p>
+        )}
+        <label className={styles.fieldLabel}>Spanning style
+          <select className={styles.fieldSelect} value={draft.kickboard_span ?? "continuous"} onChange={(e) => setNow("kickboard_span", e.target.value)}>
+            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
+            <option value="individual">Individual (separate piece per cabinet)</option>
+          </select>
+        </label>
+      </div>
+    );
+  };
+
+  const renderFillerDetail = () => {
+    if (!draft.has_filler_panel) return <PanelOffHint />;
+    const isContinuous = (draft.filler_panel_span ?? "continuous") === "continuous";
+    const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
+    const run = isContinuous ? computeFillerPanelRun(draft, liveItems) : null;
+    const isFirstInRun = !run || run.count <= 1 || run.firstItemId === draft.id;
+    const firstItem = run && !isFirstInRun ? liveItems.find((i) => i.id === run.firstItemId) : null;
+    return (
+      <div className={styles.fieldGroup}>
+        {isFirstInRun ? (
+          <div className={styles.fieldRow}>
+            <label className={styles.fieldLabel}>Height mm
+              <input className={styles.fieldInput} type="number" min="1" value={draft.filler_panel_height_mm ?? fillerPanelGapMm(draft, room, allItems)} onChange={(e) => set("filler_panel_height_mm", e.target.value)} />
+            </label>
+            <label className={styles.fieldLabel}>Thickness mm
+              <input className={styles.fieldInput} type="number" min="1" value={draft.filler_panel_thickness_mm ?? 16} onChange={(e) => set("filler_panel_thickness_mm", e.target.value)} />
+            </label>
+          </div>
+        ) : (
+          <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+            Continuous filler run ({run.count} cabinets, {firstItem?.filler_panel_height_mm ?? fillerPanelGapMm(firstItem, room, allItems)}mm high) — height &amp; thickness are set on{" "}
+            <button type="button" onClick={() => onSelectItem?.(run.firstItemId)} style={runLinkStyle}>{firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}</button>.
+          </p>
+        )}
+        <label className={styles.fieldLabel}>Spanning style
+          <select className={styles.fieldSelect} value={draft.filler_panel_span ?? "continuous"} onChange={(e) => setNow("filler_panel_span", e.target.value)}>
+            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
+            <option value="individual">Individual (separate piece per cabinet)</option>
+          </select>
+        </label>
+        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+          Height defaults to the gap above the cabinet ({fillerPanelGapMm(draft, room, allItems)}mm) — to the ceiling, or to the nearest obstruction above if closer.
+        </p>
+      </div>
+    );
+  };
+
+  const renderUndersideDetail = () => {
+    if (!draft.has_bottom_panel) return <PanelOffHint />;
+    const isContinuous = (draft.bottom_panel_span ?? "continuous") === "continuous";
+    const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
+    const run = isContinuous ? computeBottomPanelRun(draft, liveItems) : null;
+    const isFirstInRun = !run || run.firstItemId === draft.id;
+    const firstItem = run && !isFirstInRun ? liveItems.find((i) => i.id === run.firstItemId) : null;
+    return (
+      <div className={styles.fieldGroup}>
+        <label className={styles.fieldLabel}>Spanning style
+          <select className={styles.fieldSelect} value={draft.bottom_panel_span ?? "continuous"} onChange={(e) => setNow("bottom_panel_span", e.target.value)}>
+            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
+            <option value="individual">Individual (one panel, this cabinet only)</option>
+          </select>
+        </label>
+        {isContinuous && (isFirstInRun ? (
+          <label className={styles.fieldLabel}>Panel count {run && run.count > 1 ? `(run of ${run.count} cabinets)` : ""}
+            <input className={styles.fieldInput} type="number" min="1" value={draft.bottom_panel_qty ?? 1} onChange={(e) => set("bottom_panel_qty", e.target.value)} />
+          </label>
+        ) : (
+          <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+            Continuous underside run ({run.count} cabinets) — panel count is set on{" "}
+            <button type="button" onClick={() => onSelectItem?.(run.firstItemId)} style={runLinkStyle}>{firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}</button>.
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  const renderEndBackDetail = () => {
+    const anyPanel = draft.end_panel_left || draft.end_panel_right || draft.has_back_panel;
+    if (!draft.has_back_panel && !anyPanel) return <PanelOffHint />;
+    const isContinuous = (draft.back_panel_span ?? "continuous") === "continuous";
+    const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
+    const run = draft.has_back_panel && isContinuous ? computeBackPanelRun(draft, liveItems) : null;
+    const isFirstInRun = !run || run.firstItemId === draft.id;
+    const firstItem = run && !isFirstInRun ? liveItems.find((i) => i.id === run.firstItemId) : null;
+    return (
+      <div className={styles.fieldGroup}>
+        {draft.has_back_panel && (
+          <>
+            <label className={styles.fieldLabel}>Back panel spanning style
+              <select className={styles.fieldSelect} value={draft.back_panel_span ?? "continuous"} onChange={(e) => setNow("back_panel_span", e.target.value)}>
+                <option value="continuous">Continuous (spans across adjacent cabinets)</option>
+                <option value="individual">Individual (one panel, this cabinet only)</option>
+              </select>
+            </label>
+            {isContinuous && (isFirstInRun ? (
+              <label className={styles.fieldLabel}>Panel count {run && run.count > 1 ? `(run of ${run.count} cabinets)` : ""}
+                <input className={styles.fieldInput} type="number" min="1" value={draft.back_panel_qty ?? 1} onChange={(e) => set("back_panel_qty", e.target.value)} />
+              </label>
+            ) : (
+              <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+                Continuous back panel run ({run.count} cabinets) — panel count is set on{" "}
+                <button type="button" onClick={() => onSelectItem?.(run.firstItemId)} style={runLinkStyle}>{firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}</button>.
+              </p>
+            ))}
+          </>
+        )}
+        {anyPanel && (
+          <>
+            <label className={styles.fieldCheckLabel}>
+              <input type="checkbox" checked={draft.panel_to_floor ?? false} onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
+              Panels run to floor (otherwise carcass height only, kickboard continues underneath)
+            </label>
+            <label className={styles.fieldCheckLabel}>
+              <input type="checkbox" checked={draft.panel_to_ceiling ?? false} onChange={(e) => setNow("panel_to_ceiling", e.target.checked)} />
+              Panels run to ceiling (full-height finished end, e.g. beside a fridge or oven tower)
+            </label>
+          </>
+        )}
+        {!anyPanel && <PanelOffHint />}
+      </div>
+    );
+  };
+
+  const renderCornerBacksDetail = () => (
+    <div className={styles.fieldGroup}>
+      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+        Manual per leg — tick whichever leg(s) need a finished back, then choose whether they run to the floor.
+      </p>
+      {(draft.back_panel_wall1 || draft.back_panel_wall2) ? (
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={Boolean(draft.panel_to_floor)} onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
+          Panels run to floor (otherwise carcass height only, kickboard continues underneath)
+        </label>
+      ) : <PanelOffHint />}
+    </div>
+  );
+
+  const renderCornerEndExtra = () => (
+    <div className={styles.fieldGroup}>
+      {(draft.end_panel_left || draft.end_panel_right) ? (
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={draft.panel_to_floor ?? false} onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
+          End panels run to the floor (past the kickboard recess)
+        </label>
+      ) : <PanelOffHint />}
+    </div>
+  );
+
+  const renderSidePanelExtra = () => (
+    <div className={styles.fieldGroup}>
+      {(draft.end_panel_left || draft.end_panel_right) ? (
+        <>
+          {draft.has_bottom_panel && (
+            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+              Side panels extend down to cover the finished underside panel edge.
+            </p>
+          )}
+          <label className={styles.fieldCheckLabel}>
+            <input type="checkbox" checked={draft.panel_to_ceiling ?? false} onChange={(e) => setNow("panel_to_ceiling", e.target.checked)} />
+            Side panels run to ceiling (finished side carries on to the ceiling)
+          </label>
+        </>
+      ) : <PanelOffHint />}
+    </div>
+  );
+
+  const renderSideFillerDetail = () => (
+    <div className={styles.fieldGroup}>
+      {draft.side_filler_left && (
+        <label className={styles.fieldLabel}>Left gap width mm
+          <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_left_width_mm ?? ""} onChange={(e) => set("side_filler_left_width_mm", e.target.value)} />
+        </label>
+      )}
+      {draft.side_filler_right && (
+        <label className={styles.fieldLabel}>Right gap width mm
+          <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_right_width_mm ?? ""} onChange={(e) => set("side_filler_right_width_mm", e.target.value)} />
+        </label>
+      )}
+      {(draft.side_filler_left || draft.side_filler_right) ? (
+        <label className={styles.fieldLabel}>Thickness mm
+          <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_thickness_mm ?? 18} onChange={(e) => set("side_filler_thickness_mm", e.target.value)} />
+        </label>
+      ) : <PanelOffHint />}
+    </div>
+  );
+
+  // Which panels apply to this cabinet type — drives the sidebar toggles AND the
+  // Panels window's left list. Each: { id, label, toggles:[{key,label,disabled}],
+  // detail:() => node }.
+  const panelGroups = [];
+  if (isCorner) {
+    panelGroups.push({ id: "corner-backs", label: "Finished backs", toggles: [
+      { key: "back_panel_wall1", label: `Wall 1 finished back (${draft.wall || "—"})` },
+      { key: "back_panel_wall2", label: draft.secondary_wall ? `Wall 2 finished back (${draft.secondary_wall})` : "Wall 2 finished back (set a second wall first)", disabled: !draft.secondary_wall },
+    ], detail: renderCornerBacksDetail });
+    panelGroups.push({ id: "corner-ends", label: "End panels", toggles: [
+      { key: "end_panel_left", label: "Wall 1 end panel" },
+      { key: "end_panel_right", label: "Wall 2 end panel" },
+    ], detail: renderCornerEndExtra });
+  }
+  if (draft.item_type !== "wall_cabinet") {
+    panelGroups.push({ id: "kickboard", label: "Kickboard / plinth", toggles: [{ key: "has_kickboard", label: "Include kickboard / plinth" }], detail: renderKickboardDetail });
+  }
+  if (draft.item_type === "wall_cabinet" || draft.item_type === "tall_cabinet" || draft.item_type === "corner_tall_cabinet") {
+    panelGroups.push({ id: "filler", label: "Filler panel", toggles: [{ key: "has_filler_panel", label: "Include filler panel (to ceiling)" }], detail: renderFillerDetail });
+  }
+  if (draft.item_type === "wall_cabinet") {
+    panelGroups.push({ id: "underside", label: "Underside panel", toggles: [{ key: "has_bottom_panel", label: "Finished underside panel" }], detail: renderUndersideDetail });
+    panelGroups.push({ id: "side-panels", label: "Side panels", toggles: [
+      { key: "end_panel_left", label: "Left side panel" },
+      { key: "end_panel_right", label: "Right side panel" },
+    ], detail: renderSidePanelExtra });
+  }
+  if (draft.item_type === "base_cabinet" || draft.item_type === "tall_cabinet" || draft.item_type === "blind_corner_cabinet") {
+    panelGroups.push({ id: "end-back", label: "End & back panels", toggles: [
+      { key: "end_panel_left", label: "Left end panel" },
+      { key: "end_panel_right", label: "Right end panel" },
+      { key: "has_back_panel", label: "Finished back panel" },
+    ], detail: renderEndBackDetail });
+  }
+  if (!isCorner) {
+    panelGroups.push({ id: "side-fillers", label: "Side fillers", toggles: [
+      { key: "side_filler_left", label: "Left side filler" },
+      { key: "side_filler_right", label: "Right side filler" },
+    ], detail: renderSideFillerDetail });
+  }
+  const groupEnabled = (g) => g.toggles.some((tg) => draft[tg.key]);
+  const enabledGroups = panelGroups.filter(groupEnabled);
 
   return (
     <>
-      <div className={styles.rightScroll}>
-        <CollapsibleSection title="Cabinet" summary={summary.cabinet} {...section("cabinet")}>
+      <div className={styles.rightScroll} style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
+        <ConfigSection title="Size & position" summary={summary.cabinet} {...section("size")}>
           <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel}>
                 Label
@@ -1694,19 +2057,18 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 Drag the cabinet on the floor plan to reposition. Wall assigns automatically.
               </p>
             </div>
-        </CollapsibleSection>
+        </ConfigSection>
 
         {/* Every board's finish in ONE place — carcass, doors, drawers, shelves,
-            benchtop and every applied panel — so recolouring a cabinet is one
-            section, not a hunt through five. The panels are TOGGLED on/off (with
-            span + dimensions) over in "Add-on panels"; here we only pick their
-            finish, and only for the ones that are switched on. */}
-        <CollapsibleSection title="Board colours & cost" summary={summary.boards} {...section("boards")}>
+            benchtop and every applied panel. Panels are toggled on/off in
+            "Panels & finishing"; here we only pick their finish. */}
+        <ConfigSection title="Colours & finishes" summary={summary.boards} {...section("colours")}>
             <div className={styles.fieldGroup}>
               <ColourField
-                label="Carcass board"
+                label="Carcass"
                 value={{ material: draft.material, finish: draft.finish, colour: draft.colour, thickness_mm: draft.carcass_thickness_mm, cost_per_sqm: draft.cost_per_sqm_carcass }}
                 matchOptions={matchOptions}
+                colourImages={colourImages}
                 onChange={(style) =>
                   setMultiNow({
                     material: style?.material || "",
@@ -1717,40 +2079,21 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                   })
                 }
               />
-              <label className={styles.fieldLabel}>
-                Unit cost mode
-                <select className={styles.fieldSelect} value={draft.unit_cost_mode || "auto"} onChange={(e) => setNow("unit_cost_mode", e.target.value)}>
-                  <option value="auto">Auto (calculated)</option>
-                  <option value="manual">Manual (override)</option>
-                </select>
-              </label>
-              {draft.unit_cost_mode === "manual" && (
-                <label className={styles.fieldLabel}>
-                  Unit cost per sqm ex GST ($)
-                  <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.unit_cost_per_sqm_ex_gst ?? ""} onChange={(e) => set("unit_cost_per_sqm_ex_gst", e.target.value)} placeholder="0.00" />
-                </label>
-              )}
 
               {frontHasDoors && (
-                <>
-                  <SectionDivider label="Door finish" />
-                  <FrontStyleFields label="Door Board" style={doorStyle} onChange={updDoorStyle} matchOptions={matchOptions} />
-                </>
+                <FrontStyleFields label="Doors" style={doorStyle} onChange={updDoorStyle} matchOptions={matchOptions} colourImages={colourImages} simplified />
               )}
               {frontHasDrawers && (
-                <>
-                  <SectionDivider label="Drawer finish" />
-                  <FrontStyleFields label="Drawer Board" style={drawerStyle} onChange={updDrawerStyle} matchOptions={matchOptions} />
-                </>
+                <FrontStyleFields label="Drawers" style={drawerStyle} onChange={updDrawerStyle} matchOptions={matchOptions} colourImages={colourImages} simplified />
               )}
               {Number(draft.shelf_qty) > 0 && (
                 <>
-                  <SectionDivider label="Shelves" />
                   <ColourField
-                    label="Shelf board"
+                    label="Shelves"
                     value={{ material: draft.shelf_material, finish: draft.shelf_finish, colour: draft.shelf_colour, thickness_mm: draft.shelf_thickness_mm, cost_per_sqm: draft.cost_per_sqm_shelf }}
                     matchHint="Matches carcass by default"
                     matchOptions={matchOptions}
+                    colourImages={colourImages}
                     onChange={(style) =>
                       setMultiNow({
                         shelf_material: style?.material || "",
@@ -1763,78 +2106,114 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                   />
                 </>
               )}
-              {isBenchtopType && draft.has_benchtop && (
-                <>
-                  <SectionDivider label="Benchtop" />
-                  <BenchtopMaterialField
-                    value={draft.benchtop_material}
-                    onPick={({ name, rate }) => setMultiNow({ benchtop_material: name, benchtop_cost_per_sqm: rate })}
-                  />
-                  {Number(draft.benchtop_cost_per_sqm) > 0 && (
-                    <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                      Quoted at ${Number(draft.benchtop_cost_per_sqm).toFixed(0)}/m² ex GST × the run area ({benchtopDepthMm(draft)}mm deep).
-                    </p>
-                  )}
-
-                  {/* Benchtop VISUAL colour — design-tool only, independent of the
-                      priced material above. A compact-laminate library colour OR
-                      a flat colour; picking one clears the other. */}
+              {isBenchtopType && draft.has_benchtop && (() => {
+                // A continuous benchtop is drawn once by the run's FIRST cabinet,
+                // so its colour lives there. On any other cabinet in the run,
+                // show the owner's colour read-only with a link (same pattern as
+                // the kickboard / filler runs) instead of an empty "Not set" that
+                // wouldn't do anything.
+                const isContinuous = (draft.benchtop_span ?? "continuous") === "continuous";
+                const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
+                const run = isContinuous ? computeBenchtopRun(draft, liveItems) : null;
+                const isOwner = !run || run.count <= 1 || run.firstItemId === draft.id;
+                if (!isOwner) {
+                  const owner = liveItems.find((i) => i.id === run.firstItemId) || {};
+                  const ownerLabel = owner.label || TYPE_LABELS[owner.item_type] || "the first cabinet";
+                  return (
+                    <ColourField
+                      label="Benchtop"
+                      value={owner.benchtop_colour_style || null}
+                      hideCost
+                      colourImages={colourImages}
+                      hex={owner.benchtop_colour_hex}
+                      notice={
+                        <div style={{ maxWidth: 440 }}>
+                          <p style={{ fontSize: 15, fontWeight: 700, color: "#26251f", margin: "0 0 6px" }}>Set on the benchtop run</p>
+                          <p style={{ fontSize: 13, color: "#5a574f", margin: "0 0 16px", lineHeight: 1.5 }}>
+                            This is one continuous benchtop across the run, so its colour is set on <strong>{ownerLabel}</strong>.
+                          </p>
+                          <button type="button" onClick={() => onSelectItem?.(run.firstItemId)}
+                            style={{ padding: "9px 16px", borderRadius: 8, border: "1px solid #1f6f4a", background: "#1f6f4a", color: "#fff", cursor: "pointer", font: "inherit", fontSize: 13, fontWeight: 600 }}>
+                            Edit on {ownerLabel}
+                          </button>
+                        </div>
+                      }
+                      onChange={() => {}}
+                    />
+                  );
+                }
+                return (
                   <ColourField
-                    label="Benchtop colour (compact laminate)"
+                    label="Benchtop"
                     value={draft.benchtop_colour_style || null}
-                    matchHint="Visual only — pick a laminate colour, or a flat colour below"
                     canReset
                     hideCost
                     matchOptions={matchOptions}
-                    onChange={(style) => setMultiNow({ benchtop_colour_style: style, ...(style ? { benchtop_colour_hex: null } : {}) })}
+                    colourImages={colourImages}
+                    hex={draft.benchtop_colour_hex}
+                    allowFlat
+                    onFlat={(h) => setMultiNow({ benchtop_colour_hex: h, benchtop_colour_style: null })}
+                    onChange={(style) => setMultiNow({ benchtop_colour_style: style, benchtop_colour_hex: null })}
                   />
-                  <label className={styles.fieldLabel}>
-                    Or a flat colour
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <input
-                        type="color"
-                        value={draft.benchtop_colour_hex || "#787066"}
-                        onChange={(e) => setMultiNow({ benchtop_colour_hex: e.target.value, benchtop_colour_style: null })}
-                        style={{ width: 44, height: 30, padding: 0, border: "1px solid var(--dt-border-soft, rgba(0,0,0,0.15))", borderRadius: 4, background: "none", cursor: "pointer" }}
-                        aria-label="Benchtop flat colour"
-                      />
-                      <span style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", fontVariantNumeric: "tabular-nums" }}>
-                        {draft.benchtop_colour_hex ? draft.benchtop_colour_hex.toUpperCase() : "Default grey"}
-                      </span>
-                      {draft.benchtop_colour_hex && (
-                        <button type="button" onClick={() => set("benchtop_colour_hex", null)}
-                          style={{ marginLeft: "auto", background: "none", border: "none", padding: 0, color: "#2563eb", cursor: "pointer", fontSize: 11 }}>
-                          Reset
-                        </button>
-                      )}
-                    </div>
-                  </label>
-                  <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                    Visual only — colours the benchtop in the plan, elevation &amp; 3D (the laminate texture shows when
-                    &ldquo;Show colours&rdquo; is on). Never affects the quote.
-                  </p>
-                </>
-              )}
-              {(draft.has_kickboard || draft.has_filler_panel || draft.has_bottom_panel || draft.has_back_panel || draft.end_panel_left || draft.end_panel_right) && (
-                <SectionDivider label="Panel colours" />
-              )}
+                );
+              })()}
               {draft.item_type !== "wall_cabinet" && draft.has_kickboard &&
-                renderOverridePicker("kickboard_style", "Kickboard colour", "Matches the carcass by default.")}
+                renderOverridePicker("kickboard_style", "Kickboard", "Matches the carcass by default.")}
               {draft.has_filler_panel &&
-                renderOverridePicker("filler_panel_style", "Filler colour", "Matches the doors on a doored cabinet, otherwise the carcass.")}
+                renderOverridePicker("filler_panel_style", "Filler", "Matches the doors on a doored cabinet, otherwise the carcass.")}
               {draft.item_type === "wall_cabinet" && draft.has_bottom_panel &&
-                renderOverridePicker("bottom_panel_style", "Underside colour", "Matches the carcass by default.")}
+                renderOverridePicker("bottom_panel_style", "Underside", "Matches the carcass by default.")}
               {draft.has_back_panel &&
-                renderOverridePicker("back_panel_style", "Back panel colour", "Matches the carcass by default.")}
+                renderOverridePicker("back_panel_style", "Back panel", "Matches the carcass by default.")}
               {(draft.end_panel_left || draft.end_panel_right || draft.has_back_panel) && renderFinishPanelMaterial()}
 
               <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "6px 0 0", lineHeight: 1.4 }}>
-                Only pieces this cabinet actually has show up here. Turn panels on / off (and set their span &amp; sizes) in <strong>Add-on panels</strong>.
+                Only pieces this cabinet actually has show up here. Turn panels on / off (and set their span &amp; sizes) in <strong>Panels &amp; finishing</strong>.
               </p>
             </div>
-        </CollapsibleSection>
+        </ConfigSection>
 
-        <CollapsibleSection title="Carcass & shelves" summary={summary.carcass} {...section("carcass")}>
+        {/* Doors & drawers — everyday choice on the sidebar; the detailed layout
+            (hinges, bays, mixed sections) opens in a window. */}
+        <ConfigSection title="Doors & drawers" summary={summary.front} {...section("front")}>
+          <div className={styles.fieldGroup}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              {[
+                ["none", "None"],
+                ["doors", "Doors"],
+                ...(isCorner ? [] : [["drawers", "Drawers"], ["mixed", "Doors + Drawers"]]),
+              ].map(([val, label]) => (
+                <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--dt-text, #1c1c1a)", cursor: "pointer" }}>
+                  <input type="radio" name={`front_type_${item.id}`} value={val} checked={(draft.front_type ?? "none") === val} onChange={() => onFrontTypeChange(val)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {((draft.front_type && draft.front_type !== "none") || isCorner) && (
+              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10 }} onClick={() => { setFrontPart(frontParts[0]?.id || null); setOpenWin("front"); }}>
+                Edit door / drawer layout →
+              </button>
+            )}
+          </div>
+        </ConfigSection>
+
+        {/* Hardware — handles + hinge supply, priced from the Hardware catalogue.
+            Only where the cabinet actually has a front. */}
+        {((draft.front_type && draft.front_type !== "none") || isCornerType(draft)) && (
+        <ConfigSection title="Hardware" summary={draft.handle_name || draft.hinge_model ? "On" : "Off"} {...section("hardware")}>
+          <div className={styles.fieldGroup}>
+            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+              Priced from the Hardware catalogue — a handle per door/drawer front, and hinge supply per hinge (drilling is charged separately). Leave as <em>Not supplied by us</em> to keep it off the quote.
+            </p>
+            <HardwareField type="handle" label="Handle" value={draft.handle_name} onPick={({ name, cost }) => setMultiNow({ handle_name: name, handle_cost_ex_gst: cost })} />
+            {draft.front_type !== "drawers" && (
+              <HardwareField type="hinge" label="Hinge model (supply)" value={draft.hinge_model} onPick={({ name, cost }) => setMultiNow({ hinge_model: name, hinge_cost_ex_gst: cost })} />
+            )}
+          </div>
+        </ConfigSection>
+        )}
+
+        <ConfigSection title="Inside" summary={summary.carcass} {...section("inside")}>
             <div className={styles.fieldGroup}>
               <label className={styles.fieldCheckLabel}>
                 <input
@@ -1910,7 +2289,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               )}
 
             </div>
-        </CollapsibleSection>
+        </ConfigSection>
 
         {/* Everything a cabinet gets FINISHED with — every board applied to the
             outside of the carcass. This is the group the old "Back & Shelves"
@@ -1923,11 +2302,10 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
             Under the old five-tab bar it would have had to be crammed into
             "Back & Shelves" with everything else. */}
         {isBenchtopType && (
-        <CollapsibleSection title="Benchtop" summary={summary.benchtop} {...section("benchtop")}>
+        <ConfigSection title="Benchtop" summary={summary.benchtop} {...section("benchtop")}>
             <div className={styles.fieldGroup}>
               <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-                Sizes, waterfall ends and cutouts. The benchtop <strong>material</strong> (which sets the per-m² price)
-                is picked in <strong>Board colours &amp; cost</strong>. Leave it as <em>Drawn only</em> to keep it off the quote.
+                Sizes, waterfall ends and cutouts — for the drawing only. We don&apos;t make benchtops, so they&apos;re never quoted. Pick a visual colour in <strong>Colours &amp; finishes</strong>.
               </p>
               <label className={styles.fieldCheckLabel}>
                 <input type="checkbox" checked={draft.has_benchtop ?? false}
@@ -1979,831 +2357,122 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                   </label>
 
                   <SectionDivider label="Cutouts" />
-                  <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-                    Centred on this cabinet. These aren&apos;t appliances — they only tell the fabricator a hole this
-                    size goes here.
-                  </p>
-                  {(draft.benchtop_cutouts || []).map((cut, idx) => (
-                    <div key={idx} className={styles.fieldRow} style={{ alignItems: "flex-end" }}>
-                      <label className={styles.fieldLabel}>
-                        Type
-                        <select className={styles.fieldSelect} value={cut.type || "sink"}
-                          onChange={(e) => updCutout(idx, { type: e.target.value })}>
-                          <option value="sink">Sink</option>
-                          <option value="cooktop">Cooktop</option>
-                        </select>
-                      </label>
-                      <label className={styles.fieldLabel}>
-                        W mm
-                        <input className={styles.fieldInput} type="number" min="1" value={cut.width_mm ?? ""}
-                          onChange={(e) => updCutout(idx, { width_mm: Number(e.target.value) || 0 })} />
-                      </label>
-                      <label className={styles.fieldLabel}>
-                        D mm
-                        <input className={styles.fieldInput} type="number" min="1" value={cut.depth_mm ?? ""}
-                          onChange={(e) => updCutout(idx, { depth_mm: Number(e.target.value) || 0 })} />
-                      </label>
-                      <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                        style={{ marginBottom: 2 }} onClick={() => removeCutout(idx)}>
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                  <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={addCutout}>
-                    Add cutout
+                  <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%" }} onClick={() => setOpenWin("cutouts")}>
+                    Edit sink / cooktop cutouts →{benchtopCutouts(draft).length ? ` (${benchtopCutouts(draft).length})` : ""}
                   </button>
                 </>
               )}
             </div>
-        </CollapsibleSection>
+        </ConfigSection>
         )}
 
         {/* ADD-ON PANELS — every applied panel's on/off toggle, spanning style
             and dimensions in one place. Board finishes for these live in
             "Board colours & cost"; here it's purely which panels exist and how
             big. Each sub-group shows only for the cabinet types it applies to. */}
-        <CollapsibleSection title="Add-on panels" summary={addonsOnCount ? `${addonsOnCount} on` : "Off"} {...section("addons")}>
-
-        {/* Corner cabinets get their finished backs per leg, since an L-shape
-            has no single "back" side. */}
-        {isCorner && (
-          <>
-          <SectionDivider label="Finished backs" />
-          <div className={styles.fieldGroup}>
-                  <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-                    Manual per leg, not auto-detected — a corner cabinet&apos;s second wall is often a virtual assignment
-                    (an island corner unit) rather than a real wall, so which side is actually exposed can&apos;t be sensed
-                    reliably. Tick whichever leg(s) need a finished back.
-                  </p>
-                  <label className={styles.fieldCheckLabel}>
-                    <input type="checkbox" checked={Boolean(draft.back_panel_wall1)}
-                      onChange={(e) => setNow("back_panel_wall1", e.target.checked)} />
-                    Wall 1 finished back ({draft.wall || "—"})
-                  </label>
-                  <label className={styles.fieldCheckLabel}>
-                    <input type="checkbox" checked={Boolean(draft.back_panel_wall2)} disabled={!draft.secondary_wall}
-                      onChange={(e) => setNow("back_panel_wall2", e.target.checked)} />
-                    Wall 2 finished back {draft.secondary_wall ? `(${draft.secondary_wall})` : "(set a second wall first)"}
-                  </label>
-                  {(draft.back_panel_wall1 || draft.back_panel_wall2) && (
-                    <label className={styles.fieldCheckLabel}>
-                      <input type="checkbox" checked={Boolean(draft.panel_to_floor)}
-                        onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
-                      Panels run to floor (otherwise carcass height only, kickboard continues underneath)
-                    </label>
-                  )}
-          </div>
-          </>
-        )}
-
-        {/* Kickboard / plinth — not applicable to wall cabinets. */}
-        {draft.item_type !== "wall_cabinet" && (
-          <>
-          <SectionDivider label="Kickboard / plinth" />
-          <div className={styles.fieldGroup}>
-                  <label className={styles.fieldCheckLabel}>
-                    <input
-                      type="checkbox"
-                      checked={draft.has_kickboard ?? false}
-                      onChange={(e) => setNow("has_kickboard", e.target.checked)}
-                    />
-                    Include kickboard / plinth
-                  </label>
-                  {draft.has_kickboard && (() => {
-                    // A continuous kickboard run is one board sized/priced off
-                    // the run's FIRST cabinet — the others' height/thickness are
-                    // ignored at import. So on a non-owner cabinet, show the
-                    // owner's effective height with a link instead of editable
-                    // fields that would silently do nothing (mirrors the filler,
-                    // back & underside panel sections). Kickboards are per-leg,
-                    // so a cabinet is a non-owner when any shared leg's run
-                    // starts on a different cabinet.
-                    const isContinuous = (draft.kickboard_span ?? "continuous") === "continuous";
-                    const liveItems = allItems
-                      ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i))
-                      : [draft];
-                    const run = isContinuous ? computeKickboardRun(draft, liveItems, room) : null;
-                    const sharedLeg = run?.legs?.find((l) => l.count > 1 && l.firstItemId !== draft.id);
-                    const isFirstInRun = !sharedLeg;
-                    const firstItem = sharedLeg
-                      ? liveItems.find((i) => i.id === sharedLeg.firstItemId)
-                      : null;
-                    return (
-                      <>
-                        {isFirstInRun ? (
-                          <div className={styles.fieldRow}>
-                            <label className={styles.fieldLabel}>
-                              Height mm
-                              <input
-                                className={styles.fieldInput}
-                                type="number"
-                                min="1"
-                                value={draft.kickboard_height_mm ?? 120}
-                                onChange={(e) => set("kickboard_height_mm", e.target.value)}
-                              />
-                            </label>
-                            <label className={styles.fieldLabel}>
-                              Thickness mm
-                              <input
-                                className={styles.fieldInput}
-                                type="number"
-                                min="1"
-                                value={draft.kickboard_thickness_mm ?? 16}
-                                onChange={(e) => set("kickboard_thickness_mm", e.target.value)}
-                              />
-                            </label>
-                          </div>
-                        ) : (
-                          <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                            Continuous kickboard run ({sharedLeg.count} cabinets, {firstItem?.kickboard_height_mm ?? 120}mm high) —
-                            height &amp; thickness are set on{" "}
-                            <button
-                              type="button"
-                              onClick={() => onSelectItem?.(sharedLeg.firstItemId)}
-                              style={{ background: "none", border: "none", padding: 0, color: "var(--dt-accent, #2f7a4d)", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
-                            >
-                              {firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}
-                            </button>.
-                          </p>
-                        )}
-                        <label className={styles.fieldLabel}>
-                          Spanning style
-                          <select
-                            className={styles.fieldSelect}
-                            value={draft.kickboard_span ?? "continuous"}
-                            onChange={(e) => setNow("kickboard_span", e.target.value)}
-                          >
-                            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
-                            <option value="individual">Individual (separate piece per cabinet)</option>
-                          </select>
-                        </label>
-                        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                          Continuous kickboard runs are calculated as one piece across the full run in the cut list.
-                        </p>
-                      </>
-                    );
-                  })()}
-          </div>
-          </>
-        )}
-
-        {/* Filler panel — wall and tall cabinets only. */}
-        {(draft.item_type === "wall_cabinet" || draft.item_type === "tall_cabinet" || draft.item_type === "corner_tall_cabinet") && (
-          <>
-          <SectionDivider label="Filler panel" />
-          <div className={styles.fieldGroup}>
-                  <label className={styles.fieldCheckLabel}>
-                    <input
-                      type="checkbox"
-                      checked={draft.has_filler_panel ?? false}
-                      onChange={(e) => setNow("has_filler_panel", e.target.checked)}
-                    />
-                    Include filler panel (to ceiling)
-                  </label>
-                  {draft.has_filler_panel && (() => {
-                    // A continuous filler run is one board sized/priced off the
-                    // run's FIRST cabinet — the others' height/thickness are
-                    // ignored at import. So on a non-owner cabinet, show the
-                    // owner's effective height with a link instead of editable
-                    // fields that would silently do nothing (mirrors the back &
-                    // underside panel sections).
-                    const isContinuous = (draft.filler_panel_span ?? "continuous") === "continuous";
-                    const liveItems = allItems
-                      ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i))
-                      : [draft];
-                    const run = isContinuous ? computeFillerPanelRun(draft, liveItems) : null;
-                    const isFirstInRun = !run || run.count <= 1 || run.firstItemId === draft.id;
-                    const firstItem = run && !isFirstInRun
-                      ? liveItems.find((i) => i.id === run.firstItemId)
-                      : null;
-                    return (
-                      <>
-                        {isFirstInRun ? (
-                          <div className={styles.fieldRow}>
-                            <label className={styles.fieldLabel}>
-                              Height mm
-                              <input
-                                className={styles.fieldInput}
-                                type="number"
-                                min="1"
-                                value={draft.filler_panel_height_mm ?? fillerPanelGapMm(draft, room, allItems)}
-                                onChange={(e) => set("filler_panel_height_mm", e.target.value)}
-                              />
-                            </label>
-                            <label className={styles.fieldLabel}>
-                              Thickness mm
-                              <input
-                                className={styles.fieldInput}
-                                type="number"
-                                min="1"
-                                value={draft.filler_panel_thickness_mm ?? 16}
-                                onChange={(e) => set("filler_panel_thickness_mm", e.target.value)}
-                              />
-                            </label>
-                          </div>
-                        ) : (
-                          <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                            Continuous filler run ({run.count} cabinets, {firstItem?.filler_panel_height_mm ?? fillerPanelGapMm(firstItem, room, allItems)}mm high) —
-                            height &amp; thickness are set on{" "}
-                            <button
-                              type="button"
-                              onClick={() => onSelectItem?.(run.firstItemId)}
-                              style={{ background: "none", border: "none", padding: 0, color: "var(--dt-accent, #2f7a4d)", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
-                            >
-                              {firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}
-                            </button>.
-                          </p>
-                        )}
-                        <label className={styles.fieldLabel}>
-                          Spanning style
-                          <select
-                            className={styles.fieldSelect}
-                            value={draft.filler_panel_span ?? "continuous"}
-                            onChange={(e) => setNow("filler_panel_span", e.target.value)}
-                          >
-                            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
-                            <option value="individual">Individual (separate piece per cabinet)</option>
-                          </select>
-                        </label>
-                        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                          Continuous filler panel runs are calculated as one piece across the full run in the cut list. Height defaults to the gap above the cabinet ({fillerPanelGapMm(draft, room, allItems)}mm) — to the ceiling, or to the nearest obstruction above if closer — override if you need a different height.
-                        </p>
-                      </>
-                    );
-                  })()}
-          </div>
-          </>
-        )}
-
-        {/* Underside panel — wall cabinets only. */}
-        {draft.item_type === "wall_cabinet" && (
-          <>
-          <SectionDivider label="Underside panel" />
-          <div className={styles.fieldGroup}>
-              {(() => {
-                const isContinuous = (draft.bottom_panel_span ?? "continuous") === "continuous";
-                const liveItems = allItems
-                  ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i))
-                  : [draft];
-                const run = draft.has_bottom_panel && isContinuous
-                  ? computeBottomPanelRun(draft, liveItems)
-                  : null;
-                const isFirstInRun = !run || run.firstItemId === draft.id;
-                const firstItem = run && !isFirstInRun
-                  ? liveItems.find((i) => i.id === run.firstItemId)
-                  : null;
-
-                return (
-                  <>
-                    <label className={styles.fieldCheckLabel}>
-                      <input
-                        type="checkbox"
-                        checked={draft.has_bottom_panel ?? false}
-                        onChange={(e) => setNow("has_bottom_panel", e.target.checked)}
-                      />
-                      Finished underside panel
-                    </label>
-
-                    {draft.has_bottom_panel && (
-                      <>
-                        <label className={styles.fieldLabel}>
-                          Spanning style
-                          <select
-                            className={styles.fieldSelect}
-                            value={draft.bottom_panel_span ?? "continuous"}
-                            onChange={(e) => setNow("bottom_panel_span", e.target.value)}
-                          >
-                            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
-                            <option value="individual">Individual (one panel, this cabinet only)</option>
-                          </select>
-                        </label>
-
-                        {isContinuous && (
-                          isFirstInRun ? (
-                            <label className={styles.fieldLabel}>
-                              Panel count {run && run.count > 1 ? `(run of ${run.count} cabinets)` : ""}
-                              <input
-                                className={styles.fieldInput}
-                                type="number"
-                                min="1"
-                                value={draft.bottom_panel_qty ?? 1}
-                                onChange={(e) => set("bottom_panel_qty", e.target.value)}
-                              />
-                            </label>
-                          ) : (
-                            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                              Continuous underside panel run ({run.count} cabinets, {draft.bottom_panel_qty ?? firstItem?.bottom_panel_qty ?? 1} panels) —
-                              panel count is set on{" "}
-                              <button
-                                type="button"
-                                onClick={() => onSelectItem?.(run.firstItemId)}
-                                style={{ background: "none", border: "none", padding: 0, color: "var(--dt-accent, #2f7a4d)", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
-                              >
-                                {firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}
-                              </button>.
-                            </p>
-                          )
-                        )}
-                      </>
-                    )}
-                  </>
-                );
-              })()}
-          </div>
-          </>
-        )}
-
-        {/* Finished side panels — wall cabinets. */}
-        {draft.item_type === "wall_cabinet" && (
-          <>
-          <SectionDivider label="Side panels" />
-          <div className={styles.fieldGroup}>
-                  <label className={styles.fieldCheckLabel}>
-                    <input
-                      type="checkbox"
-                      checked={draft.end_panel_left ?? false}
-                      onChange={(e) => setNow("end_panel_left", e.target.checked)}
-                    />
-                    Left side panel
-                  </label>
-                  <label className={styles.fieldCheckLabel}>
-                    <input
-                      type="checkbox"
-                      checked={draft.end_panel_right ?? false}
-                      onChange={(e) => setNow("end_panel_right", e.target.checked)}
-                    />
-                    Right side panel
-                  </label>
-                  {(draft.end_panel_left || draft.end_panel_right) && draft.has_bottom_panel && (
-                    <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
-                      Side panels extend down to cover the finished underside panel edge.
-                    </p>
-                  )}
-                  {(draft.end_panel_left || draft.end_panel_right) && (
-                    <label className={styles.fieldCheckLabel}>
-                      <input
-                        type="checkbox"
-                        checked={draft.panel_to_ceiling ?? false}
-                        onChange={(e) => setNow("panel_to_ceiling", e.target.checked)}
-                      />
-                      Side panels run to ceiling (finished side carries on to the ceiling)
-                    </label>
-                  )}
-          </div>
-          </>
-        )}
-
-        {/* End panels — corner cabinets: a finished board on each leg's exposed
-            OUTER end (Wall 1 = primary leg, Wall 2 = secondary). Reuses the
-            end_panel_left/right flags; rendered in 3D (EndPanelMesh corner
-            branch) and quoted via cornerBackPanelLinesForCabinet. */}
-        {isCorner && (
-          <>
-          <SectionDivider label="End panels" />
-          <div className={styles.fieldGroup}>
-            <label className={styles.fieldCheckLabel}>
-              <input type="checkbox" checked={draft.end_panel_left ?? false} onChange={(e) => setNow("end_panel_left", e.target.checked)} />
-              Wall 1 end panel
-            </label>
-            <label className={styles.fieldCheckLabel}>
-              <input type="checkbox" checked={draft.end_panel_right ?? false} onChange={(e) => setNow("end_panel_right", e.target.checked)} />
-              Wall 2 end panel
-            </label>
-            {(draft.end_panel_left || draft.end_panel_right) && (
-              <label className={styles.fieldCheckLabel}>
-                <input type="checkbox" checked={draft.panel_to_floor ?? false} onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
-                End panels run to the floor (past the kickboard recess)
-              </label>
-            )}
-          </div>
-          </>
-        )}
-
-        {/* End & back panels — base/tall/blind-corner cabinets. A blind corner
-            is a plain floor-standing box (see v16 migration), so it takes the
-            same finished ends/back as a base cabinet; the geometry helpers
-            already reserve space for it (END_PANEL_TYPES in
-            pcd-finishpanel-utils includes blind_corner_cabinet). */}
-        {(draft.item_type === "base_cabinet" || draft.item_type === "tall_cabinet" || draft.item_type === "blind_corner_cabinet") && (
-          <>
-          <SectionDivider label="End & back panels" />
-          <div className={styles.fieldGroup}>
-              {(() => {
-                const anyPanel = draft.end_panel_left || draft.end_panel_right || draft.has_back_panel;
-                const isContinuous = (draft.back_panel_span ?? "continuous") === "continuous";
-                const liveItems = allItems
-                  ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i))
-                  : [draft];
-                const run = draft.has_back_panel && isContinuous
-                  ? computeBackPanelRun(draft, liveItems)
-                  : null;
-                const isFirstInRun = !run || run.firstItemId === draft.id;
-                const firstItem = run && !isFirstInRun
-                  ? liveItems.find((i) => i.id === run.firstItemId)
-                  : null;
-
-                return (
-                  <>
-                    <label className={styles.fieldCheckLabel}>
-                      <input
-                        type="checkbox"
-                        checked={draft.end_panel_left ?? false}
-                        onChange={(e) => setNow("end_panel_left", e.target.checked)}
-                      />
-                      Left end panel
-                    </label>
-                    <label className={styles.fieldCheckLabel}>
-                      <input
-                        type="checkbox"
-                        checked={draft.end_panel_right ?? false}
-                        onChange={(e) => setNow("end_panel_right", e.target.checked)}
-                      />
-                      Right end panel
-                    </label>
-                    <label className={styles.fieldCheckLabel}>
-                      <input
-                        type="checkbox"
-                        checked={draft.has_back_panel ?? false}
-                        onChange={(e) => setNow("has_back_panel", e.target.checked)}
-                      />
-                      Finished back panel
-                    </label>
-
-                    {draft.has_back_panel && (
-                      <>
-                        <label className={styles.fieldLabel}>
-                          Spanning style
-                          <select
-                            className={styles.fieldSelect}
-                            value={draft.back_panel_span ?? "continuous"}
-                            onChange={(e) => setNow("back_panel_span", e.target.value)}
-                          >
-                            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
-                            <option value="individual">Individual (one panel, this cabinet only)</option>
-                          </select>
-                        </label>
-
-                        {isContinuous && (
-                          isFirstInRun ? (
-                            <label className={styles.fieldLabel}>
-                              Panel count {run && run.count > 1 ? `(run of ${run.count} cabinets)` : ""}
-                              <input
-                                className={styles.fieldInput}
-                                type="number"
-                                min="1"
-                                value={draft.back_panel_qty ?? 1}
-                                onChange={(e) => set("back_panel_qty", e.target.value)}
-                              />
-                            </label>
-                          ) : (
-                            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                              Continuous back panel run ({run.count} cabinets, {draft.back_panel_qty ?? firstItem?.back_panel_qty ?? 1} panels) —
-                              panel count is set on{" "}
-                              <button
-                                type="button"
-                                onClick={() => onSelectItem?.(run.firstItemId)}
-                                style={{ background: "none", border: "none", padding: 0, color: "var(--dt-accent, #2f7a4d)", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
-                              >
-                                {firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}
-                              </button>.
-                            </p>
-                          )
-                        )}
-                      </>
-                    )}
-
-                    {anyPanel && (
-                      <label className={styles.fieldCheckLabel}>
-                        <input
-                          type="checkbox"
-                          checked={draft.panel_to_floor ?? false}
-                          onChange={(e) => setNow("panel_to_floor", e.target.checked)}
-                        />
-                        Panels run to floor (otherwise carcass height only, kickboard continues underneath)
-                      </label>
-                    )}
-                    {anyPanel && (
-                      <label className={styles.fieldCheckLabel}>
-                        <input
-                          type="checkbox"
-                          checked={draft.panel_to_ceiling ?? false}
-                          onChange={(e) => setNow("panel_to_ceiling", e.target.checked)}
-                        />
-                        Panels run to ceiling (full-height finished end, e.g. beside a fridge or oven tower)
-                      </label>
-                    )}
-                  </>
-                );
-              })()}
-          </div>
-          </>
-        )}
-
-        {/* Attached side fillers — close the horizontal gap beside the cabinet.
-            Straight cabinets only: on an L-shaped corner_base_cabinet "left/right
-            end" is ambiguous (which leg?) and the plan can't cleanly draw a strip
-            on the L outline, so it's offered on base/wall/tall/blind — the true
-            rectangles — but not the L-corner. Attached so it moves/deletes with
-            the cabinet (unlike a standalone panel). */}
-        {!isCornerType(draft) && (
-        <>
-        <SectionDivider label="Side fillers" />
-        <div className={styles.fieldGroup}>
-            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-              Closes the gap between this cabinet&apos;s end and the adjacent wall, unit or appliance. Height follows the cabinet (including run-to-floor / run-to-ceiling); colour matches the doors, then the carcass.
-            </p>
-            <label className={styles.fieldCheckLabel}>
-              <input type="checkbox" checked={draft.side_filler_left ?? false} onChange={(e) => setNow("side_filler_left", e.target.checked)} />
-              Left side filler
-            </label>
-            {draft.side_filler_left && (
-              <label className={styles.fieldLabel}>
-                Left gap width mm
-                <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_left_width_mm ?? ""} onChange={(e) => set("side_filler_left_width_mm", e.target.value)} />
-              </label>
-            )}
-            <label className={styles.fieldCheckLabel}>
-              <input type="checkbox" checked={draft.side_filler_right ?? false} onChange={(e) => setNow("side_filler_right", e.target.checked)} />
-              Right side filler
-            </label>
-            {draft.side_filler_right && (
-              <label className={styles.fieldLabel}>
-                Right gap width mm
-                <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_right_width_mm ?? ""} onChange={(e) => set("side_filler_right_width_mm", e.target.value)} />
-              </label>
-            )}
-            {(draft.side_filler_left || draft.side_filler_right) && (
-              <label className={styles.fieldLabel}>
-                Thickness mm
-                <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_thickness_mm ?? 18} onChange={(e) => set("side_filler_thickness_mm", e.target.value)} />
-              </label>
-            )}
-          </div>
-        </>
-        )}
-
-        </CollapsibleSection>
-
-        {/* Hardware — handles (per door/drawer) and hinges (supply), priced from
-            the Hardware catalogue. Only where the cabinet actually has a front. */}
-        {((draft.front_type && draft.front_type !== "none") || isCornerType(draft)) && (
-        <CollapsibleSection title="Hardware" summary={draft.handle_name || draft.hinge_model ? "On" : "Off"} {...section("hardware")}>
+        <ConfigSection title="Panels & finishing" summary={addonsOnCount ? `${addonsOnCount} on` : "Off"} {...section("panels")}>
           <div className={styles.fieldGroup}>
             <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-              Priced from the Hardware catalogue — a handle per door/drawer front, and hinge supply per hinge (drilling
-              is charged separately). Leave as <em>Not supplied by us</em> to keep it off the quote.
+              Switch panels on or off here. Their sizes, spans and continuous-run settings are in <strong>Edit sizes, spans &amp; runs</strong>; their finish is in <strong>Colours &amp; finishes</strong>.
             </p>
-            <HardwareField
-              type="handle"
-              label="Handle"
-              value={draft.handle_name}
-              onPick={({ name, cost }) => setMultiNow({ handle_name: name, handle_cost_ex_gst: cost })}
-            />
-            {draft.front_type !== "drawers" && (
-              <HardwareField
-                type="hinge"
-                label="Hinge model (supply)"
-                value={draft.hinge_model}
-                onPick={({ name, cost }) => setMultiNow({ hinge_model: name, hinge_cost_ex_gst: cost })}
-              />
-            )}
-          </div>
-        </CollapsibleSection>
-        )}
-
-        {/* The front TYPE and the front's CONFIG in one place. They used to be
-            two tabs apart — you picked "Doors" in Dimensions, then the Doors
-            tab appeared elsewhere and the bar reshaped under you. */}
-        <CollapsibleSection title="Front" summary={summary.front} {...section("front")}>
-            <div className={styles.fieldGroup}>
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                {[
-                  ["none", "None"],
-                  ["doors", "Doors"],
-                  // Drawers and mixed fronts aren't offered for corner
-                  // cabinets — a corner drawer bank is specialty hardware
-                  // (e.g. Blum corner-drawer systems), out of scope here.
-                  ...(isCorner ? [] : [["drawers", "Drawers"], ["mixed", "Doors + Drawers"]]),
-                ].map(([val, label]) => (
-                  <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--dt-text, #1c1c1a)", cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name={`front_type_${item.id}`}
-                      value={val}
-                      checked={(draft.front_type ?? "none") === val}
-                      onChange={() => onFrontTypeChange(val)}
-                    />
-                    {label}
-                  </label>
+            {panelGroups.map((g) => (
+              <div key={g.id} style={{ marginTop: 2 }}>
+                {panelGroups.length > 1 && <SectionDivider label={g.label} />}
+                {g.toggles.map((tg) => (
+                  <Toggle key={tg.key} theme="light" label={tg.label} checked={!!draft[tg.key]} disabled={tg.disabled} onChange={(v) => setNow(tg.key, v)} />
                 ))}
               </div>
-            </div>
+            ))}
+            {!panelGroups.length && <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: 0 }}>No add-on panels apply to this cabinet type.</p>}
+            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10 }} disabled={!enabledGroups.length} onClick={() => { setPanelPart(enabledGroups[0]?.id || null); setOpenWin("panels"); }}>
+              Edit sizes, spans &amp; runs →
+            </button>
+          </div>
+        </ConfigSection>
 
-            {draft.front_type === "doors" && (
-            <div className={styles.fieldGroup}>
-              {isCorner ? (
-                <>
-                  {/* ── Corner cabinet door — one bi-fold leaf per wall ── */}
-                  <SectionDivider label="Corner Door" />
-                  <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-                    A corner cabinet has one door split into two leaves that fold around the corner. Only the leaf
-                    hinged to the cabinet frame needs hinge drilling — the other leaf folds off it.
-                  </p>
-                  <label className={styles.fieldLabel}>
-                    Frame-hinged leaf
-                    <select className={styles.fieldSelect} value={cornerHingeWall} onChange={(e) => setCornerHingeWall(e.target.value)}>
-                      <option value="primary">Wall 1 ({draft.wall || "—"})</option>
-                      <option value="secondary">Wall 2 ({draft.secondary_wall || "—"})</option>
-                    </select>
-                  </label>
-                  <label className={styles.fieldLabel}>
-                    Hinge qty
-                    <select className={styles.fieldSelect} value={cornerHingeQty} onChange={(e) => setCornerHingeQty(Number(e.target.value))}>
-                      <option value={2}>2 hinges</option>
-                      <option value={3}>3 hinges</option>
-                      <option value={4}>4 hinges</option>
-                    </select>
-                  </label>
-                  {Array.from({ length: cornerHingeQty }).map((_, hIdx) => {
-                    const isTop = hIdx === cornerHingeQty - 1 && cornerHingeQty > 1;
-                    const isMiddle = hIdx > 0 && hIdx < cornerHingeQty - 1;
-                    const stored = cornerHingePositions[hIdx] ?? "";
-                    const displayValue = isTop && stored !== "" ? Math.max(0, Math.round((cornerDoorHeightMm || 0) - stored)) : stored;
-                    return (
-                      <label key={hIdx} className={styles.fieldLabel}>
-                        {isMiddle
-                          ? `Hinge ${hIdx + 1} — evenly spaced between top & bottom (auto)`
-                          : isTop
-                            ? `Hinge ${hIdx + 1} — distance from top (mm)`
-                            : `Hinge ${hIdx + 1} — distance from bottom (mm)`}
-                        <input
-                          className={styles.fieldInput}
-                          type="number"
-                          min="0"
-                          max={cornerDoorHeightMm || undefined}
-                          value={displayValue}
-                          disabled={isMiddle}
-                          onChange={isMiddle ? undefined : (e) => {
-                            const raw = e.target.value;
-                            const stored = isTop && raw !== "" ? (cornerDoorHeightMm || 0) - Number(raw) : raw;
-                            setCornerHingePosition(hIdx, stored);
-                          }}
-                        />
-                      </label>
-                    );
-                  })}
-                  <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-                    Hinge quantity is imported directly into the quote's hinge drilling fields. Positions are recorded
-                    here for manufacturing reference and carried into the imported line's notes.
-                  </p>
-                  <RevealField cfg={cornerDoorCfg} onChange={(patch) => updCornerDoorCfg(patch, false)} />
-                  <FingerPullGapFields
-                    cfg={cornerDoorCfg}
-                    onChangeNow={(patch) => updCornerDoorCfg(patch, true)}
-                    onChange={(patch) => updCornerDoorCfg(patch, false)}
-                    label="Include a negative gap across the corner door"
-                    note="One reveal shortens both leaves equally, so they still line up when the door folds around the
-                          corner. A corner base cabinet sits under the 900mm bench-height line, so the grip is at the top."
-                  />
-                </>
-              ) : (
-                <>
-                  {draft.item_type === "tall_cabinet" && (
-                    <>
-                      <SectionDivider label="Bays" />
-                      <label className={styles.fieldLabel}>
-                        Rows high
-                        <select className={styles.fieldSelect} value={doorRows} onChange={(e) => setDoorRows(Number(e.target.value))}>
-                          <option value={1}>1</option>
-                          <option value={2}>2</option>
-                          <option value={3}>3</option>
-                          <option value={4}>4</option>
-                        </select>
-                      </label>
-                      {/* Per-bay type: any bay can be freed for an appliance
-                          recess or open space instead of doors. Bay 1 = top. */}
-                      {Array.from({ length: doorRows }).map((_, i) => {
-                        const val = bayOptionValue(i);
-                        const isFree = val !== "doors";
-                        return (
-                          <div key={i}>
-                            <label className={styles.fieldLabel}>
-                              Bay {i + 1}{i === 0 ? " (top)" : i === doorRows - 1 ? " (bottom)" : ""}
-                              <select
-                                className={styles.fieldSelect}
-                                value={val}
-                                onChange={(e) => {
-                                  const opt = BAY_OPTIONS.find((o) => o.value === e.target.value) || BAY_OPTIONS[0];
-                                  setBayType(i, opt.patch);
-                                }}
-                              >
-                                {BAY_OPTIONS.map((o) => (
-                                  <option key={o.value} value={o.value}>{o.label}</option>
-                                ))}
-                              </select>
-                            </label>
-                            {isFree && (
-                              <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
-                                Left free — no board is cut and nothing is quoted for this bay.
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
-                  <DoorBankFields cfg={doorCfg} onChangeNow={updDoorCfg} onChange={updDoorCfgDebounced} heightMm={doorHeightMm} />
-                </>
-              )}
 
-              {/* Door board finish lives in "Board colours & cost". */}
-            </div>
-            )}
-
-            {draft.front_type === "drawers" && !isCorner && (
-            <div className={styles.fieldGroup}>
-              <DrawerBankFields cfg={drawerCfg} onChangeNow={updDrawerCfg} onChange={updDrawerCfgDebounced} heightMm={draft.height_mm} />
-              {/* Drawer board finish lives in "Board colours & cost". */}
-            </div>
-            )}
-
-            {draft.front_type === "mixed" && !isCorner && (
-            <div className={styles.fieldGroup}>
-              <SectionDivider label="Sections (top to bottom)" />
-              <p style={{ fontSize: 10, color: sectionsTotal === (draft.height_mm || 0) ? "var(--dt-text-muted, #888780)" : "#c0392b", margin: "0 0 4px", lineHeight: 1.4 }}>
-                {sectionsTotal === (draft.height_mm || 0)
-                  ? `Total: ${sectionsTotal}mm — matches the cabinet height.`
-                  : `Total: ${sectionsTotal}mm — ${Math.abs((draft.height_mm || 0) - sectionsTotal)}mm ${sectionsTotal < (draft.height_mm || 0) ? "short of" : "over"} the ${draft.height_mm || 0}mm cabinet height.`}
-              </p>
-
-              {sections.map((sec, idx) => (
-                <div key={idx} style={{ border: "1px solid var(--dt-border-soft, rgba(0,0,0,0.1))", borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--dt-text-muted, #888780)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      Section {idx + 1} (top {idx === 0 ? "" : `+${sections.slice(0, idx).reduce((s, x) => s + (Number(x.height_mm) || 0), 0)}mm`})
-                    </span>
-                    <button type="button" onClick={() => removeSection(idx)}
-                      style={{ background: "none", border: "none", padding: 0, color: "#c0392b", cursor: "pointer", fontSize: 11 }}>
-                      Remove
-                    </button>
-                  </div>
-                  <div className={styles.fieldRow}>
-                    <label className={styles.fieldLabel}>
-                      Height mm
-                      <input className={styles.fieldInput} type="number" min="1" value={sec.height_mm || ""}
-                        onChange={(e) => updateSection(idx, { height_mm: Number(e.target.value) }, false)} />
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Type
-                      <select className={styles.fieldSelect} value={sec.type || "doors"} onChange={(e) => updateSectionType(idx, e.target.value)}>
-                        <option value="doors">Doors</option>
-                        <option value="drawers">Drawers</option>
-                        <option value="open">Open space</option>
-                      </select>
-                    </label>
-                  </div>
-                  {sec.type === "open" ? (
-                    <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
-                      Left blank — e.g. an oven or microwave recess. No board is cut and nothing is quoted for this section.
-                    </p>
-                  ) : sec.type === "drawers" ? (
-                    <DrawerBankFields
-                      cfg={sec.drawer || {}}
-                      heightMm={sec.height_mm}
-                      onChangeNow={(patch) => updateSectionSubConfig(idx, "drawer", patch, true)}
-                      onChange={(patch) => updateSectionSubConfig(idx, "drawer", patch, false)}
-                    />
-                  ) : (
-                    <DoorBankFields
-                      cfg={sec.door || {}}
-                      heightMm={sec.height_mm}
-                      onChangeNow={(patch) => updateSectionSubConfig(idx, "door", patch, true)}
-                      onChange={(patch) => updateSectionSubConfig(idx, "door", patch, false)}
-                    />
-                  )}
-                </div>
-              ))}
-
-              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={addSection}>
-                + Add section
-              </button>
-
-              {/* Door / drawer board finishes live in "Board colours & cost". */}
-            </div>
-            )}
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Notes" summary={summary.notes} {...section("notes")}>
+        <ConfigSection title="Notes" summary={summary.notes} {...section("notes")}>
             <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel}>
                 Notes
                 <textarea className={styles.fieldTextarea} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={6} />
               </label>
             </div>
-        </CollapsibleSection>
+        </ConfigSection>
 
         <SaveStatus saving={saving} error={saveError} onRetry={retrySave} />
       </div>
+
+      {/* ── Heavy-config windows (2-column: parts list → its settings) ── */}
+      {openWin === "front" && (
+        <ConfigWindow
+          theme="light" fullWidth={fullWidth}
+          title="Door / drawer layout"
+          subtitle={itemDisplayLabel(draft)}
+          parts={frontParts}
+          selectedId={frontPart}
+          onSelect={setFrontPart}
+          renderPart={(p) => renderFrontPart(p.id)}
+          onClose={() => setOpenWin(null)}
+          footer={draft.front_type === "mixed" && !isCorner
+            ? <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%" }} onClick={() => { addSection(); setFrontPart(`sec-${sections.length}`); }}>+ Add section</button>
+            : null}
+        />
+      )}
+
+      {openWin === "panels" && (
+        <ConfigWindow
+          theme="light" fullWidth={fullWidth}
+          title="Panel sizes, spans & runs"
+          subtitle={itemDisplayLabel(draft)}
+          parts={enabledGroups.map((g) => ({ id: g.id, label: g.label, badge: "on" }))}
+          selectedId={panelPart}
+          onSelect={setPanelPart}
+          renderPart={(p) => (panelGroups.find((g) => g.id === p.id) || {}).detail?.() || null}
+          onClose={() => setOpenWin(null)}
+          footer={<p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", lineHeight: 1.4, margin: 0 }}>Switch panels on / off in the sidebar. Their finish is in Colours &amp; finishes.</p>}
+        />
+      )}
+
+      {openWin === "cutouts" && (
+        <ConfigWindow
+          theme="light" fullWidth={fullWidth}
+          title="Benchtop cutouts"
+          subtitle={itemDisplayLabel(draft)}
+          parts={[{ id: "cutouts", label: `Cutouts (${(draft.benchtop_cutouts || []).length})` }]}
+          selectedId="cutouts"
+          onSelect={() => {}}
+          renderPart={() => (
+            <div className={styles.fieldGroup}>
+              <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+                Centred on this cabinet. These aren&apos;t appliances — they only tell the fabricator a hole this size goes here.
+              </p>
+              {(draft.benchtop_cutouts || []).map((cut, idx) => (
+                <div key={idx} className={styles.fieldRow} style={{ alignItems: "flex-end" }}>
+                  <label className={styles.fieldLabel}>
+                    Type
+                    <select className={styles.fieldSelect} value={cut.type || "sink"} onChange={(e) => updCutout(idx, { type: e.target.value })}>
+                      <option value="sink">Sink</option>
+                      <option value="cooktop">Cooktop</option>
+                    </select>
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    W mm
+                    <input className={styles.fieldInput} type="number" min="1" value={cut.width_mm ?? ""} onChange={(e) => updCutout(idx, { width_mm: Number(e.target.value) || 0 })} />
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    D mm
+                    <input className={styles.fieldInput} type="number" min="1" value={cut.depth_mm ?? ""} onChange={(e) => updCutout(idx, { depth_mm: Number(e.target.value) || 0 })} />
+                  </label>
+                  <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ marginBottom: 2 }} onClick={() => removeCutout(idx)}>Remove</button>
+                </div>
+              ))}
+              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={addCutout}>Add cutout</button>
+            </div>
+          )}
+          onClose={() => setOpenWin(null)}
+        />
+      )}
     </>
   );
 }
@@ -3004,7 +2673,6 @@ function DoorPanelForm({ item, room, onItemChange }) {
   const draftMaterialLabel = materialLabelForType(draft.material || "");
   const profileTypes  = profileTypesForSelection(draftMaterialLabel, draft.thickness || "");
   const profileNames  = profileNamesForSelection(draft.profile_type || "", draftMaterialLabel, draft.thickness || "");
-  const edgeProfiles  = edgeProfilesForMaterial(draftMaterialLabel);
   const isPanel = draft.item_type === "panel";
   const isScribe = draft.item_type === "scribe";
 
@@ -3113,22 +2781,24 @@ function DoorPanelForm({ item, room, onItemChange }) {
             <input className={styles.fieldInput} type="number" min="1" value={draft.qty ?? ""} onChange={(e) => set("qty", e.target.value)} />
           </label>
 
-          {/* Board: material → thickness → finish → colour */}
-          <MaterialColourPicker
+          {/* Board — the shared tile colour modal (same as every other colour
+              picker). The picker returns a colour style; we adapt it to the
+              material→thickness→finish→colour shape the board handlers expect. */}
+          <ColourField
             label="Board"
-            material={draft.material || ""}
-            thickness={draft.thickness || ""}
-            finish={draft.finish || ""}
-            colour={draft.colour || ""}
-            onChange={isPanel ? onPanelBoardChange : isScribe ? onScribeBoardChange : ({ material, thickness, finish, colour, costPerSqmExGst }) =>
-              setMultiNow({
-                material,
-                thickness,
-                finish,
-                colour,
-                unit_cost_per_sqm_ex_gst: Number(costPerSqmExGst) || 0,
-              })
-            }
+            value={{ material: draft.material, finish: draft.finish, colour: draft.colour, thickness_mm: parseInt(draft.thickness, 10) || undefined, cost_per_sqm: draft.unit_cost_per_sqm_ex_gst }}
+            onChange={(style) => {
+              const picked = {
+                material: style?.material || "",
+                thickness: style?.thickness_mm ? `${style.thickness_mm}mm` : "",
+                finish: style?.finish || "",
+                colour: style?.colour || "",
+                costPerSqmExGst: style?.cost_per_sqm || 0,
+              };
+              if (isPanel) onPanelBoardChange(picked);
+              else if (isScribe) onScribeBoardChange(picked);
+              else setMultiNow({ material: picked.material, thickness: picked.thickness, finish: picked.finish, colour: picked.colour, unit_cost_per_sqm_ex_gst: Number(picked.costPerSqmExGst) || 0 });
+            }}
           />
 
           {/* Profile (Thermolaminate only) */}
@@ -3152,27 +2822,6 @@ function DoorPanelForm({ item, room, onItemChange }) {
               )}
             </>
           )}
-
-          {/* Edge mould */}
-          {edgeProfiles.length > 0 ? (
-            <label className={styles.fieldLabel}>
-              Edge mould
-              <select className={styles.fieldSelect} value={draft.edge_mould || ""} onChange={(e) => setNow("edge_mould", e.target.value)}>
-                <option value="">— None —</option>
-                {edgeProfiles.map((ep) => <option key={ep} value={ep}>{ep}</option>)}
-              </select>
-            </label>
-          ) : (
-            <label className={styles.fieldLabel}>
-              Edge mould
-              <input className={styles.fieldInput} value={draft.edge_mould || ""} onChange={(e) => set("edge_mould", e.target.value)} placeholder="e.g. 1mm bevel" />
-            </label>
-          )}
-
-          <label className={styles.fieldLabel}>
-            Cost per sqm ex GST ($)
-            <input className={styles.fieldInput} type="number" min="0" step="0.01" value={draft.unit_cost_per_sqm_ex_gst ?? ""} onChange={(e) => set("unit_cost_per_sqm_ex_gst", e.target.value)} placeholder="0.00" />
-          </label>
 
           {item.item_type === "door" && (
             <>
@@ -3454,7 +3103,7 @@ function ObstructionForm({ item, onItemChange }) {
 }
 
 // ---- Right panel container ----
-export default function DesignRightPanel({ item, allItems, room, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem, allowedTypes, currentWall, fullWidth = false }) {
+export default function DesignRightPanel({ item, allItems, room, materialDefaults, isAddingItem, isOverlapping, onAdd, onCancelAdd, onItemChange, onDeleteItem, onDuplicateItem, onSelectItem, allowedTypes, currentWall, fullWidth = false, pickedType: controlledPick = null, onPickType = null, colourImages = null }) {
   // `fullWidth` + `allowedTypes` are the mobile hooks: the modal renders the
   // exact same panel at 100% width and restricts which cabinet types can be
   // added. Desktop passes neither, so behaviour is unchanged.
@@ -3462,6 +3111,7 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmTimer = useRef(null);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const [cutListOpen, setCutListOpen] = useState(false);
 
   // Which config groups are expanded. Deliberately held HERE and not inside
   // CabinetConfigForm: that's mounted with key={item.id}, so it remounts on
@@ -3471,17 +3121,26 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
   //
   // Cabinet opens by default because it's the "what and where" you always
   // want; everything else stays shut behind its summary until asked for.
-  const [openSections, setOpenSections] = useState({ cabinet: true });
+  // Single-open accordion — opening one section collapses the rest. Held here
+  // (not in the form) so the chosen section stays open across cabinet
+  // selections. Default open = "size" (the what & where you set first).
+  const [openSection, setOpenSection] = useState("size");
   const toggleSection = useCallback((id) => {
-    setOpenSections((current) => ({ ...current, [id]: !current[id] }));
+    setOpenSection((cur) => (cur === id ? null : id));
   }, []);
 
-  // The visual "Add Item" flow is two steps: pick a type in the modal, then set
-  // its dimensions in the form. `pickedType` null → the picker modal is open;
-  // set → the Add form for that type. Reset whenever add-mode closes so the
-  // next "+ Add Item" always starts back at the picker.
-  const [pickedType, setPickedType] = useState(null);
-  useEffect(() => { if (!isAddingItem) setPickedType(null); }, [isAddingItem]);
+  // The visual "Add Item" flow is two steps: pick a type, then set its
+  // dimensions in the form.
+  //   - Desktop: the picker is the LEFT-rail catalogue, so the pick is
+  //     controlled from above via `pickedType` + `onPickType`.
+  //   - Mobile (fullWidth): the picker is the AddItemModal below, held in this
+  //     component's own state.
+  const [pickedTypeState, setPickedTypeState] = useState(null);
+  useEffect(() => { if (!isAddingItem) setPickedTypeState(null); }, [isAddingItem]);
+  const controlledAdd = typeof onPickType === "function";
+  const activePick = controlledAdd ? controlledPick : pickedTypeState;
+  const choosePick  = controlledAdd ? onPickType : (type, kind) => setPickedTypeState({ type, kind });
+  const clearPick   = controlledAdd ? () => onPickType(null) : () => setPickedTypeState(null);
 
   function handleDeleteClick() {
     if (confirmDelete) {
@@ -3513,29 +3172,33 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
         {!fullWidth && (
           <div className={styles.rightPanelHeader}>
             <p className={styles.rightPanelTitle}>Add Item</p>
-            <p className={styles.rightPanelSubtitle}>{pickedType ? "Drag to position after adding" : "Pick an item to add"}</p>
+            <p className={styles.rightPanelSubtitle}>{activePick ? "Set the size, then drag to position" : "Pick an item on the left"}</p>
           </div>
         )}
         <div className={styles.rightScroll}>
-          {pickedType ? (
+          {activePick ? (
             <AddItemForm
               onAdd={onAdd}
               onCancel={onCancelAdd}
-              onBack={() => setPickedType(null)}
-              initialType={pickedType.type}
-              initialKind={pickedType.kind}
+              onBack={clearPick}
+              initialType={activePick.type}
+              initialKind={activePick.kind}
               allowedTypes={allowedTypes}
               currentWall={currentWall}
             />
           ) : (
-            <p className={styles.rightIdleHint} style={{ padding: 16 }}>Choose an item from the picker…</p>
+            <p className={styles.rightIdleHint} style={{ padding: 16 }}>
+              {controlledAdd ? "Choose an item from the list on the left…" : "Choose an item from the picker…"}
+            </p>
           )}
         </div>
-        {!pickedType && (
+        {/* Mobile keeps the pop-over picker; desktop uses the left-rail
+            catalogue (controlled), so no modal here. */}
+        {!controlledAdd && !activePick && (
           <AddItemModal
             allowedTypes={allowedTypes || ADDABLE_TYPES}
             typeLabels={TYPE_LABELS}
-            onPick={(type, kind) => setPickedType({ type, kind })}
+            onPick={(type, kind) => choosePick(type, kind)}
             onClose={onCancelAdd}
           />
         )}
@@ -3545,6 +3208,7 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
 
   if (item) {
     const isCabinet = CABINET_TYPES.includes(item.item_type);
+    const hasCutList = isCabinet || item.item_type === "floating_shelf";
     return (
       <div className={panelClass}>
         {!fullWidth && (
@@ -3559,7 +3223,7 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
           </p>
         )}
         {isCabinet ? (
-          <CabinetConfigForm key={item.id} item={item} allItems={allItems} room={room} materialDefaults={materialDefaults} onItemChange={onItemChange} onSelectItem={onSelectItem} openSections={openSections} toggleSection={toggleSection} />
+          <CabinetConfigForm key={item.id} item={item} allItems={allItems} room={room} materialDefaults={materialDefaults} onItemChange={onItemChange} onSelectItem={onSelectItem} openSection={openSection} toggleSection={toggleSection} fullWidth={fullWidth} colourImages={colourImages} />
         ) : ["obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"].includes(item.item_type) ? (
           <ObstructionForm key={item.id} item={item} onItemChange={onItemChange} />
         ) : item.item_type === "floating_shelf" ? (
@@ -3567,27 +3231,52 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
         ) : (
           <DoorPanelForm key={item.id} item={item} room={room} onItemChange={onItemChange} />
         )}
-        <div className={styles.rightPanelFooter}>
-          {/* Duplicate would add a second cabinet to the room — hidden on
-              mobile, which is restricted to one cabinet per room. */}
-          {!fullWidth && (
+        {/* Bottom rail — the per-cabinet cut list sits above the Duplicate /
+            Delete row so nothing overlaps. */}
+        <div className={styles.rightPanelFooter} style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+          {!fullWidth && hasCutList && (
             <button
               type="button"
               className={`${styles.btn} ${styles.btnSecondary}`}
-              onClick={handleDuplicateClick}
-              disabled={isDuplicating}
+              style={{ width: "100%" }}
+              onClick={() => setCutListOpen(true)}
             >
-              {isDuplicating ? "Duplicating…" : "Duplicate"}
+              View cut list
             </button>
           )}
-          <button
-            type="button"
-            className={`${styles.deleteItemBtn} ${confirmDelete ? styles.deleteItemBtnConfirm : ""}`}
-            onClick={handleDeleteClick}
-          >
-            {confirmDelete ? "Confirm delete?" : "Delete item"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Duplicate would add a second cabinet to the room — hidden on
+                mobile, which is restricted to one cabinet per room. */}
+            {!fullWidth && (
+              <button
+                type="button"
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                style={{ flex: 1 }}
+                onClick={handleDuplicateClick}
+                disabled={isDuplicating}
+              >
+                {isDuplicating ? "Duplicating…" : "Duplicate"}
+              </button>
+            )}
+            <button
+              type="button"
+              className={`${styles.deleteItemBtn} ${confirmDelete ? styles.deleteItemBtnConfirm : ""}`}
+              style={{ flex: 1 }}
+              onClick={handleDeleteClick}
+            >
+              {confirmDelete ? "Confirm delete?" : "Delete item"}
+            </button>
+          </div>
         </div>
+        {cutListOpen && (
+          <CutListModal
+            title={itemDisplayLabel(item)}
+            subtitle="Cut list"
+            onClose={() => setCutListOpen(false)}
+          >
+            <CabinetCutRows item={item} items={allItems} room={room} />
+          </CutListModal>
+        )}
       </div>
     );
   }

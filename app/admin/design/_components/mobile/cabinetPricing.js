@@ -11,7 +11,7 @@
 //   - drawer fronts                  -> drawer_style.cost_per_sqm
 // (see app/api/admin/design/projects/[projectId]/import/route.js — the source
 // of truth for how each element is costed.)
-import { computeCutList } from "../DesignLeftPanel";
+import { computeCutList } from "@/lib/pcd-cut-list";
 import { floatingShelfBoards, floatingShelfStyle } from "@/lib/pcd-floating-shelf-utils";
 
 // Which per-sqm rate applies to a cut-list piece, by its material tag.

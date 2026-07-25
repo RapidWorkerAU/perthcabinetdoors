@@ -3,7 +3,7 @@
 import { createPortal } from "react-dom";
 import { useRef, useState } from "react";
 import styles from "../design.module.css";
-import MaterialColourPicker from "./MaterialColourPicker";
+import ColourField from "./ColourField";
 import { FrontStyleFields } from "./DesignRightPanel";
 
 // Every material-bearing item type in the design tool, in one flat list so
@@ -259,19 +259,11 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
                       {sec.kind === "front" ? (
                         <FrontStyleFields label={sec.boardLabel} style={data} onChange={(patch) => setSection(sec, patch)} />
                       ) : (
-                        <MaterialColourPicker
+                        <ColourField
                           label={sec.boardLabel}
-                          material={data.material || ""}
-                          thickness={thicknessStr(data)}
-                          finish={data.finish || ""}
-                          colour={data.colour || ""}
-                          onChange={({ material, thickness, finish, colour, costPerSqmExGst }) =>
-                            setSection(sec, {
-                              material, finish, colour,
-                              thickness_mm: parseInt(thickness) || data.thickness_mm || sec.thicknessDefault,
-                              cost_per_sqm: Number(costPerSqmExGst) || 0,
-                            })
-                          }
+                          value={data}
+                          thicknessDefault={sec.thicknessDefault}
+                          onChange={(style) => setSection(sec, style || { material: "", finish: "", colour: "" })}
                         />
                       )}
                     </div>

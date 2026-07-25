@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "../../../lib/supabase/server";
 import {
   buildColourAvailabilityFromLibraryRows,
   getDatabaseColourFamilyForSelection,
+  getDatabaseColourItems,
   getDatabaseColourRows,
   getDatabaseColourSuppliers,
   normaliseColourMaterialKey,
@@ -19,6 +20,11 @@ export async function GET(request) {
     supabase = createSupabaseAdminClient();
   } catch {
     supabase = await createSupabaseServerClient();
+  }
+
+  if (searchParams.get("items") === "1") {
+    const items = await getDatabaseColourItems(supabase);
+    return NextResponse.json({ ok: true, items }, { headers: { "Cache-Control": "no-store" } });
   }
 
   if (searchParams.get("suppliers") === "1") {

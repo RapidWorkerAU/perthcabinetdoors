@@ -1223,6 +1223,7 @@ function frontGroups(item, W, D) {
       cursor = sv0;
       if (sec.type === "drawers") addDrawers(cells, sec.drawer || {}, sv0, sv1, alongStart, doorAlong);
       else if (sec.type === "doors") addDoors(cells, sec.door || {}, sv0, sv1, alongStart, doorAlong);
+      else if (sec.type === "appliance") cells.push({ a0: alongStart, a1: alongStart + doorAlong, v0: sv0, v1: sv1, grip: null, slot: "appliance", appliance: sec.appliance || "oven" });
       // "open" sections carry no front
     }
   }

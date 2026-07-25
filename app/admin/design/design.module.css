@@ -72,13 +72,27 @@
    DESIGN PROGRAM  (/admin/design/[projectId])
    ============================================================ */
 
-.designProgram {
+/* Whole-screen column: the shared full-width top bar on top, then the
+   three-panel work area (left list | canvas | right config) fills the rest.
+   The top bar is the SAME component the public planner uses. */
+.designShell {
   display: flex;
+  flex-direction: column;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
   background: #0f1117;
   min-width: 1280px;
+  font-family: inherit;
+}
+
+.designProgram {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: #0f1117;
   font-family: inherit;
 }
 

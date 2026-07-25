@@ -172,6 +172,21 @@ export default function usePublicDesign() {
     try { await startFresh(); } catch (err) { setError(err?.message || "Could not start over."); } finally { setLoading(false); }
   }
 
+  // "Send my design to PCD" → creates a quote request from this design.
+  async function submitToPcd(details) {
+    if (!code) return { ok: false, error: "No design to send yet." };
+    try {
+      const res = await fetch(`/api/public/design/${encodeURIComponent(code)}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(details),
+      });
+      return await res.json();
+    } catch {
+      return { ok: false, error: "Could not send — please check your connection and try again." };
+    }
+  }
+
   const selectedItem = items.find((i) => i.id === selectedItemId) || null;
   const overlappingItemIds = room ? findOverlappingItemIds(items, room) : new Set();
 
@@ -179,7 +194,7 @@ export default function usePublicDesign() {
     code, project, room, items, selectedItem, selectedItemId, setSelectedItemId,
     loading, error, saveError, dismissSaveError: () => setSaveError(null),
     colourImages,
-    addItem, updateItem, handleItemDragEnd, deleteItem, updateRoom, startOver,
+    addItem, updateItem, handleItemDragEnd, deleteItem, updateRoom, startOver, submitToPcd,
     overlappingItemIds,
   };
 }

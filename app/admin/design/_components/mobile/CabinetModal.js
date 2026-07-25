@@ -31,6 +31,7 @@ export default function CabinetModal({
   onDeleteItem,
   onSelectItem,
   currentWall,
+  colourImages,
   onClose,
 }) {
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function CabinetModal({
             onDuplicateItem={() => {}}
             onSelectItem={onSelectItem}
             currentWall={currentWall}
+            colourImages={colourImages}
           />
         </div>
       </div>

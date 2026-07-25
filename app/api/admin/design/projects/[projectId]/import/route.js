@@ -501,8 +501,9 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeD
         });
       });
       lines.push(...runnerLinesFor(item, cfg, sizes, traceLabel, sectionLabel));
-    } else if (sec.type === "open") {
-      // Blank space (e.g. an oven/microwave recess) — no board to cut, no line to quote.
+    } else if (sec.type === "open" || sec.type === "appliance") {
+      // Blank space or an appliance (oven/microwave) recess — no board to cut,
+      // no line to quote; the appliance is customer-supplied.
     } else {
       if (!includeDoors) return;
       const cfg = sec.door || {};
