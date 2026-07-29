@@ -37,6 +37,7 @@ const CATALOGUE_CATEGORIES = [
 const TYPE_LABELS = Object.fromEntries(CATALOGUE.map((c) => [c.type, c.label]));
 const HAS_BENCHTOP = new Set(["base_cabinet", "corner_base_cabinet"]);
 const FLOOR_TYPES = new Set(["base_cabinet", "tall_cabinet", "corner_base_cabinet"]);
+const FILLER_PANEL_TYPES = new Set(["wall_cabinet", "tall_cabinet"]);
 const isShelf = (item) => item?.item_type === "floating_shelf";
 const isCorner = (item) => item?.item_type === "corner_base_cabinet";
 // Melamine "carcass white" — the whole-item colour fallback, so a new cabinet
@@ -52,7 +53,7 @@ const frontStyle = (item) =>
 const CAN_BAYS = new Set(["tall_cabinet", "base_cabinet"]);
 
 // Whether the cabinet has any finished side/back/underside panel switched on.
-const hasFinishPanels = (item) => Boolean(item?.end_panel_left || item?.end_panel_right || item?.has_back_panel || item?.has_bottom_panel);
+const hasFinishPanels = (item) => Boolean(item?.end_panel_left || item?.end_panel_right || item?.has_back_panel || item?.has_bottom_panel || item?.has_filler_panel);
 // "Open" = no doors or drawers (front_type "none"), so the interior + shelves show.
 const isOpenFront = (item) => (item?.front_type || "none") === "none" && !isShelf(item);
 
@@ -88,6 +89,26 @@ function equalDrawers(heightMm, n) {
   const total = Number(heightMm) || 720;
   const each = Math.round(total / n);
   return Array.from({ length: n }, (_, i) => (i === n - 1 ? total - each * (n - 1) : each));
+}
+
+function hingesForDoorOpening(opening, columns) {
+  const cols = Math.max(1, Number(columns) || 1);
+  if (opening === "left") return Array(cols).fill("R");
+  if (opening === "centre") return Array.from({ length: Math.max(2, cols) }, (_, i) => (i === 0 ? "L" : "R"));
+  return Array(cols).fill("L");
+}
+
+function doorOpeningValue(cfg = {}) {
+  const cols = Math.max(1, Number(cfg.columns) || 1);
+  const hinges = Array.isArray(cfg.hinges) ? cfg.hinges : [];
+  if (cols >= 2 && hinges[0] === "L" && hinges[cols - 1] === "R") return "centre";
+  if (hinges[0] === "R") return "left";
+  return "right";
+}
+
+function doorConfigPatchForOpening(cfg = {}, opening) {
+  const columns = opening === "centre" ? Math.max(2, Number(cfg.columns) || 2) : Math.max(1, Number(cfg.columns) || 1);
+  return { ...cfg, columns, rows: 1, hinges: hingesForDoorOpening(opening, columns) };
 }
 
 function cabinetDraft(type) {
@@ -193,7 +214,7 @@ export default function PublicDesignClient() {
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const stage = (
-    <div style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, background: "#fff" }}>
+    <div style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, background: "#fff", display: "flex" }}>
       {view === "plan" ? (
         <DesignCanvas
           room={d.room} items={d.items} selectedItemId={d.selectedItemId} overlappingItemIds={d.overlappingItemIds}
@@ -287,9 +308,9 @@ export default function PublicDesignClient() {
 
         {/* Contextual panel (wide only) */}
         {!narrow && (
-          <div style={{ width: 320, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.edge}`, overflowY: "auto", padding: 16 }}>
+          <div style={{ width: 320, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.edge}`, minHeight: 0, display: "flex", flexDirection: "column" }}>
             {d.selectedItem
-              ? <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={() => d.setSelectedItemId(null)} colourImages={d.colourImages} onChangeColour={openColour} />
+              ? <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={() => d.setSelectedItemId(null)} colourImages={d.colourImages} onChangeColour={openColour} />
               : <EmptyPrompt />}
           </div>
         )}
@@ -308,7 +329,7 @@ export default function PublicDesignClient() {
           </div>
           {d.selectedItem && (
             <BottomSheet onClose={() => d.setSelectedItemId(null)}>
-              <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={() => d.setSelectedItemId(null)} colourImages={d.colourImages} onChangeColour={openColour} />
+              <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={() => d.setSelectedItemId(null)} colourImages={d.colourImages} onChangeColour={openColour} />
             </BottomSheet>
           )}
         </>
@@ -411,7 +432,7 @@ function BottomSheet({ children, onClose }) {
   );
 }
 
-function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChangeColour }) {
+function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourImages, onChangeColour }) {
   const shelf = isShelf(item);
   const corner = isCorner(item);
   const floor = FLOOR_TYPES.has(item.item_type);
@@ -420,11 +441,26 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
   const set = (patch) => onUpdate(item.id, patch);
   const [open, setOpen] = useState("colour"); // one section open at a time — Colour first
 
+  const [duplicating, setDuplicating] = useState(false);
+
+  async function handleDuplicate() {
+    if (duplicating || !onDuplicate) return;
+    setDuplicating(true);
+    try {
+      await onDuplicate();
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   const isDrawers = item.front_type === "drawers";
   const isOpen = isOpenFront(item);
   const isBays = item.front_type === "mixed";
   const canBays = CAN_BAYS.has(item.item_type);
   const bays = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
+  const doorBays = bays
+    .map((bay, index) => ({ bay, index }))
+    .filter(({ bay }) => bay.type === "doors");
 
   // ---- Multi-bay ("mixed" front) helpers ----
   const withEqualHeights = (secs) => {
@@ -435,7 +471,7 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
   const commitBays = (secs) => set({ front_type: "mixed", section_config: { sections: withEqualHeights(secs) } });
   const bayForType = (type) =>
     type === "doors" ? { type: "doors", door: { columns: 1, rows: 1 } }
-      : type === "drawers" ? { type: "drawers", drawer: { heights_mm: [1, 1, 1] } }
+      : type === "drawers" ? { type: "drawers", drawer: { heights_mm: [1] } }
       : { type };
   const bayCount = (b) => (b.type === "doors" ? Math.max(1, b.door?.columns || 1) : b.type === "drawers" ? ((b.drawer?.heights_mm || []).length || 1) : 0);
   const addBay = () => commitBays([...bays, bayForType("doors")]);
@@ -443,10 +479,18 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
   const setBayType = (i, type) => commitBays(bays.map((b, x) => (x === i ? bayForType(type) : b)));
   const setBayCount = (i, n) => commitBays(bays.map((b, x) => {
     if (x !== i) return b;
-    if (b.type === "doors") return { ...b, door: { ...(b.door || {}), columns: n, rows: 1 } };
+    if (b.type === "doors") {
+      const opening = doorOpeningValue(b.door || {});
+      return { ...b, door: { ...(b.door || {}), columns: n, rows: 1, hinges: hingesForDoorOpening(opening, n) } };
+    }
     if (b.type === "drawers") return { ...b, drawer: { ...(b.drawer || {}), heights_mm: Array.from({ length: n }, () => 1) } };
     return b;
   }));
+  const setBayDoorOpening = (i, opening) => commitBays(bays.map((b, x) => (
+    x === i && b.type === "doors"
+      ? { ...b, door: doorConfigPatchForOpening(b.door || {}, opening) }
+      : b
+  )));
 
   function setFront(type) {
     if (type === "drawers") set({ front_type: "drawers", drawer_config: { ...(item.drawer_config || {}), heights_mm: equalDrawers(item.height_mm, Math.max(2, (item.drawer_config?.heights_mm || []).length || 3)) } });
@@ -456,10 +500,15 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
   }
 
   const doorCount = Math.max(1, item.door_config?.columns || 1);
+  const doorOpening = doorOpeningValue(item.door_config || {});
   const drawerCount = (Array.isArray(item.drawer_config?.heights_mm) && item.drawer_config.heights_mm.length) || 3;
   const shelfCount = Number(item.shelf_qty) || 0;
   const fingerOn = isDrawers ? !!item.drawer_config?.gap_enabled : !!item.door_config?.row_gap_enabled;
-  const setDoorCount = (n) => set({ front_type: "doors", door_config: { ...(item.door_config || {}), columns: n, rows: 1 } });
+  const setDoorCount = (n) => {
+    const cfg = item.door_config || {};
+    set({ front_type: "doors", door_config: { ...cfg, columns: n, rows: 1, hinges: hingesForDoorOpening(doorOpening, n) } });
+  };
+  const setDoorOpening = (opening) => set({ front_type: "doors", door_config: doorConfigPatchForOpening(item.door_config || {}, opening) });
   const setDrawerCount = (n) => set({ front_type: "drawers", drawer_config: { ...(item.drawer_config || {}), heights_mm: equalDrawers(item.height_mm, n) } });
   const setShelfCount = (n) => set({ shelf_qty: n });
   const setFinger = (on) => (isDrawers
@@ -470,12 +519,13 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
     ? `${bays.length} bay${bays.length === 1 ? "" : "s"}`
     : `${isOpen ? `Open · ${shelfCount} shelf${shelfCount === 1 ? "" : "ves"}` : isDrawers ? `${drawerCount} drawers` : `${doorCount} door${doorCount > 1 ? "s" : ""}`}${!isOpen && fingerOn ? " · finger pull" : ""}`;
 
-  const anyFinishPanel = item.end_panel_left || item.end_panel_right || item.has_back_panel || item.has_bottom_panel;
-  const panelCount = [item.has_kickboard, item.end_panel_left, item.end_panel_right, item.has_back_panel, item.has_bottom_panel].filter(Boolean).length;
+  const anyFinishPanel = item.end_panel_left || item.end_panel_right || item.has_back_panel || item.has_bottom_panel || item.has_filler_panel;
+  const panelCount = [item.has_kickboard, item.end_panel_left, item.end_panel_right, item.has_back_panel, item.has_bottom_panel, item.has_filler_panel].filter(Boolean).length;
   const sizeSummary = `${shelf ? `${item.width_mm || "?"}×${item.depth_mm || "?"}` : `${item.width_mm || "?"}×${item.height_mm || "?"}×${item.depth_mm || "?"}`} mm`;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
         <strong style={{ fontSize: 14, color: C.ink }}>{TYPE_LABELS[item.item_type] || "Cabinet"}</strong>
         <button type="button" onClick={onDeselect} style={{ border: "none", background: "none", cursor: "pointer", color: C.soft, fontSize: 13 }}>Done</button>
@@ -525,8 +575,8 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
                       <option value="open">Open</option>
                     </select>
                     {(b.type === "doors" || b.type === "drawers") && (
-                      <select value={String(bayCount(b))} onChange={(e) => setBayCount(i, Number(e.target.value))} style={{ ...btn, width: 52, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
-                        {(b.type === "doors" ? [1, 2] : [2, 3, 4]).map((n) => <option key={n} value={n}>{n}</option>)}
+                      <select value={String(bayCount(b))} onChange={(e) => setBayCount(i, Number(e.target.value))} style={{ ...btn, width: 54, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
+                        {(b.type === "doors" ? [1, 2] : [1, 2, 3, 4]).map((n) => <option key={n} value={n}>{n}</option>)}
                       </select>
                     )}
                     <button type="button" onClick={() => removeBay(i)} disabled={bays.length <= 1}
@@ -535,6 +585,25 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
                 ))}
               </div>
               <button type="button" onClick={addBay} style={{ ...btn, marginTop: 8, width: "100%", fontSize: 12 }}>+ Add bay</button>
+              {doorBays.length > 0 && (
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.edge}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: 11, color: C.soft }}>Door config</div>
+                  {doorBays.map(({ bay, index }) => (
+                    <label key={index} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12, color: C.ink }}>
+                      <span>Bay {index + 1} doors</span>
+                      <select
+                        value={doorOpeningValue(bay.door || {})}
+                        onChange={(e) => setBayDoorOpening(index, e.target.value)}
+                        style={{ ...btn, width: 128, padding: "6px 8px", fontSize: 12, cursor: "pointer" }}
+                      >
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                        <option value="centre">Centre</option>
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           ) : isOpen ? (
             <div style={{ marginTop: 12 }}>
@@ -550,6 +619,14 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>How many doors?</div>
               <Segmented value={String(doorCount)} options={[{ v: "1", label: "1" }, { v: "2", label: "2" }]} onChange={(v) => setDoorCount(Number(v))} />
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: C.soft, marginTop: 10 }}>
+                Doors open from
+                <select value={doorOpening} onChange={(e) => setDoorOpening(e.target.value)} style={{ ...btn, padding: "7px 8px", fontSize: 13, color: C.ink, cursor: "pointer" }}>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                  <option value="centre">Centre</option>
+                </select>
+              </label>
             </div>
           )}
           {!isOpen && !isBays && (
@@ -579,6 +656,7 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
             <Toggle label="Finished back panel" checked={item.has_back_panel} onChange={(v) => set({ has_back_panel: v })} />
           )}
           {wall && <Toggle label="Underside panel" checked={item.has_bottom_panel} onChange={(v) => set({ has_bottom_panel: v })} />}
+          {FILLER_PANEL_TYPES.has(item.item_type) && <Toggle label="Top filler panel" checked={item.has_filler_panel} onChange={(v) => set({ has_filler_panel: v })} />}
           {anyFinishPanel && (floor || wall) && (
             <div style={{ marginTop: 6, paddingTop: 8, borderTop: `1px solid ${C.edge}` }}>
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>Extend those panels:</div>
@@ -617,7 +695,13 @@ function ItemPanel({ item, onUpdate, onDelete, onDeselect, colourImages, onChang
         {(shelf || wall) && <div style={{ marginTop: 8 }}><NumberField label="Height off floor (mm)" value={item.mount_height_mm} onCommit={(v) => set({ mount_height_mm: v })} /></div>}
       </AccSection>
 
-      <button type="button" onClick={onDelete} style={{ ...btn, color: "#a03f2c", borderColor: "#e0c3bb", marginTop: 4 }}>{shelf ? "Remove shelf" : "Remove cabinet"}</button>
+      </div>
+      <div style={{ flexShrink: 0, borderTop: `1px solid ${C.edge}`, background: "#fff", padding: 12, display: "flex", gap: 8 }}>
+        <button type="button" onClick={handleDuplicate} disabled={duplicating} style={{ ...btn, flex: 1, fontWeight: 600 }}>
+          {duplicating ? "Duplicating..." : "Duplicate"}
+        </button>
+        <button type="button" onClick={onDelete} style={{ ...btn, flex: 1, color: "#a03f2c", borderColor: "#e0c3bb" }}>{shelf ? "Remove shelf" : "Remove cabinet"}</button>
+      </div>
     </div>
   );
 }

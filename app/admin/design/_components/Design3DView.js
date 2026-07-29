@@ -969,7 +969,7 @@ function edgeBoardRect(rect, edge, t) {
 // footprint edge, matching the plan and elevation.
 function EndPanelMesh({ item, room, W, D }) {
   const src = usePanelSrc(item, "endpanel");
-  const color = useMonoColor(ITEM_COLORS[item.item_type] || "#888");
+  const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   if (item.item_type === "obstruction" || (!item.end_panel_left && !item.end_panel_right)) return null;
   // Shared vertical span so the 3D end/side panel matches the quote and the
   // elevation: extends past a finished underside (wall), down to the floor
@@ -1018,7 +1018,8 @@ function EndPanelMesh({ item, room, W, D }) {
 // dimension is the gap width, not a thin thickness. Rendered in the filler
 // amber so it reads as infill rather than a finished end.
 function SideFillerMesh({ item, room, W, D }) {
-  const color = useMonoColor("#f59e0b");
+  const src = usePanelSrc(item, "endpanel");
+  const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   if (item.item_type === "obstruction" || (!item.side_filler_left && !item.side_filler_right)) return null;
   const { leftEdge, rightEdge } = panelSideEdges(item);
   const { bottomMm, topMm } = finishPanelVerticalSpanMm(item, room?.height_mm);
@@ -1036,7 +1037,7 @@ function SideFillerMesh({ item, room, W, D }) {
         return (
           <mesh key={i} position={box.position}>
             <boxGeometry args={box.size} />
-            <PanelMaterial src={null} color={color} roughness={0.55} />
+            <PanelMaterial src={src} color={color} roughness={0.55} />
           </mesh>
         );
       })}
@@ -1048,7 +1049,7 @@ function SideFillerMesh({ item, room, W, D }) {
 // wall cabinet, in the carcass finish.
 function UndersidePanelMesh({ item, W, D }) {
   const src = usePanelSrc(item, "underside");
-  const color = useMonoColor(ITEM_COLORS[item.item_type] || "#888");
+  const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   if (!item.has_bottom_panel || item.item_type !== "wall_cabinet") return null;
   const t = Number(item.bottom_panel_thickness_mm) || Number(item.carcass_thickness_mm) || 16;
   const [bottomMm] = cabinetVerticalSpanMm(item);
@@ -1071,7 +1072,7 @@ function UndersidePanelMesh({ item, W, D }) {
 // carcass finish. Against a wall it renders into the wall and simply isn't seen.
 function BackPanelMesh({ item, W, D }) {
   const src = usePanelSrc(item, "back");
-  const color = useMonoColor(ITEM_COLORS[item.item_type] || "#888");
+  const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   const enabled = item.has_back_panel || item.back_panel_wall1 || item.back_panel_wall2;
   if (!enabled || item.item_type === "obstruction") return null;
   const { backEdge } = panelSideEdges(item);

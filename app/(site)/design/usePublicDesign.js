@@ -14,6 +14,11 @@ import { buildColourImageMap, COLOUR_IMAGE_MATERIALS } from "../../../lib/pcd-co
 import { findFreeWallSlot } from "../../../lib/pcd-plan-geometry";
 
 const CODE_STORAGE_KEY = "pcd_public_design_code";
+const FALLBACK_CARCASS_DEFAULT = {
+  material: "decorative board",
+  finish: "Matt",
+  colour: "Carcass",
+};
 
 async function fetchColourImageMap() {
   const entries = await Promise.all(
@@ -28,6 +33,46 @@ async function fetchColourImageMap() {
     })
   );
   return buildColourImageMap(entries);
+}
+
+async function fetchCarcassDefault() {
+  try {
+    const res = await fetch("/api/colour-library?items=1");
+    const data = await res.json();
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const exact = items.find((item) =>
+      String(item.material || "").trim().toLowerCase() === "decorative board" &&
+      String(item.finish || "").trim().toLowerCase() === "matt" &&
+      String(item.colour || "").trim().toLowerCase() === "carcass"
+    );
+    const loose = items.find((item) =>
+      String(item.finish || "").trim().toLowerCase() === "matt" &&
+      String(item.colour || "").trim().toLowerCase() === "carcass"
+    );
+    const match = exact || loose;
+    if (!match) return FALLBACK_CARCASS_DEFAULT;
+    return {
+      material: match.material || FALLBACK_CARCASS_DEFAULT.material,
+      finish: match.finish || FALLBACK_CARCASS_DEFAULT.finish,
+      colour: match.colour || FALLBACK_CARCASS_DEFAULT.colour,
+    };
+  } catch {
+    return FALLBACK_CARCASS_DEFAULT;
+  }
+}
+
+function itemNeedsCarcassDefault(item) {
+  return item?.item_type !== "floating_shelf" && (!item?.material || !item?.finish || !item?.colour);
+}
+
+function applyCarcassDefault(item, carcassDefault) {
+  if (!itemNeedsCarcassDefault(item)) return item;
+  return {
+    ...item,
+    material: item.material || carcassDefault.material,
+    finish: item.finish || carcassDefault.finish,
+    colour: item.colour || carcassDefault.colour,
+  };
 }
 
 function readInitialCode() {
@@ -57,17 +102,22 @@ export default function usePublicDesign() {
   const [error, setError] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [colourImages, setColourImages] = useState(null);
+  const [carcassDefault, setCarcassDefault] = useState(FALLBACK_CARCASS_DEFAULT);
   const bootedRef = useRef(false);
 
   useEffect(() => { let live = true; fetchColourImageMap().then((m) => { if (live) setColourImages(m); }); return () => { live = false; }; }, []);
+  useEffect(() => { let live = true; fetchCarcassDefault().then((m) => { if (live) setCarcassDefault(m); }); return () => { live = false; }; }, []);
+  useEffect(() => {
+    setItems((current) => current.map((item) => applyCarcassDefault(item, carcassDefault)));
+  }, [carcassDefault]);
 
   const applyLoad = useCallback((data) => {
     setCode(data.code);
     setProject(data.project);
     setRoom((data.rooms && data.rooms[0]) || data.room || null);
-    setItems(data.items || []);
+    setItems((data.items || []).map((item) => applyCarcassDefault(item, carcassDefault)));
     persistCode(data.code);
-  }, []);
+  }, [carcassDefault]);
 
   const startFresh = useCallback(async () => {
     const res = await fetch("/api/public/design", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -102,18 +152,55 @@ export default function usePublicDesign() {
 
   async function addItem(draft) {
     if (!code) return null;
-    const wall = draft.wall || "top";
-    const placement = findFreeWallSlot(wall, draft, items, room);
+    const draftWithDefaults = applyCarcassDefault(draft, carcassDefault);
+    const wall = draftWithDefaults.wall || "top";
+    const placement = findFreeWallSlot(wall, draftWithDefaults, items, room);
     const res = await fetch(`/api/public/design/${encodeURIComponent(code)}/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...draft, ...placement, sort_order: items.length }),
+      body: JSON.stringify({ ...draftWithDefaults, ...placement, sort_order: items.length }),
     });
     const data = await res.json();
     if (!res.ok || !data.ok) { setSaveError(data.error || "Could not add that."); return null; }
-    setItems((it) => [...it, data.item]);
-    setSelectedItemId(data.item.id);
-    return data.item;
+    const item = applyCarcassDefault(data.item, carcassDefault);
+    setItems((it) => [...it, item]);
+    setSelectedItemId(item.id);
+    return item;
+  }
+
+  async function duplicateItem(itemId) {
+    if (!code) return null;
+    const original = items.find((i) => i.id === itemId);
+    if (!original) return null;
+    const {
+      id,
+      created_at,
+      updated_at,
+      design_project_id,
+      room_id,
+      ...rest
+    } = original;
+    const payload = applyCarcassDefault({
+      ...rest,
+      label: original.label ? `${original.label} (copy)` : original.label,
+      x_mm: (original.x_mm || 0) + 100,
+      y_mm: (original.y_mm || 0) + 100,
+      sort_order: items.length,
+    }, carcassDefault);
+    const res = await fetch(`/api/public/design/${encodeURIComponent(code)}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      setSaveError(data.error || `Could not duplicate that (${res.status}).`);
+      return null;
+    }
+    const item = applyCarcassDefault(data.item, carcassDefault);
+    setItems((it) => [...it, item]);
+    setSelectedItemId(item.id);
+    return item;
   }
 
   async function updateItem(itemId, patch) {
@@ -126,7 +213,7 @@ export default function usePublicDesign() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) return { ok: false, error: data.error || `Save failed (${res.status}).` };
-      setItems((it) => it.map((x) => (x.id === itemId ? data.item : x)));
+      setItems((it) => it.map((x) => (x.id === itemId ? applyCarcassDefault(data.item, carcassDefault) : x)));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err?.message || "Save failed." };
@@ -194,7 +281,7 @@ export default function usePublicDesign() {
     code, project, room, items, selectedItem, selectedItemId, setSelectedItemId,
     loading, error, saveError, dismissSaveError: () => setSaveError(null),
     colourImages,
-    addItem, updateItem, handleItemDragEnd, deleteItem, updateRoom, startOver, submitToPcd,
+    addItem, duplicateItem, updateItem, handleItemDragEnd, deleteItem, updateRoom, startOver, submitToPcd,
     overlappingItemIds,
   };
 }

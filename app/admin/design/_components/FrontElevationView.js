@@ -1576,7 +1576,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                         const secH = (Number(sec.height_mm) || 0) * pxPerMm;
                         cursorMm += Number(sec.height_mm) || 0;
                         if (secH <= 0) return null;
-                        return sec.type === "open" ? (
+                        return sec.type === "appliance" ? (
+                          <ApplianceMock key={idx} x={svgX} y={secY} w={svgW} h={secH} appliance={sec.appliance || "oven"} fill={fill} />
+                        ) : sec.type === "open" ? (
                           <g key={idx} style={{ pointerEvents: "none" }}>
                             <rect x={svgX} y={secY} width={svgW} height={secH}
                               fill="none" stroke={fill} strokeWidth={0.6} strokeDasharray="4 3" strokeOpacity={0.4} />
@@ -1667,7 +1669,12 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   if (run.count > 1 && run.firstItemId !== item.id) return null;
                   const tMm = benchtopThicknessMm(item);
                   const topH = tMm * scale;
-                  const topW = (run.count > 1 ? run.totalWidth : wallSpanMm(item)) * scale;
+                  const topLenMm = run.totalWidth;
+                  const topStartMm = run.startAxisPos != null
+                    ? (axisFlipped ? wallWidthMm - run.startAxisPos - topLenMm : run.startAxisPos)
+                    : xMm;
+                  const topW = topLenMm * scale;
+                  const topX = ox + topStartMm * scale;
                   const topY = svgY - topH;
                   // The ELEVATION variant: this axis is already flipped by
                   // getWallPos, so svg-left IS the viewer's left and no second
@@ -1684,16 +1691,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   const benchtopFill = tileFillFor(item, "benchtop") || item.benchtop_colour_hex || "rgba(120,113,108,0.55)";
                   return (
                     <g style={{ pointerEvents: "none" }}>
-                      <rect x={svgX - leftExt} y={topY} width={topW + leftExt + rightExt} height={topH}
+                      <rect x={topX - leftExt} y={topY} width={topW + leftExt + rightExt} height={topH}
                         fill={benchtopFill} stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
                       {/* The drop runs the full way to the floor, past the
                           kickboard, on the outside of the cabinet end. */}
                       {low && (
-                        <rect x={svgX - topH} y={topY} width={topH} height={waterfallH}
+                        <rect x={topX - topH} y={topY} width={topH} height={waterfallH}
                           fill={benchtopFill} stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
                       )}
                       {high && (
-                        <rect x={svgX + topW} y={topY} width={topH} height={waterfallH}
+                        <rect x={topX + topW} y={topY} width={topH} height={waterfallH}
                           fill={benchtopFill} stroke="rgba(68,64,60,0.8)" strokeWidth={0.6} />
                       )}
                     </g>
