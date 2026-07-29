@@ -1046,7 +1046,7 @@ function SideFillerMesh({ item, room, W, D }) {
 }
 
 // Finished UNDERSIDE panel — the board that finishes the visible bottom of a
-// wall cabinet, in the carcass finish.
+// wall cabinet, matching the finished panel/door colour unless overridden.
 function UndersidePanelMesh({ item, W, D }) {
   const src = usePanelSrc(item, "underside");
   const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");

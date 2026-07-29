@@ -844,6 +844,16 @@ export default function DesignCanvas({
   const [drag, setDrag] = useState(null);
   const [localPos, setLocalPos] = useState({});
   const [snapGuides, setSnapGuides] = useState(null); // { x?: mm, y?: mm } in room-space
+  const [failedTileSrcs, setFailedTileSrcs] = useState(() => new Set());
+  const markTileFailed = useCallback((src) => {
+    if (!src) return;
+    setFailedTileSrcs((prev) => {
+      if (prev.has(src)) return prev;
+      const next = new Set(prev);
+      next.add(src);
+      return next;
+    });
+  }, []);
 
   const lay = computeLayout(room);
   const { roomW, roomH, ox, oy, scale, W, D } = lay;
@@ -1104,7 +1114,7 @@ export default function DesignCanvas({
   if (showColours && colourImages) {
     for (const item of displayItems) {
       const src = resolveColourSrc(colourImages, item, "carcass");
-      if (src && !srcToPattern.has(src)) {
+      if (src && !failedTileSrcs.has(src) && !srcToPattern.has(src)) {
         const id = `ctile-${srcToPattern.size}`;
         srcToPattern.set(src, id);
         tilePatterns.push({ id, src });
@@ -1113,7 +1123,9 @@ export default function DesignCanvas({
   }
   const colourFillFor = (item) => {
     if (!showColours || !colourImages) return null;
-    const id = srcToPattern.get(resolveColourSrc(colourImages, item, "carcass"));
+    const src = resolveColourSrc(colourImages, item, "carcass");
+    if (failedTileSrcs.has(src)) return null;
+    const id = srcToPattern.get(src);
     return id ? `url(#${id})` : null;
   };
 
@@ -1168,7 +1180,7 @@ export default function DesignCanvas({
             each footprint it's referenced from (bounding-box units). */}
         {tilePatterns.map((p) => (
           <pattern key={p.id} id={p.id} patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width={1} height={1}>
-            <image href={p.src} x={0} y={0} width={1} height={1} preserveAspectRatio="xMidYMid slice" />
+            <image href={p.src} x={0} y={0} width={1} height={1} preserveAspectRatio="xMidYMid slice" onError={() => markTileFailed(p.src)} />
           </pattern>
         ))}
       </defs>

@@ -17,6 +17,7 @@ import DesignTopBar, { barButton } from "../../../components/DesignTopBar";
 import AddItemRail from "../../../components/AddItemRail";
 import { resolveColourSrc, slotColourFields } from "../../../lib/pcd-colour-images";
 import usePublicDesign from "./usePublicDesign";
+import PinchZoom from "../../admin/design/_components/PinchZoom";
 
 const Design3DView = dynamic(() => import("../../admin/design/_components/Design3DView"), {
   ssr: false,
@@ -148,6 +149,8 @@ export default function PublicDesignClient() {
   const [submitOpen, setSubmitOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false); // narrow: room sheet
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [mobileAddOpen, setMobileAddOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -168,6 +171,7 @@ export default function PublicDesignClient() {
 
   async function addCabinet(type) {
     await d.addItem(cabinetDraft(type));
+    setMobileAddOpen(false);
   }
 
   function applyColour(sel) {
@@ -213,18 +217,30 @@ export default function PublicDesignClient() {
   }
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+  const changeView = (nextView) => {
+    if (nextView === "elevation" && view !== "elevation") {
+      setElevWall(d.selectedItem?.wall || elevWall || "top");
+    }
+    setView(nextView);
+  };
+  const savePanelStyle = narrow
+    ? { position: "fixed", left: 12, right: 12, top: "calc(env(safe-area-inset-top) + 58px)", background: "#fff", color: C.ink, border: `1px solid ${C.edge}`, borderRadius: 12, boxShadow: "0 18px 42px rgba(0,0,0,0.24)", padding: 14, zIndex: 30 }
+    : { position: "absolute", right: 0, top: "calc(100% + 8px)", width: 300, background: "#fff", color: C.ink, border: `1px solid ${C.edge}`, borderRadius: 10, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", padding: 14, zIndex: 5 };
+  const planCanvas = (
+    <DesignCanvas
+      room={d.room} items={d.items} selectedItemId={d.selectedItemId} overlappingItemIds={d.overlappingItemIds}
+      onItemClick={(item) => d.setSelectedItemId(item.id)} onDeselect={() => d.setSelectedItemId(null)}
+      onItemDragEnd={d.handleItemDragEnd} onFrontView={(w) => { setElevWall(w); setView("elevation"); }} colourImages={d.colourImages} showColours={showColours}
+    />
+  );
   const stage = (
     <div style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, background: "#fff", display: "flex" }}>
       {view === "plan" ? (
-        <DesignCanvas
-          room={d.room} items={d.items} selectedItemId={d.selectedItemId} overlappingItemIds={d.overlappingItemIds}
-          onItemClick={(item) => d.setSelectedItemId(item.id)} onDeselect={() => d.setSelectedItemId(null)}
-          onItemDragEnd={d.handleItemDragEnd} onFrontView={(w) => { setElevWall(w); setView("elevation"); }} colourImages={d.colourImages} showColours={showColours}
-        />
+        narrow ? <PinchZoom oneFingerPan={false}>{planCanvas}</PinchZoom> : planCanvas
       ) : view === "elevation" ? (
         <FrontElevationView
           wall={elevWall} room={d.room} items={d.items}
-          interactive chrome={false}
+          interactive={!narrow} chrome={false} zoomable={narrow}
           colourImages={d.colourImages} showColours={showColours}
           selectedId={d.selectedItemId}
           onItemSelect={(id) => d.setSelectedItemId(id)}
@@ -233,6 +249,7 @@ export default function PublicDesignClient() {
         />
       ) : (
         <Design3DView
+          touch={narrow}
           room={d.room} items={d.items} colourImages={d.colourImages} showColours={showColours}
           onToggleColours={() => setShowColours((s) => !s)} selectedItemId={d.selectedItemId}
           onSelectItem={(id) => d.setSelectedItemId(id)} onClose={() => setView("plan")} showClose={false}
@@ -253,34 +270,57 @@ export default function PublicDesignClient() {
 
   return (
     <div style={shell}>
-      {/* Top bar — the shared full-width bar (same one the admin tool uses) */}
-      <DesignTopBar
-        view={view} onView={setView}
-        elevWall={elevWall} onElevWall={setElevWall}
-        showColours={showColours} onToggleColours={() => setShowColours((s) => !s)}
-        left={<>
-          <Link href="/" style={{ color: "#f3f1ea", textDecoration: "none", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>Perth Cabinet Doors</Link>
-          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>·</span>
-          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", whiteSpace: "nowrap" }}>Kitchen planner</span>
-        </>}
-        right={<>
-          {narrow && <button type="button" style={barButton} onClick={() => setRoomOpen(true)}>Room</button>}
-          <span style={{ position: "relative" }}>
-            <button type="button" style={barButton} onClick={() => setSavePanel((s) => !s)}>Save / share</button>
-            {savePanel && (
-              <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 300, background: "#fff", color: C.ink, border: `1px solid ${C.edge}`, borderRadius: 10, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", padding: 14, zIndex: 5 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Saved automatically. Copy this private link to come back on any device:</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ ...btn, flex: 1, minWidth: 0, cursor: "text", color: C.soft }} />
-                  <button type="button" style={btnPrimary} onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy</button>
-                </div>
-              </div>
-            )}
-          </span>
-          <button type="button" style={barButton} onClick={() => { if (confirm("Start a new design? Your current one stays saved under its link.")) d.startOver(); }}>Start over</button>
-          <button type="button" style={{ ...btnPrimary, fontWeight: 700 }} onClick={() => setSubmitOpen(true)} disabled={d.items.length === 0} title={d.items.length === 0 ? "Add something first" : "Send your design to PCD for a quote"}>Send to PCD</button>
-        </>}
-      />
+      {narrow ? (
+        <MobilePublicTopBar
+          view={view}
+          onView={changeView}
+          showColours={showColours}
+          onToggleColours={() => setShowColours((s) => !s)}
+          moreOpen={mobileMoreOpen}
+          setMoreOpen={setMobileMoreOpen}
+          onRoom={() => { setMobileMoreOpen(false); setRoomOpen(true); }}
+          onSave={() => { setMobileMoreOpen(false); setSavePanel((s) => !s); }}
+          onStartOver={() => { setMobileMoreOpen(false); if (confirm("Start a new design? Your current one stays saved under its link.")) d.startOver(); }}
+          onSubmit={() => { setMobileMoreOpen(false); setSubmitOpen(true); }}
+          canSubmit={d.items.length > 0}
+        />
+      ) : (
+        <DesignTopBar
+          view={view} onView={changeView}
+          elevWall={elevWall} onElevWall={setElevWall}
+          showColours={showColours} onToggleColours={() => setShowColours((s) => !s)}
+          left={<>
+            <Link href="/" style={{ color: "#f3f1ea", textDecoration: "none", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>Perth Cabinet Doors</Link>
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>·</span>
+            <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", whiteSpace: "nowrap" }}>Kitchen planner</span>
+          </>}
+          right={<>
+            <span style={{ position: "relative" }}>
+              <button type="button" style={barButton} onClick={() => setSavePanel((s) => !s)}>Save / share</button>
+              {savePanel && (
+                <SaveSharePanel shareUrl={shareUrl} style={savePanelStyle} />
+              )}
+            </span>
+            <button type="button" style={barButton} onClick={() => { if (confirm("Start a new design? Your current one stays saved under its link.")) d.startOver(); }}>Start over</button>
+            <button type="button" style={{ ...btnPrimary, fontWeight: 700 }} onClick={() => setSubmitOpen(true)} disabled={d.items.length === 0} title={d.items.length === 0 ? "Add something first" : "Send your design to PCD for a quote"}>Send to PCD</button>
+          </>}
+        />
+      )}
+
+      {narrow && view === "elevation" && (
+        <div style={{ flexShrink: 0, background: "#22231f", borderBottom: "1px solid rgba(255,255,255,0.12)", display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", overflowX: "auto" }}>
+          {[
+            ["top", "Back"],
+            ["left", "Left"],
+            ["right", "Right"],
+            ["bottom", "Front"],
+          ].map(([wallKey, label]) => (
+            <button key={wallKey} type="button" onClick={() => setElevWall(wallKey)} style={{ ...barButton, minHeight: 36, padding: "7px 10px", background: elevWall === wallKey ? "rgba(255,255,255,0.16)" : "transparent" }}>{label}</button>
+          ))}
+        </div>
+      )}
+
+      {savePanel && narrow && <SaveSharePanel shareUrl={shareUrl} style={savePanelStyle} />}
 
       {/* Body */}
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
@@ -319,16 +359,27 @@ export default function PublicDesignClient() {
       {/* Narrow: add bar + sheets */}
       {narrow && (
         <>
-          <div style={{ flexShrink: 0, background: C.panel, borderTop: `1px solid ${C.edge}`, padding: "8px 10px", display: "flex", gap: 8, overflowX: "auto" }}>
-            {CATALOGUE.map((c) => (
-              <button key={c.type} type="button" onClick={() => addCabinet(c.type)} style={{ ...btn, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: 92, padding: "6px" }}>
-                <span style={{ width: 52, height: 38 }}><Mockup type={c.type} /></span>
-                <span style={{ fontSize: 11, fontWeight: 600 }}>{c.label}</span>
-              </button>
-            ))}
+          <div style={{ flexShrink: 0, background: C.panel, borderTop: `1px solid ${C.edge}`, padding: "8px 10px max(8px, env(safe-area-inset-bottom))", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button type="button" onClick={() => setMobileAddOpen(true)} style={{ ...btnPrimary, minHeight: 44, width: "100%" }}>Add cabinet</button>
+            <button type="button" onClick={() => setRoomOpen(true)} style={{ ...btn, minHeight: 44, width: "100%" }}>Room size</button>
           </div>
-          {d.selectedItem && (
-            <BottomSheet onClose={() => d.setSelectedItemId(null)}>
+          {mobileAddOpen && (
+            <BottomSheet title="Add to your kitchen" onClose={() => setMobileAddOpen(false)}>
+              <div style={{ height: "min(68vh, 560px)", minHeight: 360 }}>
+                <AddItemRail
+                  theme="light"
+                  title="Add to your kitchen"
+                  catalogue={CATALOGUE}
+                  categories={CATALOGUE_CATEGORIES}
+                  renderMockup={(type, kind) => <Mockup type={type} kind={kind} />}
+                  onPick={(type) => addCabinet(type)}
+                  onCancel={() => setMobileAddOpen(false)}
+                />
+              </div>
+            </BottomSheet>
+          )}
+          {d.selectedItem && !mobileAddOpen && (
+            <BottomSheet title={TYPE_LABELS[d.selectedItem.item_type] || "Cabinet"} onClose={() => d.setSelectedItemId(null)}>
               <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={() => d.setSelectedItemId(null)} colourImages={d.colourImages} onChangeColour={openColour} />
             </BottomSheet>
           )}
@@ -354,6 +405,83 @@ export default function PublicDesignClient() {
         <SubmitModal onSubmit={d.submitToPcd} onClose={() => setSubmitOpen(false)} />
       )}
     </div>
+  );
+}
+
+function SaveSharePanel({ shareUrl, style }) {
+  return (
+    <div style={style}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Saved automatically. Copy this private link to come back on any device:</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ ...btn, flex: 1, minWidth: 0, cursor: "text", color: C.soft }} />
+        <button type="button" style={btnPrimary} onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy</button>
+      </div>
+    </div>
+  );
+}
+
+function MobilePublicTopBar({
+  view,
+  onView,
+  showColours,
+  onToggleColours,
+  moreOpen,
+  setMoreOpen,
+  onRoom,
+  onSave,
+  onStartOver,
+  onSubmit,
+  canSubmit,
+}) {
+  const mobileBarBtn = { ...barButton, minHeight: 38, padding: "7px 10px", fontSize: 12.5 };
+  return (
+    <div style={{ flexShrink: 0, background: C.bar, color: C.barText, padding: "max(8px, env(safe-area-inset-top)) 10px 8px", zIndex: 20, display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
+      <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+        <Link href="/" style={{ color: C.barText, textDecoration: "none", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Perth Cabinet Doors</Link>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>Kitchen planner</span>
+      </div>
+      <select
+        aria-label="View"
+        value={view}
+        onChange={(e) => onView(e.target.value)}
+        style={{ ...mobileBarBtn, width: 102, background: "rgba(255,255,255,0.08)", color: C.barText, appearance: "auto" }}
+      >
+        <option value="plan">Plan</option>
+        <option value="elevation">Elevation</option>
+        <option value="3d">3D</option>
+      </select>
+      <button type="button" style={mobileBarBtn} onClick={onToggleColours} aria-pressed={showColours} title="Toggle colours">
+        {showColours ? "Colours" : "Lines"}
+      </button>
+      <span style={{ position: "relative", flexShrink: 0 }}>
+        <button type="button" style={mobileBarBtn} onClick={() => setMoreOpen((o) => !o)} aria-haspopup="menu" aria-expanded={moreOpen}>More</button>
+        {moreOpen && (
+          <>
+            <div style={{ position: "fixed", inset: 0, zIndex: 21 }} onClick={() => setMoreOpen(false)} />
+            <div role="menu" style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 22, width: 190, background: "#fff", color: C.ink, border: `1px solid ${C.edge}`, borderRadius: 10, boxShadow: "0 14px 34px rgba(0,0,0,0.24)", padding: 6, display: "flex", flexDirection: "column", gap: 2 }}>
+              <MobileMenuButton onClick={onRoom}>Room size</MobileMenuButton>
+              <MobileMenuButton onClick={onSave}>Save / share</MobileMenuButton>
+              <MobileMenuButton onClick={onStartOver}>Start over</MobileMenuButton>
+              <MobileMenuButton onClick={onSubmit} disabled={!canSubmit}>Send to PCD</MobileMenuButton>
+            </div>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function MobileMenuButton({ children, onClick, disabled = false }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      style={{ border: "none", background: "transparent", color: disabled ? "#aaa" : C.ink, textAlign: "left", borderRadius: 7, padding: "11px 10px", minHeight: 42, font: "inherit", fontSize: 13, cursor: disabled ? "default" : "pointer" }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -420,13 +548,21 @@ function SubmitModal({ onSubmit, onClose }) {
   );
 }
 
-function BottomSheet({ children, onClose }) {
+function BottomSheet({ children, onClose, title = "" }) {
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 7 }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.28)" }} />
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "68%", overflowY: "auto", background: "#fff", borderRadius: "16px 16px 0 0", padding: 16, boxShadow: "0 -10px 30px rgba(0,0,0,0.2)" }}>
-        <div style={{ width: 40, height: 4, borderRadius: 2, background: C.edge, margin: "0 auto 12px" }} />
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "min(78vh, 680px)", display: "flex", flexDirection: "column", overflow: "hidden", background: "#fff", borderRadius: "16px 16px 0 0", boxShadow: "0 -10px 30px rgba(0,0,0,0.2)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div style={{ flexShrink: 0, padding: "10px 14px 8px", borderBottom: `1px solid ${C.edge}` }}>
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: C.edge, margin: "0 auto 10px" }} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <strong style={{ minWidth: 0, fontSize: 14, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</strong>
+            <button type="button" onClick={onClose} aria-label="Close" style={{ ...btn, width: 34, height: 34, padding: 0, flexShrink: 0 }}>✕</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         {children}
+        </div>
       </div>
     </div>
   );

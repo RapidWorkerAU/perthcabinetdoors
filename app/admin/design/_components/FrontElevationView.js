@@ -498,6 +498,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   const [localPos, setLocalPos]       = useState({});
   const [localShelves, setLocalShelves] = useState({});
   const [snapGuides, setSnapGuides]   = useState(null); // { x?: mm, y?: mm }
+  const [failedTileSrcs, setFailedTileSrcs] = useState(() => new Set());
+  const markTileFailed = (src) => {
+    if (!src) return;
+    setFailedTileSrcs((prev) => {
+      if (prev.has(src)) return prev;
+      const next = new Set(prev);
+      next.add(src);
+      return next;
+    });
+  };
   // Rendered head-on mode: swap the schematic SVG for the 3D scene viewed dead-on
   // at this wall. Desktop-only (needs the interactive chrome / a real canvas).
   const [rendered, setRendered] = useState(false);
@@ -886,7 +896,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   const elevSrcToPattern = new Map();
   const elevTilePatterns = [];
   const registerSrc = (src) => {
-    if (src && !elevSrcToPattern.has(src)) {
+    if (src && !failedTileSrcs.has(src) && !elevSrcToPattern.has(src)) {
       const id = `ctile-elev-${elevSrcToPattern.size}`;
       elevSrcToPattern.set(src, id);
       elevTilePatterns.push({ id, src });
@@ -904,7 +914,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   }
   const tileFillFor = (item, slot) => {
     if (!showColours || !colourImages) return null;
-    const id = elevSrcToPattern.get(resolveColourSrc(colourImages, item, slot));
+    const src = resolveColourSrc(colourImages, item, slot);
+    if (failedTileSrcs.has(src)) return null;
+    const id = elevSrcToPattern.get(src);
     return id ? `url(#${id})` : null;
   };
   const faceFillFor = (item) => tileFillFor(item, faceSlot(item));
@@ -1094,7 +1106,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                 fill each face rect it's referenced from. */}
             {elevTilePatterns.map((p) => (
               <pattern key={p.id} id={p.id} patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width={1} height={1}>
-                <image href={p.src} x={0} y={0} width={1} height={1} preserveAspectRatio="xMidYMid slice" />
+                <image href={p.src} x={0} y={0} width={1} height={1} preserveAspectRatio="xMidYMid slice" onError={() => markTileFailed(p.src)} />
               </pattern>
             ))}
           </defs>
