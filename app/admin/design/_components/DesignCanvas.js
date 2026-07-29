@@ -837,6 +837,7 @@ export default function DesignCanvas({
   // (mobile has its own elevation toggle and one cabinet per room, so there's
   // nothing to position). Defaults preserve the full desktop behaviour.
   interactive = true,
+  selectOnPointerUp = false,
 }) {
   const svgRef = useRef(null);
   const itemPressedRef = useRef(false);
@@ -894,7 +895,7 @@ export default function DesignCanvas({
       itemWidthMm: ew,
       itemDepthMm: ed,
     });
-    onItemClick(item);
+    if (!selectOnPointerUp) onItemClick(item);
   }
 
   function handleItemPointerUp(e, item) {
@@ -903,6 +904,8 @@ export default function DesignCanvas({
     if (current) {
       onItemDragEnd(item.id, withCornerWallDetection(item, current, W, D));
       setLocalPos((p) => { const n = { ...p }; delete n[item.id]; return n; });
+    } else if (selectOnPointerUp) {
+      onItemClick(item);
     }
     setDrag(null);
     setSnapGuides(null);

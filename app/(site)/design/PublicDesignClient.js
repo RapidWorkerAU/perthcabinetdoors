@@ -151,6 +151,7 @@ export default function PublicDesignClient() {
   const [roomOpen, setRoomOpen] = useState(false); // narrow: room sheet
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [mobileAddOpen, setMobileAddOpen] = useState(false);
+  const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -168,6 +169,10 @@ export default function PublicDesignClient() {
     const keys = targetsFor(item).map((t) => t.key);
     if (!keys.includes(colourTarget)) setColourTarget(keys[0]);
   }, [d.selectedItem, colourTarget]);
+
+  useEffect(() => {
+    if (!narrow || !d.selectedItem) setMobileConfigOpen(false);
+  }, [narrow, d.selectedItem]);
 
   async function addCabinet(type) {
     await d.addItem(cabinetDraft(type));
@@ -217,6 +222,20 @@ export default function PublicDesignClient() {
   }
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+  const selectItem = (itemOrId) => {
+    const id = typeof itemOrId === "object" ? itemOrId?.id : itemOrId;
+    if (!id) return;
+    if (narrow && d.selectedItemId === id) {
+      setMobileConfigOpen(true);
+      return;
+    }
+    setMobileConfigOpen(false);
+    d.setSelectedItemId(id);
+  };
+  const deselectItem = () => {
+    setMobileConfigOpen(false);
+    d.setSelectedItemId(null);
+  };
   const changeView = (nextView) => {
     if (nextView === "elevation" && view !== "elevation") {
       setElevWall(d.selectedItem?.wall || elevWall || "top");
@@ -229,8 +248,9 @@ export default function PublicDesignClient() {
   const planCanvas = (
     <DesignCanvas
       room={d.room} items={d.items} selectedItemId={d.selectedItemId} overlappingItemIds={d.overlappingItemIds}
-      onItemClick={(item) => d.setSelectedItemId(item.id)} onDeselect={() => d.setSelectedItemId(null)}
+      onItemClick={selectItem} onDeselect={deselectItem}
       onItemDragEnd={d.handleItemDragEnd} onFrontView={(w) => { setElevWall(w); setView("elevation"); }} colourImages={d.colourImages} showColours={showColours}
+      selectOnPointerUp={narrow}
     />
   );
   const stage = (
@@ -240,19 +260,20 @@ export default function PublicDesignClient() {
       ) : view === "elevation" ? (
         <FrontElevationView
           wall={elevWall} room={d.room} items={d.items}
-          interactive={!narrow} chrome={false} zoomable={narrow}
+          interactive chrome={false} zoomable={narrow}
           colourImages={d.colourImages} showColours={showColours}
           selectedId={d.selectedItemId}
-          onItemSelect={(id) => d.setSelectedItemId(id)}
+          onItemSelect={selectItem}
           onItemChange={d.handleItemDragEnd}
           onClose={() => setView("plan")}
+          selectOnPointerUp={narrow}
         />
       ) : (
         <Design3DView
           touch={narrow}
           room={d.room} items={d.items} colourImages={d.colourImages} showColours={showColours}
           onToggleColours={() => setShowColours((s) => !s)} selectedItemId={d.selectedItemId}
-          onSelectItem={(id) => d.setSelectedItemId(id)} onClose={() => setView("plan")} showClose={false}
+          onSelectItem={selectItem} onClose={() => setView("plan")} showClose={false}
         />
       )}
       {d.items.length === 0 && (
@@ -350,7 +371,7 @@ export default function PublicDesignClient() {
         {!narrow && (
           <div style={{ width: 320, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.edge}`, minHeight: 0, display: "flex", flexDirection: "column" }}>
             {d.selectedItem
-              ? <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={() => d.setSelectedItemId(null)} colourImages={d.colourImages} onChangeColour={openColour} />
+              ? <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={deselectItem} colourImages={d.colourImages} onChangeColour={openColour} />
               : <EmptyPrompt />}
           </div>
         )}
@@ -359,6 +380,14 @@ export default function PublicDesignClient() {
       {/* Narrow: add bar + sheets */}
       {narrow && (
         <>
+          {d.selectedItem && !mobileConfigOpen && !mobileAddOpen && (
+            <div style={{ flexShrink: 0, background: "#fff", borderTop: `1px solid ${C.edge}`, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ minWidth: 0, flex: 1, fontSize: 12, color: C.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                Selected: <strong style={{ color: C.ink }}>{TYPE_LABELS[d.selectedItem.item_type] || "Cabinet"}</strong>. Tap again to configure.
+              </span>
+              <button type="button" onClick={() => setMobileConfigOpen(true)} style={{ ...btn, padding: "7px 10px", flexShrink: 0 }}>Configure</button>
+            </div>
+          )}
           <div style={{ flexShrink: 0, background: C.panel, borderTop: `1px solid ${C.edge}`, padding: "8px 10px max(8px, env(safe-area-inset-bottom))", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <button type="button" onClick={() => setMobileAddOpen(true)} style={{ ...btnPrimary, minHeight: 44, width: "100%" }}>Add cabinet</button>
             <button type="button" onClick={() => setRoomOpen(true)} style={{ ...btn, minHeight: 44, width: "100%" }}>Room size</button>
@@ -378,10 +407,10 @@ export default function PublicDesignClient() {
               </div>
             </BottomSheet>
           )}
-          {d.selectedItem && !mobileAddOpen && (
-            <BottomSheet title={TYPE_LABELS[d.selectedItem.item_type] || "Cabinet"} onClose={() => d.setSelectedItemId(null)}>
-              <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={() => d.setSelectedItemId(null)} colourImages={d.colourImages} onChangeColour={openColour} />
-            </BottomSheet>
+          {d.selectedItem && !mobileAddOpen && mobileConfigOpen && (
+            <FullScreenConfigModal title={TYPE_LABELS[d.selectedItem.item_type] || "Cabinet"} onClose={() => setMobileConfigOpen(false)}>
+              <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={deselectItem} colourImages={d.colourImages} onChangeColour={openColour} showHeader={false} />
+            </FullScreenConfigModal>
           )}
         </>
       )}
@@ -568,7 +597,26 @@ function BottomSheet({ children, onClose, title = "" }) {
   );
 }
 
-function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourImages, onChangeColour }) {
+function FullScreenConfigModal({ children, onClose, title = "" }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      style={{ position: "absolute", inset: 0, zIndex: 40, background: "#fff", display: "flex", flexDirection: "column", overflow: "hidden" }}
+    >
+      <div style={{ position: "sticky", top: 0, zIndex: 2, flexShrink: 0, background: "#fff", borderBottom: `1px solid ${C.edge}`, padding: "max(12px, env(safe-area-inset-top)) 14px 10px", display: "flex", alignItems: "center", gap: 12 }}>
+        <strong style={{ minWidth: 0, flex: 1, fontSize: 15, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</strong>
+        <button type="button" onClick={onClose} aria-label="Close" style={{ ...btn, width: 38, height: 38, padding: 0, flexShrink: 0 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourImages, onChangeColour, showHeader = true }) {
   const shelf = isShelf(item);
   const corner = isCorner(item);
   const floor = FLOOR_TYPES.has(item.item_type);
@@ -662,10 +710,12 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
   return (
     <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-        <strong style={{ fontSize: 14, color: C.ink }}>{TYPE_LABELS[item.item_type] || "Cabinet"}</strong>
-        <button type="button" onClick={onDeselect} style={{ border: "none", background: "none", cursor: "pointer", color: C.soft, fontSize: 13 }}>Done</button>
-      </div>
+      {showHeader && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+          <strong style={{ fontSize: 14, color: C.ink }}>{TYPE_LABELS[item.item_type] || "Cabinet"}</strong>
+          <button type="button" onClick={onDeselect} style={{ border: "none", background: "none", cursor: "pointer", color: C.soft, fontSize: 13 }}>Done</button>
+        </div>
+      )}
 
       {/* Colour & finish — each surface opens the brand→finish→colour chooser */}
       <AccSection k="colour" label="Colour & finish" openKey={open} setOpen={setOpen}>
@@ -832,7 +882,7 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
       </AccSection>
 
       </div>
-      <div style={{ flexShrink: 0, borderTop: `1px solid ${C.edge}`, background: "#fff", padding: 12, display: "flex", gap: 8 }}>
+      <div style={{ flexShrink: 0, borderTop: `1px solid ${C.edge}`, background: "#fff", padding: "12px 12px max(12px, env(safe-area-inset-bottom))", display: "flex", gap: 8 }}>
         <button type="button" onClick={handleDuplicate} disabled={duplicating} style={{ ...btn, flex: 1, fontWeight: 600 }}>
           {duplicating ? "Duplicating..." : "Duplicate"}
         </button>

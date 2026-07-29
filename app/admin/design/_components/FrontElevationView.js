@@ -491,7 +491,7 @@ const WALL_AXIS = {
   right:  { widthKey: "depth_mm",  label: "Right Wall" },
 };
 
-export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, chrome = true, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false }) {
+export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, chrome = true, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false, selectOnPointerUp = false }) {
   const [currentWall, setCurrentWall] = useState(initialWall);
   const [selectedId, setSelectedId]   = useState(controlledSelectedId ?? null);
   const [drag, setDrag]               = useState(null);
@@ -716,8 +716,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     }
     e.stopPropagation();
     pressedRef.current = true;
-    setSelectedId(item.id);
-    onItemSelect?.(item.id);
+    if (!selectOnPointerUp) {
+      setSelectedId(item.id);
+      onItemSelect?.(item.id);
+    }
     const pt  = svgPt(e);
     const dis = getDisp(item);
     const { lowT, highT } = endPanelElevationSpanMm(item);
@@ -841,6 +843,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
           ? { x_mm: 0, y_mm: rawX, ...(pos.mount_height_mm !== undefined ? { mount_height_mm: pos.mount_height_mm } : {}) }
           : { x_mm: rawX, ...(pos.mount_height_mm !== undefined ? { mount_height_mm: pos.mount_height_mm } : {}) };
         onItemChange(drag.itemId, patch);
+      } else if (selectOnPointerUp) {
+        setSelectedId(drag.itemId);
+        onItemSelect?.(drag.itemId);
       }
     } else if (drag.type === "shelf") {
       const shelves = localShelves[drag.itemId];
