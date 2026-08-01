@@ -89,11 +89,18 @@ function FlatGrid({ value, onPick }) {
   );
 }
 
-export default function ColourPickerModal({ mode = "public", value, matchOptions = [], title = "colour", thicknessDefault = 16, showCost = true, onPick, onClose, allowFlat = false, flatValue = null, onPickFlat = null, canReset = false, onClear = null, notice = null }) {
+export default function ColourPickerModal({ mode = "public", value, matchOptions = [], title = "colour", thicknessDefault = 16, showCost = true, onPick, onClose, allowFlat = false, flatValue = null, onPickFlat = null, canReset = false, onClear = null, notice = null, onlyThicknessMm = null }) {
   const admin = mode === "admin";
   const narrow = useNarrow();
-  const [items, setItems] = useState(ITEMS_CACHE);
+  const [allItems, setItems] = useState(ITEMS_CACHE);
   const [loading, setLoading] = useState(!ITEMS_CACHE);
+  // A structural part can be pinned to one board thickness — cleats are always
+  // 18mm — so only the library rows actually available in it are offered. Each
+  // library row IS a thickness variant, so this filters real stock, not just
+  // the material family.
+  const items = onlyThicknessMm
+    ? (allItems || []).filter((i) => (parseInt(i.thickness, 10) || 0) === Number(onlyThicknessMm))
+    : allItems;
 
   useEffect(() => {
     let live = true;
@@ -119,7 +126,11 @@ export default function ColourPickerModal({ mode = "public", value, matchOptions
     : loading
     ? <div style={{ flex: 1, display: "grid", placeItems: "center", color: "#8a867c" }}>Loading colours…</div>
     : !(items || []).length
-      ? <div style={{ flex: 1, display: "grid", placeItems: "center", color: "#8a867c" }}>No colours available right now.</div>
+      ? <div style={{ flex: 1, display: "grid", placeItems: "center", color: "#8a867c", padding: 24, textAlign: "center" }}>
+          {onlyThicknessMm
+            ? `No colours in the library are available in ${onlyThicknessMm}mm.`
+            : "No colours available right now."}
+        </div>
       : admin
         ? <AdminBody items={items} value={value} matchOptions={matchOptions} thicknessDefault={thicknessDefault} showCost={showCost} onPick={onPick} onClose={onClose} allowFlat={allowFlat} flatValue={flatValue} onPickFlat={onPickFlat} canReset={canReset} onClear={onClear} narrow={narrow} />
         : <PublicBody items={items} value={value} onPick={onPick} narrow={narrow} />;

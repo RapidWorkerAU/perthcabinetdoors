@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import styles from "../design.module.css";
 import { Dropdown } from "@/components/ui/Dropdown";
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "bookcase"];
 
 const TYPE_LABELS = {
   base_cabinet: "Base Cabinet",
@@ -15,6 +15,7 @@ const TYPE_LABELS = {
   corner_base_cabinet: "Corner Base Cabinet",
   corner_tall_cabinet: "Corner Pantry",
   blind_corner_cabinet: "Blind Corner Cabinet",
+  bookcase: "Bookcase",
   door: "Door",
   drawer_front: "Drawer Front",
   panel: "Panel",

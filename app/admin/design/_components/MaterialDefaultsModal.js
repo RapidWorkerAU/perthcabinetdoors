@@ -19,6 +19,10 @@ const SECTIONS = [
   { key: "tall_cabinet",         label: "Tall Cabinets",         group: "carcass", kind: "board", boardLabel: "Carcass Board", thicknessDefault: 16 },
   { key: "corner_base_cabinet",  label: "Corner Cabinets",       group: "carcass", kind: "board", boardLabel: "Carcass Board", thicknessDefault: 16 },
   { key: "blind_corner_cabinet", label: "Blind Corner Cabinets", group: "carcass", kind: "board", boardLabel: "Carcass Board", thicknessDefault: 16 },
+  { key: "bookcase",             label: "Bookcases",             group: "carcass", kind: "board", boardLabel: "Bookcase Board", thicknessDefault: 18,
+    note: "The bookcase carcass — sides, top, bottom and the solid back. Its shelves take their colour from Internal Shelves below, or can be set per bookcase." },
+  { key: "shelf_rail",           label: "Shelves & Rails",       group: "top",     kind: "board", boardLabel: "Shelf Board",   thicknessDefault: 18,
+    note: "The SHELF board on a wardrobe Shelf & Rail — its thickness also sets the span guide. The cleats and front rail are always 18mm and take their colour per item." },
   { key: "floating_shelf",       label: "Floating Shelves",      group: "top",     kind: "board", boardLabel: "Shelf Board",   thicknessDefault: 18,
     note: "Decorative-board floating shelves — the top, bottom and front boards all use this finish." },
   { key: "shelf",                label: "Internal Shelves",      group: "top",     kind: "board", boardLabel: "Shelf Board",   thicknessDefault: 16,
@@ -31,8 +35,9 @@ const SECTIONS = [
 
 function emptyDefaults() {
   return {
-    carcass: { base_cabinet: {}, wall_cabinet: {}, tall_cabinet: {}, corner_base_cabinet: {}, corner_tall_cabinet: {}, blind_corner_cabinet: {} },
+    carcass: { base_cabinet: {}, wall_cabinet: {}, tall_cabinet: {}, corner_base_cabinet: {}, corner_tall_cabinet: {}, blind_corner_cabinet: {}, bookcase: {} },
     floating_shelf: {},
+    shelf_rail: {},
     shelf: {},
     door: {},
     drawer: {},
@@ -52,6 +57,7 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
     return {
       carcass: { ...base.carcass, ...(initialDefaults.carcass || {}) },
       floating_shelf: { ...base.floating_shelf, ...(initialDefaults.floating_shelf || {}) },
+      shelf_rail: { ...base.shelf_rail, ...(initialDefaults.shelf_rail || {}) },
       shelf: { ...base.shelf, ...(initialDefaults.shelf || {}) },
       door: { ...base.door, ...(initialDefaults.door || {}) },
       drawer: { ...base.drawer, ...(initialDefaults.drawer || {}) },

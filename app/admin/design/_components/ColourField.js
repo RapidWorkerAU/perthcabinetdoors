@@ -39,6 +39,7 @@ export default function ColourField({
   allowFlat = false,   // offer a "flat colour" option inside the picker modal
   onFlat = null,       // called with a hex when a flat colour is picked
   notice = null,       // when set, opening shows this message in the modal (no picker)
+  onlyThicknessMm = null, // restrict to library colours stocked in this thickness
 }) {
   const [open, setOpen] = useState(false);
   const summary = styleSummary(value) || (hex ? "Flat colour" : null);
@@ -85,6 +86,7 @@ export default function ColourField({
           canReset={canReset}
           onClear={canReset ? () => { onChange(null); setOpen(false); } : undefined}
           notice={notice}
+          onlyThicknessMm={onlyThicknessMm}
           // Merge the picked colour INTO the existing style so sibling fields
           // (profile on a door style, etc.) are preserved — exactly as the old
           // draft-merge did.

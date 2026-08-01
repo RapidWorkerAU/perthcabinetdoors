@@ -16,6 +16,18 @@ import PublicColourModal from "./PublicColourModal";
 import DesignTopBar, { barButton } from "../../../components/DesignTopBar";
 import AddItemRail from "../../../components/AddItemRail";
 import { resolveColourSrc, slotColourFields } from "../../../lib/pcd-colour-images";
+import { CABINET_MOUNT_MM } from "../../../lib/pcd-kickboard-utils";
+import { bayShelfCount } from "../../../lib/pcd-door-utils";
+import { applianceKindDefaults } from "../../../lib/pcd-appliance-utils";
+import {
+  SHELF_RAIL_DEFAULTS,
+  shelfRailConfig,
+  shelfRailHeightMm,
+  shelfTopMm,
+  mountForShelfTopMm,
+  spanLimitMm,
+  detectSupports,
+} from "../../../lib/pcd-shelf-rail-utils";
 import usePublicDesign from "./usePublicDesign";
 import PinchZoom from "../../admin/design/_components/PinchZoom";
 
@@ -29,17 +41,40 @@ const CATALOGUE = [
   { type: "wall_cabinet", label: "Wall cabinet", desc: "Upper / overhead unit", category: "cabinets" },
   { type: "tall_cabinet", label: "Tall / pantry", desc: "Full-height tower", category: "cabinets" },
   { type: "corner_base_cabinet", label: "Corner cabinet", desc: "Wraps a corner", category: "cabinets" },
+  { type: "bookcase", label: "Bookcase", desc: "Open unit with a solid back", category: "shelving" },
+  { type: "shelf_rail", label: "Shelf & rail", desc: "Shelf spanning between two towers or walls", category: "shelving" },
   { type: "floating_shelf", label: "Floating shelf", desc: "Wall-mounted open shelf", category: "shelving" },
+  { type: "panel", label: "Panel", desc: "Finished end or filler panel", category: "shelving" },
+  { type: "appliance", kind: "fridge", label: "Fridge space", desc: "Leave room for the fridge", category: "room" },
+  { type: "window", label: "Window", desc: "Mark a window on the wall", category: "room" },
+  { type: "door_opening", label: "Doorway", desc: "Mark a doorway", category: "room" },
 ];
 const CATALOGUE_CATEGORIES = [
   { key: "cabinets", label: "Cabinets" },
   { key: "shelving", label: "Shelving" },
+  { key: "room", label: "Room" },
 ];
+// Placed to show what's already in the room, never manufactured or quoted —
+// so they take a size and nothing else: no colour, no style, no panels.
+const ROOM_REFERENCE_TYPES = new Set(["appliance", "window", "door_opening"]);
+const isRoomReference = (item) => ROOM_REFERENCE_TYPES.has(item?.item_type);
+// A standalone panel stores its face WIDTH in depth_mm; width_mm is its on-edge
+// thickness (see the "panel" case in the admin AddItemForm). The public form
+// says "width" and writes depth_mm, so nobody has to know that.
+const isPanel = (item) => item?.item_type === "panel";
 const TYPE_LABELS = Object.fromEntries(CATALOGUE.map((c) => [c.type, c.label]));
 const HAS_BENCHTOP = new Set(["base_cabinet", "corner_base_cabinet"]);
-const FLOOR_TYPES = new Set(["base_cabinet", "tall_cabinet", "corner_base_cabinet"]);
+const FLOOR_TYPES = new Set(["base_cabinet", "tall_cabinet", "corner_base_cabinet", "bookcase"]);
 const FILLER_PANEL_TYPES = new Set(["wall_cabinet", "tall_cabinet"]);
 const isShelf = (item) => item?.item_type === "floating_shelf";
+// A bookcase is always open-fronted — no door/drawer choice is ever offered for
+// one, so its panel shows the shelf count on its own instead of a front picker.
+const isBookcase = (item) => item?.item_type === "bookcase";
+// A Shelf & Rail spans an opening rather than standing anywhere. The public
+// version deliberately exposes only span, depth and shelf height: which face a
+// cleat screws into and whether an end lands on a gable are trade calls, not
+// homeowner ones, so they're detected from the plan and settled in the office.
+const isShelfRail = (item) => item?.item_type === "shelf_rail";
 const isCorner = (item) => item?.item_type === "corner_base_cabinet";
 // Melamine "carcass white" — the whole-item colour fallback, so a new cabinet
 // reads white until a specific surface is coloured (carcass stays white even
@@ -73,12 +108,23 @@ const slotForTarget = (item, target) => {
 // a finished side/back/underside panel is on.
 function targetsFor(item) {
   if (!item) return [];
+  // A fridge space, a window and a doorway are references to what's already in
+  // the room — nothing is made, so there's nothing to choose a finish for.
+  if (isRoomReference(item)) return [];
+  if (isPanel(item)) return [{ key: "body", label: "Panel" }];
   if (isShelf(item)) return [{ key: "body", label: "Shelf" }];
+  // One colour only. The cleats and front rail follow the shelf here — they're
+  // hidden inside the robe, and picking them properly means picking from stock
+  // that comes in 18mm, which the consumer picker doesn't filter on.
+  if (isShelfRail(item)) return [{ key: "body", label: "Shelf" }];
   const open = isOpenFront(item);
+  // Shelves are a colourable surface whenever there ARE any — either the whole
+  // unit is open with shelves in it, or a bay of a mixed front is.
+  const hasShelves = (open && Number(item.shelf_qty) > 0) || bayShelfCount(item) > 0;
   return [
     ...(open ? [] : [{ key: "front", label: item.front_type === "drawers" ? "Drawers" : item.front_type === "mixed" ? "Fronts" : "Doors" }]),
-    ...(open && Number(item.shelf_qty) > 0 ? [{ key: "shelf", label: "Shelves" }] : []),
-    { key: "body", label: "Carcass" },
+    ...(hasShelves ? [{ key: "shelf", label: "Shelves" }] : []),
+    { key: "body", label: isBookcase(item) ? "Bookcase" : "Carcass" },
     ...(item.has_kickboard ? [{ key: "kickboard", label: "Kickboard" }] : []),
     ...(hasFinishPanels(item) ? [{ key: "panels", label: "Panels" }] : []),
     ...(HAS_BENCHTOP.has(item.item_type) ? [{ key: "benchtop", label: "Benchtop" }] : []),
@@ -112,15 +158,57 @@ function doorConfigPatchForOpening(cfg = {}, opening) {
   return { ...cfg, columns, rows: 1, hinges: hingesForDoorOpening(opening, columns) };
 }
 
-function cabinetDraft(type) {
+function cabinetDraft(type, kind = null) {
   const base = { item_type: type, wall: "top", front_type: "doors", qty: 1, colour_hex: CARCASS_WHITE };
   switch (type) {
+    case "panel":
+      // panel_thickness_mm is the canonical thickness; width_mm mirrors it for
+      // the plan-view footprint, and depth_mm carries the finished face width.
+      return { item_type: "panel", wall: "top", qty: 1, panel_thickness_mm: 18, width_mm: 18, height_mm: 720, depth_mm: 600 };
+    case "appliance":
+      return { item_type: "appliance", wall: "top", qty: 1, appliance_kind: kind || "fridge", ...applianceKindDefaults(kind || "fridge") };
+    case "window":
+      // Sits in the wall at sill height, shallow into the room.
+      return { item_type: "window", wall: "top", qty: 1, width_mm: 900, height_mm: 1200, depth_mm: 100, mount_height_mm: 900 };
+    case "door_opening":
+      return { item_type: "door_opening", wall: "top", qty: 1, width_mm: 820, height_mm: 2040, depth_mm: 100, mount_height_mm: 0 };
     case "wall_cabinet":
       return { ...base, width_mm: 600, height_mm: 720, depth_mm: 320, mount_height_mm: 1400, door_config: { columns: 1, rows: 1 } };
     case "tall_cabinet":
       return { ...base, width_mm: 600, height_mm: 2100, depth_mm: 560, has_kickboard: true, door_config: { columns: 1, rows: 2 } };
     case "corner_base_cabinet":
       return { ...base, width_mm: 900, secondary_width_mm: 900, height_mm: 720, depth_mm: 560, has_kickboard: true, has_benchtop: true, corner_style: "l_shape" };
+    case "bookcase":
+      // Always open, solid back, 18mm board — the shelves carry their own
+      // colour, so this is the one item where two finishes are the point.
+      return {
+        ...base,
+        width_mm: 800, height_mm: 2000, depth_mm: 300,
+        front_type: "none", shelf_qty: 4,
+        carcass_thickness_mm: 18, shelf_thickness_mm: 18,
+        back_panel_included: true, back_panel_thickness_mm: 16,
+      };
+    case "shelf_rail": {
+      // Front rail always on in the public tool — it's what lets a robe shelf
+      // span a real opening without sagging, and it isn't a taste decision.
+      // Supports start as "wall" (the one value that never trips a blocking
+      // error) and are re-detected from the plan as soon as it's sized.
+      const cfg = {
+        left_support: "wall", right_support: "wall",
+        back_cleat: true, end_cleat_left: true, end_cleat_right: true,
+        rail_height_mm: SHELF_RAIL_DEFAULTS.rail_height_mm,
+        front_rail: { on: true, setback_mm: SHELF_RAIL_DEFAULTS.front_rail_setback_mm },
+      };
+      return {
+        item_type: "shelf_rail", wall: "top", qty: 1, colour_hex: CARCASS_WHITE,
+        width_mm: SHELF_RAIL_DEFAULTS.width_mm,
+        depth_mm: SHELF_RAIL_DEFAULTS.depth_mm,
+        carcass_thickness_mm: SHELF_RAIL_DEFAULTS.shelf_thickness_mm,
+        height_mm: SHELF_RAIL_DEFAULTS.rail_height_mm + SHELF_RAIL_DEFAULTS.shelf_thickness_mm,
+        mount_height_mm: CABINET_MOUNT_MM.shelf_rail,
+        shelf_rail_config: cfg,
+      };
+    }
     case "floating_shelf":
       // Wall-mounted board — no doors/benchtop; finish stored in the base
       // material/finish/colour columns (see floatingShelfStyle).
@@ -174,8 +262,8 @@ export default function PublicDesignClient() {
     if (!narrow || !d.selectedItem) setMobileConfigOpen(false);
   }, [narrow, d.selectedItem]);
 
-  async function addCabinet(type) {
-    await d.addItem(cabinetDraft(type));
+  async function addCabinet(type, kind = null) {
+    await d.addItem(cabinetDraft(type, kind));
     setMobileAddOpen(false);
   }
 
@@ -356,7 +444,7 @@ export default function PublicDesignClient() {
                 catalogue={CATALOGUE}
                 categories={CATALOGUE_CATEGORIES}
                 renderMockup={(type, kind) => <Mockup type={type} kind={kind} />}
-                onPick={(type) => addCabinet(type)}
+                onPick={(type, kind) => addCabinet(type, kind)}
               />
             </div>
             <div style={{ borderTop: `1px solid ${C.edge}`, padding: 14, flexShrink: 0 }}>
@@ -371,7 +459,7 @@ export default function PublicDesignClient() {
         {!narrow && (
           <div style={{ width: 320, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.edge}`, minHeight: 0, display: "flex", flexDirection: "column" }}>
             {d.selectedItem
-              ? <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={deselectItem} colourImages={d.colourImages} onChangeColour={openColour} />
+              ? <ItemPanel item={d.selectedItem} items={d.items} room={d.room} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={deselectItem} colourImages={d.colourImages} onChangeColour={openColour} />
               : <EmptyPrompt />}
           </div>
         )}
@@ -401,7 +489,7 @@ export default function PublicDesignClient() {
                   catalogue={CATALOGUE}
                   categories={CATALOGUE_CATEGORIES}
                   renderMockup={(type, kind) => <Mockup type={type} kind={kind} />}
-                  onPick={(type) => addCabinet(type)}
+                  onPick={(type, kind) => addCabinet(type, kind)}
                   onCancel={() => setMobileAddOpen(false)}
                 />
               </div>
@@ -409,7 +497,7 @@ export default function PublicDesignClient() {
           )}
           {d.selectedItem && !mobileAddOpen && mobileConfigOpen && (
             <FullScreenConfigModal title={TYPE_LABELS[d.selectedItem.item_type] || "Cabinet"} onClose={() => setMobileConfigOpen(false)}>
-              <ItemPanel item={d.selectedItem} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={deselectItem} colourImages={d.colourImages} onChangeColour={openColour} showHeader={false} />
+              <ItemPanel item={d.selectedItem} items={d.items} room={d.room} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={deselectItem} colourImages={d.colourImages} onChangeColour={openColour} showHeader={false} />
             </FullScreenConfigModal>
           )}
         </>
@@ -616,8 +704,15 @@ function FullScreenConfigModal({ children, onClose, title = "" }) {
   );
 }
 
-function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourImages, onChangeColour, showHeader = true }) {
+function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDelete, onDeselect, colourImages, onChangeColour, showHeader = true }) {
   const shelf = isShelf(item);
+  const bookcase = isBookcase(item);
+  const shelfRail = isShelfRail(item);
+  const roomRef = isRoomReference(item);
+  const panel = isPanel(item);
+  // Anything that isn't cabinetry gets a size-only panel: no front style, no
+  // finishing panels, no benchtop.
+  const simple = roomRef || panel;
   const corner = isCorner(item);
   const floor = FLOOR_TYPES.has(item.item_type);
   const wall = item.item_type === "wall_cabinet";
@@ -647,12 +742,26 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
     .filter(({ bay }) => bay.type === "doors");
 
   // ---- Multi-bay ("mixed" front) helpers ----
-  const withEqualHeights = (secs) => {
+  const withEqualHeights = (secs, heightMm = item.height_mm) => {
     const n = Math.max(1, secs.length);
-    const each = Math.round((Number(item.height_mm) || 720) / n);
+    const each = Math.round((Number(heightMm) || 720) / n);
     return secs.map((s) => ({ ...s, height_mm: each }));
   };
-  const commitBays = (secs) => set({ front_type: "mixed", section_config: { sections: withEqualHeights(secs) } });
+  // heights_mm are real OPENING heights everywhere else in the tool: the
+  // elevation, the cut list and the quote importer all subtract a reveal from
+  // them IN MILLIMETRES. The bay editor only knows "how many drawers", so the
+  // count is converted to real heights here, at commit, against the section
+  // height that withEqualHeights just worked out.
+  //
+  // Storing the count as [1, 1, 1] made every front (1mm − 3mm reveal) clamp to
+  // zero: the drawers vanished from the elevation, and worse, they imported as
+  // 0mm-high drawer fronts priced at nothing.
+  const withDrawerHeights = (sec) => {
+    if (sec.type !== "drawers") return sec;
+    const n = Math.max(1, (sec.drawer?.heights_mm || []).length || 1);
+    return { ...sec, drawer: { ...(sec.drawer || {}), heights_mm: equalDrawers(sec.height_mm, n) } };
+  };
+  const commitBays = (secs) => set({ front_type: "mixed", section_config: { sections: withEqualHeights(secs).map(withDrawerHeights) } });
   const bayForType = (type) =>
     type === "doors" ? { type: "doors", door: { columns: 1, rows: 1 } }
       : type === "drawers" ? { type: "drawers", drawer: { heights_mm: [1] } }
@@ -670,11 +779,32 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
     if (b.type === "drawers") return { ...b, drawer: { ...(b.drawer || {}), heights_mm: Array.from({ length: n }, () => 1) } };
     return b;
   }));
+  // Shelves live on the bay itself, not on the cabinet, so two open bays can
+  // hold different numbers — spread evenly inside their own bay.
+  const setBayShelves = (i, n) => commitBays(bays.map((b, x) => (x === i ? { ...b, shelf_qty: n } : b)));
   const setBayDoorOpening = (i, opening) => commitBays(bays.map((b, x) => (
     x === i && b.type === "doors"
       ? { ...b, door: doorConfigPatchForOpening(b.door || {}, opening) }
       : b
   )));
+
+  // Changing the cabinet's height has to carry its front layout with it. The
+  // bay section heights and the drawer opening heights are stored in real mm
+  // and read as authoritative by the cut list and the importer, so leaving them
+  // at the old height quietly quotes the wrong panel sizes — the elevation
+  // wouldn't show it, since it scales the bays to whatever they sum to.
+  const setCabinetHeight = (v) => {
+    if (isBays && bays.length) {
+      set({ height_mm: v, section_config: { sections: withEqualHeights(bays, v).map(withDrawerHeights) } });
+      return;
+    }
+    if (isDrawers) {
+      const n = (item.drawer_config?.heights_mm || []).length || 3;
+      set({ height_mm: v, drawer_config: { ...(item.drawer_config || {}), heights_mm: equalDrawers(v, n) } });
+      return;
+    }
+    set({ height_mm: v });
+  };
 
   function setFront(type) {
     if (type === "drawers") set({ front_type: "drawers", drawer_config: { ...(item.drawer_config || {}), heights_mm: equalDrawers(item.height_mm, Math.max(2, (item.drawer_config?.heights_mm || []).length || 3)) } });
@@ -699,13 +829,36 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
     ? set({ drawer_config: { ...(item.drawer_config || {}), gap_enabled: on } })
     : set({ door_config: { ...(item.door_config || {}), row_gap_enabled: on } }));
   const frontValue = isBays ? "bays" : isOpen ? "open" : isDrawers ? "drawers" : "doors";
+  const bayShelves = bayShelfCount(item);
   const styleSummary = isBays
-    ? `${bays.length} bay${bays.length === 1 ? "" : "s"}`
+    ? `${bays.length} bay${bays.length === 1 ? "" : "s"}${bayShelves ? ` · ${bayShelves} shelf${bayShelves === 1 ? "" : "ves"}` : ""}`
     : `${isOpen ? `Open · ${shelfCount} shelf${shelfCount === 1 ? "" : "ves"}` : isDrawers ? `${drawerCount} drawers` : `${doorCount} door${doorCount > 1 ? "s" : ""}`}${!isOpen && fingerOn ? " · finger pull" : ""}`;
+
+  // A Shelf & Rail's height is derived (cleat + board), so a size change has to
+  // carry the new height_mm — every measuring consumer reads that column. The
+  // supports are re-detected from the plan at the same time, which is the only
+  // moment the public tool has enough context to know what it's spanning.
+  function setShelfRailSize(patch) {
+    const next = { ...item, ...patch };
+    const found = detectSupports(next, items, room);
+    set({
+      ...patch,
+      height_mm: shelfRailHeightMm(next),
+      shelf_rail_config: { ...shelfRailConfig(next), left_support: found.left, right_support: found.right },
+    });
+  }
+  // Guidance, not a trade warning — a customer can't act on "add a mid gable".
+  const spanNote = shelfRail && Number(item.width_mm) > spanLimitMm(item)
+    ? "That's a wide span for a shelf. We'll add a support when we work up your quote — no need to change anything."
+    : null;
 
   const anyFinishPanel = item.end_panel_left || item.end_panel_right || item.has_back_panel || item.has_bottom_panel || item.has_filler_panel;
   const panelCount = [item.has_kickboard, item.end_panel_left, item.end_panel_right, item.has_back_panel, item.has_bottom_panel, item.has_filler_panel].filter(Boolean).length;
-  const sizeSummary = `${shelf ? `${item.width_mm || "?"}×${item.depth_mm || "?"}` : `${item.width_mm || "?"}×${item.height_mm || "?"}×${item.depth_mm || "?"}`} mm`;
+  const sizeSummary = shelfRail
+    ? `${item.width_mm || "?"} span · ${item.depth_mm || "?"} deep · ${shelfTopMm(item)} high`
+    : panel
+    ? `${item.depth_mm || "?"}×${item.height_mm || "?"} mm`
+    : `${shelf ? `${item.width_mm || "?"}×${item.depth_mm || "?"}` : `${item.width_mm || "?"}×${item.height_mm || "?"}×${item.depth_mm || "?"}`} mm`;
 
   return (
     <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -717,7 +870,9 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
         </div>
       )}
 
-      {/* Colour & finish — each surface opens the brand→finish→colour chooser */}
+      {/* Colour & finish — each surface opens the brand→finish→colour chooser.
+          Hidden entirely for a room reference, which has no surfaces. */}
+      {targets.length > 0 && (
       <AccSection k="colour" label="Colour & finish" openKey={open} setOpen={setOpen}>
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {targets.map((t) => {
@@ -733,9 +888,78 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
           })}
         </div>
       </AccSection>
+      )}
+
+      {/* A room reference — a fridge space, a window, a doorway. Size and, where
+          it applies, how high off the floor. Nothing is made, so nothing else
+          is asked. */}
+      {roomRef && (
+        <AccSection k="size" label="Size" summary={sizeSummary} openKey={open} setOpen={setOpen}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            <NumberField label="Width" value={item.width_mm} onCommit={(v) => set({ width_mm: v })} />
+            <NumberField label="Height" value={item.height_mm} onCommit={(v) => set({ height_mm: v })} />
+            <NumberField label="Depth" value={item.depth_mm} onCommit={(v) => set({ depth_mm: v })} />
+          </div>
+          {item.item_type === "window" && (
+            <div style={{ marginTop: 8 }}>
+              <NumberField label="Sill height off floor (mm)" value={item.mount_height_mm} onCommit={(v) => set({ mount_height_mm: v })} />
+            </div>
+          )}
+          <p style={{ marginTop: 10, fontSize: 11.5, color: C.soft, lineHeight: 1.45 }}>
+            Shown so we can see the room properly. It isn&apos;t part of the quote.
+          </p>
+        </AccSection>
+      )}
+
+      {/* A standalone panel. The face width lives in depth_mm — the form just
+          calls it width, so nobody has to know that. */}
+      {panel && (
+        <AccSection k="size" label="Size" summary={sizeSummary} openKey={open} setOpen={setOpen}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <NumberField label="Width" value={item.depth_mm} onCommit={(v) => set({ depth_mm: v })} />
+            <NumberField label="Height" value={item.height_mm} onCommit={(v) => set({ height_mm: v })} />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <NumberField label="Height off floor (mm)" value={item.mount_height_mm} onCommit={(v) => set({ mount_height_mm: v })} />
+          </div>
+        </AccSection>
+      )}
+
+      {/* Shelf & Rail — span, depth and height, nothing else. The cleats, the
+          front rail and what each end lands on are settled by us, not here. */}
+      {shelfRail && (
+        <AccSection k="size" label="Size & height" summary={sizeSummary} openKey={open} setOpen={setOpen}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <NumberField label="Span" value={item.width_mm} onCommit={(v) => setShelfRailSize({ width_mm: v })} />
+            <NumberField label="Depth" value={item.depth_mm} onCommit={(v) => setShelfRailSize({ depth_mm: v })} />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <NumberField label="Shelf height off floor (mm)" value={shelfTopMm(item)}
+              onCommit={(v) => set({ mount_height_mm: mountForShelfTopMm(item, v) })} />
+          </div>
+          {spanNote && (
+            <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "#fdf6e7", border: "1px solid #e8d9b0", fontSize: 12, color: "#7a5c1e", lineHeight: 1.45 }}>
+              {spanNote}
+            </div>
+          )}
+        </AccSection>
+      )}
+
+      {/* Shelves — a bookcase is always open, so it gets the shelf count on its
+          own rather than the doors/drawers/open picker every cabinet shows. */}
+      {bookcase && (
+        <AccSection k="style" label="Shelves" summary={`${shelfCount} shelf${shelfCount === 1 ? "" : "ves"}`} openKey={open} setOpen={setOpen}>
+          <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>How many shelves?</div>
+          <Segmented
+            value={String(shelfCount)}
+            options={[2, 3, 4, 5, 6].map((n) => ({ v: String(n), label: String(n) }))}
+            onChange={(v) => setShelfCount(Number(v))}
+          />
+        </AccSection>
+      )}
 
       {/* Style */}
-      {!shelf && !corner && (
+      {!shelf && !corner && !bookcase && !shelfRail && !simple && (
         <AccSection k="style" label="Style" summary={styleSummary} openKey={open} setOpen={setOpen}>
           <Segmented
             value={frontValue}
@@ -763,6 +987,14 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
                     {(b.type === "doors" || b.type === "drawers") && (
                       <select value={String(bayCount(b))} onChange={(e) => setBayCount(i, Number(e.target.value))} style={{ ...btn, width: 54, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
                         {(b.type === "doors" ? [1, 2] : [1, 2, 3, 4]).map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    )}
+                    {/* An open bay holds shelves instead of fronts. */}
+                    {b.type === "open" && (
+                      <select value={String(Number(b.shelf_qty) || 0)} onChange={(e) => setBayShelves(i, Number(e.target.value))}
+                        title="Shelves in this bay"
+                        style={{ ...btn, width: 74, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
+                        {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? "no shelf" : `${n} shelf${n === 1 ? "" : "s"}`}</option>)}
                       </select>
                     )}
                     <button type="button" onClick={() => removeBay(i)} disabled={bays.length <= 1}
@@ -823,8 +1055,16 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
         </AccSection>
       )}
 
+      {/* Panels & finishing — a bookcase's sides and back are already finished
+          board on show, so the only thing left to choose is the kickboard. */}
+      {bookcase && (
+        <AccSection k="panels" label="Base" summary={item.has_kickboard ? "Kickboard" : "On the floor"} openKey={open} setOpen={setOpen}>
+          <Toggle label="Kickboard" checked={item.has_kickboard} onChange={(v) => set({ has_kickboard: v })} />
+        </AccSection>
+      )}
+
       {/* Panels & finishing */}
-      {!shelf && (
+      {!shelf && !bookcase && !shelfRail && !simple && (
         <AccSection k="panels" label="Panels & finishing" summary={`${panelCount} on`} openKey={open} setOpen={setOpen}>
           {floor && <Toggle label="Kickboard" checked={item.has_kickboard} onChange={(v) => set({ has_kickboard: v })} />}
           {corner ? (
@@ -860,7 +1100,9 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
         </AccSection>
       )}
 
-      {/* Size */}
+      {/* Size — a Shelf & Rail has its own Size & height section above, so it
+          never reaches this one (its height is derived, not entered). */}
+      {!shelfRail && !simple && (
       <AccSection k="size" label="Size" summary={sizeSummary} openKey={open} setOpen={setOpen}>
         {shelf ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
@@ -872,7 +1114,7 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               <NumberField label="Width" value={item.width_mm} onCommit={(v) => set({ width_mm: v })} />
-              <NumberField label="Height" value={item.height_mm} onCommit={(v) => set({ height_mm: v })} />
+              <NumberField label="Height" value={item.height_mm} onCommit={setCabinetHeight} />
               <NumberField label="Depth" value={item.depth_mm} onCommit={(v) => set({ depth_mm: v })} />
             </div>
             {corner && <div style={{ marginTop: 8 }}><NumberField label="Return width" value={item.secondary_width_mm} onCommit={(v) => set({ secondary_width_mm: v })} /></div>}
@@ -880,13 +1122,14 @@ function ItemPanel({ item, onUpdate, onDuplicate, onDelete, onDeselect, colourIm
         )}
         {(shelf || wall) && <div style={{ marginTop: 8 }}><NumberField label="Height off floor (mm)" value={item.mount_height_mm} onCommit={(v) => set({ mount_height_mm: v })} /></div>}
       </AccSection>
+      )}
 
       </div>
       <div style={{ flexShrink: 0, borderTop: `1px solid ${C.edge}`, background: "#fff", padding: "12px 12px max(12px, env(safe-area-inset-bottom))", display: "flex", gap: 8 }}>
         <button type="button" onClick={handleDuplicate} disabled={duplicating} style={{ ...btn, flex: 1, fontWeight: 600 }}>
           {duplicating ? "Duplicating..." : "Duplicate"}
         </button>
-        <button type="button" onClick={onDelete} style={{ ...btn, flex: 1, color: "#a03f2c", borderColor: "#e0c3bb" }}>{shelf ? "Remove shelf" : "Remove cabinet"}</button>
+        <button type="button" onClick={onDelete} style={{ ...btn, flex: 1, color: "#a03f2c", borderColor: "#e0c3bb" }}>{shelf || shelfRail ? "Remove shelf" : bookcase ? "Remove bookcase" : panel ? "Remove panel" : roomRef ? "Remove" : "Remove cabinet"}</button>
       </div>
     </div>
   );

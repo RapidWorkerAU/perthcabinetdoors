@@ -61,8 +61,13 @@ async function fetchCarcassDefault() {
   }
 }
 
+// A floating shelf carries its own finish, and a fridge space / window /
+// doorway is a reference to what's already in the room — nothing is made, so
+// none of them should be handed the project's carcass colour.
+const NO_CARCASS_DEFAULT = new Set(["floating_shelf", "appliance", "window", "door_opening"]);
+
 function itemNeedsCarcassDefault(item) {
-  return item?.item_type !== "floating_shelf" && (!item?.material || !item?.finish || !item?.colour);
+  return !NO_CARCASS_DEFAULT.has(item?.item_type) && (!item?.material || !item?.finish || !item?.colour);
 }
 
 function applyCarcassDefault(item, carcassDefault) {

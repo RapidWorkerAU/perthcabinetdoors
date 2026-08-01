@@ -16,11 +16,77 @@ const TYPE_LABEL = {
   tall_cabinet: "Tall cabinet",
   corner_base_cabinet: "Corner cabinet",
   floating_shelf: "Floating shelf",
+  bookcase: "Bookcase",
+  shelf_rail: "Shelf & rail",
+  panel: "Panel",
 };
+
+// Placed to show what's already in the room — a fridge space, a window, a
+// doorway. Nothing is manufactured, so they're deliberately NOT quote lines.
+// They ride in the summary instead, where they're what stops us quoting a run
+// straight through a window.
+const ROOM_REFERENCE_LABEL = {
+  appliance: "appliance",
+  window: "window",
+  door_opening: "doorway",
+};
+
+function roomReferenceSummary(items) {
+  const notes = [];
+  for (const item of items || []) {
+    if (!ROOM_REFERENCE_LABEL[item.item_type]) continue;
+    const w = Number(item.width_mm) || 0;
+    const h = Number(item.height_mm) || 0;
+    const size = w && h ? ` ${w}×${h}mm` : "";
+    if (item.item_type === "appliance") {
+      const kind = String(item.appliance_kind || "appliance").replace(/_/g, " ");
+      notes.push(`${kind} space${size}`);
+    } else if (item.item_type === "window") {
+      const sill = Number(item.mount_height_mm) || 0;
+      notes.push(`window${size}${sill ? `, sill ${sill}mm` : ""}`);
+    } else {
+      notes.push(`doorway${size}`);
+    }
+  }
+  return notes.length ? `Room: ${notes.join("; ")}.` : "";
+}
 
 function frontSummary(item) {
   if (item.item_type === "floating_shelf") return "Open shelf";
+  if (item.item_type === "panel") {
+    const mount = Number(item.mount_height_mm) || 0;
+    const t = Number(item.panel_thickness_mm) || Number(item.width_mm) || 0;
+    return ["Standalone panel", t ? `${t}mm` : "", mount ? `${mount}mm off the floor` : ""].filter(Boolean).join(" · ");
+  }
+  // The line's width/height are the SHELF board, so the span, depth and the
+  // height it hangs at would otherwise be lost — and those are the three things
+  // that decide whether this shelf needs a mid support when we cost it.
+  if (item.item_type === "shelf_rail") {
+    const cfg = item.shelf_rail_config || {};
+    const rail = cfg.front_rail?.on === false ? "no front rail" : "front rail";
+    const top = Number(item.mount_height_mm || 0) + Number(item.height_mm || 0);
+    return [
+      `Shelf & rail — ${Number(item.width_mm) || 0}mm span`,
+      `${Number(item.depth_mm) || 0}mm deep`,
+      top ? `top of shelf ${top}mm off the floor` : "",
+      rail,
+    ].filter(Boolean).join(" · ");
+  }
   const ft = item.front_type;
+  // The line carries ONE colour (the carcass / front), so a bookcase's second
+  // finish would otherwise never reach the quote request — the shelf colour is
+  // the whole reason a customer picks a bookcase, so it goes in the note.
+  if (item.item_type === "bookcase") {
+    const shelfColour = [item.shelf_colour, item.shelf_finish].filter(Boolean).join(" ");
+    const depth = Number(item.depth_mm) || 0;
+    return [
+      `Bookcase, ${Number(item.shelf_qty) || 0} shelves`,
+      depth ? `${depth}mm deep` : "",
+      "solid back",
+      shelfColour ? `shelves in ${shelfColour}` : "",
+      item.has_kickboard ? "kickboard" : "",
+    ].filter(Boolean).join(" · ");
+  }
   if (ft === "mixed") {
     const secs = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
     return `Bays: ${secs.map((s) => (s.type === "appliance" ? "oven" : s.type || "doors")).join(", ") || "—"}`;
@@ -33,13 +99,16 @@ function frontSummary(item) {
 function itemToLine(item) {
   const front = item.front_type === "drawers" ? item.drawer_style : item.door_style;
   const c = front || {};
+  // A standalone panel keeps its finished face width in depth_mm (width_mm is
+  // its on-edge thickness), so it's the one type whose width comes from there.
+  const isPanel = item.item_type === "panel";
   return {
     productType: TYPE_LABEL[item.item_type] || "Cabinet",
     productName: item.label || TYPE_LABEL[item.item_type] || "Cabinet",
     material: c.material || item.material || "",
     finish: c.finish || item.finish || "",
     colour: c.colour || item.colour || "",
-    width: Number(item.width_mm) || undefined,
+    width: Number(isPanel ? item.depth_mm : item.width_mm) || undefined,
     height: Number(item.height_mm) || undefined,
     qty: Number(item.qty) || 1,
     notes: frontSummary(item),
@@ -76,7 +145,10 @@ export async function POST(request, { params }) {
     const room = (rooms || [])[0];
     const roomText = room ? `Room ${room.width_mm || "?"}×${room.depth_mm || "?"}×${room.height_mm || "?"}mm. ` : "";
     const summary = `${roomText}${cabinetItems.length} item${cabinetItems.length === 1 ? "" : "s"} designed in the website planner.`;
-    const notes = [summary, String(body?.notes || "").trim()].filter(Boolean).join("\n\n");
+    // Fridge spaces, windows and doorways aren't quote lines, but they're the
+    // reason a run stops where it does — so they go in the notes.
+    const roomRefs = roomReferenceSummary(items);
+    const notes = [summary, roomRefs, String(body?.notes || "").trim()].filter(Boolean).join("\n\n");
 
     const payload = {
       source: "design_tool",

@@ -13,6 +13,7 @@
 // of truth for how each element is costed.)
 import { computeCutList } from "@/lib/pcd-cut-list";
 import { floatingShelfBoards, floatingShelfStyle } from "@/lib/pcd-floating-shelf-utils";
+import { shelfRailBoards, shelfRailStyle, cleatStyle } from "@/lib/pcd-shelf-rail-utils";
 
 // Which per-sqm rate applies to a cut-list piece, by its material tag.
 function rateFor(material, rates) {
@@ -36,6 +37,7 @@ function rateFor(material, rates) {
 // Human-friendly cost grouping for the price page.
 export function categoryFor(material) {
   switch (material) {
+    case "cleat": return "Cleats & rails";
     case "shelf": return "Shelves";
     case "door": return "Doors";
     case "drawer": return "Drawer fronts";
@@ -52,7 +54,7 @@ export function categoryFor(material) {
 // Stable display order for the price categories — the ones you usually keep in
 // a refresh first, Carcass (the usual thing to drop) last.
 export const PRICE_CATEGORIES = [
-  "Doors", "Drawer fronts", "Finished panels", "Scribes", "Floating shelves", "Kickboards", "Filler panels", "Shelves", "Carcass",
+  "Doors", "Drawer fronts", "Finished panels", "Scribes", "Floating shelves", "Cleats & rails", "Kickboards", "Filler panels", "Shelves", "Carcass",
 ];
 
 function ratesFor(item) {
@@ -134,6 +136,31 @@ export function standaloneItemPricing(item) {
     return { rows, categories: [{ name: "Floating shelves", cost: total }], total, rates: {} };
   }
 
+  // A Shelf & Rail prices off its own board rate, with the cleats and rail on
+  // their own rate when a separate 18mm colour was picked for them.
+  if (item.item_type === "shelf_rail") {
+    const shelfRate = Number(shelfRailStyle(item).cost_per_sqm) || 0;
+    const cleatRate = Number(cleatStyle(item).cost_per_sqm) || shelfRate;
+    const qty = Number(item.qty) || 1;
+    const rows = shelfRailBoards(item).map((b) => {
+      const rate = b.material === "cleat" ? cleatRate : shelfRate;
+      const areaSqm = ((Number(b.width_mm) || 0) * (Number(b.height_mm) || 0)) / 1_000_000;
+      return {
+        name: b.label,
+        dim1: b.width_mm, axis1: "W", dim2: b.height_mm, axis2: b.part === "shelf" ? "D" : "H",
+        material: b.material, qty, areaSqm, rate, cost: areaSqm * qty * rate,
+      };
+    });
+    const catMap = new Map();
+    for (const r of rows) catMap.set(categoryFor(r.material), (catMap.get(categoryFor(r.material)) || 0) + r.cost);
+    return {
+      rows,
+      categories: [...catMap.entries()].map(([name, cost]) => ({ name, cost })),
+      total: rows.reduce((s, r) => s + r.cost, 0),
+      rates: {},
+    };
+  }
+
   const isPanel = item.item_type === "panel";
   const isScribe = item.item_type === "scribe";
   if (!isPanel && !isScribe) return empty;
@@ -158,7 +185,7 @@ export function standaloneItemPricing(item) {
 // — with one call, so the price strip and modal can iterate a mixed list.
 export function itemPricing(item, roomItems = [], room = null) {
   const t = item?.item_type;
-  if (t === "panel" || t === "scribe" || t === "floating_shelf") {
+  if (t === "panel" || t === "scribe" || t === "floating_shelf" || t === "shelf_rail") {
     return standaloneItemPricing(item);
   }
   return cabinetPricing(item, roomItems, room);

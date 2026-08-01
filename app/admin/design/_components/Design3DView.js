@@ -30,11 +30,13 @@ import {
   cabinetVerticalSpanMm,
   islandVirtualWall,
   getWallAxisPos,
-  kickboardOffsetMm,
+  kickboardHeightMm,
+  kickboardIsInset,
   isCornerType,
   isCornerShaped,
 } from "../../../../lib/pcd-kickboard-utils";
 import { finishPanelVerticalSpanMm } from "../../../../lib/pcd-finishpanel-utils";
+import { shelfRailConfig, CLEAT_THICKNESS_MM } from "../../../../lib/pcd-shelf-rail-utils";
 import {
   computeBenchtopRun,
   benchtopDepthMm,
@@ -46,7 +48,7 @@ import {
   benchtopRunWaterfallEnds,
 } from "../../../../lib/pcd-benchtop-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow } from "../../../../lib/pcd-door-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, openBaySections, bayShelfHeightsMm } from "../../../../lib/pcd-door-utils";
 
 const M = 1000; // mm → metres
 
@@ -58,6 +60,8 @@ const ITEM_COLORS = {
   corner_base_cabinet: "#0ea5e9",
   corner_tall_cabinet: "#0891b2",
   blind_corner_cabinet: "#06b6d4",
+  bookcase:      "#65a30d",
+  shelf_rail:    "#d946ef",
   floating_shelf: "#14b8a6",
   panel:         "#6b7280",
   scribe:        "#ec4899",
@@ -308,26 +312,74 @@ function boxFromRect(rect, bottomMm, topMm) {
 // The five carcass boards of an OPEN cabinet (top, bottom, back and two sides —
 // the front is left open) as { rect, b, t } in room-space + mm heights. The
 // back sits against `wall`; the two sides are the boards perpendicular to it.
-// Boards are inset so they butt rather than overlap, which would z-fight.
-function openCarcassPanels(rect, wall, carc, bottomMm, topMm) {
+// Boards butt rather than overlap, which would z-fight.
+//
+// The SIDES run the full height, floor to top, and the top and bottom boards
+// are captured between them. That's the standard box the cut list actually cuts
+// (Left/Right Side = full height, Top/Bottom = width − 2 × board) and how an
+// open unit reads in a room: two unbroken vertical panels running to the floor.
+// This used to be built the other way up — full-width top and bottom boards
+// with the sides squeezed between them — so the 3D showed a carcass nobody was
+// cutting, and a bookcase's sides visibly stopped short of the floor.
+//
+// `withBack` is the carcass's own structural back (back_panel_included): a
+// bookcase's solid back is the point of it, and switching it off has to show.
+// `baseGapMm` lifts the BOTTOM board off the floor without shortening the
+// sides — an inset plinth (bookcase), where the toe space is inside the box.
+function openCarcassPanels(rect, wall, carc, bottomMm, topMm, withBack = true, backT = carc, baseGapMm = 0) {
   const { x, y, w, h } = rect;
-  const midB = bottomMm + carc, midT = Math.max(topMm - carc, midB + 1);
-  const panels = [
-    { rect: { x, y, w, h }, b: bottomMm, t: bottomMm + carc }, // bottom
-    { rect: { x, y, w, h }, b: topMm - carc, t: topMm },       // top
-  ];
+  const floorMm = bottomMm + baseGapMm;
+  const midB = floorMm + carc, midT = Math.max(topMm - carc, midB + 1);
+  const bt = withBack ? backT : 0;
+  const panels = [];
+  // Top and bottom span only the gap between the sides, at each end of it.
+  const capBoards = (inner) => {
+    panels.push({ rect: inner, b: floorMm, t: midB }); // bottom
+    panels.push({ rect: inner, b: midT, t: topMm });   // top
+  };
   if (wall === "top" || wall === "bottom" || wall === "island") {
-    panels.push({ rect: { x, y, w: carc, h }, b: midB, t: midT });                // left side
-    panels.push({ rect: { x: x + w - carc, y, w: carc, h }, b: midB, t: midT });   // right side
-    const backY = wall === "bottom" ? y + h - carc : y;
-    panels.push({ rect: { x: x + carc, y: backY, w: Math.max(w - 2 * carc, 1), h: carc }, b: midB, t: midT }); // back
+    panels.push({ rect: { x, y, w: carc, h }, b: bottomMm, t: topMm });                // left side
+    panels.push({ rect: { x: x + w - carc, y, w: carc, h }, b: bottomMm, t: topMm });   // right side
+    capBoards({ x: x + carc, y, w: Math.max(w - 2 * carc, 1), h });
+    const backY = wall === "bottom" ? y + h - bt : y;
+    if (withBack) panels.push({ rect: { x: x + carc, y: backY, w: Math.max(w - 2 * carc, 1), h: bt }, b: midB, t: midT }); // back
   } else {
-    panels.push({ rect: { x, y, w, h: carc }, b: midB, t: midT });                // side
-    panels.push({ rect: { x, y: y + h - carc, w, h: carc }, b: midB, t: midT });   // side
-    const backX = wall === "right" ? x + w - carc : x;
-    panels.push({ rect: { x: backX, y: y + carc, w: carc, h: Math.max(h - 2 * carc, 1) }, b: midB, t: midT }); // back
+    panels.push({ rect: { x, y, w, h: carc }, b: bottomMm, t: topMm });                // side
+    panels.push({ rect: { x, y: y + h - carc, w, h: carc }, b: bottomMm, t: topMm });   // side
+    capBoards({ x, y: y + carc, w, h: Math.max(h - 2 * carc, 1) });
+    const backX = wall === "right" ? x + w - bt : x;
+    if (withBack) panels.push({ rect: { x: backX, y: y + carc, w: bt, h: Math.max(h - 2 * carc, 1) }, b: midB, t: midT }); // back
   }
   return panels;
+}
+
+// How far an INSET plinth lifts the bottom board off the floor. Zero for every
+// other cabinet, whose whole carcass is lifted onto its kickboard instead (that
+// lift is kickboardOffsetMm, already folded into cabinetVerticalSpanMm).
+function insetPlinthMm(item) {
+  return kickboardIsInset(item) ? kickboardHeightMm(item) : 0;
+}
+
+// The carcass's own structural back board thickness — 0 when it has no back,
+// so the shelves and the interior run the full depth instead of stopping short
+// at a board that isn't there.
+function backBoardMm(item) {
+  if (item?.back_panel_included === false) return 0;
+  return Number(item?.back_panel_thickness_mm) || Number(item?.carcass_thickness_mm) || 16;
+}
+
+// The interior an open cabinet's shelves fill: between the two sides, and from
+// the open front back to the inside face of the back board. Shelves used to be
+// inset by the board thickness on ALL four sides, which floated them off the
+// back — on a bookcase you could see daylight behind every shelf.
+function openInnerRect(rect, wall, carc, backT) {
+  const { x, y, w, h } = rect;
+  if (wall === "left" || wall === "right") {
+    const inner = { x, y: y + carc, w: Math.max(1, w - backT), h: Math.max(1, h - 2 * carc) };
+    return wall === "right" ? inner : { ...inner, x: x + backT };
+  }
+  const inner = { x: x + carc, y, w: Math.max(1, w - 2 * carc), h: Math.max(1, h - backT) };
+  return wall === "bottom" ? inner : { ...inner, y: y + backT };
 }
 
 // A window drawn as a real glazed unit: a translucent glass pane, a perimeter
@@ -621,7 +673,7 @@ function CabinetMesh({ item, W, D, roomHmm, elevationWall = null }) {
     return (
       <>
         {cabinetLegs(item, W, D).map((leg, li) =>
-          openCarcassPanels(leg.rect, leg.wall, carc, bottomMm, topMm).map((p, pi) => {
+          openCarcassPanels(leg.rect, leg.wall, carc, bottomMm, topMm, item.back_panel_included !== false, backBoardMm(item), insetPlinthMm(item)).map((p, pi) => {
             const box = boxFromRect(p.rect, p.b, p.t);
             return (
               <mesh key={`${li}-${pi}`} position={box.position}>
@@ -636,17 +688,54 @@ function CabinetMesh({ item, W, D, roomHmm, elevationWall = null }) {
   }
 
   const opacity = item.item_type === "wall_cabinet" ? 0.72 : 0.92;
+  // A fronted cabinet is a solid box — except where a bay of a MIXED front is
+  // open. There you can see into the carcass, so that band is built from real
+  // boards (sides, top, bottom, back) instead, and its shelves show inside it.
+  // Left as one solid box, an open bay's shelves would be buried in it.
+  const openBands = (item.front_type === "mixed" ? openBaySections(item) : [])
+    .map((s) => ({ b: bottomMm + s.bottomMm, t: bottomMm + s.topMm }))
+    .filter((s) => s.t > s.b);
+  const solidBands = (() => {
+    if (!openBands.length) return [{ b: bottomMm, t: topMm }];
+    const sorted = [...openBands].sort((a, b) => a.b - b.b);
+    const out = [];
+    let cursor = bottomMm;
+    for (const band of sorted) {
+      if (band.b > cursor) out.push({ b: cursor, t: band.b });
+      cursor = Math.max(cursor, band.t);
+    }
+    if (topMm > cursor) out.push({ b: cursor, t: topMm });
+    return out;
+  })();
+  const carc = Number(item.carcass_thickness_mm) || 16;
+
   return (
     <>
-      {carcassRects(item, W, D).map((rect, i) => {
-        const { position, size } = boxFromRect(rect, bottomMm, topMm);
-        return (
-          <mesh key={i} position={position}>
-            <boxGeometry args={size} />
-            <PanelMaterial src={carcassSrc} color={color} transparent opacity={opacity} roughness={0.7} depthWrite />
-          </mesh>
-        );
-      })}
+      {carcassRects(item, W, D).map((rect, i) =>
+        solidBands.map((band, bi) => {
+          const { position, size } = boxFromRect(rect, band.b, band.t);
+          return (
+            <mesh key={`${i}-${bi}`} position={position}>
+              <boxGeometry args={size} />
+              <PanelMaterial src={carcassSrc} color={color} transparent opacity={opacity} roughness={0.7} depthWrite />
+            </mesh>
+          );
+        })
+      )}
+      {/* The open bays, as real carcass boards you can see between. */}
+      {openBands.length > 0 && cabinetLegs(item, W, D).map((leg, li) =>
+        openBands.map((band, bi) =>
+          openCarcassPanels(leg.rect, leg.wall, carc, band.b, band.t, item.back_panel_included !== false, backBoardMm(item)).map((p, pi) => {
+            const box = boxFromRect(p.rect, p.b, p.t);
+            return (
+              <mesh key={`ob-${li}-${bi}-${pi}`} position={box.position}>
+                <boxGeometry args={box.size} />
+                <PanelMaterial src={carcassSrc} color={color} roughness={0.7} />
+              </mesh>
+            );
+          })
+        )
+      )}
       {/* Diagonal corner: fill the notch so the body is one solid pentagon
           (visible top + bottom), not two L-boxes with an open gap. Skipped in a
           rendered elevation — head-on, that pentagon body reads as a busy 3D top
@@ -860,16 +949,36 @@ function SinkMesh({ cx, cz, topY, aw, ad, wall }) {
 
 // Toe-kick — fills the floor-to-carcass gap a kickboard leaves, set back from
 // the front face so it reads as a recess. One panel per leg (corner = two).
+//
+// Two constructions. A kitchen cabinet sits ON its kickboard: the whole carcass
+// is lifted and the board runs the full footprint width underneath it. A
+// bookcase's plinth is INSET: the sides already run to the floor, so the board
+// is a rail spanning only the gap between them, from the floor up to the
+// raised bottom shelf — which is why it's drawn against the inner rect here.
 function KickboardMesh({ item, W, D }) {
   // A kickboard matches the carcass by default, or its own override; otherwise
   // the dark toe-kick colour.
   const src = usePanelSrc(item, "kickboard");
-  const kb = kickboardOffsetMm(item);
+  const kb = kickboardHeightMm(item);
   if (kb <= 0) return null;
+  const inset = kickboardIsInset(item);
+  const carc = Number(item.carcass_thickness_mm) || 16;
+  const [bottomMm] = cabinetVerticalSpanMm(item);
   return (
     <>
       {cabinetLegs(item, W, D).map((leg, i) => {
-        const box = boxFromRect(insetFront(leg.rect, leg.wall, KICKBOARD_RECESS_MM), 0, kb);
+        // Inset: a rail between the sides, set back, only a board thick — not a
+        // filled block. Recess FIRST, then take the front edge, or the setback
+        // would eat the board itself.
+        const recessed = insetFront(inset ? openInnerRect(leg.rect, leg.wall, carc, 0) : leg.rect, leg.wall, KICKBOARD_RECESS_MM);
+        const footprint = inset
+          ? frontEdgeRect(recessed, leg.wall, Math.max(Number(item.kickboard_thickness_mm) || 16, 6))
+          : recessed;
+        // Inset sits on the floor UNDER the raised bottom shelf; the usual kind
+        // fills the gap the lifted carcass left above the floor.
+        const box = inset
+          ? boxFromRect(footprint, bottomMm, bottomMm + kb)
+          : boxFromRect(footprint, Math.max(bottomMm - kb, 0), bottomMm);
         return (
           <mesh key={i} position={box.position}>
             <boxGeometry args={box.size} />
@@ -917,6 +1026,67 @@ function endStripRect(rect, edge, t) {
     case "left":   return { x, y, w: t, h };
     case "right":  return { x: x + w - t, y, w: t, h };
     default:       return null;
+  }
+}
+
+// A Shelf & Rail: a board spanning an opening on cleats, with an optional front
+// rail dropping below its leading edge. Not a box — the cleats are the only
+// thing under the shelf, so the underside reads open, exactly as it does on
+// site. The shelf carries its own colour; the cleats and rail carry theirs.
+function ShelfRailMesh({ item, W, D }) {
+  const shelfSrc = usePanelSrc(item, "carcass");
+  const color = useMonoColor(item.colour_hex || ITEM_COLORS.shelf_rail);
+  const cfg = shelfRailConfig(item);
+  const leg = cabinetLegs(item, W, D)[0];
+  if (!leg) return null;
+  const { rect, wall } = leg;
+  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  const shelfT = Number(item.carcass_thickness_mm) || 18;
+  const cleatT = CLEAT_THICKNESS_MM;
+  const shelfBottom = Math.max(topMm - shelfT, bottomMm);
+
+  const boxes = [];
+  // The shelf itself — full footprint, sitting at the top of the assembly.
+  boxes.push({ key: "shelf", ...boxFromRect(rect, shelfBottom, topMm), src: shelfSrc, color });
+
+  // Cleats hang in the rail zone below the shelf.
+  const railTop = shelfBottom;
+  const railBottom = bottomMm;
+  if (cfg.back_cleat) {
+    boxes.push({ key: "cleat-back", ...boxFromRect(backEdgeRect(rect, wall, cleatT), railBottom, railTop), src: shelfSrc, color });
+  }
+  if (cfg.end_cleat_left) {
+    boxes.push({ key: "cleat-l", ...boxFromRect(endStripRect(rect, wall === "left" || wall === "right" ? "top" : "left", cleatT), railBottom, railTop), src: shelfSrc, color });
+  }
+  if (cfg.end_cleat_right) {
+    boxes.push({ key: "cleat-r", ...boxFromRect(endStripRect(rect, wall === "left" || wall === "right" ? "bottom" : "right", cleatT), railBottom, railTop), src: shelfSrc, color });
+  }
+  if (cfg.front_rail.on) {
+    // Set back from the front edge, so there's a shadow line under the shelf.
+    boxes.push({ key: "front-rail", ...boxFromRect(frontEdgeRect(insetFront(rect, wall, cfg.front_rail.setback_mm), wall, cleatT), railBottom, railTop), src: shelfSrc, color });
+  }
+
+  return (
+    <>
+      {boxes.map((b) => (
+        <mesh key={b.key} position={b.position}>
+          <boxGeometry args={b.size} />
+          <PanelMaterial src={b.src} color={b.color} roughness={0.7} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+// A thin slab hugging the BACK edge of a footprint — the mirror of
+// frontEdgeRect, for a cleat against the wall the item backs onto.
+function backEdgeRect(rect, wall, t) {
+  switch (wall) {
+    case "top":    return { x: rect.x, y: rect.y, w: rect.w, h: t };
+    case "bottom": return { x: rect.x, y: rect.y + rect.h - t, w: rect.w, h: t };
+    case "left":   return { x: rect.x, y: rect.y, w: t, h: rect.h };
+    case "right":  return { x: rect.x + rect.w - t, y: rect.y, w: t, h: rect.h };
+    default:       return { x: rect.x, y: rect.y, w: rect.w, h: t };
   }
 }
 
@@ -1528,8 +1698,13 @@ function shelfHeightsMm(item) {
 function ShelfMesh({ item, W, D }) {
   const src = usePanelSrc(item, "shelf");
   const color = useMonoColor(ITEM_COLORS[item.item_type] || "#888");
-  if ((item.front_type || "none") !== "none") return null; // only visible when open
-  const heights = shelfHeightsMm(item);
+  const ft = item.front_type || "none";
+  // A wholly open unit uses its own shelf list; a mixed front's shelves belong
+  // to individual open bays and are spread inside those. Anything fronted has
+  // its shelves hidden behind the door, so nothing is drawn.
+  const heights = ft === "none" ? shelfHeightsMm(item)
+    : ft === "mixed" ? bayShelfHeightsMm(item)
+    : [];
   if (!heights.length) return null;
   const carc = Number(item.carcass_thickness_mm) || 16;
   const t = Number(item.shelf_thickness_mm) || 16;
@@ -1537,9 +1712,8 @@ function ShelfMesh({ item, W, D }) {
   const legs = cabinetLegs(item, W, D);
   const meshes = [];
   legs.forEach((leg, li) => {
-    // Shelf sits inside the carcass — inset from every side by the wall board.
-    const r = leg.rect;
-    const inner = { x: r.x + carc, y: r.y + carc, w: Math.max(1, r.w - 2 * carc), h: Math.max(1, r.h - 2 * carc) };
+    // Shelf sits between the sides and runs back to the back board.
+    const inner = openInnerRect(leg.rect, leg.wall, carc, backBoardMm(item));
     heights.forEach((hMm, si) => {
       const yMm = bottomMm + hMm;
       const box = boxFromRect(inner, yMm - t / 2, yMm + t / 2);
@@ -1890,7 +2064,9 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
               onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
               onPointerOut={() => { document.body.style.cursor = "auto"; }}
             >
-              {item.item_type === "floating_shelf" ? (
+              {item.item_type === "shelf_rail" ? (
+                <ShelfRailMesh item={item} W={W} D={D} />
+              ) : item.item_type === "floating_shelf" ? (
                 <FloatingShelfMesh item={item} W={W} D={D} />
               ) : (
                 <>

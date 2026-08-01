@@ -28,10 +28,23 @@ import {
   computeBenchtopRun,
 } from "../../../../lib/pcd-benchtop-utils";
 import { computeDrawerFrontHeights, DRAWER_RUNNER_LABELS, resolveRunnerType } from "../../../../lib/pcd-drawer-utils";
-import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow } from "../../../../lib/pcd-door-utils";
+import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, bayShelfCount } from "../../../../lib/pcd-door-utils";
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
+import { applianceKindDefaults } from "../../../../lib/pcd-appliance-utils";
+import {
+  SHELF_RAIL_DEFAULTS,
+  CLEAT_THICKNESS_MM,
+  shelfRailConfig,
+  shelfRailHeightMm,
+  shelfTopMm,
+  mountForShelfTopMm,
+  shelfRailWarnings,
+  detectSupports,
+  fitToOpeningMm,
+  spanLimitMm,
+} from "../../../../lib/pcd-shelf-rail-utils";
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "bookcase"];
 // Cabinet types plus a standalone filler panel — a thin board a user can
 // freely position between cabinets (e.g. beside a fridge recess, between a
 // base and tall cabinet) with its own height/depth/thickness/material,
@@ -43,29 +56,32 @@ const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_b
 // against a cabinet's front face and runs sideways to an obstruction, so
 // (unlike panel) width_mm keeps its normal along-wall-span meaning and
 // scribe_thickness_mm is its own dedicated field rather than an overload.
-const ADDABLE_TYPES = [...CABINET_TYPES, "floating_shelf", "panel", "scribe", "obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"];
+const ADDABLE_TYPES = [...CABINET_TYPES, "shelf_rail", "floating_shelf", "panel", "scribe", "obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"];
 
 // The default obstruction fill (mirrors ITEM_COLORS.obstruction in the views);
 // shown as the "unset" swatch in the obstruction colour picker.
 const OBSTRUCTION_DEFAULT_HEX = "#57534e";
 
-// Sensible default footprint + mount for each freestanding appliance kind —
-// applied when an appliance is added or its kind is switched, since a fridge, a
-// dishwasher and a wall rangehood are wildly different sizes/heights.
-const APPLIANCE_KIND_DEFAULTS = {
-  fridge:          { width_mm: 700, height_mm: 1750, depth_mm: 700, mount_height_mm: 0 },
-  freezer:         { width_mm: 700, height_mm: 1750, depth_mm: 700, mount_height_mm: 0 },
-  dishwasher:      { width_mm: 600, height_mm: 850,  depth_mm: 600, mount_height_mm: 0 },
-  rangehood:       { width_mm: 900, height_mm: 400,  depth_mm: 500, mount_height_mm: 1500 },
-  washing_machine: { width_mm: 600, height_mm: 850,  depth_mm: 600, mount_height_mm: 0 },
-  oven:            { width_mm: 600, height_mm: 600,  depth_mm: 560, mount_height_mm: 0 },
-  cooktop:         { width_mm: 600, height_mm: 60,   depth_mm: 520, mount_height_mm: 900 },
-  microwave:       { width_mm: 500, height_mm: 300,  depth_mm: 400, mount_height_mm: 1400 },
-  other:           { width_mm: 600, height_mm: 850,  depth_mm: 600, mount_height_mm: 0 },
+// Appliance footprints now live in lib/pcd-appliance-utils.js — the public
+// planner offers the fridge too, and two copies of these numbers would drift.
+
+// A new bookcase: a Billy-ish open unit, but built out of 18mm board with a
+// solid back rather than a hardboard panel. Always open-fronted — the shelves
+// and the carcass carry their own colours, and nothing here ever gets a door.
+export const BOOKCASE_DEFAULTS = {
+  width_mm: 800,
+  height_mm: 2000,
+  depth_mm: 300,
+  mount_height_mm: 0,
+  front_type: "none",
+  shelf_qty: 4,
+  carcass_thickness_mm: 18,
+  shelf_thickness_mm: 18,
+  back_panel_included: true,
+  back_panel_thickness_mm: 16,
+  has_kickboard: false,
+  has_benchtop: false,
 };
-function applianceKindDefaults(kind) {
-  return APPLIANCE_KIND_DEFAULTS[kind] || APPLIANCE_KIND_DEFAULTS.other;
-}
 
 const TYPE_LABELS = {
   base_cabinet:  "Base Cabinet",
@@ -74,6 +90,8 @@ const TYPE_LABELS = {
   corner_base_cabinet: "Corner Base Cabinet",
   corner_tall_cabinet: "Corner Pantry",
   blind_corner_cabinet: "Blind Corner Cabinet",
+  bookcase:      "Bookcase",
+  shelf_rail:    "Shelf & Rail",
   floating_shelf: "Floating Shelf",
   door:          "Door",
   drawer_front:  "Drawer Front",
@@ -275,6 +293,9 @@ function AddItemForm({ onAdd, onCancel, onBack, initialType, initialKind, allowe
   const isPanel = draft.item_type === "panel";
   const isScribe = draft.item_type === "scribe";
   const isShelf = draft.item_type === "floating_shelf";
+  // Shelf & Rail takes a span and a depth only — its height is derived from the
+  // cleat height plus the board thickness, both fixed standards.
+  const isShelfRail = draft.item_type === "shelf_rail";
   // Windows & doorways are decorative like an obstruction here: they take
   // dimensions but no board/material or quantity.
   const isObstruction = ["obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"].includes(draft.item_type);
@@ -396,6 +417,47 @@ function AddItemForm({ onAdd, onCancel, onBack, initialType, initialKind, allowe
       }));
       return;
     }
+    if (nextType === "bookcase") {
+      // Keeps whatever the user has already typed for the three dimensions when
+      // they're not still on the base-cabinet defaults, so switching type in the
+      // form doesn't silently throw away a size they've entered.
+      setDraft((d) => ({
+        ...d,
+        ...BOOKCASE_DEFAULTS,
+        item_type: nextType,
+        wall: d.wall && d.wall !== "island" ? d.wall : "top",
+        width_mm: d.width_mm && d.width_mm !== 600 ? d.width_mm : BOOKCASE_DEFAULTS.width_mm,
+        height_mm: d.height_mm && d.height_mm !== 720 ? d.height_mm : BOOKCASE_DEFAULTS.height_mm,
+        depth_mm: d.depth_mm && d.depth_mm !== 600 ? d.depth_mm : BOOKCASE_DEFAULTS.depth_mm,
+      }));
+      return;
+    }
+    if (nextType === "shelf_rail") {
+      // Spans an opening rather than standing on the floor. No height field —
+      // the assembly is exactly one cleat height plus one board thickness, both
+      // fixed standards, so it's derived. Hung so the SHELF TOP lands at 1800.
+      setDraft((d) => ({
+        ...d,
+        item_type: nextType,
+        wall: d.wall && d.wall !== "island" ? d.wall : "top",
+        width_mm: d.width_mm && d.width_mm !== 600 ? d.width_mm : SHELF_RAIL_DEFAULTS.width_mm,
+        depth_mm: SHELF_RAIL_DEFAULTS.depth_mm,
+        carcass_thickness_mm: SHELF_RAIL_DEFAULTS.shelf_thickness_mm,
+        // Derived, but persisted — every measuring consumer reads height_mm.
+        height_mm: SHELF_RAIL_DEFAULTS.rail_height_mm + SHELF_RAIL_DEFAULTS.shelf_thickness_mm,
+        mount_height_mm: CABINET_MOUNT_MM.shelf_rail,
+        shelf_rail_config: {
+          left_support: "wall",
+          right_support: "wall",
+          back_cleat: true,
+          end_cleat_left: true,
+          end_cleat_right: true,
+          rail_height_mm: SHELF_RAIL_DEFAULTS.rail_height_mm,
+          front_rail: { on: true, setback_mm: SHELF_RAIL_DEFAULTS.front_rail_setback_mm },
+        },
+      }));
+      return;
+    }
     if (nextType === "floating_shelf") {
       // Wall-mounted decorative-board box: width along the wall, a shallow
       // depth, a thin fascia height, at a default mount height.
@@ -470,6 +532,17 @@ function AddItemForm({ onAdd, onCancel, onBack, initialType, initialKind, allowe
               <input className={styles.fieldInput} type="number" min="1" value={draft.scribe_thickness_mm} onChange={(e) => set("scribe_thickness_mm", e.target.value)} />
             </label>
           </>
+        ) : isShelfRail ? (
+          <div className={styles.fieldRow}>
+            <label className={styles.fieldLabel}>
+              Span mm
+              <input className={styles.fieldInput} type="number" min="1" value={draft.width_mm} onChange={(e) => set("width_mm", e.target.value)} />
+            </label>
+            <label className={styles.fieldLabel}>
+              Depth mm
+              <input className={styles.fieldInput} type="number" min="1" value={draft.depth_mm} onChange={(e) => set("depth_mm", e.target.value)} />
+            </label>
+          </div>
         ) : isShelf ? (
           <>
             <div className={styles.fieldRow}>
@@ -1618,9 +1691,23 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
             </select>
           </label>
         </div>
-        {(sec.type === "open" || sec.type === "appliance") ? (
+        {sec.type === "open" ? (
+          <>
+            <label className={styles.fieldLabel}>
+              Shelves in this bay
+              <input className={styles.fieldInput} type="number" min="0" max="10"
+                value={Number(sec.shelf_qty) || 0}
+                onChange={(e) => updateSection(idx, { shelf_qty: Math.max(0, Math.min(10, parseInt(e.target.value, 10) || 0)) })} />
+            </label>
+            <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+              {Number(sec.shelf_qty) > 0
+                ? "Spread evenly inside this bay. They cut and price as shelves, on the shelf board set in Board colours & cost."
+                : "Left blank — an open recess. No board is cut and nothing is quoted for this section."}
+            </p>
+          </>
+        ) : sec.type === "appliance" ? (
           <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
-            {sec.type === "appliance" ? "Oven / appliance recess — left open for a customer-supplied appliance (shown as an oven in 3D). No board is cut or quoted." : "Left blank — e.g. an oven or microwave recess. No board is cut and nothing is quoted for this section."}
+            Oven / appliance recess — left open for a customer-supplied appliance (shown as an oven in 3D). No board is cut or quoted.
           </p>
         ) : sec.type === "drawers" ? (
           <DrawerBankFields cfg={sec.drawer || {}} heightMm={sec.height_mm} onChangeNow={(patch) => updateSectionSubConfig(idx, "drawer", patch, true)} onChange={(patch) => updateSectionSubConfig(idx, "drawer", patch, false)} />
@@ -2086,7 +2173,9 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               {frontHasDrawers && (
                 <FrontStyleFields label="Drawers" style={drawerStyle} onChange={updDrawerStyle} matchOptions={matchOptions} colourImages={colourImages} simplified />
               )}
-              {Number(draft.shelf_qty) > 0 && (
+              {/* Shelves are colourable whenever there ARE any — the cabinet's
+                  own, or shelves sitting inside an open bay of a mixed front. */}
+              {(Number(draft.shelf_qty) > 0 || bayShelfCount(draft) > 0) && (
                 <>
                   <ColourField
                     label="Shelves"
@@ -2482,6 +2571,490 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
 // optional mitred end caps) in one finish, wall-mounted at a height. Edits
 // width / depth / height / mount / thickness / colour and which ends are capped;
 // on import each board becomes its own Panel line (see pcd-floating-shelf-utils).
+// The evenly-spaced shelf heights for a bookcase of a given height and shelf
+// count — the same spacing the elevation and the 3D view fall back to when
+// shelf_heights_mm hasn't been set (or has gone stale against a new count).
+function evenShelfHeights(heightMm, qty) {
+  const h = Number(heightMm) || 2000;
+  const n = Math.max(0, Number(qty) || 0);
+  return Array.from({ length: n }, (_, i) => Math.round(((i + 1) * h) / (n + 1)));
+}
+
+// ---- Shelf & Rail ----
+// The wardrobe module: a shelf spanning an opening on cleats, with an optional
+// front rail. Deliberately short — the only real decisions are the span, the
+// depth, what each end lands on, and the two colours. There is NO height field:
+// the assembly is one cleat height plus one board thickness, both fixed, so the
+// form asks for the height of the SHELF TOP (what's on a robe drawing) and
+// converts to the stored mount height.
+function ShelfRailForm({ item, allItems, room, onItemChange, colourImages = null }) {
+  const [draft, setDraft] = useState(item);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const timerRef  = useRef(null);
+  const latestRef = useRef(draft);
+  const pendingPatchRef = useRef({});
+  const onItemChangeRef = useRef(onItemChange);
+  onItemChangeRef.current = onItemChange;
+
+  useEffect(() => {
+    setDraft(item);
+    latestRef.current = item;
+    pendingPatchRef.current = {};
+    clearTimeout(timerRef.current);
+    setSaving(false);
+  }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => {
+    clearTimeout(timerRef.current);
+    const patch = pendingPatchRef.current;
+    if (Object.keys(patch).length) onItemChangeRef.current(item.id, patch);
+  }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dragged up or down in the elevation — mirror it back so the shelf-top
+  // readout doesn't go stale.
+  useEffect(() => {
+    setDraft((prev) => ({ ...prev, mount_height_mm: item.mount_height_mm }));
+    latestRef.current = { ...latestRef.current, mount_height_mm: item.mount_height_mm };
+  }, [item.mount_height_mm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function flushPending() {
+    flushItemPatch({ pendingPatchRef, itemId: item.id, onItemChange: onItemChangeRef.current, setSaving, setSaveError });
+  }
+  function retrySave() { setSaving(true); flushPending(); }
+  function set(key, val) {
+    const next = { ...latestRef.current, [key]: val };
+    latestRef.current = next; setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
+    clearTimeout(timerRef.current); setSaving(true);
+    timerRef.current = setTimeout(flushPending, 600);
+  }
+  function setNow(key, val) {
+    const next = { ...latestRef.current, [key]: val };
+    latestRef.current = next; setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
+    clearTimeout(timerRef.current); setSaving(true); flushPending();
+  }
+  function setMultiNow(patch) {
+    const next = { ...latestRef.current, ...patch };
+    latestRef.current = next; setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
+    clearTimeout(timerRef.current); setSaving(true); flushPending();
+  }
+  // Every config edit merges into the stored blob rather than replacing it, so
+  // a field this form doesn't show yet (the reserved rails array) survives.
+  //
+  // height_mm is DERIVED (cleat height + board thickness) but still written to
+  // the row, because the drag, collision, gap-dimension and elevation engines
+  // all measure items by height_mm. Deriving it at each of those call sites
+  // instead would be four more places to forget.
+  function setCfg(patch) {
+    const prev = shelfRailConfig(latestRef.current);
+    const next = { ...prev, ...patch };
+    setMultiNow({
+      shelf_rail_config: next,
+      height_mm: shelfRailHeightMm({ ...latestRef.current, shelf_rail_config: next }),
+    });
+  }
+
+  const cfg = shelfRailConfig(draft);
+  const matchOptions = collectMatchOptions(allItems, draft);
+  const warnings = shelfRailWarnings(draft);
+  const derivedH = shelfRailHeightMm(draft);
+  const topMm = shelfTopMm(draft);
+  const limit = spanLimitMm(draft);
+
+  // "Fit to opening" — snap the span to the clear gap between whatever is left
+  // and right of it at this height, and set both ends from what it found.
+  const opening = fitToOpeningMm(draft, allItems, room);
+  function fitToOpening() {
+    if (!opening) return;
+    const next = { ...latestRef.current, ...opening };
+    const found = detectSupports(next, allItems, room);
+    setMultiNow({
+      ...opening,
+      shelf_rail_config: { ...shelfRailConfig(next), left_support: found.left, right_support: found.right },
+    });
+  }
+  function redetect() {
+    const found = detectSupports(latestRef.current, allItems, room);
+    setCfg({ left_support: found.left, right_support: found.right });
+  }
+
+  const SUPPORTS = [
+    { value: "wall", label: "Wall" },
+    { value: "cabinet", label: "Cabinet gable" },
+    { value: "panel", label: "Panel" },
+    { value: "open", label: "Nothing" },
+  ];
+
+  return (
+    <div className={styles.addItemForm}>
+      <SaveStatus saving={saving} error={saveError} onRetry={retrySave} />
+
+      {warnings.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 4 }}>
+          {warnings.map((w) => (
+            <p key={w.code} style={{
+              margin: 0, padding: "7px 9px", borderRadius: 6, fontSize: 11, lineHeight: 1.4,
+              background: w.level === "error" ? "rgba(220,38,38,0.10)" : "rgba(245,158,11,0.12)",
+              color: w.level === "error" ? "#b91c1c" : "#92400e",
+              border: `1px solid ${w.level === "error" ? "rgba(220,38,38,0.3)" : "rgba(245,158,11,0.35)"}`,
+            }}>
+              {w.level === "error" ? "⛔ " : "⚠ "}{w.message}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div className={styles.fieldGroup}>
+        <label className={styles.fieldLabel}>
+          Label
+          <input className={styles.fieldInput} value={draft.label || ""} onChange={(e) => set("label", e.target.value)} placeholder="e.g. Long hang shelf" />
+        </label>
+
+        <SectionDivider label="Size & position" />
+        <div className={styles.fieldRow}>
+          <label className={styles.fieldLabel}>
+            Span mm
+            <input className={styles.fieldInput} type="number" min="1" value={draft.width_mm ?? ""} onChange={(e) => set("width_mm", e.target.value)} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Depth mm
+            <input className={styles.fieldInput} type="number" min="1" value={draft.depth_mm ?? ""} onChange={(e) => set("depth_mm", e.target.value)} />
+          </label>
+        </div>
+        {opening && opening.width_mm !== draft.width_mm && (
+          <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={fitToOpening}>
+            Fit to opening ({opening.width_mm}mm)
+          </button>
+        )}
+        <label className={styles.fieldLabel}>
+          Shelf height mm (top of shelf)
+          <input className={styles.fieldInput} type="number" min="0" value={topMm}
+            onChange={(e) => set("mount_height_mm", mountForShelfTopMm(latestRef.current, e.target.value))} />
+        </label>
+        <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
+          {`Overall ${derivedH}mm deep front-to-top — ${cfg.rail_height_mm}mm cleats plus the ${shelfThicknessLabel(draft)} shelf. Guide span for this build: ${limit}mm.`}
+        </p>
+
+        <SectionDivider label="What each end lands on" />
+        <div className={styles.fieldRow}>
+          <label className={styles.fieldLabel}>
+            Left end
+            <select className={styles.fieldSelect} value={cfg.left_support} onChange={(e) => setCfg({ left_support: e.target.value })}>
+              {SUPPORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </label>
+          <label className={styles.fieldLabel}>
+            Right end
+            <select className={styles.fieldSelect} value={cfg.right_support} onChange={(e) => setCfg({ right_support: e.target.value })}>
+              {SUPPORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </label>
+        </div>
+        <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={redetect}>
+          Detect from the plan
+        </button>
+
+        <SectionDivider label="Cleats & front rail" />
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={cfg.back_cleat} onChange={(e) => setCfg({ back_cleat: e.target.checked })} />
+          Back cleat
+        </label>
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={cfg.end_cleat_left} onChange={(e) => setCfg({ end_cleat_left: e.target.checked })} />
+          Left end cleat
+        </label>
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={cfg.end_cleat_right} onChange={(e) => setCfg({ end_cleat_right: e.target.checked })} />
+          Right end cleat
+        </label>
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={cfg.front_rail.on} onChange={(e) => setCfg({ front_rail: { ...cfg.front_rail, on: e.target.checked } })} />
+          Front rail
+        </label>
+        <div className={styles.fieldRow}>
+          <label className={styles.fieldLabel}>
+            Rail height mm
+            <input className={styles.fieldInput} type="number" min="1" value={cfg.rail_height_mm}
+              onChange={(e) => setCfg({ rail_height_mm: parseInt(e.target.value, 10) || SHELF_RAIL_DEFAULTS.rail_height_mm })} />
+          </label>
+          {cfg.front_rail.on && (
+            <label className={styles.fieldLabel}>
+              Rail setback mm
+              <input className={styles.fieldInput} type="number" min="0" value={cfg.front_rail.setback_mm}
+                onChange={(e) => setCfg({ front_rail: { ...cfg.front_rail, setback_mm: parseInt(e.target.value, 10) || 0 } })} />
+            </label>
+          )}
+        </div>
+        <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
+          The cleats and the front rail share one height so both rip from the same strip. A deeper rail stiffens the
+          shelf far more than a taller one costs — stiffness goes with depth cubed.
+        </p>
+
+        <SectionDivider label="Colours" />
+        <ColourField
+          label="Shelf"
+          value={{ material: draft.material, finish: draft.finish, colour: draft.colour, thickness_mm: draft.carcass_thickness_mm, cost_per_sqm: draft.cost_per_sqm_carcass }}
+          matchHint="Sets the board thickness, which drives the span guide"
+          matchOptions={matchOptions}
+          thicknessDefault={18}
+          colourImages={colourImages}
+          onChange={(style) => {
+            // A 16mm board changes the derived height AND tightens the span
+            // guide, so both move with the colour choice.
+            const t = style?.thickness_mm || draft.carcass_thickness_mm || 18;
+            setMultiNow({
+              material: style?.material || "",
+              finish: style?.finish || "",
+              colour: style?.colour || "",
+              carcass_thickness_mm: t,
+              cost_per_sqm_carcass: style?.cost_per_sqm ?? draft.cost_per_sqm_carcass ?? 0,
+              height_mm: shelfRailHeightMm({ ...latestRef.current, carcass_thickness_mm: t }),
+            });
+          }}
+        />
+        <ColourField
+          label="Cleats & front rail"
+          value={cfg.cleat_style}
+          matchHint="Matches the shelf by default"
+          canReset
+          matchOptions={matchOptions.filter((o) => Number(o.style?.thickness_mm) === CLEAT_THICKNESS_MM)}
+          thicknessDefault={CLEAT_THICKNESS_MM}
+          onlyThicknessMm={CLEAT_THICKNESS_MM}
+          colourImages={colourImages}
+          onChange={(style) => setCfg({ cleat_style: style })}
+        />
+        <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
+          {`Cleats are always ${CLEAT_THICKNESS_MM}mm — they're the structural part, so only library colours stocked in ${CLEAT_THICKNESS_MM}mm are offered.`}
+        </p>
+
+        <SectionDivider label="Notes" />
+        <label className={styles.fieldLabel}>
+          Notes
+          <textarea className={styles.fieldInput} rows={3} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="Anything the bench needs to know" />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function shelfThicknessLabel(item) {
+  return `${Number(item?.carcass_thickness_mm) || SHELF_RAIL_DEFAULTS.shelf_thickness_mm}mm`;
+}
+
+// ---- Bookcase ----
+// A bookcase is a cabinet in the data model (it cuts, prices and imports as
+// one), but it is deliberately NOT configured through CabinetConfigForm: it has
+// no doors, no drawers, no benchtop and no corner geometry, so it gets a short
+// form of its own — size, the two colours, shelves, back and an optional
+// kickboard — rather than a doors-and-benchtop panel with most of it hidden.
+function BookcaseForm({ item, allItems, onItemChange, colourImages = null }) {
+  const [draft, setDraft] = useState(item);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const timerRef  = useRef(null);
+  const latestRef = useRef(draft);
+  const pendingPatchRef = useRef({});
+  const onItemChangeRef = useRef(onItemChange);
+  onItemChangeRef.current = onItemChange;
+
+  useEffect(() => {
+    setDraft(item);
+    latestRef.current = item;
+    pendingPatchRef.current = {};
+    clearTimeout(timerRef.current);
+    setSaving(false);
+  }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => {
+    clearTimeout(timerRef.current);
+    const patch = pendingPatchRef.current;
+    if (Object.keys(patch).length) onItemChangeRef.current(item.id, patch);
+  }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Shelves dragged in the elevation write straight to the item, so mirror them
+  // back into the draft — otherwise the heights listed here go stale the moment
+  // a shelf is moved on the drawing.
+  useEffect(() => {
+    setDraft((prev) => ({ ...prev, shelf_heights_mm: item.shelf_heights_mm }));
+    latestRef.current = { ...latestRef.current, shelf_heights_mm: item.shelf_heights_mm };
+  }, [item.shelf_heights_mm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function flushPending() {
+    flushItemPatch({ pendingPatchRef, itemId: item.id, onItemChange: onItemChangeRef.current, setSaving, setSaveError });
+  }
+  function retrySave() { setSaving(true); flushPending(); }
+  function set(key, val) {
+    const next = { ...latestRef.current, [key]: val };
+    latestRef.current = next; setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
+    clearTimeout(timerRef.current); setSaving(true);
+    timerRef.current = setTimeout(flushPending, 600);
+  }
+  function setNow(key, val) {
+    const next = { ...latestRef.current, [key]: val };
+    latestRef.current = next; setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
+    clearTimeout(timerRef.current); setSaving(true); flushPending();
+  }
+  function setMultiNow(patch) {
+    const next = { ...latestRef.current, ...patch };
+    latestRef.current = next; setDraft(next);
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
+    clearTimeout(timerRef.current); setSaving(true); flushPending();
+  }
+
+  const matchOptions = collectMatchOptions(allItems, draft);
+  const shelfQty = Math.max(0, Number(draft.shelf_qty) || 0);
+  const stored = Array.isArray(draft.shelf_heights_mm) ? draft.shelf_heights_mm : [];
+  // Stored heights win, but only while they still match the shelf count — a
+  // count change re-spaces from scratch rather than leaving orphaned heights.
+  const shelfHeights = stored.length === shelfQty && shelfQty > 0
+    ? stored.map((h) => Number(h) || 0)
+    : evenShelfHeights(draft.height_mm, shelfQty);
+
+  // Changing the count (or the overall height) re-spaces the shelves evenly.
+  // They stay individually editable here and draggable in the elevation.
+  function setShelfQty(value) {
+    const qty = Math.max(0, Math.min(20, parseInt(value, 10) || 0));
+    setMultiNow({ shelf_qty: qty, shelf_heights_mm: evenShelfHeights(latestRef.current.height_mm, qty) });
+  }
+  function setHeightMm(value) {
+    const next = parseInt(value, 10);
+    const cur = latestRef.current;
+    const respace = Array.isArray(cur.shelf_heights_mm) && cur.shelf_heights_mm.length > 0;
+    set("height_mm", value);
+    if (respace && Number.isFinite(next) && next > 0) {
+      set("shelf_heights_mm", evenShelfHeights(next, cur.shelf_qty));
+    }
+  }
+  function setShelfHeightAt(index, value) {
+    const next = shelfHeights.map((h, i) => (i === index ? (parseInt(value, 10) || 0) : h));
+    set("shelf_heights_mm", next);
+  }
+  function respaceShelves() {
+    setNow("shelf_heights_mm", evenShelfHeights(latestRef.current.height_mm, latestRef.current.shelf_qty));
+  }
+
+  return (
+    <div className={styles.addItemForm}>
+      <SaveStatus saving={saving} error={saveError} onRetry={retrySave} />
+      <div className={styles.fieldGroup}>
+        <label className={styles.fieldLabel}>
+          Label
+          <input className={styles.fieldInput} value={draft.label || ""} onChange={(e) => set("label", e.target.value)} placeholder="e.g. Living room bookcase" />
+        </label>
+
+        <SectionDivider label="Size" />
+        <div className={styles.fieldRow}>
+          <label className={styles.fieldLabel}>
+            Width mm
+            <input className={styles.fieldInput} type="number" min="1" value={draft.width_mm ?? ""} onChange={(e) => set("width_mm", e.target.value)} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Height mm
+            <input className={styles.fieldInput} type="number" min="1" value={draft.height_mm ?? ""} onChange={(e) => setHeightMm(e.target.value)} />
+          </label>
+        </div>
+        <div className={styles.fieldRow}>
+          <label className={styles.fieldLabel}>
+            Depth mm
+            <input className={styles.fieldInput} type="number" min="1" value={draft.depth_mm ?? ""} onChange={(e) => set("depth_mm", e.target.value)} />
+          </label>
+          <label className={styles.fieldLabel}>
+            Qty
+            <input className={styles.fieldInput} type="number" min="1" value={draft.qty ?? 1} onChange={(e) => set("qty", e.target.value)} />
+          </label>
+        </div>
+
+        <SectionDivider label="Colours" />
+        <ColourField
+          label="Bookcase"
+          value={{ material: draft.material, finish: draft.finish, colour: draft.colour, thickness_mm: draft.carcass_thickness_mm, cost_per_sqm: draft.cost_per_sqm_carcass }}
+          matchHint="Sides, top, bottom and back"
+          matchOptions={matchOptions}
+          thicknessDefault={18}
+          colourImages={colourImages}
+          onChange={(style) => setMultiNow({
+            material: style?.material || "",
+            finish: style?.finish || "",
+            colour: style?.colour || "",
+            carcass_thickness_mm: style?.thickness_mm || draft.carcass_thickness_mm || 18,
+            cost_per_sqm_carcass: style?.cost_per_sqm ?? draft.cost_per_sqm_carcass ?? 0,
+          })}
+        />
+        <ColourField
+          label="Shelves"
+          value={{ material: draft.shelf_material, finish: draft.shelf_finish, colour: draft.shelf_colour, thickness_mm: draft.shelf_thickness_mm, cost_per_sqm: draft.cost_per_sqm_shelf }}
+          matchHint="Picked separately from the bookcase"
+          matchOptions={matchOptions}
+          thicknessDefault={18}
+          colourImages={colourImages}
+          onChange={(style) => setMultiNow({
+            shelf_material: style?.material || "",
+            shelf_finish: style?.finish || "",
+            shelf_colour: style?.colour || "",
+            shelf_thickness_mm: style?.thickness_mm || draft.shelf_thickness_mm || 18,
+            cost_per_sqm_shelf: style?.cost_per_sqm ?? draft.cost_per_sqm_shelf ?? 0,
+          })}
+        />
+
+        <SectionDivider label="Shelves" />
+        <label className={styles.fieldLabel}>
+          How many shelves
+          <input className={styles.fieldInput} type="number" min="0" max="20" value={draft.shelf_qty ?? 0} onChange={(e) => setShelfQty(e.target.value)} />
+        </label>
+        {shelfQty > 0 && (
+          <>
+            <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
+              Heights are measured from the floor to the top of each shelf. Drag them in the elevation, or type them here.
+            </p>
+            {shelfHeights.map((h, i) => (
+              <label key={i} className={styles.fieldLabel}>
+                {`Shelf ${i + 1} height mm`}
+                <input className={styles.fieldInput} type="number" min="0" value={h} onChange={(e) => setShelfHeightAt(i, e.target.value)} />
+              </label>
+            ))}
+            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={respaceShelves}>
+              Space shelves evenly
+            </button>
+          </>
+        )}
+
+        <SectionDivider label="Construction" />
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={draft.back_panel_included ?? true} onChange={(e) => setNow("back_panel_included", e.target.checked)} />
+          Solid back
+        </label>
+        {(draft.back_panel_included ?? true) && (
+          <label className={styles.fieldLabel}>
+            Back thickness mm
+            <input className={styles.fieldInput} type="number" min="1" value={draft.back_panel_thickness_mm ?? 16} onChange={(e) => set("back_panel_thickness_mm", e.target.value)} />
+          </label>
+        )}
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={Boolean(draft.has_kickboard)} onChange={(e) => setNow("has_kickboard", e.target.checked)} />
+          Kickboard
+        </label>
+        {draft.has_kickboard && (
+          <label className={styles.fieldLabel}>
+            Kickboard height mm
+            <input className={styles.fieldInput} type="number" min="1" value={draft.kickboard_height_mm ?? 120} onChange={(e) => set("kickboard_height_mm", e.target.value)} />
+          </label>
+        )}
+
+        <SectionDivider label="Notes" />
+        <label className={styles.fieldLabel}>
+          Notes
+          <textarea className={styles.fieldInput} rows={3} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="Anything the bench needs to know" />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function ShelfForm({ item, allItems, onItemChange }) {
   const [draft, setDraft] = useState(item);
   const [saving, setSaving] = useState(false);
@@ -3208,7 +3781,7 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
 
   if (item) {
     const isCabinet = CABINET_TYPES.includes(item.item_type);
-    const hasCutList = isCabinet || item.item_type === "floating_shelf";
+    const hasCutList = isCabinet || item.item_type === "floating_shelf" || item.item_type === "shelf_rail";
     return (
       <div className={panelClass}>
         {!fullWidth && (
@@ -3222,7 +3795,11 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
             ⚠ This item overlaps another item on the plan. Drag it (or the other item) to fix the position.
           </p>
         )}
-        {isCabinet ? (
+        {item.item_type === "shelf_rail" ? (
+          <ShelfRailForm key={item.id} item={item} allItems={allItems} room={room} onItemChange={onItemChange} colourImages={colourImages} />
+        ) : item.item_type === "bookcase" ? (
+          <BookcaseForm key={item.id} item={item} allItems={allItems} onItemChange={onItemChange} colourImages={colourImages} />
+        ) : isCabinet ? (
           <CabinetConfigForm key={item.id} item={item} allItems={allItems} room={room} materialDefaults={materialDefaults} onItemChange={onItemChange} onSelectItem={onSelectItem} openSection={openSection} toggleSection={toggleSection} fullWidth={fullWidth} colourImages={colourImages} />
         ) : ["obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"].includes(item.item_type) ? (
           <ObstructionForm key={item.id} item={item} onItemChange={onItemChange} />

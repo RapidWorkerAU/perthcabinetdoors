@@ -18,7 +18,7 @@ import { computeAllBackPanelRuns, splitBackPanelWidths } from "../../../../lib/p
 import { computeAllBottomPanelRuns } from "../../../../lib/pcd-bottompanel-utils";
 import { computeAllFillerPanelRuns, fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "bookcase"];
 
 // Friendly fallback label when an item has no custom label yet.
 const TYPE_LABELS = {
@@ -38,6 +38,8 @@ const TYPE_LABELS = {
   appliance:     "Appliance",
   brick_corner_pantry: "Brick Corner Pantry",
   floating_shelf: "Floating Shelf",
+  bookcase:      "Bookcase",
+  shelf_rail:    "Shelf & Rail",
 };
 
 export function itemDisplayLabel(item) {

@@ -21,6 +21,8 @@ export const CATALOG = [
   { type: "corner_base_cabinet",  category: "cabinets",   desc: "L-shaped base cabinet that wraps a 90° corner." },
   { type: "corner_tall_cabinet",  category: "cabinets",   desc: "Full-height corner pantry — L-shape or diagonal door." },
   { type: "blind_corner_cabinet", category: "cabinets",   desc: "Base with a blind return hidden into the corner." },
+  { type: "bookcase",             category: "cabinets",   desc: "Open floor-standing bookcase with a solid back — shelves in their own colour." },
+  { type: "shelf_rail",           category: "wardrobe",   desc: "Shelf spanning an opening on cleats, with a front rail. Drops between towers or walls." },
   { type: "floating_shelf",       category: "finishing",  desc: "Wall-mounted open shelf board." },
   { type: "panel",                category: "finishing",  desc: "Standalone finished panel — filler or end panel." },
   { type: "scribe",               category: "finishing",  desc: "Thin filler that scribes against a wall or appliance." },
@@ -37,6 +39,7 @@ export const CATALOG = [
 export const CATEGORIES = [
   { key: "all",        label: "All" },
   { key: "cabinets",   label: "Cabinets" },
+  { key: "wardrobe",   label: "Wardrobe" },
   { key: "features",   label: "Room Features" },
   { key: "finishing",  label: "Panels & Finishing" },
   { key: "appliances", label: "Appliances" },
@@ -48,6 +51,9 @@ export const CATEGORIES = [
 const STROKE = "#4b5563";
 const CARC = "#e5e7eb";
 const DOOR = "#f3f4f6";
+// A bookcase's shelves are picked separately from its carcass, so the mockup
+// shows them in a contrasting board tone rather than the carcass grey.
+const SHELF = "#e7d9c2";
 
 function box(x, y, w, h, fill = CARC, extra = {}) {
   return <rect x={x} y={y} width={w} height={h} rx="1.5" fill={fill} stroke={STROKE} strokeWidth="1.2" {...extra} />;
@@ -127,6 +133,27 @@ export function Mockup({ type, kind }) {
         <rect x="9" y="13" width="18" height="28" fill="#d1d5db" />
         {box(28, 15, 33, 24, DOOR)}
         {handleDot(33, 27)}
+      </>);
+    case "shelf_rail":
+      // A shelf spanning between two towers, with its front rail below the
+      // leading edge and a cleat tick at each end.
+      return svg(<>
+        {box(4, 10, 14, 38, "#e2e8f0")}
+        {box(54, 10, 14, 38, "#e2e8f0")}
+        <rect x="18" y="20" width="36" height="4" fill={SHELF} stroke={STROKE} strokeWidth="1" />
+        <rect x="20" y="24" width="32" height="3" fill="#d9c9ac" stroke={STROKE} strokeWidth="0.7" />
+        <line x1="18" y1="20" x2="18" y2="27" stroke={STROKE} strokeWidth="1.4" />
+        <line x1="54" y1="20" x2="54" y2="27" stroke={STROKE} strokeWidth="1.4" />
+      </>);
+    case "bookcase":
+      // Open box, solid back, four shelves — the shelves drawn in the board
+      // tone so the card reads "two colours" at a glance.
+      return svg(<>
+        {box(20, 3, 32, 46)}
+        <rect x="23" y="6" width="26" height="40" fill="#f8fafc" />
+        {[13, 22, 31, 40].map((y) => (
+          <rect key={y} x="23" y={y} width="26" height="2.6" fill={SHELF} stroke={STROKE} strokeWidth="0.7" />
+        ))}
       </>);
     case "floating_shelf":
       return svg(<>

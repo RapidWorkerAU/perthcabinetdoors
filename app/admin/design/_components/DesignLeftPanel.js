@@ -29,6 +29,8 @@ const ITEM_COLORS = {
   appliance:     "#64748b",
   brick_corner_pantry: "#a0522d",
   floating_shelf: "#eab308",
+  bookcase:      "#65a30d",
+  shelf_rail:    "#d946ef",
 };
 
 // Plural group headings + the order groups appear in the list. Items whose
@@ -36,7 +38,7 @@ const ITEM_COLORS = {
 const GROUP_ORDER = [
   "base_cabinet", "wall_cabinet", "tall_cabinet",
   "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet",
-  "floating_shelf", "panel", "scribe",
+  "bookcase", "shelf_rail", "floating_shelf", "panel", "scribe",
   "appliance", "window", "door_opening", "obstruction", "brick_corner_pantry",
 ];
 const GROUP_LABELS = {
@@ -46,6 +48,8 @@ const GROUP_LABELS = {
   corner_base_cabinet: "Corner Base Cabinets",
   corner_tall_cabinet: "Corner Pantries",
   blind_corner_cabinet: "Blind Corner Cabinets",
+  bookcase:      "Bookcases",
+  shelf_rail:    "Shelves & Rails",
   floating_shelf: "Floating Shelves",
   panel:         "Panels",
   scribe:        "Scribes",
@@ -93,6 +97,8 @@ const TYPE_SHORT = {
   appliance:     "appl.",
   brick_corner_pantry: "brick",
   floating_shelf: "shelf",
+  bookcase:      "bookcase",
+  shelf_rail:    "shelf+rail",
 };
 
 // The left rail is now a clean list of the CURRENT room's items. Room switching

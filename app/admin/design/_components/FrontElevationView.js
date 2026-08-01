@@ -3,9 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import styles from "../design.module.css";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm, bayTypeForRow } from "../../../../lib/pcd-door-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, bayTypeForRow, mixedBaySections } from "../../../../lib/pcd-door-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
-import { kickboardOffsetMm, wallSpanMm, CABINET_MOUNT_MM, cabinetVerticalSpanMm, isCornerType, isCornerShaped } from "../../../../lib/pcd-kickboard-utils";
+import { kickboardOffsetMm, kickboardHeightMm, kickboardIsInset, wallSpanMm, CABINET_MOUNT_MM, cabinetVerticalSpanMm, isCornerType, isCornerShaped } from "../../../../lib/pcd-kickboard-utils";
+import { shelfRailConfig } from "../../../../lib/pcd-shelf-rail-utils";
 import { perpendicularCornerReturns } from "../../../../lib/pcd-plan-geometry";
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
 import { computeBenchtopRun, benchtopThicknessMm, benchtopWaterfallElevationSides, benchtopRunWaterfallEnds } from "../../../../lib/pcd-benchtop-utils";
@@ -30,6 +31,8 @@ const ITEM_COLORS = {
   corner_base_cabinet: "#0ea5e9",
   corner_tall_cabinet: "#0891b2",
   blind_corner_cabinet: "#06b6d4",
+  bookcase:      "#65a30d",
+  shelf_rail:    "#d946ef",
   floating_shelf: "#14b8a6",
   door:          "#a855f7",
   drawer_front:  "#8b5cf6",
@@ -51,6 +54,8 @@ const TYPE_LABELS = {
   corner_base_cabinet: "Corner Base Cabinet",
   corner_tall_cabinet: "Corner Pantry",
   blind_corner_cabinet: "Blind Corner Cabinet",
+  bookcase:      "Bookcase",
+  shelf_rail:    "Shelf & Rail",
   floating_shelf: "Floating Shelf",
   door:          "Door",
   drawer_front:  "Drawer Front",
@@ -80,9 +85,9 @@ const WALL_LABELS = {
   left:   "Left Wall",
   right:  "Right Wall",
 };
-const DRAGGABLE_TYPES = new Set(["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "floating_shelf", "panel", "scribe", "obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"]);
+const DRAGGABLE_TYPES = new Set(["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "bookcase", "shelf_rail", "floating_shelf", "panel", "scribe", "obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"]);
 // Types that can be dragged up/down (mount_height_mm), not just along the wall.
-const VERTICAL_DRAG_TYPES = new Set(["wall_cabinet", "floating_shelf", "obstruction", "panel", "scribe", "window", "door_opening", "appliance", "brick_corner_pantry"]);
+const VERTICAL_DRAG_TYPES = new Set(["wall_cabinet", "shelf_rail", "floating_shelf", "obstruction", "panel", "scribe", "window", "door_opening", "appliance", "brick_corner_pantry"]);
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -760,6 +765,29 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     });
   }
 
+  // A shelf sitting inside an OPEN bay of a mixed front. Dragged exactly like a
+  // normal shelf, but clamped to its own bay rather than the whole cabinet —
+  // you can't drag a shelf out of the bay it belongs to — and written back into
+  // that section rather than the cabinet's own shelf_heights_mm.
+  function handleBayShelfPointerDown(e, item, bay, idx, heightMm) {
+    if (!interactive) return;
+    e.stopPropagation();
+    pressedRef.current = true;
+    const pt = svgPt(e);
+    setDrag({
+      type:       "bayShelf",
+      itemId:     item.id,
+      sectionIdx: bay.index,
+      idx,
+      T:          item.carcass_thickness_mm || 16,
+      loMm:       bay.bottomMm,
+      hiMm:       bay.topMm,
+      startPtY:   pt.y,
+      startH:     heightMm,
+      allShelves: bay.shelfHeightsMm,
+    });
+  }
+
   function handleSvgPointerMove(e) {
     if (!drag) return;
     const pt = svgPt(e);
@@ -821,6 +849,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       const newShelves = [...drag.allShelves];
       newShelves[drag.idx] = newH;
       setLocalShelves((prev) => ({ ...prev, [drag.itemId]: newShelves }));
+
+    } else if (drag.type === "bayShelf") {
+      const dyMm = (pt.y - drag.startPtY) / scale;
+      let newH = drag.startH - dyMm;
+      // Clamped to its own bay, a board's thickness clear of each end.
+      newH = Math.max(drag.loMm + drag.T * 1.5, Math.min(drag.hiMm - drag.T * 1.5, newH));
+
+      const newShelves = [...drag.allShelves];
+      newShelves[drag.idx] = newH;
+      setLocalShelves((prev) => ({ ...prev, [`${drag.itemId}:${drag.sectionIdx}`]: newShelves }));
     }
   }
 
@@ -850,6 +888,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     } else if (drag.type === "shelf") {
       const shelves = localShelves[drag.itemId];
       if (shelves && onItemChange) onItemChange(drag.itemId, { shelf_heights_mm: shelves });
+
+    } else if (drag.type === "bayShelf") {
+      const shelves = localShelves[`${drag.itemId}:${drag.sectionIdx}`];
+      const item = wallItems.find((i) => i.id === drag.itemId);
+      if (shelves && item && onItemChange) {
+        // Write back into that one section, leaving every other bay untouched.
+        const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
+        const next = sections.map((sec, i) => (i === drag.sectionIdx ? { ...sec, shelf_heights_mm: shelves } : sec));
+        onItemChange(drag.itemId, { section_config: { ...(item.section_config || {}), sections: next } });
+      }
     }
     setDrag(null);
   }
@@ -912,6 +960,12 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       // Face + the two applied pieces the elevation draws (filler / kickboard),
       // so each gets its own resolved tile rather than staying flat.
       registerSrc(resolveColourSrc(colourImages, item, faceSlot(item)));
+      // A mixed / bayed front needs the carcass AND both front tiles available
+      // at once: the carcass shows through wherever a bay has no front on it.
+      registerSrc(resolveColourSrc(colourImages, item, "carcass"));
+      registerSrc(resolveColourSrc(colourImages, item, "door"));
+      registerSrc(resolveColourSrc(colourImages, item, "drawer"));
+      registerSrc(resolveColourSrc(colourImages, item, "shelf"));
       registerSrc(resolveColourSrc(colourImages, item, "filler"));
       registerSrc(resolveColourSrc(colourImages, item, "kickboard"));
       registerSrc(resolveColourSrc(colourImages, item, "benchtop"));
@@ -925,6 +979,54 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     return id ? `url(#${id})` : null;
   };
   const faceFillFor = (item) => tileFillFor(item, faceSlot(item));
+
+  // Which front tile covers which horizontal band of a cabinet's face, in px
+  // measured down from the top of the carcass.
+  //
+  // A bay carrying no front — open space, or an appliance recess — contributes
+  // NOTHING, so the carcass wash underneath shows through. This used to be one
+  // tile washed across the whole face, picked from front_type alone: a tall
+  // cabinet with two open bays over a drawer bank was painted door-colour top
+  // to bottom, showing a front finish on cabinetry that has no front. The 3D
+  // view never had the bug because it builds the fronts panel by panel; this
+  // brings the elevation into line with it.
+  const frontTileBands = (item, faceH) => {
+    const ft = item.front_type || "none";
+    const doorFill = tileFillFor(item, "door");
+    const drawerFill = tileFillFor(item, "drawer");
+
+    if (ft === "drawers") return drawerFill ? [{ y: 0, h: faceH, fill: drawerFill }] : [];
+
+    if (ft === "doors") {
+      if (!doorFill) return [];
+      const cfg = item.door_config || {};
+      const rows = Math.max(1, cfg.rows || 1);
+      const rowH = faceH / rows;
+      const out = [];
+      for (let r = 0; r < rows; r++) {
+        // r = 0 is the TOP row, matching bayTypeForRow and the door loop below.
+        if (bayTypeForRow(cfg, r) === "doors") out.push({ y: r * rowH, h: rowH, fill: doorFill });
+      }
+      return out;
+    }
+
+    if (ft === "mixed") {
+      const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
+      const totalMm = sections.reduce((s, sec) => s + (Number(sec.height_mm) || 0), 0) || 1;
+      const pxPerMm = faceH / totalMm;
+      const out = [];
+      let cursor = 0;
+      for (const sec of sections) {
+        const h = (Number(sec.height_mm) || 0) * pxPerMm;
+        const fill = sec.type === "doors" ? doorFill : sec.type === "drawers" ? drawerFill : null;
+        if (fill && h > 0) out.push({ y: cursor, h, fill });
+        cursor += h;
+      }
+      return out;
+    }
+
+    return []; // "none" — open unit, carcass only
+  };
 
   // ---- Render --------------------------------------------------------------
   return (
@@ -1007,6 +1109,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             { type: "tall_cabinet", label: "Tall" },
             { type: "corner_base_cabinet", label: "Corner" },
             { type: "corner_tall_cabinet", label: "Pantry" },
+            { type: "bookcase", label: "Bookcase" },
             { type: "obstruction", label: "Obstruction" },
             { type: "window", label: "Window" },
             { type: "door_opening", label: "Doorway" },
@@ -1211,6 +1314,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const hMm    = item.height_mm || 720;
             // Kickboard lifts the cabinet body off the floor by kickboard height
             const kbMm   = kickboardOffsetMm(item);
+            // …except an INSET plinth (bookcase), which lifts nothing: the sides
+            // run to the floor and the rail sits between them, under a raised
+            // bottom board. Drawn inside the body rather than under it.
+            const plinthMm = kickboardIsInset(item) ? kickboardHeightMm(item) : 0;
             // Filler panel closes the gap between a wall/tall cabinet's top
             // and the ceiling, or the nearest obstruction above it if closer
             const fillerMm = ((item.item_type === "wall_cabinet" || item.item_type === "tall_cabinet" || item.item_type === "corner_tall_cabinet") && item.has_filler_panel)
@@ -1227,6 +1334,12 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const isSelected = item.id === selectedId;
             const isDragging = drag?.itemId === item.id;
             const shelves    = getShelfPositions(item);
+            // Shelves are their own board, picked separately from the carcass —
+            // most obviously on a bookcase, where the two colours are the whole
+            // point. With "show colours" on, paint them with the shelf tile
+            // instead of leaving them a tint of the carcass colour. Only on an
+            // open unit: behind a door you'd never see them anyway.
+            const shelfTile = (item.front_type || "none") === "none" ? tileFillFor(item, "shelf") : null;
             const cx = svgX + svgW / 2;
             // Rangehood housing/channel — full carcass depth, so this is
             // purely a width/height split of the elevation, not a depth
@@ -1252,6 +1365,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const fs = Math.min(Math.max(svgW / (shortLabel.length * 0.72), 7), 12);
             const canDrag = DRAGGABLE_TYPES.has(item.item_type);
             const isObstruction = item.item_type === "obstruction";
+            // Shelf & Rail is not a box — it's a board on cleats. It gets its
+            // own drawing below instead of the generic carcass frame.
+            const isShelfRail = item.item_type === "shelf_rail";
             // Windows & doorways are decorative architectural items — no
             // manufactured carcass, front or cut list; drawn with their own
             // frame/glass symbol instead of the obstruction hazard hatch.
@@ -1288,11 +1404,26 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   rx={2} />
                 {/* Colour-tile face wash (under the door/drawer detail, over
                     the body tint) — only when "show colours" resolves a tile. */}
-                {faceFillFor(item) && !isDecorative && (
+                {/* A corner cabinet's face is a door zone plus a return zone
+                    drawn separately, so it keeps the single-tile wash. */}
+                {isCorner && faceFillFor(item) && !isDecorative && (
                   <rect x={svgX} y={svgY} width={svgW} height={svgH}
                     fill={faceFillFor(item)} fillOpacity={isDragging ? 0.55 : 0.9}
                     rx={2} style={{ pointerEvents: "none" }} />
                 )}
+                {/* Everything else: the CARCASS is the base — it's what's
+                    actually behind the fronts — and each front is then painted
+                    over its own band, so an open bay stays carcass-coloured. */}
+                {!isCorner && !isDecorative && !isShelfRail && tileFillFor(item, "carcass") && (
+                  <rect x={svgX} y={svgY} width={svgW} height={svgH}
+                    fill={tileFillFor(item, "carcass")} fillOpacity={isDragging ? 0.55 : 0.9}
+                    rx={2} style={{ pointerEvents: "none" }} />
+                )}
+                {!isCorner && !isDecorative && frontTileBands(item, svgH).map((band, i) => (
+                  <rect key={`front-tile-${i}`} x={svgX} y={svgY + band.y} width={svgW} height={band.h}
+                    fill={band.fill} fillOpacity={isDragging ? 0.55 : 0.9}
+                    style={{ pointerEvents: "none" }} />
+                ))}
                 {isObstruction && (
                   <rect x={svgX} y={svgY} width={svgW} height={svgH}
                     fill="url(#obstructionHatchElev)"
@@ -1356,18 +1487,58 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     style={{ pointerEvents: "none" }} />
                 )}
 
-                {!isDecorative && (
+                {/* The carcass boards, drawn the way they're cut: the SIDES run
+                    the full height (to the floor on a floor-standing unit) and
+                    the top and bottom are captured between them. They used to
+                    be drawn as four full-length bars overlapping at the
+                    corners, which left the joint ambiguous. */}
+                {/* Shelf & Rail — the shelf board across the top of the span,
+                    the front rail below its leading edge, and a cleat tick at
+                    each end showing what it lands on. */}
+                {isShelfRail && (() => {
+                  const cfg = shelfRailConfig(item);
+                  const shelfPx = Math.max((Number(item.carcass_thickness_mm) || 18) * scale, 1.5);
+                  const railPx = Math.max(cfg.rail_height_mm * scale, 1.5);
+                  const tick = (atX, on) => on ? (
+                    <rect x={atX - 1.5} y={svgY + shelfPx} width={3} height={railPx}
+                      fill={fill} fillOpacity={0.75} style={{ pointerEvents: "none" }} />
+                  ) : null;
+                  return (
+                    <g style={{ pointerEvents: "none" }}>
+                      {/* Shelf board */}
+                      <rect x={svgX} y={svgY} width={svgW} height={shelfPx}
+                        fill={tileFillFor(item, "carcass") || fill} fillOpacity={tileFillFor(item, "carcass") ? 0.95 : 0.7} />
+                      {/* Front rail, dropping below the shelf */}
+                      {cfg.front_rail.on && (
+                        <rect x={svgX} y={svgY + shelfPx} width={svgW} height={railPx}
+                          fill={fill} fillOpacity={0.28} stroke={fill} strokeWidth={0.5} strokeOpacity={0.6} />
+                      )}
+                      {tick(svgX + 1.5, cfg.end_cleat_left)}
+                      {tick(svgX + svgW - 1.5, cfg.end_cleat_right)}
+                      {/* An unsupported end is the one thing worth shouting about */}
+                      {cfg.left_support === "open" && (
+                        <text x={svgX + 3} y={svgY - 3} fontSize={7} fill="#dc2626" fontWeight={700}>⛔</text>
+                      )}
+                      {cfg.right_support === "open" && (
+                        <text x={svgX + svgW - 10} y={svgY - 3} fontSize={7} fill="#dc2626" fontWeight={700}>⛔</text>
+                      )}
+                    </g>
+                  );
+                })()}
+
+                {!isDecorative && !isShelfRail && (
                   <>
-                    {/* Side panels */}
+                    {/* Side panels — full height */}
                     <rect x={svgX} y={svgY} width={T} height={svgH}
                       fill={fill} fillOpacity={0.45} style={{ pointerEvents: "none" }} />
                     <rect x={svgX + svgW - T} y={svgY} width={T} height={svgH}
                       fill={fill} fillOpacity={0.45} style={{ pointerEvents: "none" }} />
-                    {/* Top panel */}
-                    <rect x={svgX} y={svgY} width={svgW} height={T}
+                    {/* Top panel — between the sides */}
+                    <rect x={svgX + T} y={svgY} width={Math.max(svgW - 2 * T, 0)} height={T}
                       fill={fill} fillOpacity={0.45} style={{ pointerEvents: "none" }} />
-                    {/* Bottom panel */}
-                    <rect x={svgX} y={svgY + svgH - T} width={svgW} height={T}
+                    {/* Bottom panel — between the sides, raised onto the plinth
+                        when there is one */}
+                    <rect x={svgX + T} y={svgY + svgH - plinthMm * scale - T} width={Math.max(svgW - 2 * T, 0)} height={T}
                       fill={fill} fillOpacity={0.45} style={{ pointerEvents: "none" }} />
                   </>
                 )}
@@ -1407,14 +1578,14 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                           <rect
                             x={svgX + T} y={sy}
                             width={Math.max(rangehoodChannel.left - (svgX + T), 0)} height={T}
-                            fill={fill} fillOpacity={isSelected ? 0.55 : 0.3}
+                            fill={shelfTile || fill} fillOpacity={shelfTile ? 0.9 : (isSelected ? 0.55 : 0.3)}
                             style={{ cursor: isSelected ? "ns-resize" : "default" }}
                             onPointerDown={isSelected ? (e) => handleShelfPointerDown(e, item, si, shelfH) : undefined}
                           />
                           <rect
                             x={rangehoodChannel.right} y={sy}
                             width={Math.max((svgX + svgW - T) - rangehoodChannel.right, 0)} height={T}
-                            fill={fill} fillOpacity={isSelected ? 0.55 : 0.3}
+                            fill={shelfTile || fill} fillOpacity={shelfTile ? 0.9 : (isSelected ? 0.55 : 0.3)}
                             style={{ cursor: isSelected ? "ns-resize" : "default" }}
                             onPointerDown={isSelected ? (e) => handleShelfPointerDown(e, item, si, shelfH) : undefined}
                           />
@@ -1423,7 +1594,8 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                         <rect
                           x={svgX + T} y={sy}
                           width={Math.max(svgW - 2 * T, 0)} height={T}
-                          fill={fill} fillOpacity={isSelected ? 0.55 : 0.3}
+                          fill={shelfTile || fill} fillOpacity={shelfTile ? 0.9 : (isSelected ? 0.55 : 0.3)}
+                          stroke={shelfTile ? fill : "none"} strokeWidth={shelfTile ? 0.4 : 0} strokeOpacity={0.5}
                           style={{ cursor: isSelected ? "ns-resize" : "default" }}
                           onPointerDown={isSelected ? (e) => handleShelfPointerDown(e, item, si, shelfH) : undefined}
                         />
@@ -1585,6 +1757,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
                   const totalMm = sections.reduce((s, sec) => s + (Number(sec.height_mm) || 0), 0) || 1;
                   const pxPerMm = svgH / totalMm;
+                  // Bay geometry in cabinet-bottom-relative mm, shared with the
+                  // cut list and the 3D view so a dragged shelf lands in the
+                  // same place in all three.
+                  const bayLayout = mixedBaySections(item);
                   let cursorMm = 0;
                   return (
                     <>
@@ -1595,19 +1771,63 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                         if (secH <= 0) return null;
                         return sec.type === "appliance" ? (
                           <ApplianceMock key={idx} x={svgX} y={secY} w={svgW} h={secH} appliance={sec.appliance || "oven"} fill={fill} />
-                        ) : sec.type === "open" ? (
-                          <g key={idx} style={{ pointerEvents: "none" }}>
-                            <rect x={svgX} y={secY} width={svgW} height={secH}
-                              fill="none" stroke={fill} strokeWidth={0.6} strokeDasharray="4 3" strokeOpacity={0.4} />
-                            {svgW > 30 && secH > 14 && (
-                              <text x={svgX + svgW / 2} y={secY + secH / 2}
-                                textAnchor="middle" dominantBaseline="middle"
-                                fontSize={7} fill={fill} fillOpacity={0.45} letterSpacing={0.5}>
-                                OPEN
-                              </text>
-                            )}
-                          </g>
-                        ) : sec.type === "drawers" ? (
+                        ) : sec.type === "open" ? (() => {
+                          // An open bay carries its own shelves, and they drag
+                          // exactly like a normal cabinet shelf — just clamped
+                          // to their own bay. Positions come from the shared
+                          // bay helper (stored heights, else evenly spread), so
+                          // the drawing, the cut list and the 3D view agree.
+                          const bay = bayLayout[idx];
+                          const local = localShelves[`${item.id}:${idx}`];
+                          const heights = (local && local.length === (bay?.shelfQty || 0)) ? local : (bay?.shelfHeightsMm || []);
+                          const shelfTile = tileFillFor(item, "shelf");
+                          // Bay heights are absolute from the cabinet bottom, so
+                          // convert straight through the carcass floor datum.
+                          const carcassFloorY = svgY + svgH;
+                          return (
+                            <g key={idx}>
+                              <rect x={svgX} y={secY} width={svgW} height={secH}
+                                fill="none" stroke={fill} strokeWidth={0.6} strokeDasharray="4 3" strokeOpacity={0.4}
+                                style={{ pointerEvents: "none" }} />
+                              {heights.map((hMmAbs, j) => {
+                                const sy = carcassFloorY - hMmAbs * scale - T / 2;
+                                return (
+                                  <g key={`bs${j}`}>
+                                    <rect x={svgX + T} y={sy}
+                                      width={Math.max(svgW - 2 * T, 0)} height={T}
+                                      fill={shelfTile || fill} fillOpacity={shelfTile ? 0.9 : (isSelected ? 0.55 : 0.3)}
+                                      stroke={shelfTile ? fill : "none"} strokeWidth={shelfTile ? 0.4 : 0} strokeOpacity={0.5}
+                                      style={{ cursor: isSelected ? "ns-resize" : "default" }}
+                                      onPointerDown={isSelected ? (e) => handleBayShelfPointerDown(e, item, bay, j, hMmAbs) : undefined} />
+                                    {isSelected && (
+                                      <rect x={cx - 12} y={sy + T * 0.1} width={24} height={T * 0.8}
+                                        fill={fill} fillOpacity={0.7} rx={1}
+                                        style={{ cursor: "ns-resize", pointerEvents: "none" }} />
+                                    )}
+                                    {isSelected && svgW > 50 && (
+                                      <g style={{ pointerEvents: "none" }}>
+                                        <rect x={svgX + svgW + 3} y={sy - 7} width={38} height={13} fill="rgba(0,0,0,0.75)" rx={2} />
+                                        <text x={svgX + svgW + 22} y={sy + T / 2}
+                                          textAnchor="middle" dominantBaseline="middle"
+                                          fontSize={8} fill="#f59e0b">
+                                          {Math.round(hMmAbs)}mm
+                                        </text>
+                                      </g>
+                                    )}
+                                  </g>
+                                );
+                              })}
+                              {svgW > 30 && secH > 14 && heights.length === 0 && (
+                                <text x={svgX + svgW / 2} y={secY + secH / 2}
+                                  textAnchor="middle" dominantBaseline="middle"
+                                  fontSize={7} fill={fill} fillOpacity={0.45} letterSpacing={0.5}
+                                  style={{ pointerEvents: "none" }}>
+                                  OPEN
+                                </text>
+                              )}
+                            </g>
+                          );
+                        })() : sec.type === "drawers" ? (
                           <DrawerBank key={idx} x={svgX} y={secY} w={svgW} h={secH} cfg={sec.drawer || {}} fill={fill} />
                         ) : (
                           <DoorRowWithGap key={idx} x={svgX} y={secY} w={svgW} h={secH} cfg={sec.door || {}} fill={fill} scale={scale} floor={floor} />
@@ -1649,6 +1869,27 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     style={{ pointerEvents: "none" }}>
                     {item.shelf_qty} shelf{item.shelf_qty !== 1 ? "ves" : ""}
                   </text>
+                )}
+
+                {/* Inset plinth — a recessed rail BETWEEN the sides at the foot
+                    of the bookcase, under the raised bottom board. */}
+                {plinthMm > 0 && (
+                  <>
+                    <rect
+                      x={svgX + T} y={svgY + svgH - plinthMm * scale}
+                      width={Math.max(svgW - 2 * T, 0)} height={plinthMm * scale}
+                      fill="rgba(245,158,11,0.45)"
+                      stroke="rgba(245,158,11,0.7)"
+                      strokeWidth={0.5}
+                      style={{ pointerEvents: "none" }}
+                    />
+                    {tileFillFor(item, "kickboard") && (
+                      <rect x={svgX + T} y={svgY + svgH - plinthMm * scale}
+                        width={Math.max(svgW - 2 * T, 0)} height={plinthMm * scale}
+                        fill={tileFillFor(item, "kickboard")} fillOpacity={0.9}
+                        style={{ pointerEvents: "none" }} />
+                    )}
+                  </>
                 )}
 
                 {/* Kickboard / plinth strip — sits below the cabinet body, fills space to the floor */}

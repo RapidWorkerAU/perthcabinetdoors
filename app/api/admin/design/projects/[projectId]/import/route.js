@@ -3,15 +3,16 @@ import { saveQuoteLine, deleteQuoteLine } from "../../../../quotes/[id]/_quote-l
 import { roundMoney, calculateQuoteLine, calculateQuoteTotals, GST_RATE } from "../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../lib/pcd-business-defaults";
 import { calculateCabinetTotals, normalizeCabinetConfig } from "../../../../../../../lib/pcd-cabinet-utils";
-import { computeKickboardRun, isCornerType } from "../../../../../../../lib/pcd-kickboard-utils";
+import { computeKickboardRun, kickboardIsInset, isCornerType } from "../../../../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, splitBackPanelWidths, backPanelSegment } from "../../../../../../../lib/pcd-backpanel-utils";
 import { computeBottomPanelRun, bottomPanelSegment } from "../../../../../../../lib/pcd-bottompanel-utils";
 import { computeFillerPanelRun, fillerPanelSegment, fillerPanelGapMm } from "../../../../../../../lib/pcd-fillerpanel-utils";
-import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote, frontWidthMm } from "../../../../../../../lib/pcd-door-utils";
+import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote, frontWidthMm, bayShelfCount, bayShelfHeightsMm } from "../../../../../../../lib/pcd-door-utils";
 import { runnerLabel, runnerUnitCost } from "../../../../../../../lib/pcd-drawer-utils";
 import { materialLabelForType } from "../../../../../../../lib/pcd-colour-library";
 import { finishPanelVerticalSpanMm } from "../../../../../../../lib/pcd-finishpanel-utils";
 import { floatingShelfBoards, floatingShelfStyle } from "../../../../../../../lib/pcd-floating-shelf-utils";
+import { shelfRailBoards, shelfRailStyle, cleatStyle, shelfRailWarnings } from "../../../../../../../lib/pcd-shelf-rail-utils";
 import {
   computeBenchtopRun,
   benchtopDepthMm,
@@ -30,7 +31,7 @@ async function getProjectId(params) {
   return resolved?.projectId;
 }
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet"];
+const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "bookcase"];
 const BENCHTOP_QUOTE_TYPES = new Set(["base_cabinet", "corner_base_cabinet", "blind_corner_cabinet"]);
 
 const TYPE_LABELS = {
@@ -40,6 +41,7 @@ const TYPE_LABELS = {
   corner_base_cabinet: "Corner Base Cabinet",
   corner_tall_cabinet: "Corner Pantry",
   blind_corner_cabinet: "Blind Corner Cabinet",
+  bookcase: "Bookcase",
   door: "Door",
   drawer_front: "Drawer Front",
   panel: "Panel",
@@ -247,12 +249,15 @@ function designItemToLine(item) {
       back_panel_included: item.back_panel_included ?? true,
       back_panel_material: item.material,
       back_panel_thickness_mm: item.back_panel_thickness_mm ?? 16,
-      shelf_qty: item.shelf_qty ?? 0,
+      // Shelves sitting inside an OPEN bay of a mixed front count too. The
+      // cabinet cost is driven off shelf_qty, so leaving them out drew and cut
+      // shelves the quote never charged for.
+      shelf_qty: (item.shelf_qty ?? 0) + bayShelfCount(item),
       shelf_material: shelfMaterial,
       shelf_finish: shelfFinish,
       shelf_colour: shelfColour,
       shelf_thickness_mm: item.shelf_thickness_mm ?? 16,
-      shelf_heights_mm: item.shelf_heights_mm || [],
+      shelf_heights_mm: [...(item.shelf_heights_mm || []), ...bayShelfHeightsMm(item)],
       has_rangehood: item.has_rangehood ?? false,
       rangehood_housing_height_mm: item.rangehood_housing_height_mm ?? 0,
       rangehood_channel_width_mm: item.rangehood_channel_width_mm ?? 0,
@@ -555,6 +560,10 @@ function kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room) {
   // is just that leg's own open width, with no special-casing needed here.
   const { legs } = computeKickboardRun(item, selectedCabinetItems, room);
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
+  // A bookcase's plinth is a rail housed BETWEEN its sides, so its width is
+  // already the inner span (see kickboardSpanMm) and it never joins a run.
+  const inset = kickboardIsInset(item);
+  const partName = inset ? "Plinth Rail" : "Kickboard";
 
   const lines = [];
   for (const leg of legs) {
@@ -563,9 +572,9 @@ function kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room) {
     const legSuffix = isCorner ? (leg.leg === "secondary" ? " (Wall 2)" : " (Wall 1)") : "";
     lines.push({
       product_type: "Panel",
-      product_name: "Kickboard",
-      description: traceLabel ? `Kickboard — ${traceLabel}${legSuffix}` : `Kickboard${legSuffix}`,
-      notes: "Kickboard panel.",
+      product_name: partName,
+      description: traceLabel ? `${partName} — ${traceLabel}${legSuffix}` : `${partName}${legSuffix}`,
+      notes: inset ? "Plinth rail — set back between the bookcase sides, under the bottom shelf." : "Kickboard panel.",
       width_mm: widthMm,
       height_mm: item.kickboard_height_mm || 120,
       qty: runAwareQty(item, leg.count),
@@ -1177,6 +1186,37 @@ function floatingShelfLinesForItem(item, roomName) {
   }));
 }
 
+// A Shelf & Rail imports as one Panel line per board — the shelf on its own
+// board rate, the cleats and front rail on theirs (which is the same rate
+// unless a separate 18mm colour was picked for them). Each line carries the
+// fixing note for that piece, so the bench knows which face to screw into and
+// how far the rail is set back without going back to the drawing.
+function shelfRailLinesForItem(item, roomName) {
+  if (item.item_type !== "shelf_rail") return [];
+  const shelf = shelfRailStyle(item);
+  const cleat = cleatStyle(item);
+  const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
+  const qty = item.qty || 1;
+  return shelfRailBoards(item).map((board) => {
+    const style = board.material === "cleat" ? cleat : shelf;
+    return {
+      product_type: QUOTE_PRODUCT_TYPES.panel,
+      product_name: board.label,
+      description: traceLabel ? `${board.label} — ${traceLabel}` : board.label,
+      notes: [String(item.notes || "").trim(), board.note].filter(Boolean).join(" — "),
+      width_mm: board.width_mm,
+      height_mm: board.height_mm,
+      qty,
+      material: style.material,
+      finish: style.finish,
+      colour: style.colour,
+      thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
+      unit_cost_per_sqm_ex_gst: style.cost_per_sqm || 0,
+      unit_cost_mode: "auto",
+    };
+  });
+}
+
 function isMissingOrZero(value) {
   return !(Number(value) > 0);
 }
@@ -1187,6 +1227,15 @@ function isMissingOrZero(value) {
 // with no warning at all, understating the quote with nothing for staff to
 // notice.
 function isStandaloneUnconfigured(item) {
+  if (item.item_type === "shelf_rail") {
+    // Prices off its own board rate (cost_per_sqm_carcass), and its height is
+    // derived — so span, depth and the board are what have to be there.
+    return (
+      !String(item.material || "").trim() ||
+      isMissingOrZero(item.width_mm) || isMissingOrZero(item.depth_mm) ||
+      isMissingOrZero(item.cost_per_sqm_carcass)
+    );
+  }
   if (item.item_type === "floating_shelf") {
     return (
       !String(item.material || "").trim() ||
@@ -1208,6 +1257,13 @@ function isStandaloneUnconfigured(item) {
 // flagged — which of material / size / board rate is the problem.
 function standaloneReason(item) {
   const material = !String(item.material || "").trim();
+  if (item.item_type === "shelf_rail") {
+    return missingReason({
+      material,
+      dims: isMissingOrZero(item.width_mm) || isMissingOrZero(item.depth_mm),
+      rate: isMissingOrZero(item.cost_per_sqm_carcass),
+    });
+  }
   if (item.item_type === "floating_shelf") {
     return missingReason({
       material,
@@ -1302,6 +1358,8 @@ function generateImportLines({ importableItems, selections, selectedCabinetItems
     } else if (sel.include) {
       if (item.item_type === "floating_shelf") {
         add("include", floatingShelfLinesForItem(item, roomNameById.get(item.room_id)));
+      } else if (item.item_type === "shelf_rail") {
+        add("include", shelfRailLinesForItem(item, roomNameById.get(item.room_id)));
       } else {
         add("include", [designItemToLine(item)]);
       }
@@ -1404,8 +1462,19 @@ function computeItemWarnings({ importableItems, selections, selectedCabinetItems
           warnings.push({ itemId: item.id, label: `${traceLabel} (mixed front — ${which}) — ${missingReason({ material: noMat, rate: noRate })}.` });
         }
       }
-    } else if (sel.include && isStandaloneUnconfigured(item)) {
-      warnings.push({ itemId: item.id, label: `${traceLabel} — ${standaloneReason(item)}.` });
+    } else if (sel.include) {
+      // A Shelf & Rail carries its own structural checks — an end with nothing
+      // to land on, or a span past the guide for its board. They're surfaced
+      // here so they're seen at the point the job becomes a quote, not just
+      // while drawing.
+      if (item.item_type === "shelf_rail") {
+        for (const w of shelfRailWarnings(item)) {
+          warnings.push({ itemId: item.id, label: `${traceLabel} — ${w.message}` });
+        }
+      }
+      if (isStandaloneUnconfigured(item)) {
+        warnings.push({ itemId: item.id, label: `${traceLabel} — ${standaloneReason(item)}.` });
+      }
     }
   }
   return warnings;
