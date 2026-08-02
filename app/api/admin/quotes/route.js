@@ -5,6 +5,7 @@ import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals } from "../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
+import { isMissingSupplierNameSchemaError, withoutSupplierName } from "./[id]/_quote-line-save";
 
 function makeQuoteNumber() {
   return `PCD-Q-${new Date().getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -56,7 +57,7 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       client_notes: payload.client_notes || null,
       assumptions: payload.assumptions || null,
       exclusions: payload.exclusions || null,
-      terms: payload.terms || null,
+      terms: payload.terms ?? businessDefaults.quote_terms ?? null,
     },
     lines: totals.lines,
   };
@@ -129,7 +130,11 @@ export async function POST(request) {
         quote_id: quote.id,
         sort_order: index,
       }));
-      const { error: lineError } = await context.supabase.from("pcd_quote_line_items").insert(rows);
+      let { error: lineError } = await context.supabase.from("pcd_quote_line_items").insert(rows);
+      if (isMissingSupplierNameSchemaError(lineError)) {
+        const retry = await context.supabase.from("pcd_quote_line_items").insert(rows.map(withoutSupplierName));
+        lineError = retry.error;
+      }
       if (lineError) throw lineError;
     }
 

@@ -3,7 +3,7 @@ import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activi
 import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals } from "../../../../../lib/pcd-quote-utils";
-import { cabinetConfigRow, dbNumber, quoteLineRow } from "./_quote-line-save";
+import { cabinetConfigRow, dbNumber, isMissingSupplierNameSchemaError, quoteLineRow, withoutSupplierName } from "./_quote-line-save";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -96,7 +96,7 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       client_notes: payload.client_notes || null,
       assumptions: payload.assumptions || null,
       exclusions: payload.exclusions || null,
-      terms: payload.terms || null,
+      terms: payload.terms ?? businessDefaults.quote_terms ?? null,
     },
     lines: totals.lines.map((line, index) => ({
       ...line,
@@ -176,12 +176,20 @@ export async function PUT(request, { params }) {
       if (line.id && existingLineIds.has(line.id)) row.id = line.id;
       return row;
     });
-    const { data: savedLines, error: savedLinesError } = lineRows.length
+    let { data: savedLines, error: savedLinesError } = lineRows.length
       ? await context.supabase
           .from("pcd_quote_line_items")
           .upsert(lineRows, { onConflict: "id" })
           .select("*")
       : { data: [], error: null };
+    if (isMissingSupplierNameSchemaError(savedLinesError)) {
+      const retry = await context.supabase
+        .from("pcd_quote_line_items")
+        .upsert(lineRows.map(withoutSupplierName), { onConflict: "id" })
+        .select("*");
+      savedLines = retry.data || [];
+      savedLinesError = retry.error;
+    }
     if (savedLinesError) throw savedLinesError;
 
     const savedLinesBySortOrder = new Map((savedLines || []).map((line) => [line.sort_order, line]));

@@ -113,7 +113,7 @@ const emptyForm = {
   client_notes: "",
   assumptions: "",
   exclusions: "",
-  terms: "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.",
+  terms: "",
   lines: [emptyLineWithDefaults()],
   attachments: [],
 };
@@ -144,7 +144,7 @@ function lineFromQuoteLine(line) {
     supplier_name: line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || (line.material ? COLOUR_SUPPLIERS[0] : ""),
     profile_type: line.profile_type ?? "",
     hinge_holes: Boolean(line.hinge_holes),
-    hinge_supply: Boolean(line.hinge_supply),
+    hinge_supply: false,
     hinge_qty: line.hinge_qty ?? "",
     product_unit_cost_ex_gst: line.product_unit_cost_ex_gst ?? "",
     unit_cost_mode: line.unit_cost_mode === "auto" ? "auto" : "manual",
@@ -192,7 +192,7 @@ function formFromQuote(quote) {
     client_notes: quote.client_notes || "",
     assumptions: quote.assumptions || "",
     exclusions: quote.exclusions || "",
-    terms: quote.terms || emptyForm.terms,
+    terms: quote.terms ?? "",
     lines: lines.length ? lines : [{ ...emptyLine }],
     attachments: [...(quote.pcd_quote_attachments || [])].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -227,7 +227,7 @@ function mergeQuoteIntoForm(current, quote) {
     client_notes: quote.client_notes || "",
     assumptions: quote.assumptions || "",
     exclusions: quote.exclusions || "",
-    terms: quote.terms || emptyForm.terms,
+    terms: quote.terms ?? "",
     lines: current.lines,
     attachments: current.attachments,
   };
@@ -327,14 +327,13 @@ function colourSrcForLine(line) {
 }
 
 function hasHingeConfig(line) {
-  return Boolean(line?.hinge_holes || line?.hinge_supply);
+  return Boolean(line?.hinge_holes);
 }
 
 function hingeConfigLines(line) {
   if (!hasHingeConfig(line)) return [];
   return [
     `Drilling: ${line.hinge_holes ? "Required" : "Not required"}`,
-    `Supply: ${line.hinge_supply ? "Required" : "Not required"}`,
     `Qty: ${line.hinge_qty || "Per door"}`,
   ];
 }
@@ -974,6 +973,7 @@ export default function QuoteEditor({ quoteId }) {
       if (!response.ok || !payload.ok) return;
       const nextDefaults = { ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults };
       setBusinessDefaults(nextDefaults);
+      const oldHardcodedTerms = "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.";
       setForm((current) => ({
         ...current,
         currency:
@@ -988,6 +988,10 @@ export default function QuoteEditor({ quoteId }) {
           current.worker_hourly_rate === "" || current.worker_hourly_rate === null || current.worker_hourly_rate === undefined
             ? nextDefaults.worker_hourly_rate
             : current.worker_hourly_rate,
+        terms:
+          !current.terms || current.terms === oldHardcodedTerms
+            ? nextDefaults.quote_terms || ""
+            : current.terms,
         lines: (current.lines || []).map((line) => ({
           ...line,
           markup_percent:
@@ -1073,7 +1077,6 @@ export default function QuoteEditor({ quoteId }) {
     setHingeModal({
       lineIndex: index,
       hinge_holes: Boolean(line.hinge_holes),
-      hinge_supply: Boolean(line.hinge_supply),
       hinge_qty: line.hinge_qty || "",
     });
   }
@@ -1082,7 +1085,7 @@ export default function QuoteEditor({ quoteId }) {
     setHingeModal((current) => {
       if (!current) return current;
       const next = { ...current, [field]: value };
-      if ((field === "hinge_holes" || field === "hinge_supply") && !next.hinge_holes && !next.hinge_supply) {
+      if (field === "hinge_holes" && !next.hinge_holes) {
         next.hinge_qty = "";
       }
       return next;
@@ -1091,10 +1094,10 @@ export default function QuoteEditor({ quoteId }) {
 
   function saveHingeModal() {
     if (!hingeModal) return;
-    const hasRequirements = hingeModal.hinge_holes || hingeModal.hinge_supply;
+    const hasRequirements = hingeModal.hinge_holes;
     const patch = {
       hinge_holes: Boolean(hingeModal.hinge_holes),
-      hinge_supply: Boolean(hingeModal.hinge_supply),
+      hinge_supply: false,
       hinge_qty: hasRequirements ? hingeModal.hinge_qty : "",
     };
     if (hingeModal.lineIndex === editableLineIndex) {
@@ -1324,12 +1327,11 @@ export default function QuoteEditor({ quoteId }) {
       next.profile = "";
     }
 
-    if (
-      (Object.prototype.hasOwnProperty.call(patch, "hinge_supply") ||
-        Object.prototype.hasOwnProperty.call(patch, "hinge_holes")) &&
-      !next.hinge_supply &&
-      !next.hinge_holes
-    ) {
+    if (Object.prototype.hasOwnProperty.call(patch, "hinge_holes")) {
+      next.hinge_supply = false;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, "hinge_holes") && !next.hinge_holes) {
       next.hinge_qty = "";
     }
 
@@ -2661,7 +2663,6 @@ export default function QuoteEditor({ quoteId }) {
           {[
             ["Product lines", totals.product_lines_cost_ex_gst],
             [`Hinge drilling (${totals.hinge_drilling_qty || 0})`, totals.hinge_drilling_cost_ex_gst],
-            [`Hinge supply (${totals.hinge_supply_qty || 0})`, totals.hinge_supply_cost_ex_gst],
             ["Labour", totals.labour_cost_ex_gst],
             ["Travel", totals.travel_cost_ex_gst],
             ["Delivery", totals.delivery_cost_ex_gst],
@@ -2687,13 +2688,12 @@ export default function QuoteEditor({ quoteId }) {
     const groups = [
       {
         label: "Products and hardware",
-        desc: "Product lines, per-line markup, drilling, and hinge supply",
+        desc: "Product lines, per-line markup, and drilling",
         total: totals.material_cost_ex_gst,
         rows: [
           ["Product lines", totals.product_lines_cost_ex_gst],
           ["Line markups", totals.markup_amount_ex_gst],
           [`Hinge drilling (${totals.hinge_drilling_qty || 0})`, totals.hinge_drilling_cost_ex_gst],
-          [`Hinge supply (${totals.hinge_supply_qty || 0})`, totals.hinge_supply_cost_ex_gst],
         ],
       },
       {
@@ -3340,17 +3340,6 @@ export default function QuoteEditor({ quoteId }) {
                         <small>Add hinge hole drilling to this door line.</small>
                       </span>
                     </label>
-                    <label className={quoteStyles.hingeConfigToggle}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(activeLineConfig.hinge_supply)}
-                        onChange={(event) => updateLineConfigProduct({ hinge_supply: event.target.checked })}
-                      />
-                      <span>
-                        <strong>Hinge supply required</strong>
-                        <small>Add supplied hinges to this door line.</small>
-                      </span>
-                    </label>
                   </div>
                 )}
 
@@ -3361,7 +3350,7 @@ export default function QuoteEditor({ quoteId }) {
                       className={styles.fieldInput}
                       value={activeLineConfig.hinge_qty || ""}
                       onChange={(event) => updateLineConfigProduct({ hinge_qty: event.target.value })}
-                      disabled={!activeLineConfig.hinge_holes && !activeLineConfig.hinge_supply}
+                      disabled={!activeLineConfig.hinge_holes}
                     >
                       <option value="">Please select hinge quantity...</option>
                       <option>2 hinges</option>
@@ -3550,7 +3539,7 @@ export default function QuoteEditor({ quoteId }) {
                 Cancel
               </button>
               <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={saveHingeModal}>
-                Save hinges
+                Save drilling
               </button>
             </>
           }
@@ -3567,24 +3556,13 @@ export default function QuoteEditor({ quoteId }) {
                 <small>Add hinge hole drilling to this door line.</small>
               </span>
             </label>
-            <label className={quoteStyles.hingeConfigToggle}>
-              <input
-                type="checkbox"
-                checked={hingeModal.hinge_supply}
-                onChange={(event) => updateHingeModal("hinge_supply", event.target.checked)}
-              />
-              <span>
-                <strong>Hinge supply required</strong>
-                <small>Add supplied hinges to this door line.</small>
-              </span>
-            </label>
             <label className={styles.fieldLabel}>
               Quantity
               <select
                 className={styles.fieldInput}
                 value={hingeModal.hinge_qty}
                 onChange={(event) => updateHingeModal("hinge_qty", event.target.value)}
-                disabled={!hingeModal.hinge_holes && !hingeModal.hinge_supply}
+                disabled={!hingeModal.hinge_holes}
               >
                 <option value="">Please select hinge quantity...</option>
                 <option>2 hinges</option>
@@ -3592,7 +3570,7 @@ export default function QuoteEditor({ quoteId }) {
                 <option>4 hinges</option>
               </select>
             </label>
-            <p className={styles.tableMeta}>Leave both options unticked when no hinge items are required.</p>
+            <p className={styles.tableMeta}>Leave drilling unticked when no hinge holes are required. Add supplied hinges as separate hardware line items.</p>
           </div>
         </Modal>
       )}
@@ -3751,7 +3729,7 @@ export default function QuoteEditor({ quoteId }) {
                           <button type="button" onClick={() => openHingeModal(idx)}
                             className="inline-flex items-center gap-2 text-[13px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[6px] px-3 h-[44px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
                           >
-                            <span>{hasHingeConfig(line) ? `Drill: ${line.hinge_holes ? 'yes' : 'no'} · Supply: ${line.hinge_supply ? 'yes' : 'no'}` : 'Configure hinges'}</span>
+                            <span>{hasHingeConfig(line) ? `Drill: ${line.hinge_holes ? 'yes' : 'no'}` : 'Configure drilling'}</span>
                             <span>↗</span>
                           </button>
                         </div>

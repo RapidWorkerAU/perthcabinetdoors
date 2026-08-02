@@ -67,7 +67,7 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     edge_mould: isEdgeProfileSelectionAvailable(line.edge_mould, line.material) ? dbText(line.edge_mould) : null,
     qty: dbNumber(line.qty, 1),
     hinge_holes: Boolean(line.hinge_holes),
-    hinge_supply: Boolean(line.hinge_supply),
+    hinge_supply: false,
     hinge_qty: dbText(line.hinge_qty),
     product_unit_cost_ex_gst: dbNumber(line.product_unit_cost_ex_gst),
     unit_cost_mode: line.unit_cost_mode === "auto" ? "auto" : "manual",
@@ -77,9 +77,9 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     calculated_unit_cost_ex_gst: dbNumber(line.calculated_unit_cost_ex_gst),
     material_cost_ex_gst: dbNumber(line.material_cost_ex_gst),
     hinge_drilling_cost_ex_gst: dbNumber(line.hinge_drilling_cost_ex_gst),
-    hinge_supply_cost_ex_gst: dbNumber(line.hinge_supply_cost_ex_gst),
+    hinge_supply_cost_ex_gst: 0,
     hinge_drilling_qty: dbNumber(line.hinge_drilling_qty),
-    hinge_supply_qty: dbNumber(line.hinge_supply_qty),
+    hinge_supply_qty: 0,
     labour_hours: dbNonNegativeNumber(line.labour_hours),
     worker_hourly_rate: dbNonNegativeNumber(line.worker_hourly_rate),
     labour_cost_ex_gst: dbNumber(line.labour_cost_ex_gst),
@@ -94,6 +94,29 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     client_note: dbText(line.client_note),
     notes: dbText(line.notes),
   };
+}
+
+export function isMissingSupplierNameSchemaError(error) {
+  const message = String(error?.message || "");
+  return error?.code === "PGRST204" && message.includes("supplier_name") && message.includes("pcd_quote_line_items");
+}
+
+export function withoutSupplierName(row) {
+  const { supplier_name: _supplierName, ...rest } = row;
+  return rest;
+}
+
+async function saveQuoteLineRow(supabase, row, { lineId, quoteId }) {
+  const query = lineId
+    ? () => supabase.from("pcd_quote_line_items").update(row).eq("id", lineId).eq("quote_id", quoteId).select("*").single()
+    : () => supabase.from("pcd_quote_line_items").insert(row).select("*").single();
+  const result = await query();
+  if (!isMissingSupplierNameSchemaError(result.error)) return result;
+
+  const fallbackRow = withoutSupplierName(row);
+  return lineId
+    ? await supabase.from("pcd_quote_line_items").update(fallbackRow).eq("id", lineId).eq("quote_id", quoteId).select("*").single()
+    : await supabase.from("pcd_quote_line_items").insert(fallbackRow).select("*").single();
 }
 
 export function cabinetConfigRow(config, quoteId, lineItemId) {
@@ -267,9 +290,7 @@ export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id
   };
   const row = quoteLineRow(calculatedLine, quoteId, sortOrder);
 
-  const result = lineId
-    ? await supabase.from("pcd_quote_line_items").update(row).eq("id", lineId).eq("quote_id", quoteId).select("*").single()
-    : await supabase.from("pcd_quote_line_items").insert(row).select("*").single();
+  const result = await saveQuoteLineRow(supabase, row, { lineId, quoteId });
 
   if (result.error) throw result.error;
 

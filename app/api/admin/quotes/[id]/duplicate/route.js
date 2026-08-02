@@ -4,6 +4,7 @@ import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../../../lib/pcd-business-defaults";
 import { calculateQuoteTotals } from "../../../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable } from "../../../../../../lib/quote-form-data";
+import { isMissingSupplierNameSchemaError, withoutSupplierName } from "../_quote-line-save";
 
 const LINE_COPY_FIELDS = [
   "product_type",
@@ -96,7 +97,7 @@ function quoteLineRow(line, quoteId, sortOrder) {
     edge_mould: isEdgeProfileSelectionAvailable(line.edge_mould, line.material) ? cleanText(line.edge_mould) : null,
     qty: numberValue(line.qty, 1),
     hinge_holes: Boolean(line.hinge_holes),
-    hinge_supply: Boolean(line.hinge_supply),
+    hinge_supply: false,
     hinge_qty: cleanText(line.hinge_qty),
     product_unit_cost_ex_gst: numberValue(line.product_unit_cost_ex_gst),
     unit_cost_mode: line.unit_cost_mode === "auto" ? "auto" : "manual",
@@ -106,9 +107,9 @@ function quoteLineRow(line, quoteId, sortOrder) {
     calculated_unit_cost_ex_gst: numberValue(line.calculated_unit_cost_ex_gst),
     material_cost_ex_gst: numberValue(line.material_cost_ex_gst),
     hinge_drilling_cost_ex_gst: numberValue(line.hinge_drilling_cost_ex_gst),
-    hinge_supply_cost_ex_gst: numberValue(line.hinge_supply_cost_ex_gst),
+    hinge_supply_cost_ex_gst: 0,
     hinge_drilling_qty: numberValue(line.hinge_drilling_qty),
-    hinge_supply_qty: numberValue(line.hinge_supply_qty),
+    hinge_supply_qty: 0,
     labour_hours: numberValue(line.labour_hours),
     worker_hourly_rate: numberValue(line.worker_hourly_rate),
     labour_cost_ex_gst: numberValue(line.labour_cost_ex_gst),
@@ -187,7 +188,7 @@ export async function POST(_request, { params }) {
         client_notes: null,
         assumptions: null,
         exclusions: null,
-        terms: null,
+        terms: businessDefaults.quote_terms || null,
       })
       .select("*")
       .single();
@@ -195,7 +196,11 @@ export async function POST(_request, { params }) {
 
     if (totals.lines.length) {
       const rows = totals.lines.map((line, index) => quoteLineRow(line, newQuote.id, index));
-      const { error: insertLineError } = await context.supabase.from("pcd_quote_line_items").insert(rows);
+      let { error: insertLineError } = await context.supabase.from("pcd_quote_line_items").insert(rows);
+      if (isMissingSupplierNameSchemaError(insertLineError)) {
+        const retry = await context.supabase.from("pcd_quote_line_items").insert(rows.map(withoutSupplierName));
+        insertLineError = retry.error;
+      }
       if (insertLineError) throw insertLineError;
     }
 

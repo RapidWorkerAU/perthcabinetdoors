@@ -10,3 +10,5 @@ set supplier_name = case
 end
 where coalesce(supplier_name, '') = ''
   and coalesce(unit_cost_source_label, '') <> '';
+
+notify pgrst, 'reload schema';
