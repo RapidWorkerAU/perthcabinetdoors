@@ -2,7 +2,9 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
+import { IconArrowRight, IconEye, IconTrash } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
@@ -404,8 +406,12 @@ export default function QuoteRequestsManager() {
               <tr><td colSpan={8} className="py-12 text-center text-[13px] text-[#8b8a81]">No quote requests match this filter.</td></tr>
             )}
             {pageItems.map(request => (
-              <tr key={request.id} className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0">
-                <td className="px-4 py-[11px]">
+              <tr
+                key={request.id}
+                className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
+                onClick={() => setPreviewRequest(request)}
+              >
+                <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={selectedQuoteRequestIds.includes(request.id)}
@@ -418,7 +424,7 @@ export default function QuoteRequestsManager() {
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{request.delivery_suburb || '-'}</td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{formatAdminLabel(request.source || '-')}</td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{request.pcd_quote_request_line_items?.length || 0}</td>
-                <td className="px-4 py-[11px]">
+                <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
                   <select
                     value={request.status || 'new'}
                     onChange={e => updateStatus(request.id, e.target.value)}
@@ -429,40 +435,25 @@ export default function QuoteRequestsManager() {
                   </select>
                 </td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] whitespace-nowrap">{formatDate(request.created_at)}</td>
-                <td className="px-4 py-[11px] text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewRequest(request)}
-                      className="text-[12px] font-medium text-[#6b9e61] hover:underline"
-                    >
+                <td className="px-4 py-[11px] text-right" onClick={e => e.stopPropagation()}>
+                  <div className="flex justify-end">
+                    <ActionMenu label={`Open actions for quote request from ${request.customer_name || 'customer'}`}>
+                      <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewRequest(request)}>
                       Preview
-                    </button>
-                    {request.converted_quote_id ? (
-                      <button
-                        type="button"
-                        onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}
-                        className="text-[12px] font-medium text-[#6b9e61] hover:underline"
-                      >
-                        Open quote
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => convertToQuote(request.id)}
-                        className="text-[12px] font-medium text-[#6b9e61] hover:underline"
-                      >
-                        Convert
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => deleteQuoteRequests([request.id])}
-                      disabled={isDeleting}
-                      className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                    >
+                      </ActionMenuItem>
+                      {request.converted_quote_id ? (
+                        <ActionMenuItem icon={<IconArrowRight size={14} />} onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}>
+                          Open quote
+                        </ActionMenuItem>
+                      ) : (
+                        <ActionMenuItem icon={<IconArrowRight size={14} />} onClick={() => convertToQuote(request.id)}>
+                          Convert
+                        </ActionMenuItem>
+                      )}
+                      <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => deleteQuoteRequests([request.id])}>
                       Delete
-                    </button>
+                      </ActionMenuItem>
+                    </ActionMenu>
                   </div>
                 </td>
               </tr>
@@ -507,39 +498,24 @@ export default function QuoteRequestsManager() {
               <div><span className="text-[#8b8a81]">Items</span><p className="text-[#1a1a18]">{request.pcd_quote_request_line_items?.length || 0}</p></div>
               <div><span className="text-[#8b8a81]">Received</span><p className="text-[#1a1a18]">{formatDate(request.created_at)}</p></div>
             </div>
-            <div className="flex items-center justify-between pt-3 border-t border-[#edf4eb] mt-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setPreviewRequest(request)}
-                className="text-[12px] font-medium text-[#6b9e61] hover:underline"
-              >
-                Preview
-              </button>
+            <div className="flex items-center justify-end pt-3 border-t border-[#edf4eb] mt-3">
+              <ActionMenu label={`Open actions for quote request from ${request.customer_name || 'customer'}`}>
+                <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewRequest(request)}>
+                  Preview
+                </ActionMenuItem>
               {request.converted_quote_id ? (
-                <button
-                  type="button"
-                  onClick={() => router.push(`/admin/quotes/${request.converted_quote_id!}`)}
-                  className="text-[12px] font-medium text-[#6b9e61] hover:underline"
-                >
+                <ActionMenuItem icon={<IconArrowRight size={14} />} onClick={() => router.push(`/admin/quotes/${request.converted_quote_id!}`)}>
                   Open quote
-                </button>
+                </ActionMenuItem>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => convertToQuote(request.id)}
-                  className="text-[12px] font-medium text-[#6b9e61] hover:underline"
-                >
+                <ActionMenuItem icon={<IconArrowRight size={14} />} onClick={() => convertToQuote(request.id)}>
                   Convert
-                </button>
+                </ActionMenuItem>
               )}
-              <button
-                type="button"
-                onClick={() => deleteQuoteRequests([request.id])}
-                disabled={isDeleting}
-                className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-              >
-                Delete
-              </button>
+                <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => deleteQuoteRequests([request.id])}>
+                  Delete
+                </ActionMenuItem>
+              </ActionMenu>
             </div>
           </div>
         ))}

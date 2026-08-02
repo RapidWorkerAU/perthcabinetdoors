@@ -165,6 +165,8 @@ export default function QuoteApprovalClient() {
     { label: "Travel", description: "Travel allowance for the job.", amount: toNumber(quote?.travel_cost_ex_gst) },
     { label: "Delivery", description: "Delivery allowance for the supplied items.", amount: toNumber(quote?.delivery_cost_ex_gst) },
     { label: "Consumables", description: "Small job materials such as glue, screws, and sundries.", amount: toNumber(quote?.installation_cost_ex_gst) },
+    { label: "Painting", description: "Painting allowance for painted doors and drawer fronts.", amount: toNumber(quote?.painting_cost_ex_gst) },
+    { label: "Glass", description: "Glass allowance for doors or panels with glass inserts.", amount: toNumber(quote?.glass_cost_ex_gst) },
   ].filter((row) => row.always || row.amount > 0);
   const depositPercent = Number(quote?.deposit_percent || 0);
   const depositRequired = Boolean(quote?.deposit_required && depositPercent > 0);

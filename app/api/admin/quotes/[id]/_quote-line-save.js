@@ -56,6 +56,7 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     product_name: dbText(line.product_name),
     description: dbText(line.description),
     material: dbText(line.material),
+    supplier_name: dbText(line.supplier_name),
     thickness: dbText(line.thickness),
     width_mm: dbNullableNumber(line.width_mm),
     height_mm: dbNullableNumber(line.height_mm),
@@ -145,6 +146,8 @@ function quoteTotalsPatch(totals) {
     travel_cost_ex_gst: totals.travel_cost_ex_gst,
     delivery_cost_ex_gst: totals.delivery_cost_ex_gst,
     installation_cost_ex_gst: totals.installation_cost_ex_gst,
+    painting_cost_ex_gst: totals.painting_cost_ex_gst,
+    glass_cost_ex_gst: totals.glass_cost_ex_gst,
     other_cost_ex_gst: totals.other_cost_ex_gst,
     markup_percent: totals.markup_percent,
     markup_amount_ex_gst: totals.markup_amount_ex_gst,
@@ -160,9 +163,11 @@ function quoteTotalsPatchWithNewLine(quote, line) {
   const travelCostExGst = dbNumber(quote.travel_cost_ex_gst);
   const deliveryCostExGst = dbNumber(quote.delivery_cost_ex_gst);
   const installationCostExGst = dbNumber(quote.installation_cost_ex_gst);
+  const paintingCostExGst = dbNumber(quote.painting_cost_ex_gst);
+  const glassCostExGst = dbNumber(quote.glass_cost_ex_gst);
   const otherCostExGst = 0;
   const subtotalExGst = roundMoney(
-    materialCostExGst + labourCostExGst + travelCostExGst + deliveryCostExGst + installationCostExGst + otherCostExGst
+    materialCostExGst + labourCostExGst + travelCostExGst + deliveryCostExGst + installationCostExGst + paintingCostExGst + glassCostExGst + otherCostExGst
   );
   const gstAmount = roundMoney(subtotalExGst * gstRate);
 
@@ -177,6 +182,8 @@ function quoteTotalsPatchWithNewLine(quote, line) {
     travel_cost_ex_gst: travelCostExGst,
     delivery_cost_ex_gst: deliveryCostExGst,
     installation_cost_ex_gst: installationCostExGst,
+    painting_cost_ex_gst: paintingCostExGst,
+    glass_cost_ex_gst: glassCostExGst,
     other_cost_ex_gst: otherCostExGst,
     markup_percent: 0,
     markup_amount_ex_gst: roundMoney(dbNumber(quote.markup_amount_ex_gst) + dbNumber(line.markup_amount_ex_gst)),

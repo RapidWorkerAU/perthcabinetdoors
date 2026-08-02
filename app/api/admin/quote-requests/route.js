@@ -129,6 +129,13 @@ export async function POST(request) {
       .update({ status: "converted_to_quote", converted_quote_id: quote.id })
       .eq("id", quoteRequest.id);
 
+    if (quoteRequest.design_project_id) {
+      await context.supabase
+        .from("pcd_design_projects")
+        .update({ status: "converted_to_quote" })
+        .eq("id", quoteRequest.design_project_id);
+    }
+
     await logOrderActivity(context.supabase, {
       quote_id: quote.id,
       quote_request_id: quoteRequest.id,

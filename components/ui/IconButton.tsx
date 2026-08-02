@@ -5,13 +5,14 @@ import { cn } from '@/lib/utils'
 
 export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   label: string
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   variant?: 'ghost' | 'neutral' | 'primary' | 'danger'
   tooltip?: string
   children: React.ReactNode
 }
 
-const SIZE_CLASS: Record<'sm' | 'md' | 'lg', string> = {
+const SIZE_CLASS: Record<'xs' | 'sm' | 'md' | 'lg', string> = {
+  xs: 'h-[26px] w-[26px]',
   sm: 'h-8 w-8',
   md: 'h-10 w-10',
   lg: 'h-11 w-11',

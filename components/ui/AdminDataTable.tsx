@@ -20,6 +20,7 @@ export interface AdminDataTableProps<T> {
   columns: AdminDataTableColumn<T>[]
   getRowId: (row: T) => string
   getRowLabel?: (row: T) => string
+  onRowClick?: (row: T) => void
   loading?: boolean
   emptyTitle: string
   emptyDescription?: string
@@ -42,6 +43,7 @@ export function AdminDataTable<T>({
   columns,
   getRowId,
   getRowLabel,
+  onRowClick,
   loading = false,
   emptyTitle,
   emptyDescription,
@@ -164,9 +166,16 @@ export function AdminDataTable<T>({
               const rowId = getRowId(row)
               const rowLabel = getRowLabel?.(row) ?? rowId
               return (
-                <tr key={rowId} className="border-b border-[#edf4eb] transition-colors last:border-b-0 hover:bg-[#f5f8f4]">
+                <tr
+                  key={rowId}
+                  className={cn(
+                    'border-b border-[#edf4eb] transition-colors last:border-b-0 hover:bg-[#f5f8f4]',
+                    onRowClick && 'cursor-pointer'
+                  )}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
                   {selectable && (
-                    <td className="px-4 py-[11px]">
+                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(rowId)}
@@ -177,7 +186,11 @@ export function AdminDataTable<T>({
                     </td>
                   )}
                   {columns.map(column => (
-                    <td key={column.id} className={cn('px-4 py-[11px] text-[#1a1a18]', column.className)}>
+                    <td
+                      key={column.id}
+                      className={cn('px-4 py-[11px] text-[#1a1a18]', column.className)}
+                      onClick={column.id === 'actions' ? event => event.stopPropagation() : undefined}
+                    >
                       {column.cell(row)}
                     </td>
                   ))}

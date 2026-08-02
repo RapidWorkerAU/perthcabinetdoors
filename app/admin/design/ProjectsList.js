@@ -1,23 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconFolderOpen, IconTrash } from "@tabler/icons-react";
+import { IconFolderOpen, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useToast } from "@/components/ui/Toast";
 import { DataTable } from "@/components/ui/DataTable";
+import { StatusFilterBar } from "@/components/ui/StatusFilterBar";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
 
 const tw = {
   primaryBtn: "h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors",
+  mobileAddBtn: "h-[40px] w-[40px] p-0 sm:h-[36px] sm:w-auto sm:px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors inline-flex items-center justify-center gap-2",
   secondaryBtn: "h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
   fieldLabel: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
   fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
 };
 
 function statusPillClass(status) {
-  if (status === "ready") return "bg-[#edf4eb] text-[#2d5e28]";
-  if (status === "imported") return "bg-[#e6f1fb] text-[#185fa5]";
+  if (status === "converted_to_quote") return "bg-[#edf4eb] text-[#2d5e28]";
+  if (status === "submitted") return "bg-[#e6f1fb] text-[#185fa5]";
   return "bg-[#f1efe8] text-[#5a5a52]";
+}
+
+function designStatusLabel(status) {
+  if (status === "submitted") return "Sent";
+  if (status === "converted_to_quote") return "Converted to quote";
+  return formatAdminLabel(status || "draft");
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+}
+
+function roomCount(row) {
+  const rooms = row.pcd_design_rooms;
+  if (!Array.isArray(rooms)) return 0;
+  const counted = Number(rooms[0]?.count);
+  if (Number.isFinite(counted)) return counted;
+  return rooms.length;
 }
 
 export default function ProjectsList() {
@@ -28,6 +51,7 @@ export default function ProjectsList() {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [designScope, setDesignScope] = useState("ours");
 
   useEffect(() => { loadProjects(); }, []);
 
@@ -87,18 +111,42 @@ export default function ProjectsList() {
       key: "status", label: "Status",
       render: (row) => (
         <span className={`inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium ${statusPillClass(row.status)}`}>
-          {formatAdminLabel(row.status || "draft")}
+          {designStatusLabel(row.status || "draft")}
         </span>
       ),
     },
     {
       key: "rooms", label: "Rooms",
       render: (row) => {
-        const count = row.pcd_design_rooms?.length ?? 0;
+        const count = roomCount(row);
         return `${count} room${count !== 1 ? "s" : ""}`;
       },
     },
+    {
+      key: "created_at",
+      label: "Created",
+      render: (row) => formatDate(row.created_at),
+    },
+    {
+      key: "updated_at",
+      label: "Last edited",
+      render: (row) => formatDate(row.updated_at || row.created_at),
+    },
   ];
+
+  const scopeOptions = useMemo(() => {
+    const publicCount = projects.filter((project) => project.is_public).length;
+    const ourCount = projects.length - publicCount;
+    return [
+      { value: "ours", label: "Our designs", count: ourCount },
+      { value: "public", label: "Public designs", count: publicCount },
+    ];
+  }, [projects]);
+
+  const visibleProjects = useMemo(
+    () => projects.filter((project) => (designScope === "public" ? project.is_public : !project.is_public)),
+    [designScope, projects]
+  );
 
   const rowMenuItems = () => [
     { label: "Open designer", icon: <IconFolderOpen size={14} />, action: "open" },
@@ -117,14 +165,25 @@ export default function ProjectsList() {
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Design Projects</h1>
           <p className="text-[13px] text-[#5a5a52] mt-[2px]">Plan rooms and cabinets, then import them into a quote.</p>
         </div>
-        {!adding && (
-          <button type="button" className={tw.primaryBtn} onClick={() => setAdding(true)}>
-            + New Project
+        {!adding && designScope === "ours" && (
+          <button type="button" className={tw.mobileAddBtn} onClick={() => setAdding(true)} aria-label="New project">
+            <IconPlus size={16} aria-hidden="true" />
+            <span className="hidden sm:inline">New Project</span>
           </button>
         )}
       </div>
 
-      {adding && (
+      <StatusFilterBar
+        options={scopeOptions}
+        value={designScope}
+        onChange={(value) => {
+          setDesignScope(value);
+          setAdding(false);
+        }}
+        className="mb-4"
+      />
+
+      {adding && designScope === "ours" && (
         <div
           className="mb-4 bg-white border border-[#dbd8cc] rounded-[8px] p-4 flex items-end gap-3 flex-wrap"
           onKeyDown={(event) => {
@@ -155,14 +214,15 @@ export default function ProjectsList() {
 
       <DataTable
         columns={columns}
-        data={projects}
+        data={visibleProjects}
         loading={loading}
         searchPlaceholder="Search projects…"
-        emptyTitle="No design projects yet"
-        emptyDescription="Create a project to plan rooms and cabinets."
+        emptyTitle={designScope === "public" ? "No public designs yet" : "No design projects yet"}
+        emptyDescription={designScope === "public" ? "Website-created designs will appear here when customers use the public design tool." : "Create a project to plan rooms and cabinets."}
         rowMenuItems={rowMenuItems}
         onRowAction={handleRowAction}
         onRowClick={(row) => router.push(`/admin/design/${row.id}`)}
+        getMobileReference={(row, index) => row.is_public ? `Public design ${index + 1}` : `Design project ${index + 1}`}
       />
     </div>
   );

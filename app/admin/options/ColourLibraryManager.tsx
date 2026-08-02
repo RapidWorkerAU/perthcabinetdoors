@@ -6,6 +6,7 @@ import { createSupabaseBrowserClient } from '../../../lib/supabase/client'
 import {
   COLOUR_MATERIALS,
   COLOUR_ORDER_TYPES,
+  COLOUR_SUPPLIERS,
   materialLabelForType,
   normaliseOrderTypes,
   orderTypesLabel,
@@ -151,7 +152,7 @@ function rowFromDraft(draft: Draft, image: { imageUrl: string; imagePath: string
     name:                      draft.name.trim(),
     image_url:                 image.imageUrl,
     image_path:                image.imagePath || draft.image_path || null,
-    supplier_name:             draft.supplier_name.trim() || 'Polytec',
+    supplier_name:             COLOUR_SUPPLIERS.includes(draft.supplier_name) ? draft.supplier_name : 'Polytec',
     material_type:             draft.material_type,
     thickness:                 draft.thickness,
     finish_type:               draft.finish_type.trim(),
@@ -220,7 +221,7 @@ export default function ColourLibraryManager({
     const uniq = (values: (string | null | undefined)[]) =>
       Array.from(new Set(values.filter(Boolean).map(v => String(v)))).sort((a, b) => a.localeCompare(b))
     return {
-      supplier:  uniq(sortedRows.map(r => r.supplier_name || 'Polytec')),
+      supplier:  [...COLOUR_SUPPLIERS],
       finish:    uniq(sortedRows.map(r => r.finish_type   || '-')),
       material:  uniq(sortedRows.map(r => r.material_type || '-')),
       thickness: uniq(sortedRows.map(r => r.thickness     || '-')),
@@ -314,7 +315,7 @@ export default function ColourLibraryManager({
       last_cost_field:           null,
       order_types:               normaliseOrderTypes(row),
       is_active:                 row.is_active ?? true,
-      supplier_name:             row.supplier_name || 'Polytec',
+      supplier_name:             COLOUR_SUPPLIERS.includes(row.supplier_name || '') ? row.supplier_name || 'Polytec' : 'Polytec',
       material_type:             row.material_type || 'decorative board',
       thickness:                 row.thickness     || '18mm',
       finish_type:               row.finish_type   || '',
@@ -597,7 +598,11 @@ export default function ColourLibraryManager({
                 </label>
                 <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
                   Supplier
-                  <input className={inputClass} value={draft.supplier_name} onChange={e => updateDraft('supplier_name', e.target.value)} />
+                  <select className={inputClass} value={draft.supplier_name} onChange={e => updateDraft('supplier_name', e.target.value)}>
+                    {(COLOUR_SUPPLIERS as string[]).map(supplier => (
+                      <option key={supplier} value={supplier}>{supplier}</option>
+                    ))}
+                  </select>
                 </label>
                 <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
                   Material type
@@ -897,8 +902,12 @@ export default function ColourLibraryManager({
               </thead>
               <tbody>
                 {pageItems.map(row => (
-                  <tr key={row.id} className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0">
-                    <td className="px-4 py-[11px]">
+                  <tr
+                    key={row.id}
+                    className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
+                    onClick={() => openEditModal(row)}
+                  >
+                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedRowIds.includes(row.id)}
@@ -907,7 +916,7 @@ export default function ColourLibraryManager({
                         className="accent-[#6b9e61]"
                       />
                     </td>
-                    <td className="px-4 py-[11px]">
+                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
                       <span className="inline-flex w-[36px] h-[36px] rounded-[4px] overflow-hidden bg-[#f5f5f4] border border-[#edf4eb] flex-shrink-0">
                         {row.image_url ? (
                           <img src={row.image_url} alt="" className="w-full h-full object-cover" />
@@ -924,7 +933,7 @@ export default function ColourLibraryManager({
                     <td className="px-4 py-[11px] text-[#1a1a18]">${Number(row.cost_per_board_ex_gst || 0).toFixed(2)}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">${Number(row.cost_per_sqm_ex_gst  || 0).toFixed(2)}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{row.sort_order || 0}</td>
-                    <td className="px-4 py-[11px]">
+                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
                       <span className={cn(
                         'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
                         row.is_active

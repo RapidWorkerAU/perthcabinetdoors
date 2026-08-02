@@ -1,17 +1,16 @@
 'use client'
 
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { IconPlus } from '@tabler/icons-react'
+import { IconEdit, IconFileText, IconPlus, IconTrash } from '@tabler/icons-react'
 import { createSupabaseBrowserClient } from '../../../../lib/supabase/client'
 import { AdminPagination, useAdminPagination } from '../../_components/AdminPagination'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { AdminPageHeader } from '@/components/ui/AdminPageHeader'
 import { BulkActionBar } from '@/components/ui/BulkActionBar'
 import { Button } from '@/components/ui/Button'
 import { ConfirmModal } from '@/components/ui/Modal'
 import { StatusPill } from '@/components/ui/StatusPill'
-import { TextAction } from '@/components/ui/TextAction'
 import { useToast } from '@/components/ui/Toast'
 
 function prettyCategory(category?: string | null) {
@@ -115,8 +114,15 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
             <span className="text-[13px] text-[#8b8a81]">{sorted.length} {sorted.length === 1 ? 'product' : 'products'}</span>
           )}
         </div>
-        <Button variant="primary" size="sm" iconLeft={<IconPlus size={14} />} onClick={() => router.push('/admin/products/new')}>
-          Add product
+        <Button
+          variant="primary"
+          size="sm"
+          iconLeft={<IconPlus size={14} />}
+          onClick={() => router.push('/admin/products/new')}
+          aria-label="Add product"
+          className="max-sm:w-10 max-sm:px-0"
+        >
+          <span className="max-sm:hidden">Add product</span>
         </Button>
       </div>
 
@@ -191,22 +197,18 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
                     <td className="px-4 py-[11px] text-[#1a1a18]">{product.image_count || 0}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{prettyCategory(product.category)}</td>
                     <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center gap-3">
-                        <Link
-                          href={`/admin/products/${product.id}/edit`}
-                          className="text-[12px] font-medium text-[#1c2b1e] hover:underline"
-                        >
+                      <div className="flex justify-end">
+                        <ActionMenu label={`Open actions for product ${product.card_title || product.name || 'product'}`}>
+                          <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => router.push(`/admin/products/${product.id}/edit`)}>
                           Edit
-                        </Link>
-                        <Link
-                          href={`/admin/products/${product.id}/quote`}
-                          className="text-[12px] font-medium text-[#1c2b1e] hover:underline"
-                        >
+                          </ActionMenuItem>
+                          <ActionMenuItem icon={<IconFileText size={14} />} onClick={() => router.push(`/admin/products/${product.id}/quote`)}>
                           Quote
-                        </Link>
-                        <TextAction variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([product.id])}>
+                          </ActionMenuItem>
+                          <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([product.id])}>
                           Delete
-                        </TextAction>
+                          </ActionMenuItem>
+                        </ActionMenu>
                       </div>
                     </td>
                   </tr>

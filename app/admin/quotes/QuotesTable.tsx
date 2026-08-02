@@ -2,17 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { IconPlus } from '@tabler/icons-react'
+import { IconCopy, IconExternalLink, IconFileText, IconPlus, IconTrash } from '@tabler/icons-react'
 import { formatMoney } from '../../../lib/pcd-quote-utils'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { AdminPageHeader } from '@/components/ui/AdminPageHeader'
 import { BulkActionBar } from '@/components/ui/BulkActionBar'
 import { Button } from '@/components/ui/Button'
 import { ConfirmModal } from '@/components/ui/Modal'
 import { StatusFilterBar, type StatusFilterOption } from '@/components/ui/StatusFilterBar'
 import { StatusPill } from '@/components/ui/StatusPill'
-import { TextAction } from '@/components/ui/TextAction'
 import { useToast } from '@/components/ui/Toast'
 
 const STATUSES = ['draft', 'sent', 'viewed', 'approved', 'rejected']
@@ -212,8 +212,17 @@ export default function QuotesTable() {
             </span>
           )}
         </div>
-        <Button variant="primary" size="sm" iconLeft={<IconPlus size={14} />} onClick={createQuote} loading={isCreating} loadingText="Creating...">
-          New quote
+        <Button
+          variant="primary"
+          size="sm"
+          iconLeft={<IconPlus size={14} />}
+          onClick={createQuote}
+          loading={isCreating}
+          loadingText="Creating..."
+          aria-label="New quote"
+          className="max-sm:w-10 max-sm:px-0"
+        >
+          <span className="max-sm:hidden">New quote</span>
         </Button>
       </div>
 
@@ -282,26 +291,26 @@ export default function QuotesTable() {
                     <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(quote.total_inc_gst, quote.currency || 'AUD')}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18] whitespace-nowrap">{formatDate(quote.updated_at || quote.created_at)}</td>
                     <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center gap-3">
-                        <TextAction onClick={() => router.push(`/admin/quotes/${quote.id}`)}>
+                      <div className="flex justify-end">
+                        <ActionMenu label={`Open actions for quote ${quote.quote_number || 'draft quote'}`}>
+                          <ActionMenuItem icon={<IconFileText size={14} />} onClick={() => router.push(`/admin/quotes/${quote.id}`)}>
                           Open
-                        </TextAction>
+                          </ActionMenuItem>
                         {quote.access_code && (
-                          <a
-                            href={`/quotes/view?code=${encodeURIComponent(quote.access_code)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[12px] font-medium text-[#1c2b1e] hover:underline"
+                          <ActionMenuItem
+                            icon={<IconExternalLink size={14} />}
+                            onClick={() => window.open(`/quotes/view?code=${encodeURIComponent(quote.access_code!)}`, '_blank', 'noopener,noreferrer')}
                           >
                             View
-                          </a>
+                          </ActionMenuItem>
                         )}
-                        <TextAction onClick={() => duplicateQuote(quote.id)} disabled={duplicatingQuoteId === quote.id}>
+                          <ActionMenuItem icon={<IconCopy size={14} />} onClick={() => duplicateQuote(quote.id)} disabled={duplicatingQuoteId === quote.id}>
                           {duplicatingQuoteId === quote.id ? 'Duplicating...' : 'Duplicate'}
-                        </TextAction>
-                        <TextAction variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([quote.id])}>
+                          </ActionMenuItem>
+                          <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([quote.id])}>
                           Delete
-                        </TextAction>
+                          </ActionMenuItem>
+                        </ActionMenu>
                       </div>
                     </td>
                   </tr>
@@ -355,23 +364,26 @@ export default function QuotesTable() {
                 <div><dt className="text-[#8b8a81]">Total</dt><dd className="text-[#1a1a18]">{formatMoney(quote.total_inc_gst, quote.currency || 'AUD')}</dd></div>
                 <div><dt className="text-[#8b8a81]">Updated</dt><dd className="text-[#1a1a18]">{formatDate(quote.updated_at || quote.created_at)}</dd></div>
               </dl>
-              <div className="pt-3 border-t border-[#edf4eb] flex flex-wrap gap-2">
-                <Button variant="primary" size="sm" onClick={() => router.push(`/admin/quotes/${quote.id}`)}>
-                  Open
-                </Button>
-                {quote.access_code && (
-                  <a
-                    href={`/quotes/view?code=${encodeURIComponent(quote.access_code)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="h-[34px] px-4 border border-[#dbd8cc] text-[#1a1a18] text-[13px] font-medium rounded-[6px] hover:bg-[#f5f8f4] transition-colors flex items-center"
-                  >
-                    View
-                  </a>
-                )}
-                <Button variant="neutral" size="sm" onClick={() => duplicateQuote(quote.id)} loading={duplicatingQuoteId === quote.id} loadingText="Duplicating...">
-                  Duplicate
-                </Button>
+              <div className="pt-3 border-t border-[#edf4eb] flex justify-end">
+                <ActionMenu label={`Open actions for quote ${quote.quote_number || 'draft quote'}`}>
+                  <ActionMenuItem icon={<IconFileText size={14} />} onClick={() => router.push(`/admin/quotes/${quote.id}`)}>
+                    Open
+                  </ActionMenuItem>
+                  {quote.access_code && (
+                    <ActionMenuItem
+                      icon={<IconExternalLink size={14} />}
+                      onClick={() => window.open(`/quotes/view?code=${encodeURIComponent(quote.access_code!)}`, '_blank', 'noopener,noreferrer')}
+                    >
+                      View
+                    </ActionMenuItem>
+                  )}
+                  <ActionMenuItem icon={<IconCopy size={14} />} onClick={() => duplicateQuote(quote.id)} disabled={duplicatingQuoteId === quote.id}>
+                    {duplicatingQuoteId === quote.id ? 'Duplicating...' : 'Duplicate'}
+                  </ActionMenuItem>
+                  <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([quote.id])}>
+                    Delete
+                  </ActionMenuItem>
+                </ActionMenu>
               </div>
             </article>
           )

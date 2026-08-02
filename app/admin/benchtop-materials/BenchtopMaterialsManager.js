@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { IconTrash } from "@tabler/icons-react";
+import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 
 // Admin catalogue for benchtop materials (audit p2-2) — the benchtop
 // counterpart to the Colour Library. Backs the /api/admin/benchtop-materials
@@ -16,7 +18,6 @@ const td = { padding: "8px 10px", borderBottom: "1px solid #f0ede5", verticalAli
 const input = { width: "100%", padding: "6px 8px", border: "1px solid #d8d3c8", borderRadius: 6, font: "inherit", boxSizing: "border-box" };
 const btn = { padding: "7px 13px", borderRadius: 7, border: "1px solid #d8d3c8", background: "#fff", cursor: "pointer", font: "inherit", fontSize: 13 };
 const btnPrimary = { ...btn, background: "#2f5d8f", color: "#fff", borderColor: "#2f5d8f" };
-const btnDanger = { ...btn, color: "#b44230", borderColor: "#e3c9c3" };
 
 export default function BenchtopMaterialsManager() {
   const [rows, setRows] = useState([]);
@@ -147,7 +148,11 @@ export default function BenchtopMaterialsManager() {
                       onChange={(e) => { editLocal(row.id, { is_active: e.target.checked }); persist(row.id, { is_active: e.target.checked }); }} />
                   </td>
                   <td style={td}>
-                    <button type="button" style={btnDanger} disabled={busy} onClick={() => deleteRow(row.id)}>Delete</button>
+                    <ActionMenu label={`Open actions for benchtop material ${row.name || "benchtop material"}`}>
+                      <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={busy} onClick={() => deleteRow(row.id)}>
+                        Delete
+                      </ActionMenuItem>
+                    </ActionMenu>
                   </td>
                 </tr>
               ))}

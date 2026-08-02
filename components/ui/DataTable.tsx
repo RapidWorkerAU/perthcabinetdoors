@@ -36,6 +36,7 @@ export interface DataTableProps<T extends { id: string }> {
   onRowAction?:       (action: 'view' | 'quickEdit' | 'fullEdit' | 'delete', row: T) => void
   rowMenuItems?:      (row: T) => Array<{ label: string; icon: React.ReactNode; action: string; variant?: 'danger' }>
   onRowClick?:        (row: T) => void
+  getMobileReference?: (row: T, index: number) => React.ReactNode
   totalCount?:        number
   page?:              number
   pageSize?:          number
@@ -103,6 +104,7 @@ export function DataTable<T extends { id: string }>({
   onRowAction,
   rowMenuItems,
   onRowClick,
+  getMobileReference,
   totalCount,
   page = 1,
   pageSize = 20,
@@ -512,15 +514,22 @@ export function DataTable<T extends { id: string }>({
         )}
 
         {/* Cards */}
-        {!loading && data.map(row => (
-          <div
-            key={row.id}
-            className={cn('bg-white border border-[#dbd8cc] rounded-[8px] mb-2 overflow-hidden', onRowClick && 'cursor-pointer')}
-            onClick={onRowClick ? () => onRowClick(row) : undefined}
-          >
-            <div className="p-[14px]">
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] font-medium text-[#2d5e28]">{row.id}</span>
+        {!loading && data.map((row, rowIndex) => {
+          const mobileReference = getMobileReference?.(row, rowIndex)
+
+          return (
+            <div
+              key={row.id}
+              className={cn('bg-white border border-[#dbd8cc] rounded-[8px] mb-2 overflow-hidden', onRowClick && 'cursor-pointer')}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+            >
+              <div className="p-[14px]">
+                <div className="flex items-center justify-between">
+                  {mobileReference ? (
+                    <span className="text-[12px] font-medium text-[#2d5e28]">{mobileReference}</span>
+                  ) : (
+                    <span aria-hidden="true" />
+                  )}
                 <button
                   onClick={e => { e.stopPropagation(); setMobileMenuRow(row) }}
                   className="w-[28px] h-[28px] rounded-[5px] flex items-center justify-center text-[#8b8a81] hover:bg-[#edf4eb]"
@@ -558,9 +567,10 @@ export function DataTable<T extends { id: string }>({
                   <IconEdit size={14} /> Edit
                 </button>
               </div>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
 
         {/* Mobile pagination */}
         {totalCount !== undefined && onPageChange && (
@@ -591,7 +601,11 @@ export function DataTable<T extends { id: string }>({
         {mobileMenuRow && (
           <div className="pb-2">
             <div className="flex md:hidden mx-auto w-[36px] h-[4px] bg-[#dbd8cc] rounded-full mb-3" aria-hidden="true" />
-            <p className="text-[12px] font-medium text-[#2d5e28] mb-[2px]">{mobileMenuRow.id}</p>
+            {getMobileReference?.(mobileMenuRow, data.findIndex(row => row.id === mobileMenuRow.id)) ? (
+              <p className="text-[12px] font-medium text-[#2d5e28] mb-[2px]">
+                {getMobileReference(mobileMenuRow, data.findIndex(row => row.id === mobileMenuRow.id))}
+              </p>
+            ) : null}
             <p className="text-[14px] font-medium text-[#1a1a18] mb-4">
               {columns[0] ? renderCell(columns[0], mobileMenuRow, false) : ''}
             </p>

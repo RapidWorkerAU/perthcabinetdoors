@@ -209,6 +209,7 @@ function designItemToLine(item) {
       : { width_mm: isPanel ? item.depth_mm : item.width_mm, height_mm: item.height_mm }),
     qty: item.qty || 1,
     material: item.material,
+    supplier_name: styleSupplierName(item),
     finish: item.finish,
     colour: item.colour,
     notes: item.notes,
@@ -280,6 +281,10 @@ function designItemToLine(item) {
   return line;
 }
 
+function styleSupplierName(style = {}) {
+  return String(style.supplier_name || style.supplier || "").trim();
+}
+
 // Doors are imported as standalone quote lines (not nested in cabinet_config),
 // grouped per cabinet, one line per unique door size + hinge setup on that cabinet.
 function doorLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
@@ -304,6 +309,7 @@ function doorLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
       height_mm: size.height,
       qty: size.qty * (item.qty || 1),
       material: style.material || "",
+      supplier_name: styleSupplierName(style),
       finish: style.finish || "",
       colour: style.colour || "",
       thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
@@ -353,6 +359,7 @@ function cornerDoorLinesForCabinet(item, roomName, { cabinetIncluded = true } = 
       height_mm: H,
       qty: item.qty || 1,
       material: style.material || "",
+      supplier_name: styleSupplierName(style),
       finish: style.finish || "",
       colour: style.colour || "",
       thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
@@ -380,6 +387,7 @@ function cornerDoorLinesForCabinet(item, roomName, { cabinetIncluded = true } = 
       height_mm: leaf.heightMm,
       qty: item.qty || 1,
       material: style.material || "",
+      supplier_name: styleSupplierName(style),
       finish: style.finish || "",
       colour: style.colour || "",
       thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
@@ -441,6 +449,7 @@ function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) 
     height_mm: size.height,
     qty: size.qty * (item.qty || 1),
     material: style.material || "",
+    supplier_name: styleSupplierName(style),
     finish: style.finish || "",
     colour: style.colour || "",
     thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
@@ -495,6 +504,7 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeD
           height_mm: size.height,
           qty: size.qty * (item.qty || 1),
           material: drawerStyle.material || "",
+          supplier_name: styleSupplierName(drawerStyle),
           finish: drawerStyle.finish || "",
           colour: drawerStyle.colour || "",
           thickness: drawerStyle.thickness_mm ? `${drawerStyle.thickness_mm}mm` : "",
@@ -523,6 +533,7 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeD
           height_mm: size.height,
           qty: size.qty * (item.qty || 1),
           material: doorStyle.material || "",
+          supplier_name: styleSupplierName(doorStyle),
           finish: doorStyle.finish || "",
           colour: doorStyle.colour || "",
           thickness: doorStyle.thickness_mm ? `${doorStyle.thickness_mm}mm` : "",
@@ -579,6 +590,7 @@ function kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room) {
       height_mm: item.kickboard_height_mm || 120,
       qty: runAwareQty(item, leg.count),
       material: item.material || "",
+      supplier_name: styleSupplierName(item),
       finish: item.finish || "",
       colour: item.colour || "",
       thickness: item.kickboard_thickness_mm ? `${item.kickboard_thickness_mm}mm` : "",
@@ -628,6 +640,7 @@ function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, 
     height_mm: heightMm,
     qty: runAwareQty(item, runCount),
     material: item.material || "",
+    supplier_name: styleSupplierName(item),
     finish: item.finish || "",
     colour: item.colour || "",
     thickness: item.filler_panel_thickness_mm ? `${item.filler_panel_thickness_mm}mm` : "",
@@ -654,6 +667,7 @@ function finishPanelBoard(item) {
   const d = item.door_style || {};
   return {
     material: fp.material || d.material || item.material || "",
+    supplier_name: styleSupplierName(fp) || styleSupplierName(d) || styleSupplierName(item),
     finish: fp.finish || d.finish || item.finish || "",
     colour: fp.colour || d.colour || item.colour || "",
     thicknessMm: fp.thickness_mm || d.thickness_mm || item.carcass_thickness_mm || null,
@@ -679,6 +693,7 @@ function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       height_mm: depthMm,
       qty,
       material: board.material,
+      supplier_name: board.supplier_name,
       finish: board.finish,
       colour: board.colour,
       thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
@@ -747,6 +762,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
       height_mm: sideH,
       qty: perCabinetQty(item),
       material: board.material,
+      supplier_name: board.supplier_name,
       finish: board.finish,
       colour: board.colour,
       thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
@@ -778,6 +794,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
       height_mm: panelH,
       qty,
       material: board.material,
+      supplier_name: board.supplier_name,
       finish: board.finish,
       colour: board.colour,
       thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
@@ -826,6 +843,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
         height_mm: item.kickboard_height_mm || 120,
         qty: perCabinetQty(item),
         material: item.material || "",
+        supplier_name: styleSupplierName(item),
         finish: item.finish || "",
         colour: item.colour || "",
         thickness: item.kickboard_thickness_mm ? `${item.kickboard_thickness_mm}mm` : "",
@@ -888,6 +906,7 @@ function cornerBackPanelLinesForCabinet(item, roomName, room) {
       height_mm: panelH,
       qty: perCabinetQty(item),
       material: board.material,
+      supplier_name: board.supplier_name,
       finish: board.finish,
       colour: board.colour,
       thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
@@ -916,6 +935,7 @@ function cornerBackPanelLinesForCabinet(item, roomName, room) {
         height_mm: item.kickboard_height_mm || 120,
         qty: perCabinetQty(item),
         material: item.material || "",
+        supplier_name: styleSupplierName(item),
         finish: item.finish || "",
         colour: item.colour || "",
         thickness: item.kickboard_thickness_mm ? `${item.kickboard_thickness_mm}mm` : "",
@@ -956,6 +976,7 @@ function sideFillerLinesForCabinet(item, roomName, room) {
   const d = item.door_style || {};
   const board = {
     material: d.material || item.material || "",
+    supplier_name: styleSupplierName(d) || styleSupplierName(item),
     finish:   d.finish   || item.finish   || "",
     colour:   d.colour   || item.colour   || "",
     thicknessMm: Number(item.side_filler_thickness_mm) || 18,
@@ -973,6 +994,7 @@ function sideFillerLinesForCabinet(item, roomName, room) {
       height_mm: heightMm,
       qty: perCabinetQty(item),
       material: board.material,
+      supplier_name: board.supplier_name,
       finish: board.finish,
       colour: board.colour,
       thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
@@ -1178,6 +1200,7 @@ function floatingShelfLinesForItem(item, roomName) {
     height_mm: board.height_mm,
     qty,
     material: style.material,
+    supplier_name: styleSupplierName(style),
     finish: style.finish,
     colour: style.colour,
     thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
@@ -1208,6 +1231,7 @@ function shelfRailLinesForItem(item, roomName) {
       height_mm: board.height_mm,
       qty,
       material: style.material,
+      supplier_name: styleSupplierName(style),
       finish: style.finish,
       colour: style.colour,
       thickness: style.thickness_mm ? `${style.thickness_mm}mm` : "",
@@ -1710,6 +1734,13 @@ export async function POST(request, { params }) {
         const src = mergedById.get(itemId);
         results.errors.push(`Item "${src?.label || itemId}": ${err?.message}`);
       }
+    }
+
+    if (results.created > 0) {
+      await context.supabase
+        .from("pcd_design_projects")
+        .update({ status: "converted_to_quote" })
+        .eq("id", projectId);
     }
 
     return Response.json({ ok: true, results });

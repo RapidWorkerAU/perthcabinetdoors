@@ -30,6 +30,7 @@ import {
 import { computeDrawerFrontHeights, DRAWER_RUNNER_LABELS, resolveRunnerType } from "../../../../lib/pcd-drawer-utils";
 import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, bayShelfCount } from "../../../../lib/pcd-door-utils";
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
+import { FRONT_PROFILE_PRESETS, normaliseFrontProfile } from "../../../../lib/pcd-front-profiles";
 import { applianceKindDefaults } from "../../../../lib/pcd-appliance-utils";
 import {
   SHELF_RAIL_DEFAULTS,
@@ -1092,6 +1093,20 @@ export function FrontStyleFields({ label, style, onChange, matchOptions = [], co
           )}
         </>
       )}
+      {!simplified && (
+      <label className={styles.fieldLabel}>
+        3D front profile
+        <select
+          className={styles.fieldSelect}
+          value={normaliseFrontProfile(style.front_profile)}
+          onChange={(e) => onChange({ front_profile: e.target.value })}
+        >
+          {FRONT_PROFILE_PRESETS.map((profile) => (
+            <option key={profile.value} value={profile.value}>{profile.label}</option>
+          ))}
+        </select>
+      </label>
+      )}
     </>
   );
 }
@@ -1581,12 +1596,13 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   const frontParts = (() => {
     const fp = [];
     if (draft.front_type === "doors") {
-      if (isCorner) { fp.push({ id: "corner", label: "Corner door" }); return fp; }
+      if (isCorner) { fp.push({ id: "corner", label: "Corner door" }, { id: "profile", label: "3D profile" }); return fp; }
       if (draft.item_type === "tall_cabinet") fp.push({ id: "bays", label: "Bays" });
-      fp.push({ id: "layout", label: "Doors" }, { id: "drilling", label: "Hinge drilling" }, { id: "reveal", label: "Reveal & finger-pull" });
+      fp.push({ id: "layout", label: "Doors" }, { id: "profile", label: "3D profile" }, { id: "drilling", label: "Hinge drilling" }, { id: "reveal", label: "Reveal & finger-pull" });
     } else if (draft.front_type === "drawers" && !isCorner) {
-      fp.push({ id: "layout", label: "Drawers" }, { id: "finger", label: "Finger-pull" }, { id: "runners", label: "Runners" });
+      fp.push({ id: "layout", label: "Drawers" }, { id: "profile", label: "3D profile" }, { id: "finger", label: "Finger-pull" }, { id: "runners", label: "Runners" });
     } else if (draft.front_type === "mixed" && !isCorner) {
+      fp.push({ id: "profile", label: "3D profile" });
       sections.forEach((s, i) => fp.push({ id: `sec-${i}`, label: `Section ${i + 1}` }));
     }
     return fp;
@@ -1718,10 +1734,47 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     );
   };
 
+  const renderFrontProfileFields = () => (
+    <div className={styles.fieldGroup}>
+      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+        These profiles change the 3D preview of the selected cabinet fronts.
+      </p>
+      {frontHasDoors && (
+        <label className={styles.fieldLabel}>
+          Door 3D profile
+          <select
+            className={styles.fieldSelect}
+            value={normaliseFrontProfile(doorStyle.front_profile)}
+            onChange={(e) => updDoorStyle({ front_profile: e.target.value })}
+          >
+            {FRONT_PROFILE_PRESETS.map((profile) => (
+              <option key={profile.value} value={profile.value}>{profile.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {frontHasDrawers && (
+        <label className={styles.fieldLabel}>
+          Drawer 3D profile
+          <select
+            className={styles.fieldSelect}
+            value={normaliseFrontProfile(drawerStyle.front_profile)}
+            onChange={(e) => updDrawerStyle({ front_profile: e.target.value })}
+          >
+            {FRONT_PROFILE_PRESETS.map((profile) => (
+              <option key={profile.value} value={profile.value}>{profile.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
+    </div>
+  );
+
   const renderFrontPart = (partId) => {
     if (draft.front_type === "none") {
       return <p style={{ fontSize: 12, color: "var(--dt-text-muted, #888780)" }}>No front on this cabinet — pick Doors, Drawers or Doors + Drawers first.</p>;
     }
+    if (partId === "profile") return renderFrontProfileFields();
     if (draft.front_type === "doors" && isCorner) return renderCornerDoorFields();
     if (draft.front_type === "doors") {
       if (partId === "bays") return renderTallBays();

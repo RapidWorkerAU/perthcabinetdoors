@@ -2539,6 +2539,12 @@
   width: 100%;
 }
 
+.quoteColourCombo > button:first-of-type {
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
 .quoteColourCombo input::placeholder {
   color: var(--pcd-admin-text-muted);
 }

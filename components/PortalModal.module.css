@@ -110,6 +110,18 @@
     padding: 16px;
   }
 
+  .footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .footer button,
+  .footer a {
+    justify-content: center;
+    min-height: 44px;
+    width: 100%;
+  }
+
   .body {
     max-height: calc(100dvh - 190px);
     padding: 16px;

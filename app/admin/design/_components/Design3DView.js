@@ -17,6 +17,7 @@ import { Component, Suspense, createContext, useContext, useEffect, useMemo, use
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, OrthographicCamera, Billboard, Text, Grid, Line, Edges, useTexture } from "@react-three/drei";
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
+import { normaliseFrontProfile } from "../../../../lib/pcd-front-profiles";
 
 import {
   getAbsPos,
@@ -1406,7 +1407,63 @@ function frontGroups(item, W, D) {
 // standing off by DOOR_PANEL_THICKNESS. Critically it must NOT be coplanar with
 // the carcass box's front face, or the two z-fight and shimmer as the camera
 // moves. The outline lines are lifted just proud of the door face to match.
-function DoorPanel({ basis, cell, src }) {
+function ProfileFeatureBox({ basis, a0, a1, v0, v1, depth = 0.006, offset = DOOR_PANEL_THICKNESS, src, color = "#d7d3ca", roughness = 0.55, dark = false }) {
+  if (a1 <= a0 || v1 <= v0) return null;
+  const position = facePoint(basis, (a0 + a1) / 2, (v0 + v1) / 2, offset + depth / 2);
+  const aLen = Math.max((a1 - a0) / M, 0.001);
+  const vLen = Math.max((v1 - v0) / M, 0.001);
+  const size = basis.alongAxis === "x"
+    ? [aLen, vLen, depth]
+    : [depth, vLen, aLen];
+  return (
+    <mesh position={position}>
+      <boxGeometry args={size} />
+      {dark ? (
+        <meshStandardMaterial color={color} roughness={0.8} />
+      ) : (
+        <PanelMaterial src={src} color={color} roughness={roughness} />
+      )}
+    </mesh>
+  );
+}
+
+function FrontProfileGeometry({ basis, cell, src, profile }) {
+  const key = normaliseFrontProfile(profile);
+  if (key === "slab") return null;
+
+  const w = cell.a1 - cell.a0;
+  const h = cell.v1 - cell.v0;
+  if (w <= 80 || h <= 80) return null;
+
+  const parts = [];
+  const rail = Math.max(28, Math.min(62, Math.min(w, h) * 0.12));
+  const inset = Math.max(30, Math.min(70, Math.min(w, h) * 0.14));
+  const groove = 8;
+
+  if (key === "shaker") {
+    parts.push(
+      { a0: cell.a0, a1: cell.a1, v0: cell.v1 - rail, v1: cell.v1 },
+      { a0: cell.a0, a1: cell.a1, v0: cell.v0, v1: cell.v0 + rail },
+      { a0: cell.a0, a1: cell.a0 + rail, v0: cell.v0, v1: cell.v1 },
+      { a0: cell.a1 - rail, a1: cell.a1, v0: cell.v0, v1: cell.v1 }
+    );
+    return <>{parts.map((p, i) => <ProfileFeatureBox key={i} basis={basis} {...p} depth={0.006} src={src} />)}</>;
+  }
+
+  if (key === "bevel") {
+    parts.push(
+      { a0: cell.a0 + inset, a1: cell.a1 - inset, v0: cell.v1 - inset - groove, v1: cell.v1 - inset },
+      { a0: cell.a0 + inset, a1: cell.a1 - inset, v0: cell.v0 + inset, v1: cell.v0 + inset + groove },
+      { a0: cell.a0 + inset, a1: cell.a0 + inset + groove, v0: cell.v0 + inset, v1: cell.v1 - inset },
+      { a0: cell.a1 - inset - groove, a1: cell.a1 - inset, v0: cell.v0 + inset, v1: cell.v1 - inset }
+    );
+    return <>{parts.map((p, i) => <ProfileFeatureBox key={i} basis={basis} {...p} depth={0.003} offset={DOOR_PANEL_THICKNESS + 0.001} color="#7b746b" dark />)}</>;
+  }
+
+  return null;
+}
+
+function DoorPanel({ basis, cell, src, profile }) {
   const aC = (cell.a0 + cell.a1) / 2;
   const vC = (cell.v0 + cell.v1) / 2;
   const position = facePoint(basis, aC, vC, DOOR_PANEL_THICKNESS / 2);
@@ -1416,10 +1473,13 @@ function DoorPanel({ basis, cell, src }) {
     ? [aLen, vLen, DOOR_PANEL_THICKNESS]
     : [DOOR_PANEL_THICKNESS, vLen, aLen];
   return (
-    <mesh position={position}>
-      <boxGeometry args={size} />
-      <PanelMaterial src={src} color="#e7e5e4" roughness={0.5} />
-    </mesh>
+    <>
+      <mesh position={position}>
+        <boxGeometry args={size} />
+        <PanelMaterial src={src} color="#e7e5e4" roughness={0.5} />
+      </mesh>
+      <FrontProfileGeometry basis={basis} cell={cell} src={src} profile={profile} />
+    </>
   );
 }
 
@@ -1604,6 +1664,8 @@ function FrontDetail({ item, W, D }) {
   // in which case no coloured panel is drawn and the front stays outlines-only.
   const doorSrc = usePanelSrc(item, "door");
   const drawerSrc = usePanelSrc(item, "drawer");
+  const doorProfile = item.door_style?.front_profile || "slab";
+  const drawerProfile = item.drawer_style?.front_profile || doorProfile;
   if (!groups.length) return null;
   const inset = Math.max(frontRevealMm(item.door_config || item.drawer_config || {}) / 2, 2);
   const frame = [];
@@ -1622,24 +1684,27 @@ function FrontDetail({ item, W, D }) {
         appliances.push({ basis, cell: { a0, a1, v0, v1, appliance: cell.appliance } });
         continue;
       }
-      const src = cell.slot === "drawer" ? drawerSrc : doorSrc;
+      const isDrawer = cell.slot === "drawer";
+      const src = isDrawer ? drawerSrc : doorSrc;
+      const profile = isDrawer ? drawerProfile : doorProfile;
+      const hasFrontPanel = Boolean(src || normaliseFrontProfile(profile) !== "slab");
       // When this cell has a coloured door slab, the lines ride just proud of
       // its front face; otherwise they sit on the carcass face as before.
-      const lineOff = src ? DOOR_PANEL_THICKNESS + 0.002 : 0.006;
+      const lineOff = hasFrontPanel ? DOOR_PANEL_THICKNESS + 0.002 : 0.006;
       const p = (a, v) => facePoint(basis, a, v, lineOff);
       // A coloured cell makes its seam with the recessed reveal (dark backing
       // in the gap), so the schematic black outline is dropped for it — the
       // finish reads realistically. Cells without a resolved colour keep the
       // outline as before, so they stay legible.
-      if (!src) {
+      if (!hasFrontPanel) {
         frame.push(p(a0, v0), p(a1, v0), p(a1, v0), p(a1, v1), p(a1, v1), p(a0, v1), p(a0, v1), p(a0, v0));
       }
       if (cell.grip) {
         const gv = cell.grip === "top" ? v1 - 14 : v0 + 14;
         grips.push(p(a0 + 8, gv), p(a1 - 8, gv));
       }
-      if (src) {
-        panels.push({ basis, cell: { a0, a1, v0, v1 }, src });
+      if (hasFrontPanel) {
+        panels.push({ basis, cell: { a0, a1, v0, v1 }, src, profile });
         // Backing spans the FULL cell (uninset), so the inset proud door leaves
         // a dark shadow reveal on all four sides.
         backings.push({ basis, cell: { a0: cell.a0, a1: cell.a1, v0: cell.v0, v1: cell.v1 } });
@@ -1650,7 +1715,7 @@ function FrontDetail({ item, W, D }) {
   return (
     <>
       {backings.map((bk, i) => <RevealBacking key={`bk-${i}`} basis={bk.basis} cell={bk.cell} />)}
-      {panels.map((pnl, i) => <DoorPanel key={i} basis={pnl.basis} cell={pnl.cell} src={pnl.src} />)}
+      {panels.map((pnl, i) => <DoorPanel key={i} basis={pnl.basis} cell={pnl.cell} src={pnl.src} profile={pnl.profile} />)}
       {appliances.map((ap, i) => <ApplianceMesh key={`ap-${i}`} basis={ap.basis} cell={ap.cell} />)}
       {frame.length > 0 && <Line points={frame} segments color={FRONT_LINE_COLOR} lineWidth={1.4} />}
       {grips.length > 0 && <Line points={grips} segments color={GRIP_LINE_COLOR} lineWidth={2.4} />}

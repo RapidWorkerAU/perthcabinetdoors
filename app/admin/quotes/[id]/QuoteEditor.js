@@ -3,8 +3,9 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
+import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
-import { optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
+import { COLOUR_SUPPLIERS, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney } from "../../../../lib/pcd-quote-utils";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
 import {
@@ -18,8 +19,9 @@ import {
   profileTypesForSelection,
   thicknessOptionsForMaterial,
 } from "../../../../lib/quote-form-data";
-import { Modal } from '@/components/ui/Modal';
+import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
@@ -54,6 +56,7 @@ const emptyLine = {
   height_mm: "",
   finish: "",
   colour: "",
+  supplier_name: "",
   profile_type: "",
   profile: "",
   edge_mould: "",
@@ -99,6 +102,8 @@ const emptyForm = {
   travel_cost_ex_gst: "",
   delivery_cost_ex_gst: "",
   installation_cost_ex_gst: "",
+  painting_cost_ex_gst: "",
+  glass_cost_ex_gst: "",
   other_cost_ex_gst: 0,
   markup_percent: 0,
   markup_amount_ex_gst: 0,
@@ -136,6 +141,7 @@ function lineFromQuoteLine(line) {
     thickness: line.thickness ?? "",
     width_mm: line.width_mm ?? "",
     height_mm: line.height_mm ?? "",
+    supplier_name: line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || (line.material ? COLOUR_SUPPLIERS[0] : ""),
     profile_type: line.profile_type ?? "",
     hinge_holes: Boolean(line.hinge_holes),
     hinge_supply: Boolean(line.hinge_supply),
@@ -175,6 +181,8 @@ function formFromQuote(quote) {
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
     installation_cost_ex_gst: quote.installation_cost_ex_gst ?? "",
+    painting_cost_ex_gst: quote.painting_cost_ex_gst ?? "",
+    glass_cost_ex_gst: quote.glass_cost_ex_gst ?? "",
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
     markup_amount_ex_gst: quote.markup_amount_ex_gst ?? 0,
@@ -208,6 +216,8 @@ function mergeQuoteIntoForm(current, quote) {
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
     installation_cost_ex_gst: quote.installation_cost_ex_gst ?? "",
+    painting_cost_ex_gst: quote.painting_cost_ex_gst ?? "",
+    glass_cost_ex_gst: quote.glass_cost_ex_gst ?? "",
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
     markup_amount_ex_gst: quote.markup_amount_ex_gst ?? 0,
@@ -366,7 +376,12 @@ function profileOptionSrc(profileType, label) {
 }
 
 function optionMetaLabel(option) {
-  return [option.finish || option.meta || "", option.supplier || ""].filter(Boolean).join(" - ");
+  return [option.finish || option.meta || "", option.thickness || "", option.supplier || ""].filter(Boolean).join(" - ");
+}
+
+function supplierFromSourceLabel(label) {
+  const text = String(label || "");
+  return COLOUR_SUPPLIERS.find((supplier) => text.toLowerCase().includes(supplier.toLowerCase())) || "";
 }
 
 function quoteLineAreaSqm(line) {
@@ -424,22 +439,28 @@ const tw = {
   saveBar: "flex justify-end pt-3 border-t border-[#edf4eb] mt-3",
 };
 
-const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", disabled = false, placeholder, value, options, onChange, disablePortal = false }) {
+const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", disabled = false, placeholder, value, displayValue = "", options, onChange, disablePortal = false }) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(value || "");
+  const [query, setQuery] = useState("");
   const [menuStyle, setMenuStyle] = useState({});
+  const searchRef = useRef(null);
   const dropdownIdRef = useRef(`quote-combobox-${Math.random().toString(36).slice(2)}`);
   const menuRef = useRef(null);
   const wrapRef = useRef(null);
   const cleanedQuery = query.trim().toLowerCase();
+  const selectedOption = options.find((option) => [option.value, option.name, option.label].filter(Boolean).includes(value));
   const visibleOptions =
     cleanedQuery.length >= 3
-      ? options.filter((option) => option.label.toLowerCase().includes(cleanedQuery))
+      ? options.filter((option) =>
+          [option.label, option.name, option.finish, option.thickness, option.supplier, option.meta]
+            .filter(Boolean)
+            .some((field) => String(field).toLowerCase().includes(cleanedQuery))
+        )
       : options;
 
   useEffect(() => {
-    setQuery(value || "");
-  }, [value]);
+    if (!open) setQuery("");
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -472,18 +493,19 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", di
       if (disablePortal) {
         // Rendered inline (no portal) — position relative to the wrapper via `absolute`.
         // `position: fixed` would be offset by Dialog.Content's CSS transform.
+        const gap = 8;
         const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
         const spaceAbove = rect.top - viewportPadding;
         const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
         const availableHeight = openAbove ? spaceAbove : spaceBelow;
         const maxHeight = Math.max(160, Math.min(360, availableHeight - 4));
         setMenuStyle({
-          bottom: openAbove ? "calc(100% + 4px)" : "auto",
+          bottom: openAbove ? `calc(100% + ${gap}px)` : "auto",
           left: 0,
           maxHeight: `${maxHeight}px`,
           minWidth: "320px",
           position: "absolute",
-          top: openAbove ? "auto" : "calc(100% + 4px)",
+          top: openAbove ? "auto" : `calc(100% + ${gap}px)`,
           width: "100%",
           zIndex: 9999,
         });
@@ -496,17 +518,18 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", di
         Math.max(rect.left, viewportPadding),
         window.innerWidth - width - viewportPadding
       );
+      const gap = 8;
       const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
       const spaceAbove = rect.top - viewportPadding;
       const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
       const availableHeight = openAbove ? spaceAbove : spaceBelow;
       const maxHeight = Math.max(160, Math.min(360, availableHeight - 4));
       setMenuStyle({
-        bottom: openAbove ? `${window.innerHeight - rect.top + 4}px` : "auto",
+        bottom: openAbove ? `${window.innerHeight - rect.top + gap}px` : "auto",
         left: `${left}px`,
         maxHeight: `${maxHeight}px`,
         position: "fixed",
-        top: openAbove ? "auto" : `${rect.bottom + 4}px`,
+        top: openAbove ? "auto" : `${rect.bottom + gap}px`,
         width: `${width}px`,
       });
     }
@@ -521,32 +544,35 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", di
   }, [open, disablePortal]);
 
   function choose(option) {
-    setQuery(option.name || option.label);
     onChange(option);
     setOpen(false);
+    setQuery("");
   }
 
   function openMenu() {
     if (disabled) return;
     window.dispatchEvent(new CustomEvent(ADMIN_DROPDOWN_OPEN_EVENT, { detail: dropdownIdRef.current }));
     setOpen(true);
+    window.setTimeout(() => searchRef.current?.focus(), 0);
   }
 
   return (
     <div className={`${styles.quoteColourCombo} ${quoteStyles.quoteColourCombo} ${className}`} ref={wrapRef}>
-      <input
+      <button
         disabled={disabled}
-        placeholder={placeholder}
-        type="text"
-        value={query}
-        onChange={(event) => {
-          const nextQuery = event.target.value;
-          setQuery(nextQuery);
-          openMenu();
-          onChange({ name: nextQuery, label: nextQuery, finish: "" });
-        }}
-        onFocus={openMenu}
-      />
+        type="button"
+        onClick={() => open ? setOpen(false) : openMenu()}
+        className="flex min-w-0 flex-1 items-center gap-2 bg-transparent text-left text-[inherit] text-[#1a1a18] outline-none disabled:cursor-not-allowed disabled:text-[#8b8a81]"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {selectedOption?.src ? (
+          <img src={selectedOption.src} alt="" className="h-4 w-4 flex-shrink-0 rounded-[3px] border border-[#dbd8cc] object-cover" />
+        ) : null}
+        <span className={`min-w-0 flex-1 truncate ${value ? "" : "text-[#8b8a81]"}`}>
+          {selectedOption?.label || selectedOption?.name || displayValue || value || placeholder}
+        </span>
+      </button>
       <button
         aria-label="Open options"
         className={quoteStyles.quoteColourComboButton}
@@ -566,6 +592,16 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", di
         ? (() => {
             const menu = (
               <div className={styles.quoteColourMenu} ref={menuRef} style={menuStyle}>
+                <div className="border-b border-[#edf4eb] p-2">
+                  <input
+                    ref={searchRef}
+                    type="text"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search..."
+                    className="h-[32px] w-full rounded-[4px] border border-[#dbd8cc] bg-[#f5f8f4] px-3 text-[13px] text-[#1a1a18] outline-none transition-colors focus:border-[#6b9e61] focus:bg-white"
+                  />
+                </div>
                 {visibleOptions.length ? (
                   visibleOptions.map((option) => (
                     <button
@@ -595,122 +631,63 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", di
   );
 });
 
-const QuoteTileCombobox = memo(function QuoteTileCombobox({ disabled = false, placeholder, value, options, onChange }) {
+const QuoteTileCombobox = memo(function QuoteTileCombobox({ compact = true, disabled = false, placeholder, value, options, onChange }) {
+  const normalizedOptions = options.map((option) => {
+    const item = typeof option === "string" ? { label: option, name: option } : option;
+    return {
+      ...item,
+      value: item.value || item.name || item.label || "",
+      label: item.label || item.name || item.value || "",
+    };
+  });
+  const selected = normalizedOptions.find((option) =>
+    [option.value, option.name, option.label].filter(Boolean).includes(value)
+  );
+
   return (
-    <QuoteImageCombobox
+    <Dropdown
       disabled={disabled}
       placeholder={placeholder}
-      value={value}
-      options={options.map((option) => (typeof option === "string" ? { label: option, name: option } : option))}
-      onChange={onChange}
+      options={normalizedOptions.map((option) => ({ value: option.value, label: option.label, group: option.group }))}
+      value={selected?.value || ""}
+      onChange={(nextValue) => {
+        const selectedOption = normalizedOptions.find((option) => option.value === nextValue);
+        if (selectedOption) onChange(selectedOption);
+      }}
+      clearable={false}
+      searchable
+      autoWidth
+      contentZIndex={9999}
+      triggerClassName={compact
+        ? "!h-[30px] !min-h-0 !rounded-[3px] !px-[6px] !pr-[24px] !text-[10px]"
+        : "!h-[44px] !rounded-[6px] !px-3 !pr-[34px] !text-[14px]"
+      }
     />
   );
 });
 
-function QuoteLineActionDropdown({ children, disabled = false, index, isOpen, onClose, onToggle }) {
-  const buttonRef = useRef(null);
-  const dropdownIdRef = useRef(`quote-action-${Math.random().toString(36).slice(2)}`);
-  const menuRef = useRef(null);
-  const [menuStyle, setMenuStyle] = useState({});
-
-  useEffect(() => {
-    if (!isOpen || !buttonRef.current) return;
-    // If the button is inside a display:none container, close immediately and bail out.
-    if (buttonRef.current.offsetParent === null) { return; }
-
-    function closeOtherDropdowns(event) {
-      if (event.detail !== dropdownIdRef.current) onClose();
-    }
-
-    function closeOnOutsidePointer(event) {
-      const target = event.target;
-      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
-      onClose();
-    }
-
-    function positionMenu() {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const viewportPadding = 12;
-      const width = 156;
-      const left = Math.min(
-        Math.max(rect.right - width, viewportPadding),
-        window.innerWidth - width - viewportPadding
-      );
-      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
-      const spaceAbove = rect.top - viewportPadding;
-      const openAbove = spaceBelow < 150 && spaceAbove > spaceBelow;
-      const maxHeight = Math.max(132, Math.min(260, (openAbove ? spaceAbove : spaceBelow) - 4));
-
-      setMenuStyle({
-        bottom: openAbove ? `${window.innerHeight - rect.top + 4}px` : "auto",
-        left: `${left}px`,
-        maxHeight: `${maxHeight}px`,
-        position: "fixed",
-        right: "auto",
-        top: openAbove ? "auto" : `${rect.bottom + 4}px`,
-        width: `${width}px`,
-      });
-    }
-
-    positionMenu();
-    window.addEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
-    window.addEventListener("resize", positionMenu);
-    window.addEventListener("scroll", positionMenu, true);
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => {
-      window.removeEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
-      window.removeEventListener("resize", positionMenu);
-      window.removeEventListener("scroll", positionMenu, true);
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-    };
-  }, [isOpen, onClose]);
-
-  return (
-    <div className={quoteStyles.quoteActionMenuWrap}>
-      <button
-        type="button"
-        className={quoteStyles.quoteActionMenuButton}
-        onClick={() => {
-          if (!isOpen) window.dispatchEvent(new CustomEvent(ADMIN_DROPDOWN_OPEN_EVENT, { detail: dropdownIdRef.current }));
-          onToggle();
-        }}
-        disabled={disabled}
-        aria-expanded={isOpen}
-        aria-label={`Open actions for quote line ${index + 1}`}
-        ref={buttonRef}
-      >
-        Actions
-      </button>
-      {isOpen && typeof document !== "undefined"
-        ? createPortal(
-            <div className={quoteStyles.quoteActionMenu} ref={menuRef} style={menuStyle}>
-              {children}
-            </div>,
-            document.body
-          )
-        : null}
-    </div>
-  );
-}
-
-const QuoteColourCombobox = memo(function QuoteColourCombobox({ disabled = false, line, onChange }) {
+const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact = true, disabled = false, line, onChange }) {
   const [databaseOptions, setDatabaseOptions] = useState(null);
   const options = databaseOptions || [];
+  const selectedSupplier = COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0];
+  const filteredOptions = options.filter((option) => (option.supplier || COLOUR_SUPPLIERS[0]) === selectedSupplier);
+  const selectedValue = [selectedSupplier, line.finish, line.colour, line.thickness].filter(Boolean).join("::");
+  const displayValue = [line.colour, line.thickness].filter(Boolean).join(" - ");
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadDatabaseColours() {
       setDatabaseOptions(null);
-      if (!line.material || !line.thickness) return;
-      const cacheKey = `${line.material}::${line.thickness}`;
+      if (!line.material) return;
+      const cacheKey = `${line.material}::all`;
       if (colourOptionsCache.has(cacheKey)) {
         setDatabaseOptions(colourOptionsCache.get(cacheKey));
         return;
       }
 
       try {
-        const response = await fetch(`/api/colour-library?material=${encodeURIComponent(line.material)}&thickness=${encodeURIComponent(line.thickness)}`, {
+        const response = await fetch(`/api/colour-library?material=${encodeURIComponent(line.material)}`, {
           cache: "no-store",
         });
         const payload = await response.json();
@@ -728,20 +705,23 @@ const QuoteColourCombobox = memo(function QuoteColourCombobox({ disabled = false
     return () => {
       cancelled = true;
     };
-  }, [line.material, line.thickness]);
+  }, [line.material]);
 
   return (
     <QuoteImageCombobox
-      disabled={disabled || !line.material || !line.thickness}
-      placeholder={line.material && line.thickness ? "Colour" : "Select material and thickness first"}
-      value={line.colour}
-      options={options}
+      disabled={disabled || !line.material}
+      placeholder={line.material ? "Finish, colour & thickness" : "Select material first"}
+      value={selectedValue}
+      displayValue={displayValue}
+      options={filteredOptions}
       onChange={(option) =>
         onChange({
+          supplier_name: option.supplier || selectedSupplier,
+          thickness: option.thickness || "",
           colour: option.name || option.label,
           finish: option.finish || "",
           unit_cost_source_id: option.id || null,
-          unit_cost_source_label: option.label || option.name || "",
+          unit_cost_source_label: [option.supplier || selectedSupplier, option.label || option.name].filter(Boolean).join(" - "),
           unit_cost_per_sqm_ex_gst: Number(option.costPerSqmExGst || 0),
         })
       }
@@ -750,11 +730,11 @@ const QuoteColourCombobox = memo(function QuoteColourCombobox({ disabled = false
 });
 
 const QUOTE_COL_KEY = 'pcd-quote-table-col-widths'
-const QUOTE_COL_DEFAULTS = [18, 22, 88, 92, 70, 106, 60, 60, 108, 80, 52, 82, 66, 76, 80, 60]
+const QUOTE_COL_DEFAULTS = [18, 22, 88, 92, 78, 78, 116, 62, 60, 60, 52, 76, 80, 102]
 const QUOTE_COL_TOTAL = QUOTE_COL_DEFAULTS.reduce((a, b) => a + b, 0)
 const QUOTE_COL_MIN = 36
 // Drag handles appear between resizable columns only (indices 2–13); cols 0,1,15 are fixed utility cols
-const RESIZE_HANDLE_INDICES = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+const RESIZE_HANDLE_INDICES = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
 
 export default function QuoteEditor({ quoteId }) {
   const fileInputRef = useRef(null);
@@ -769,10 +749,11 @@ export default function QuoteEditor({ quoteId }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [editableLineIndex, setEditableLineIndex] = useState(null);
   const [editableLineDraft, setEditableLineDraft] = useState(null);
-  const [openLineActionIndex, setOpenLineActionIndex] = useState(null);
   const [deleteLineConfirmIndex, setDeleteLineConfirmIndex] = useState(null);
   const [deleteAttachmentConfirmId, setDeleteAttachmentConfirmId] = useState(null);
   const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
+  const [activeLineConfigIndex, setActiveLineConfigIndex] = useState(null);
+  const [activeLineConfigDraft, setActiveLineConfigDraft] = useState(null);
   const [hingeModal, setHingeModal] = useState(null);
   const [profileModal, setProfileModal] = useState(null);
   const [lineNoteModal, setLineNoteModal] = useState(null);
@@ -851,6 +832,8 @@ export default function QuoteEditor({ quoteId }) {
       form.travel_cost_ex_gst,
       form.delivery_cost_ex_gst,
       form.installation_cost_ex_gst,
+      form.painting_cost_ex_gst,
+      form.glass_cost_ex_gst,
       businessDefaults,
     ]
   );
@@ -868,9 +851,8 @@ export default function QuoteEditor({ quoteId }) {
     const value = {
       calculated: calculateQuoteLine(line, businessDefaults),
       materialOptions: MATERIALS_BY_TYPE[line.product_type] || MATERIAL_OPTIONS,
-      thicknessOptions: thicknessOptionsForMaterial(line.material),
       showEdges: edgeProfiles.length > 0,
-      showProfiles: line.material === "Thermolaminate",
+      showProfiles: line.material === "Thermolaminate" && Boolean(line.thickness),
       edgeOptions: edgeProfiles.map((edge) => ({
         name: edge,
         label: edge,
@@ -1184,6 +1166,7 @@ export default function QuoteEditor({ quoteId }) {
       next.thickness = "";
       next.finish = "";
       next.colour = "";
+      next.supplier_name = next.supplier_name || COLOUR_SUPPLIERS[0];
       next.unit_cost_mode = "manual";
       next.unit_cost_source_id = null;
       next.unit_cost_source_label = "";
@@ -1201,14 +1184,38 @@ export default function QuoteEditor({ quoteId }) {
       }
     }
 
+    if (Object.prototype.hasOwnProperty.call(patch, "supplier_name")) {
+      const patchIncludesColourSelection =
+        Object.prototype.hasOwnProperty.call(patch, "finish") ||
+        Object.prototype.hasOwnProperty.call(patch, "colour") ||
+        Object.prototype.hasOwnProperty.call(patch, "unit_cost_per_sqm_ex_gst");
+      next.supplier_name = COLOUR_SUPPLIERS.includes(next.supplier_name) ? next.supplier_name : COLOUR_SUPPLIERS[0];
+      if (!patchIncludesColourSelection) {
+        next.thickness = "";
+        next.finish = "";
+        next.colour = "";
+        next.unit_cost_mode = "manual";
+        next.unit_cost_source_id = null;
+        next.unit_cost_source_label = "";
+        next.unit_cost_per_sqm_ex_gst = 0;
+        next.calculated_unit_cost_ex_gst = 0;
+      }
+    }
+
     if (Object.prototype.hasOwnProperty.call(patch, "thickness")) {
-      next.finish = "";
-      next.colour = "";
-      next.unit_cost_mode = "manual";
-      next.unit_cost_source_id = null;
-      next.unit_cost_source_label = "";
-      next.unit_cost_per_sqm_ex_gst = 0;
-      next.calculated_unit_cost_ex_gst = 0;
+      const patchIncludesColourSelection =
+        Object.prototype.hasOwnProperty.call(patch, "finish") ||
+        Object.prototype.hasOwnProperty.call(patch, "colour") ||
+        Object.prototype.hasOwnProperty.call(patch, "unit_cost_per_sqm_ex_gst");
+      if (!patchIncludesColourSelection) {
+        next.finish = "";
+        next.colour = "";
+        next.unit_cost_mode = "manual";
+        next.unit_cost_source_id = null;
+        next.unit_cost_source_label = "";
+        next.unit_cost_per_sqm_ex_gst = 0;
+        next.calculated_unit_cost_ex_gst = 0;
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(patch, "unit_cost_per_sqm_ex_gst")) {
@@ -1273,6 +1280,51 @@ export default function QuoteEditor({ quoteId }) {
     setEditableLineDraft(form.lines[index] || emptyLineWithDefaults(businessDefaults));
     setEditableLineIndex(index);
     setActiveSection("items");
+  }
+
+  async function openLineConfig(index) {
+    const line = index === editableLineIndex && editableLineDraft ? editableLineDraft : form.lines[index];
+    if (!line) return;
+    setActiveLineConfigDraft(line);
+    setActiveLineConfigIndex(index);
+  }
+
+  function closeLineConfig() {
+    const lineIndex = activeLineConfigIndex;
+    setActiveLineConfigIndex(null);
+    setActiveLineConfigDraft(null);
+    if (lineIndex !== null && lineIndex === editableLineIndex) {
+      setEditableLineIndex(null);
+      setEditableLineDraft(null);
+    }
+  }
+
+  function shouldIgnoreLineRowClick(event) {
+    return Boolean(event.target?.closest?.('button, a, input, select, textarea, [role="button"], [data-line-row-ignore]'));
+  }
+
+  async function saveLineConfig() {
+    if (activeLineConfigIndex === null) return;
+    const lineIndex = activeLineConfigIndex;
+    const lineDraft = activeLineConfigDraft || form.lines[lineIndex];
+    const saved = await saveLineAtIndex(lineIndex, lineDraft);
+    if (!saved) return;
+    setEditableLineIndex(null);
+    setEditableLineDraft(null);
+    setActiveLineConfigIndex(null);
+    setActiveLineConfigDraft(null);
+  }
+
+  function updateLineConfigField(field, value) {
+    setActiveLineConfigDraft((current) => applyLineFieldPatch(current || emptyLineWithDefaults(businessDefaults), field, value));
+  }
+
+  function updateLineConfigProduct(patch) {
+    setActiveLineConfigDraft((current) => applyProductLinePatch(current || emptyLineWithDefaults(businessDefaults), patch));
+  }
+
+  function resetLineConfigUnitCost() {
+    setActiveLineConfigDraft((current) => applyCalculatedUnitCost({ ...(current || emptyLineWithDefaults(businessDefaults)), unit_cost_mode: "auto" }, { forceAuto: true }));
   }
 
   async function saveLine() {
@@ -1387,7 +1439,6 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   function closeLineActions() {
-    setOpenLineActionIndex(null);
     setDeleteLineConfirmIndex(null);
   }
 
@@ -1892,10 +1943,10 @@ export default function QuoteEditor({ quoteId }) {
                           <td className="px-4 py-[11px] text-[#1a1a18] font-mono">{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
                           <td className="px-4 py-[11px]">
                             <ActionMenu label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
-                              <ActionMenuItem onClick={() => setActiveCabinetLineIndex(index)}>
+                              <ActionMenuItem icon={<IconSettings size={14} />} onClick={() => setActiveCabinetLineIndex(index)}>
                                 Configure
                               </ActionMenuItem>
-                              <ActionMenuItem variant="danger" onClick={() => removeLine(index)}>
+                              <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" onClick={() => setDeleteLineConfirmIndex(index)}>
                                 Delete
                               </ActionMenuItem>
                             </ActionMenu>
@@ -1933,13 +1984,14 @@ export default function QuoteEditor({ quoteId }) {
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-[13px] font-semibold font-mono text-[#1a1a18]">{formatMoney(line.line_total_ex_gst || 0, form.currency)}</span>
-                        <button
-                          type="button"
-                          onClick={() => setActiveCabinetLineIndex(index)}
-                          className="h-[28px] px-3 text-[12px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors"
-                        >
-                          Configure
-                        </button>
+                        <ActionMenu label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
+                          <ActionMenuItem icon={<IconSettings size={14} />} onClick={() => setActiveCabinetLineIndex(index)}>
+                            Configure
+                          </ActionMenuItem>
+                          <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" onClick={() => setDeleteLineConfirmIndex(index)}>
+                            Delete
+                          </ActionMenuItem>
+                        </ActionMenu>
                       </div>
                     </div>
                   </div>
@@ -1983,8 +2035,8 @@ export default function QuoteEditor({ quoteId }) {
           </button>
         </div>
 
-        <div className={`hidden md:flex md:flex-col md:flex-1 md:min-h-0 bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden ${quoteStyles.quoteItemsTable}`}>
-          <div className="flex-1 min-h-0 overflow-auto" ref={quoteItemsScrollerRef}>
+        <div className={`hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden ${quoteStyles.quoteItemsTable}`}>
+          <div className="max-h-[calc(100vh-260px)] overflow-auto" ref={quoteItemsScrollerRef}>
             <table className="w-full border-collapse" style={{minWidth: `${QUOTE_COL_TOTAL}px`, tableLayout: 'fixed'}}>
               <colgroup>
                 {colWidths.map((w, i) => (
@@ -1993,7 +2045,7 @@ export default function QuoteEditor({ quoteId }) {
               </colgroup>
               <thead>
                 <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                  {['', '#', 'Type', 'Material', 'Thickness', 'Finish & colour', 'W mm', 'H mm', 'Edge & profile', 'Hinges', 'Qty', 'Unit cost', 'Markup', 'Unit price', 'Total', ''].map((h, i) => (
+                  {['', '#', 'Type', 'Material', 'Supplier', 'Finish', 'Colour', 'Thickness', 'H mm', 'W mm', 'Qty', 'Unit price', 'Total', ''].map((h, i) => (
                     <th
                       key={i}
                       className="sticky top-0 z-20 bg-[#f5f8f4] border-b border-[#dbd8cc] px-2 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap relative select-none overflow-visible"
@@ -2018,26 +2070,17 @@ export default function QuoteEditor({ quoteId }) {
                   const {
                     calculated,
                     materialOptions,
-                    thicknessOptions,
-                    showEdges,
-                    showProfiles,
-                    edgeOptions,
-                    hingesApplicable,
                     colourSrc,
                     isBaseCabinet,
                   } = lineViewModel(line)
                   const isBaseCabinetEditable = isEditable && isBaseCabinet
                   const isLineSaving = savingLineIndex === index
+                  const hasLineNote = Boolean(line.notes || line.client_note)
                   const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id
-                  const canResetUnitCost =
-                    isEditable &&
-                    !isBaseCabinetEditable &&
-                    line.unit_cost_mode === 'manual' &&
-                    Number(line.calculated_unit_cost_ex_gst || 0) > 0
-
                   const hintText = isBaseCabinetEditable
                     ? 'Base cabinet — dimensions configured in the Base Cabinets tab'
                     : 'Edge, profile and hinge config open in modals'
+                  void hintText
 
                   return (
                     <React.Fragment key={savedLine.id || index}>
@@ -2046,7 +2089,12 @@ export default function QuoteEditor({ quoteId }) {
                           isEditable
                             ? 'bg-[#fafffe] shadow-[inset_3px_0_0_#6b9e61]'
                             : 'hover:bg-[#f5f8f4]'
-                        } ${isLineSaving ? 'opacity-60' : ''}`}
+                        } ${!isEditable ? 'cursor-pointer' : ''} ${isLineSaving ? 'opacity-60' : ''}`}
+                        onClick={(event) => {
+                          if (isEditable) return;
+                          if (shouldIgnoreLineRowClick(event)) return;
+                          runLineAction(() => openLineConfig(index));
+                        }}
                       >
 
                         {/* Arrows */}
@@ -2073,26 +2121,10 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* # + note indicator */}
                         <td className={td}>
-                          <div className="flex flex-col items-center gap-[3px]">
+                          <div className="flex justify-center">
                             <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[17px] h-[17px] rounded-[3px] flex items-center justify-center flex-shrink-0">
                               {index + 1}
                             </span>
-                            {!isEditable && (line.notes || line.client_note) && (
-                              <button
-                                type="button"
-                                onClick={() => openLineNoteModal(index)}
-                                title={[
-                                  line.client_note && `Note: ${line.client_note}`,
-                                  line.notes && `Internal: ${line.notes}`,
-                                ].filter(Boolean).join('\n')}
-                                aria-label="View note"
-                                className="w-[17px] h-[17px] rounded-[3px] flex items-center justify-center text-[#b08b3e] hover:bg-[#fbf6ec] transition-colors"
-                              >
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                </svg>
-                              </button>
-                            )}
                           </div>
                         </td>
 
@@ -2124,66 +2156,43 @@ export default function QuoteEditor({ quoteId }) {
                           )}
                         </td>
 
-                        {/* Thickness */}
+                        {/* Supplier */}
                         <td className={td}>
-                          {isEditable ? (
+                          {isEditable && !isBaseCabinetEditable ? (
                             <QuoteTileCombobox
-                              disabled={!line.material || isBaseCabinetEditable}
-                              placeholder={line.material ? 'Thickness' : 'N/A – select material'}
-                              value={line.thickness}
-                              options={thicknessOptions.map(t => ({ label: t, name: t, meta: 'Thickness' }))}
-                              onChange={option => updateProductLine(index, { thickness: option.name || option.label })}
+                              disabled={!line.material}
+                              placeholder="Supplier"
+                              value={COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0]}
+                              options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
+                              onChange={option => updateProductLine(index, { supplier_name: option.value || option.name || option.label })}
                             />
                           ) : (
-                            <span className={v1}>{line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
+                            <span className={v1}>{line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || (line.material ? COLOUR_SUPPLIERS[0] : "") || <span className="text-[#c5cdd8]">—</span>}</span>
                           )}
                         </td>
 
-                        {/* Finish & colour — gated for cabinet lines the same
-                            way Thickness and W/H already are. A cabinet's
-                            boards are chosen in its configurator, which writes
-                            cabinet_config and re-runs the cut list. Picking a
-                            colour here only patched the LINE's material and
-                            sqm rate, leaving the cut list still costing the
-                            old board: the row would name one colour and be
-                            priced for another. */}
+                        {/* Finish */}
+                        <td className={td}>
+                          <span className={v2}>{line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
+                        </td>
+
+                        {/* Colour */}
                         <td className={td}>
                           {isEditable && !isBaseCabinetEditable ? (
                             <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
                           ) : (
-                            <>
-                              <span className={v2}>{line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
-                              <span className={v3}>
-                                {colourSrc && (
-                                  <img src={colourSrc} alt="" className="w-[10px] h-[10px] rounded-[2px] object-cover border border-[#dbd8cc] inline-block mr-[3px] align-middle" />
-                                )}
-                                {line.colour || ''}
-                              </span>
-                            </>
+                            <span className={v3}>
+                              {colourSrc && (
+                                <img src={colourSrc} alt="" className="w-[10px] h-[10px] rounded-[2px] object-cover border border-[#dbd8cc] inline-block mr-[3px] align-middle" />
+                              )}
+                              {line.colour || <span className="text-[#c5cdd8]">—</span>}
+                            </span>
                           )}
                         </td>
 
-                        {/* W mm */}
+                        {/* Thickness */}
                         <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
-                            <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
-                              <span className="px-[3px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0 select-none">W</span>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                placeholder="mm"
-                                value={line.width_mm}
-                                onChange={e => updateLine(index, 'width_mm', sanitizeIntegerInput(e.target.value))}
-                                className="flex-1 h-full px-[3px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
-                              />
-                            </div>
-                          ) : isBaseCabinetEditable ? (
-                            <span className={naText}>Via cabinet</span>
-                          ) : (
-                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
-                              {line.width_mm || <span className="text-[#c5cdd8]">—</span>}
-                            </span>
-                          )}
+                          <span className={v1}>{line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
                         </td>
 
                         {/* H mm */}
@@ -2209,165 +2218,26 @@ export default function QuoteEditor({ quoteId }) {
                           )}
                         </td>
 
-                        {/* Edge & profile */}
+                        {/* W mm */}
                         <td className={td}>
                           {isEditable && !isBaseCabinetEditable ? (
-                            <>
-                              <span className={fl}>Edge</span>
-                              {showEdges ? (
-                                <QuoteImageCombobox
-                                  placeholder="Edge profile"
-                                  value={line.edge_mould}
-                                  options={edgeOptions}
-                                  onChange={option => updateLine(index, 'edge_mould', option.name || option.label)}
-                                />
-                              ) : (
-                                <QuoteTileCombobox
-                                  disabled
-                                  placeholder="N/A for material"
-                                  value=""
-                                  options={[]}
-                                  onChange={() => {}}
-                                />
-                              )}
-                              <span className={fl} style={{marginTop: '3px'}}>Profile</span>
-                              {showProfiles ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openProfileModal(index)}
-                                  className="inline-flex items-center gap-[3px] text-[10px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[3px] px-[5px] py-[2px] bg-white hover:bg-[#edf4eb] transition-colors leading-none w-full justify-between"
-                                >
-                                  <span>{hasProfileConfig(line) ? profileConfigLines(line)[0] : 'Configure profile'}</span>
-                                  <span>↗</span>
-                                </button>
-                              ) : (
-                                <QuoteTileCombobox
-                                  disabled
-                                  placeholder="N/A for material"
-                                  value=""
-                                  options={[]}
-                                  onChange={() => {}}
-                                />
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              {showEdges ? (
-                                <div className="flex items-center justify-between gap-1 mb-[3px]">
-                                  <span className="text-[11px] text-[#1a1a18] leading-[1.25]">
-                                    {line.edge_mould || <span className="text-[#c5cdd8]">No edge</span>}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => runLineAction(() => editLine(index))}
-                                    className="inline-flex items-center gap-[2px] text-[9px] font-medium text-[#8b8a81] hover:text-[#6b9e61] leading-none flex-shrink-0"
-                                  >
-                                    <i className="ti ti-pencil" style={{fontSize:'9px'}} aria-hidden="true" />
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className={naText}>Edge N/A</span>
-                              )}
-                              {showProfiles ? (
-                                <div className="flex items-center justify-between gap-1 mt-[3px]">
-                                  <span className="text-[11px] text-[#1a1a18] leading-[1.25]">
-                                    {hasProfileConfig(line)
-                                      ? profileConfigLines(line).join(' · ')
-                                      : <span className="text-[#c5cdd8]">No profile</span>}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => openProfileModal(index)}
-                                    className="inline-flex items-center gap-[2px] text-[9px] font-medium text-[#8b8a81] hover:text-[#6b9e61] leading-none flex-shrink-0"
-                                  >
-                                    <i className="ti ti-pencil" style={{fontSize:'9px'}} aria-hidden="true" />
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className={naText + ' mt-[3px]'}>Profile N/A</span>
-                              )}
-                            </>
-                          )}
-                        </td>
-
-                        {/* Hinges */}
-                        <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
-                            hingesApplicable ? (
-                              hasHingeConfig(line) ? (
-                                <div>
-                                  <div className="flex items-center gap-[4px] mb-[1px]">
-                                    <span className={line.hinge_holes ? 'text-[#2d5e28] text-[11px] font-medium leading-none' : 'text-[#c5cdd8] text-[11px] leading-none'}>
-                                      {line.hinge_holes ? '✓' : '✕'}
-                                    </span>
-                                    <span className="text-[10px] text-[#5a5a52]">Drill</span>
-                                  </div>
-                                  <div className="flex items-center gap-[4px] mb-[2px]">
-                                    <span className={line.hinge_supply ? 'text-[#2d5e28] text-[11px] font-medium leading-none' : 'text-[#c5cdd8] text-[11px] leading-none'}>
-                                      {line.hinge_supply ? '✓' : '✕'}
-                                    </span>
-                                    <span className="text-[10px] text-[#5a5a52]">Supply</span>
-                                  </div>
-                                  {line.hinge_qty && (
-                                    <span className="text-[10px] text-[#8b8a81] block">{line.hinge_qty}</span>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => openHingeModal(index)}
-                                    className="flex items-center gap-[2px] text-[9px] text-[#8b8a81] hover:text-[#6b9e61] mt-[3px] leading-none"
-                                  >
-                                    <i className="ti ti-pencil" style={{fontSize:'8px'}} aria-hidden="true" />
-                                    <span>Edit</span>
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => openHingeModal(index)}
-                                  className="inline-flex items-center gap-[3px] text-[10px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[3px] px-[5px] py-[2px] bg-white hover:bg-[#edf4eb] transition-colors leading-none w-full justify-between"
-                                >
-                                  <span>Configure hinges</span>
-                                  <span>↗</span>
-                                </button>
-                              )
-                            ) : (
-                              <span className={naText}>N/A</span>
-                            )
-                          ) : hingesApplicable ? (
-                            <div className="flex items-start justify-between gap-1">
-                              <div>
-                                {hasHingeConfig(line) ? (
-                                  <>
-                                    <div className="flex items-center gap-[4px] mb-[1px]">
-                                      <span className={line.hinge_holes ? 'text-[#2d5e28] text-[11px] font-medium leading-none' : 'text-[#c5cdd8] text-[11px] leading-none'}>
-                                        {line.hinge_holes ? '✓' : '✕'}
-                                      </span>
-                                      <span className="text-[10px] text-[#5a5a52]">Drill</span>
-                                    </div>
-                                    <div className="flex items-center gap-[4px] mb-[2px]">
-                                      <span className={line.hinge_supply ? 'text-[#2d5e28] text-[11px] font-medium leading-none' : 'text-[#c5cdd8] text-[11px] leading-none'}>
-                                        {line.hinge_supply ? '✓' : '✕'}
-                                      </span>
-                                      <span className="text-[10px] text-[#5a5a52]">Supply</span>
-                                    </div>
-                                    {line.hinge_qty && (
-                                      <span className="text-[10px] text-[#8b8a81] block">{line.hinge_qty}</span>
-                                    )}
-                                  </>
-                                ) : (
-                                  <span className="text-[#c5cdd8] text-[11px]">Not set</span>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => openHingeModal(index)}
-                                className="inline-flex items-center gap-[2px] text-[9px] font-medium text-[#8b8a81] hover:text-[#6b9e61] leading-none flex-shrink-0 mt-[1px]"
-                              >
-                                <i className="ti ti-pencil" style={{fontSize:'9px'}} aria-hidden="true" />
-                              </button>
+                            <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                              <span className="px-[3px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0 select-none">W</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="mm"
+                                value={line.width_mm}
+                                onChange={e => updateLine(index, 'width_mm', sanitizeIntegerInput(e.target.value))}
+                                className="flex-1 h-full px-[3px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
+                              />
                             </div>
+                          ) : isBaseCabinetEditable ? (
+                            <span className={naText}>Via cabinet</span>
                           ) : (
-                            <span className={naText}>N/A</span>
+                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
+                              {line.width_mm || <span className="text-[#c5cdd8]">—</span>}
+                            </span>
                           )}
                         </td>
 
@@ -2400,58 +2270,6 @@ export default function QuoteEditor({ quoteId }) {
                           )}
                         </td>
 
-                        {/* Unit cost */}
-                        <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
-                            <>
-                              <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white">
-                                <span className="px-[4px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0">$</span>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  placeholder="0.00"
-                                  value={line.product_unit_cost_ex_gst}
-                                  onChange={e => updateLine(index, 'product_unit_cost_ex_gst', e.target.value)}
-                                  className="flex-1 h-full px-[4px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none"
-                                />
-                              </div>
-                              {canResetUnitCost && (
-                                <button
-                                  type="button"
-                                  onClick={() => resetLineUnitCost(index)}
-                                  className="text-[9px] text-[#6b9e61] hover:underline block mt-[2px]"
-                                >
-                                  Reset to {formatMoney(line.calculated_unit_cost_ex_gst, form.currency)}
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
-                              {formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Markup */}
-                        <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
-                            <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={line.markup_percent}
-                                onChange={e => updateLine(index, 'markup_percent', sanitizeNonNegativeDecimalInput(e.target.value))}
-                                className="flex-1 h-full px-[4px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
-                              />
-                              <span className="px-[4px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-[#5a5a52] font-mono block leading-[1.25]">
-                              {line.markup_percent ?? businessDefaults.markup_percent}%
-                            </span>
-                          )}
-                        </td>
-
                         {/* Unit price */}
                         <td className={td}>
                           <span className={isEditable ? 'text-[12px] font-medium font-mono text-[#1a1a18] block' : 'text-[11px] text-[#1a1a18] font-mono block leading-[1.25]'}>
@@ -2469,63 +2287,73 @@ export default function QuoteEditor({ quoteId }) {
                         {/* Actions */}
                         <td className={td}>
                           {isEditable ? (
-                            <div className="flex flex-col gap-[3px]">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => runLineAction(() => openLineConfig(index))}
+                                disabled={isLineSaving}
+                                aria-label={`Configure quote line ${index + 1}`}
+                                title="Configure line"
+                                className="inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[#dbd8cc] bg-white text-[#8b8a81] transition-colors hover:bg-[#f5f8f4] hover:text-[#1a1a18] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <IconSettings size={13} />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => runLineAction(saveLine)}
                                 disabled={isLineSaving}
-                                className="h-[22px] w-full text-[10px] font-medium rounded-[3px] bg-[#1c2b1e] text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
+                                aria-label={`Save quote line ${index + 1}`}
+                                title="Save line"
+                                className="inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[#1c2b1e] bg-[#1c2b1e] text-white transition-colors hover:bg-[#2d3f2f] disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                {isLineSaving ? '...' : 'Save'}
+                                <IconCheck size={13} />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => { setEditableLineIndex(null); setEditableLineDraft(null) }}
                                 disabled={isLineSaving}
-                                className="h-[22px] w-full text-[10px] font-medium rounded-[3px] border border-[#dbd8cc] bg-white text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50"
+                                aria-label={`Cancel editing quote line ${index + 1}`}
+                                title="Cancel"
+                                className="inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[#dbd8cc] bg-white text-[#8b8a81] transition-colors hover:bg-[#f5f8f4] hover:text-[#1a1a18] disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                Cancel
+                                <IconX size={13} />
                               </button>
                             </div>
                           ) : (
-                            <div className="flex gap-[2px]">
-                              <QuoteLineActionDropdown
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => runLineAction(() => openLineNoteModal(index))}
                                 disabled={isLineSaving || savingLineIndex !== null}
-                                index={index}
-                                isOpen={openLineActionIndex === index}
-                                onClose={closeLineActions}
-                                onToggle={() => {
-                                  setOpenLineActionIndex(current => current === index ? null : index)
-                                  setDeleteLineConfirmIndex(null)
-                                }}
+                                title={hasLineNote ? [
+                                  line.client_note && `Client: ${line.client_note}`,
+                                  line.notes && `Internal: ${line.notes}`,
+                                ].filter(Boolean).join('\n') : 'No notes attached'}
+                                aria-label={hasLineNote ? `View notes for quote line ${index + 1}` : `Add notes for quote line ${index + 1}`}
+                                className={`inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                  hasLineNote
+                                    ? 'border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28] hover:bg-[#dfeedd]'
+                                    : 'border-[#dbd8cc] bg-white text-[#8b8a81] hover:bg-[#f5f8f4] hover:text-[#1a1a18]'
+                                }`}
                               >
-                                {deleteLineConfirmIndex === index ? (
-                                  <>
-                                    <span className={quoteStyles.quoteActionConfirmText}>Delete line?</span>
-                                    <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => runLineAction(() => removeLine(index))}>
-                                      Confirm delete
-                                    </button>
-                                    <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => setDeleteLineConfirmIndex(null)}>
-                                      Cancel
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => openLineNoteModal(index))}>
-                                      {line.client_note ? 'Edit note' : 'Add note'}
-                                    </button>
-                                    <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => editLine(index))}>
-                                      Edit
-                                    </button>
-                                    <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => duplicateLine(index))}>
-                                      Duplicate
-                                    </button>
-                                    <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => setDeleteLineConfirmIndex(index)}>
-                                      Delete
-                                    </button>
-                                  </>
-                                )}
-                              </QuoteLineActionDropdown>
+                                <span className="relative inline-flex">
+                                  <IconMessage size={13} />
+                                  {hasLineNote && (
+                                    <span className="absolute -right-[3px] -top-[3px] h-[5px] w-[5px] rounded-full bg-[#2d5e28] ring-1 ring-white" />
+                                  )}
+                                </span>
+                              </button>
+                              <ActionMenu label={`Open actions for quote line ${index + 1}`} size="xs" disabled={isLineSaving || savingLineIndex !== null}>
+                                <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => runLineAction(() => editLine(index))}>
+                                  Edit
+                                </ActionMenuItem>
+                                <ActionMenuItem icon={<IconCopy size={14} />} onClick={() => runLineAction(() => duplicateLine(index))}>
+                                  Duplicate
+                                </ActionMenuItem>
+                                <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" onClick={() => setDeleteLineConfirmIndex(index)}>
+                                  Delete
+                                </ActionMenuItem>
+                              </ActionMenu>
                             </div>
                           )}
                         </td>
@@ -2538,7 +2366,7 @@ export default function QuoteEditor({ quoteId }) {
 
                 {form.lines.length === 0 && (
                   <tr>
-                    <td colSpan={16} className="py-10 text-center">
+                    <td colSpan={14} className="py-10 text-center">
                       <p className="text-[13px] font-medium text-[#1a1a18] mb-1">No line items yet</p>
                       <p className="text-[11px] text-[#8b8a81] mb-3">Add your first line to start building this quote.</p>
                       <button
@@ -2571,6 +2399,7 @@ export default function QuoteEditor({ quoteId }) {
             const isLineSaving = savingLineIndex === index
             const line = savedLine
             const { calculated, colourSrc } = lineViewModel(line)
+            const hasLineNote = Boolean(line.notes || line.client_note)
 
             return (
               <div key={savedLine.id || index} className={`bg-white border border-[#dbd8cc] rounded-[8px] p-3 ${isLineSaving ? 'opacity-60' : ''}`}>
@@ -2579,31 +2408,41 @@ export default function QuoteEditor({ quoteId }) {
                     <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[18px] h-[18px] rounded-[3px] flex items-center justify-center flex-shrink-0">{index + 1}</span>
                     <span className="text-[13px] font-semibold text-[#1a1a18] truncate">{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">No type</span>}</span>
                   </div>
-                  <QuoteLineActionDropdown
-                    disabled={isLineSaving || savingLineIndex !== null}
-                    index={index}
-                    isOpen={openLineActionIndex === index}
-                    onClose={closeLineActions}
-                    onToggle={() => {
-                      setOpenLineActionIndex(current => current === index ? null : index)
-                      setDeleteLineConfirmIndex(null)
-                    }}
-                  >
-                    {deleteLineConfirmIndex === index ? (
-                      <>
-                        <span className={quoteStyles.quoteActionConfirmText}>Delete line?</span>
-                        <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => runLineAction(() => removeLine(index))}>Confirm delete</button>
-                        <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => setDeleteLineConfirmIndex(null)}>Cancel</button>
-                      </>
-                    ) : (
-                      <>
-                        <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => openLineNoteModal(index))}>{line.client_note ? 'Edit note' : 'Add note'}</button>
-                        <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => editLine(index))}>Edit</button>
-                        <button type="button" className={quoteStyles.quoteActionMenuItem} onClick={() => runLineAction(() => duplicateLine(index))}>Duplicate</button>
-                        <button type="button" className={quoteStyles.quoteActionDangerItem} onClick={() => setDeleteLineConfirmIndex(index)}>Delete</button>
-                      </>
-                    )}
-                  </QuoteLineActionDropdown>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => runLineAction(() => openLineNoteModal(index))}
+                      disabled={isLineSaving || savingLineIndex !== null}
+                      title={hasLineNote ? [
+                        line.client_note && `Client: ${line.client_note}`,
+                        line.notes && `Internal: ${line.notes}`,
+                      ].filter(Boolean).join('\n') : 'No notes attached'}
+                      aria-label={hasLineNote ? `View notes for quote line ${index + 1}` : `Add notes for quote line ${index + 1}`}
+                      className={`inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        hasLineNote
+                          ? 'border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28] hover:bg-[#dfeedd]'
+                          : 'border-[#dbd8cc] bg-white text-[#8b8a81] hover:bg-[#f5f8f4] hover:text-[#1a1a18]'
+                      }`}
+                    >
+                      <span className="relative inline-flex">
+                        <IconMessage size={13} />
+                        {hasLineNote && (
+                          <span className="absolute -right-[3px] -top-[3px] h-[5px] w-[5px] rounded-full bg-[#2d5e28] ring-1 ring-white" />
+                        )}
+                      </span>
+                    </button>
+                    <ActionMenu label={`Open actions for quote line ${index + 1}`} size="xs" disabled={isLineSaving || savingLineIndex !== null}>
+                      <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => runLineAction(() => editLine(index))}>
+                        Edit
+                      </ActionMenuItem>
+                      <ActionMenuItem icon={<IconCopy size={14} />} onClick={() => runLineAction(() => duplicateLine(index))}>
+                        Duplicate
+                      </ActionMenuItem>
+                      <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" onClick={() => setDeleteLineConfirmIndex(index)}>
+                        Delete
+                      </ActionMenuItem>
+                    </ActionMenu>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-[4px] text-[12px] text-[#5a5a52]">
                   {(line.material || line.thickness) && <span>{[line.material, line.thickness].filter(Boolean).join(' · ')}</span>}
@@ -2704,6 +2543,8 @@ export default function QuoteEditor({ quoteId }) {
                   ["Travel cost ex GST", "travel_cost_ex_gst"],
                   ["Delivery cost ex GST", "delivery_cost_ex_gst"],
                   ["Consumables ex GST", "installation_cost_ex_gst"],
+                  ["Painting cost ex GST", "painting_cost_ex_gst"],
+                  ["Glass cost ex GST", "glass_cost_ex_gst"],
                 ].map(([label, field]) => (
                   <label key={field} className={tw.fieldLabel}>
                     {label}
@@ -2729,6 +2570,8 @@ export default function QuoteEditor({ quoteId }) {
             ["Travel", totals.travel_cost_ex_gst],
             ["Delivery", totals.delivery_cost_ex_gst],
             ["Consumables", totals.installation_cost_ex_gst],
+            ["Painting", totals.painting_cost_ex_gst],
+            ["Glass", totals.glass_cost_ex_gst],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between items-center py-[6px] border-b border-[#edf4eb] text-[12px]">
               <span className="text-[#5a5a52]">{label}</span>
@@ -2769,12 +2612,14 @@ export default function QuoteEditor({ quoteId }) {
       },
       {
         label: "Logistics and consumables",
-        desc: "Travel, delivery, and small materials",
-        total: (totals.travel_cost_ex_gst || 0) + (totals.delivery_cost_ex_gst || 0) + (totals.installation_cost_ex_gst || 0),
+        desc: "Travel, delivery, small materials, and specialist quote-level costs",
+        total: (totals.travel_cost_ex_gst || 0) + (totals.delivery_cost_ex_gst || 0) + (totals.installation_cost_ex_gst || 0) + (totals.painting_cost_ex_gst || 0) + (totals.glass_cost_ex_gst || 0),
         rows: [
           ["Travel", totals.travel_cost_ex_gst],
           ["Delivery", totals.delivery_cost_ex_gst],
           ["Consumables", totals.installation_cost_ex_gst],
+          ["Painting", totals.painting_cost_ex_gst],
+          ["Glass", totals.glass_cost_ex_gst],
         ],
       },
     ];
@@ -2867,23 +2712,16 @@ export default function QuoteEditor({ quoteId }) {
                       {attachment.file_type || "File"} · {formatFileSize(attachment.file_size)} · {attachment.created_at ? new Date(attachment.created_at).toLocaleDateString("en-AU") : "-"}
                     </p>
                   </div>
-                  <a href={attachment.file_url} target="_blank" rel="noreferrer" className="text-[12px] font-medium text-[#6b9e61] hover:underline flex-shrink-0">
-                    View
-                  </a>
-                  {deleteAttachmentConfirmId === attachment.id ? (
-                    <span className="flex items-center gap-2 flex-shrink-0">
-                      <button type="button" onClick={() => deleteAttachment(attachment)} disabled={isUploading} className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50">
-                        Confirm?
-                      </button>
-                      <button type="button" onClick={() => setDeleteAttachmentConfirmId(null)} className="text-[12px] font-medium text-[#5a5a52] hover:underline">
-                        Cancel
-                      </button>
-                    </span>
-                  ) : (
-                    <button type="button" onClick={() => setDeleteAttachmentConfirmId(attachment.id)} disabled={isUploading} className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50 flex-shrink-0">
-                      Delete
-                    </button>
-                  )}
+                  <div className="flex-shrink-0">
+                    <ActionMenu label={`Open actions for attachment ${attachment.file_name || "attachment"}`} disabled={isUploading}>
+                      <ActionMenuItem icon={<IconExternalLink size={14} />} onClick={() => window.open(attachment.file_url, "_blank", "noopener,noreferrer")}>
+                        View
+                      </ActionMenuItem>
+                      <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" onClick={() => setDeleteAttachmentConfirmId(attachment.id)}>
+                        Delete
+                      </ActionMenuItem>
+                    </ActionMenu>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2912,6 +2750,29 @@ export default function QuoteEditor({ quoteId }) {
 
   const activeLabel = sections.find((section) => section.key === activeSection)?.label || "Information & Contacts";
   const activeCabinetLine = activeCabinetLineIndex !== null ? form.lines[activeCabinetLineIndex] : null;
+  const activeLineConfig = activeLineConfigIndex !== null
+    ? (activeLineConfigDraft || form.lines[activeLineConfigIndex])
+    : null;
+  const activeLineConfigView = activeLineConfig ? lineViewModel(activeLineConfig) : null;
+  const activeLineConfigIsBaseCabinet = activeLineConfig ? isBaseCabinetLine(activeLineConfig) : false;
+  const activeLineConfigCanResetUnitCost = Boolean(
+    activeLineConfig &&
+    !activeLineConfigIsBaseCabinet &&
+    activeLineConfig.unit_cost_mode === "manual" &&
+    Number(activeLineConfig.calculated_unit_cost_ex_gst || 0) > 0
+  );
+  const activeLineConfigProfileTypes = activeLineConfig
+    ? profileTypesForSelection(activeLineConfig.material, activeLineConfig.thickness)
+    : [];
+  const activeLineConfigProfileNames = activeLineConfig
+    ? profileNamesForSelection(activeLineConfig.profile_type, activeLineConfig.material, activeLineConfig.thickness)
+    : [];
+  const activeLineConfigProfileOptions = activeLineConfigProfileNames.map((profile) => ({
+    name: profile,
+    label: profile,
+    meta: activeLineConfig?.profile_type || "Profile",
+    src: profileOptionSrc(activeLineConfig?.profile_type, profile),
+  }));
   const profileModalTypes = profileModal
     ? profileTypesForSelection(profileModal.material, profileModal.thickness)
     : [];
@@ -3157,6 +3018,331 @@ export default function QuoteEditor({ quoteId }) {
           </div>
         </Modal>
       )}
+      <ConfirmModal
+        open={deleteLineConfirmIndex !== null}
+        onClose={() => setDeleteLineConfirmIndex(null)}
+        title="Delete line?"
+        description="This quote line will be removed from the quote."
+        variant="danger"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deleteLineConfirmIndex !== null && savingLineIndex === deleteLineConfirmIndex}
+        onConfirm={() => {
+          const index = deleteLineConfirmIndex;
+          if (index === null) return;
+          runLineAction(() => removeLine(index));
+        }}
+      />
+      <ConfirmModal
+        open={Boolean(deleteAttachmentConfirmId)}
+        onClose={() => setDeleteAttachmentConfirmId(null)}
+        title="Delete attachment?"
+        description="This file will be removed from the quote attachments."
+        variant="danger"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={isUploading}
+        onConfirm={() => {
+          const attachment = form.attachments.find(item => item.id === deleteAttachmentConfirmId);
+          if (attachment) deleteAttachment(attachment);
+        }}
+      />
+      {activeLineConfig && activeLineConfigIndex !== null && typeof document !== "undefined" ? createPortal(
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="quote-line-config-title">
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default bg-[rgba(15,22,31,0.28)]"
+            aria-label="Close line config"
+            onClick={closeLineConfig}
+          />
+          <aside className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col border-l border-[#dbd8cc] bg-white shadow-[-16px_0_38px_rgba(15,22,31,0.16)]">
+            <div className="flex flex-shrink-0 items-start justify-between border-b border-[#edf4eb] px-5 py-4">
+              <div>
+                <h2 id="quote-line-config-title" className="text-[16px] font-semibold leading-snug text-[#1a1a18]">
+                  Line {activeLineConfigIndex + 1} editor
+                </h2>
+                <p className="mt-1 text-[12px] text-[#6f6d64]">
+                  Full line item settings
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeLineConfig}
+                aria-label="Close"
+                className="flex h-[28px] w-[28px] flex-shrink-0 items-center justify-center rounded-[6px] text-[#8b8a81] transition-colors hover:bg-[#edf4eb] hover:text-[#1a1a18]"
+              >
+                <IconX size={15} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="grid gap-4">
+                <label className={styles.fieldLabel}>
+                  Type
+                  <QuoteTileCombobox
+                    compact={false}
+                    placeholder="Select type"
+                    value={displayProductType(activeLineConfig.product_type)}
+                    options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
+                    onChange={option => updateLineConfigProduct({ product_type: option.value || option.name || option.label })}
+                  />
+                </label>
+
+                <label className={styles.fieldLabel}>
+                  Material
+                  <QuoteTileCombobox
+                    compact={false}
+                    placeholder="Select material"
+                    value={activeLineConfig.material}
+                    options={(activeLineConfigView?.materialOptions || MATERIAL_OPTIONS).map(m => ({ label: m, name: m, meta: 'Material' }))}
+                    onChange={option => updateLineConfigProduct({ material: option.name || option.label })}
+                  />
+                </label>
+
+                <label className={styles.fieldLabel}>
+                  Supplier
+                  <QuoteTileCombobox
+                    compact={false}
+                    disabled={!activeLineConfig.material || activeLineConfigIsBaseCabinet}
+                    placeholder="Supplier"
+                    value={COLOUR_SUPPLIERS.includes(activeLineConfig.supplier_name) ? activeLineConfig.supplier_name : COLOUR_SUPPLIERS[0]}
+                    options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
+                    onChange={option => updateLineConfigProduct({ supplier_name: option.value || option.name || option.label })}
+                  />
+                </label>
+
+                <label className={styles.fieldLabel}>
+                  Colour
+                  <QuoteColourCombobox
+                    compact={false}
+                    disabled={activeLineConfigIsBaseCabinet}
+                    line={activeLineConfig}
+                    onChange={patch => updateLineConfigProduct(patch)}
+                  />
+                </label>
+
+                <label className={styles.fieldLabel}>
+                  Finish
+                  <input className={styles.fieldInput} value={activeLineConfig.finish || ""} disabled readOnly placeholder="Selected from colour" />
+                </label>
+
+                <label className={styles.fieldLabel}>
+                  Thickness
+                  <input className={styles.fieldInput} value={activeLineConfig.thickness || ""} disabled readOnly placeholder="Selected from colour" />
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={styles.fieldLabel}>
+                    Height mm
+                    <input
+                      className={styles.fieldInput}
+                      type="text"
+                      inputMode="numeric"
+                      value={activeLineConfig.height_mm}
+                      onChange={(event) => updateLineConfigField("height_mm", sanitizeIntegerInput(event.target.value))}
+                      disabled={activeLineConfigIsBaseCabinet}
+                      placeholder={activeLineConfigIsBaseCabinet ? "Via cabinet" : "mm"}
+                    />
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Width mm
+                    <input
+                      className={styles.fieldInput}
+                      type="text"
+                      inputMode="numeric"
+                      value={activeLineConfig.width_mm}
+                      onChange={(event) => updateLineConfigField("width_mm", sanitizeIntegerInput(event.target.value))}
+                      disabled={activeLineConfigIsBaseCabinet}
+                      placeholder={activeLineConfigIsBaseCabinet ? "Via cabinet" : "mm"}
+                    />
+                  </label>
+                </div>
+
+                <label className={styles.fieldLabel}>
+                  Quantity
+                  <input
+                    className={styles.fieldInput}
+                    type="text"
+                    inputMode="numeric"
+                    value={activeLineConfig.qty}
+                    onChange={(event) => updateLineConfigField("qty", sanitizeIntegerInput(event.target.value))}
+                  />
+                </label>
+
+                <div className="border-t border-[#edf4eb] pt-4">
+                  <label className={styles.fieldLabel}>
+                    Edge profile
+                    {activeLineConfigView?.showEdges && !activeLineConfigIsBaseCabinet ? (
+                      <QuoteImageCombobox
+                        className={quoteStyles.profileNameCombo}
+                        placeholder="Select edge profile"
+                        value={activeLineConfig.edge_mould}
+                        options={activeLineConfigView.edgeOptions}
+                        onChange={(option) => updateLineConfigProduct({ edge_mould: option.name || option.label })}
+                      />
+                    ) : (
+                      <input className={styles.fieldInput} value="Not applicable" disabled readOnly />
+                    )}
+                  </label>
+                </div>
+
+                <label className={styles.fieldLabel}>
+                  Front profile type
+                  {activeLineConfigView?.showProfiles && !activeLineConfigIsBaseCabinet ? (
+                    <select
+                      className={styles.fieldInput}
+                      value={activeLineConfig.profile_type}
+                      onChange={(event) => updateLineConfigProduct({ profile_type: event.target.value })}
+                    >
+                      <option value="">Select profile type</option>
+                      {activeLineConfigProfileTypes.map((type) => <option key={type}>{type}</option>)}
+                    </select>
+                  ) : (
+                    <input className={styles.fieldInput} value="Not applicable" disabled readOnly />
+                  )}
+                </label>
+
+                <label className={styles.fieldLabel}>
+                  Front profile
+                  {activeLineConfigView?.showProfiles && !activeLineConfigIsBaseCabinet ? (
+                    <QuoteImageCombobox
+                      className={quoteStyles.profileNameCombo}
+                      disabled={!activeLineConfig.profile_type}
+                      placeholder={activeLineConfig.profile_type ? "Select front profile" : "Select profile type first"}
+                      value={activeLineConfig.profile}
+                      options={activeLineConfigProfileOptions}
+                      onChange={(option) => updateLineConfigProduct({ profile: option.name || option.label })}
+                    />
+                  ) : (
+                    <input className={styles.fieldInput} value="Not applicable" disabled readOnly />
+                  )}
+                </label>
+
+                {activeLineConfigView?.hingesApplicable && !activeLineConfigIsBaseCabinet && (
+                  <div className={quoteStyles.hingeConfigForm}>
+                    <label className={quoteStyles.hingeConfigToggle}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(activeLineConfig.hinge_holes)}
+                        onChange={(event) => updateLineConfigProduct({ hinge_holes: event.target.checked })}
+                      />
+                      <span>
+                        <strong>Hinge drilling required</strong>
+                        <small>Add hinge hole drilling to this door line.</small>
+                      </span>
+                    </label>
+                    <label className={quoteStyles.hingeConfigToggle}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(activeLineConfig.hinge_supply)}
+                        onChange={(event) => updateLineConfigProduct({ hinge_supply: event.target.checked })}
+                      />
+                      <span>
+                        <strong>Hinge supply required</strong>
+                        <small>Add supplied hinges to this door line.</small>
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                <label className={styles.fieldLabel}>
+                  Hinge quantity
+                  {activeLineConfigView?.hingesApplicable && !activeLineConfigIsBaseCabinet ? (
+                    <select
+                      className={styles.fieldInput}
+                      value={activeLineConfig.hinge_qty || ""}
+                      onChange={(event) => updateLineConfigProduct({ hinge_qty: event.target.value })}
+                      disabled={!activeLineConfig.hinge_holes && !activeLineConfig.hinge_supply}
+                    >
+                      <option value="">Please select hinge quantity...</option>
+                      <option>2 hinges</option>
+                      <option>3 hinges</option>
+                      <option>4 hinges</option>
+                    </select>
+                  ) : (
+                    <input className={styles.fieldInput} value="Not applicable" disabled readOnly />
+                  )}
+                </label>
+
+                <div className="grid gap-4 border-t border-[#edf4eb] pt-4">
+                  <label className={styles.fieldLabel}>
+                    Unit cost
+                    {activeLineConfigIsBaseCabinet ? (
+                      <input className={styles.fieldInput} value={formatMoney(activeLineConfig.product_unit_cost_ex_gst || 0, form.currency)} disabled readOnly />
+                    ) : (
+                      <div>
+                        <div className="flex h-[38px] items-center overflow-hidden rounded-[6px] border border-[#dbd8cc] bg-white focus-within:border-[#6b9e61]">
+                          <span className="flex h-full items-center border-r border-[#dbd8cc] bg-[#f5f8f4] px-3 text-[13px] text-[#8b8a81]">$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            value={activeLineConfig.product_unit_cost_ex_gst}
+                            onChange={(event) => updateLineConfigField("product_unit_cost_ex_gst", event.target.value)}
+                            className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-[13px] text-[#1a1a18] focus:outline-none"
+                          />
+                        </div>
+                        {activeLineConfigCanResetUnitCost && (
+                          <button
+                            type="button"
+                            onClick={resetLineConfigUnitCost}
+                            className="mt-2 text-[12px] font-medium text-[#2d5e28] hover:underline"
+                          >
+                            Reset to {formatMoney(activeLineConfig.calculated_unit_cost_ex_gst, form.currency)}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </label>
+
+                  <label className={styles.fieldLabel}>
+                    Markup %
+                    {activeLineConfigIsBaseCabinet ? (
+                      <input className={styles.fieldInput} value={`${activeLineConfig.markup_percent ?? businessDefaults.markup_percent}%`} disabled readOnly />
+                    ) : (
+                      <div className="flex h-[38px] items-center overflow-hidden rounded-[6px] border border-[#dbd8cc] bg-white focus-within:border-[#6b9e61]">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={activeLineConfig.markup_percent}
+                          onChange={(event) => updateLineConfigField("markup_percent", sanitizeNonNegativeDecimalInput(event.target.value))}
+                          className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-[13px] text-[#1a1a18] focus:outline-none"
+                        />
+                        <span className="flex h-full items-center border-l border-[#dbd8cc] bg-[#f5f8f4] px-3 text-[13px] text-[#8b8a81]">%</span>
+                      </div>
+                    )}
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 border-t border-[#edf4eb] pt-4">
+                  <div>
+                    <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Unit price</span>
+                    <span className="mt-1 block font-mono text-[14px] font-semibold text-[#1a1a18]">
+                      {formatMoney(activeLineConfigView?.calculated.unit_price_ex_gst || 0, form.currency)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Total</span>
+                    <span className="mt-1 block font-mono text-[14px] font-semibold text-[#1a1a18]">
+                      {formatMoney(activeLineConfigView?.calculated.line_total_ex_gst || 0, form.currency)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-shrink-0 flex-col gap-2 border-t border-[#edf4eb] px-5 py-4 sm:flex-row sm:justify-end">
+              <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={closeLineConfig} disabled={savingLineIndex !== null}>
+                Close
+              </button>
+              <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={saveLineConfig} disabled={savingLineIndex !== null}>
+                {savingLineIndex === activeLineConfigIndex ? "Saving..." : "Save line"}
+              </button>
+            </div>
+          </aside>
+        </div>,
+        document.body
+      ) : null}
       {lineNoteModal && (
         <Modal
           open={true}
@@ -3232,7 +3418,6 @@ export default function QuoteEditor({ quoteId }) {
               <span className="text-[12px] font-medium text-[#5a5a52]">Profile name</span>
               <QuoteImageCombobox
                 className={quoteStyles.profileNameCombo}
-                disablePortal
                 disabled={!profileModal.profile_type}
                 placeholder={profileModal.profile_type ? "Profile name" : "Select profile type first"}
                 value={profileModal.profile}
@@ -3306,7 +3491,7 @@ export default function QuoteEditor({ quoteId }) {
         (() => {
           const idx = editableLineIndex
           const line = editableLineDraft || form.lines[idx] || emptyLineWithDefaults(businessDefaults)
-          const { calculated, materialOptions, thicknessOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isBaseCabinet } = lineViewModel(line)
+          const { calculated, materialOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isBaseCabinet } = lineViewModel(line)
           const isBaseCabinetEditable = isBaseCabinet
           const isLineSaving = savingLineIndex === idx
           const canResetUnitCost = !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
@@ -3332,6 +3517,7 @@ export default function QuoteEditor({ quoteId }) {
                   <div className="col-span-2">
                     <span className={mfl}>Type</span>
                     <QuoteTileCombobox
+                      compact={false}
                       placeholder="Select type"
                       value={displayProductType(line.product_type)}
                       options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
@@ -3341,6 +3527,7 @@ export default function QuoteEditor({ quoteId }) {
                   <div className="col-span-2">
                     <span className={mfl}>Material</span>
                     <QuoteTileCombobox
+                      compact={false}
                       placeholder="Select material"
                       value={line.material}
                       options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
@@ -3348,36 +3535,37 @@ export default function QuoteEditor({ quoteId }) {
                     />
                   </div>
                   <div className="col-span-2">
-                    <span className={mfl}>Thickness</span>
+                    <span className={mfl}>Supplier</span>
                     <QuoteTileCombobox
+                      compact={false}
                       disabled={!line.material || isBaseCabinetEditable}
-                      placeholder={line.material ? 'Thickness' : 'N/A – select material'}
-                      value={line.thickness}
-                      options={thicknessOptions.map(t => ({ label: t, name: t, meta: 'Thickness' }))}
-                      onChange={option => updateProductLine(idx, { thickness: option.name || option.label })}
+                      placeholder="Supplier"
+                      value={COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0]}
+                      options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
+                      onChange={option => updateProductLine(idx, { supplier_name: option.value || option.name || option.label })}
                     />
                   </div>
                   <div className="col-span-2">
-                    <span className={mfl}>Finish &amp; Colour</span>
-                    <QuoteColourCombobox line={line} onChange={patch => updateProductLine(idx, patch)} />
+                    <span className={mfl}>Finish, colour &amp; thickness</span>
+                    <QuoteColourCombobox compact={false} disabled={isBaseCabinetEditable} line={line} onChange={patch => updateProductLine(idx, patch)} />
                   </div>
                   {!isBaseCabinetEditable ? (
                     <>
-                      <div>
-                        <span className={mfl}>W mm</span>
-                        <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
-                          <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">W</span>
-                          <input type="text" inputMode="numeric" placeholder="mm" value={line.width_mm}
-                            onChange={e => updateLine(idx, 'width_mm', sanitizeIntegerInput(e.target.value))}
-                            className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
-                        </div>
-                      </div>
                       <div>
                         <span className={mfl}>H mm</span>
                         <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
                           <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">H</span>
                           <input type="text" inputMode="numeric" placeholder="mm" value={line.height_mm}
                             onChange={e => updateLine(idx, 'height_mm', sanitizeIntegerInput(e.target.value))}
+                            className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
+                        </div>
+                      </div>
+                      <div>
+                        <span className={mfl}>W mm</span>
+                        <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                          <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 select-none font-mono">W</span>
+                          <input type="text" inputMode="numeric" placeholder="mm" value={line.width_mm}
+                            onChange={e => updateLine(idx, 'width_mm', sanitizeIntegerInput(e.target.value))}
                             className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
                         </div>
                       </div>

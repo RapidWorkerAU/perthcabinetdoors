@@ -2,6 +2,7 @@ import LandingHeroVideo from "./LandingHeroVideo";
 import PublicSiteNav from "./PublicSiteNav";
 import PublicButton from "@/components/public/PublicButton";
 import PublicFooter from "@/components/public/PublicFooter";
+import PublicSection from "@/components/public/PublicSection";
 
 export const metadata = {
   title: "Perth Cabinet Doors | Custom Cabinet Doors, Panels & Drawer Fronts - Perth WA",
@@ -254,7 +255,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="landing-cta" id="contact">
+      <PublicSection className="landing-cta" id="contact">
         <p className="landing-label">Get Started Today</p>
         <h2>Ready to Transform Your Kitchen, Bathroom or Laundry?</h2>
         <p>
@@ -265,7 +266,7 @@ export default function HomePage() {
           Get a Free Quote
         </PublicButton>
         <span>Flat-rate shipping across Perth metro - No minimum order - Expert advice from our team</span>
-      </section>
+      </PublicSection>
 
       <PublicFooter className="landing-footer" separator="dash" />
     </main>

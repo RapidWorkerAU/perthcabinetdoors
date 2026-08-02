@@ -1,7 +1,10 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import PortalModal from "@/components/PortalModal";
+import PublicButton from "@/components/public/PublicButton";
+import PublicFooter from "@/components/public/PublicFooter";
 import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../../lib/quote-form-data";
 import styles from "./product-detail.module.css";
 
@@ -225,7 +228,7 @@ export default function ProductDetailClient({
     <main className={styles.page}>
       <div className={styles.breadcrumbBar}>
         <p>
-          <a href="/">Home</a> &rsaquo; <a href="/products">Products</a> &rsaquo; {product.name}
+          <Link href="/">Home</Link> &rsaquo; <Link href="/products">Products</Link> &rsaquo; {product.name}
         </p>
       </div>
 
@@ -469,8 +472,8 @@ export default function ProductDetailClient({
             </div>
 
             <div className={styles.ctaGroup}>
-              <a href="/request-quote" className={styles.btnPrimary}>Get a free quote</a>
-              <a href="tel:0408906784" className={styles.btnSecondary}>Call us - 0408 906 784</a>
+              <PublicButton href="/request-quote" className={styles.btnPrimary}>Get a free quote</PublicButton>
+              <PublicButton href="tel:0408906784" className={styles.btnSecondary}>Call us - 0408 906 784</PublicButton>
             </div>
             <p className={styles.ctaNote}>We will come back to you promptly with a quote based on your exact measurements and chosen finish.</p>
 
@@ -577,7 +580,7 @@ export default function ProductDetailClient({
           <p className={styles.sectionSub}>Commonly ordered alongside this product</p>
           <div className={styles.relatedGrid}>
             {relatedProducts.map((related) => (
-              <a className={styles.relatedTile} href={`/products/${related.id}`} key={related.id}>
+              <Link className={styles.relatedTile} href={`/products/${related.id}`} key={related.id}>
                 <div className={styles.relatedImage}>
                   {related.galleryImages?.[0] ? (
                     <img src={related.galleryImages[0]} alt={related.name} className={styles.relatedImageImg} />
@@ -590,16 +593,13 @@ export default function ProductDetailClient({
                   <div className={styles.relatedName}>{related.name}</div>
                   <div className={styles.relatedPrice}>Starting from <strong>${related.price}</strong></div>
                 </div>
-              </a>
+              </Link>
             ))}
           </div>
         </section>
       </div>
 
-      <footer className={styles.siteFooter}>
-        <p>Copyright 2026 Perth Cabinet Doors. All rights reserved.</p>
-        <p>Perth, Western Australia &nbsp;&middot;&nbsp; <a href="tel:0408906784">0408 906 784</a> &nbsp;&middot;&nbsp; <a href="mailto:sales@perthcabinetdoors.com.au">sales@perthcabinetdoors.com.au</a></p>
-      </footer>
+      <PublicFooter className={styles.siteFooter} />
 
       {(() => {
         if (!lightboxType) return null;
@@ -651,4 +651,3 @@ export default function ProductDetailClient({
     </main>
   );
 }
-

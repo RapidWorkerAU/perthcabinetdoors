@@ -1,7 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { IconEye, IconTrash } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { Modal } from '@/components/ui/Modal'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
@@ -275,8 +277,12 @@ export default function EnquiriesManager() {
               <tr><td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">No enquiries match this filter.</td></tr>
             )}
             {pageItems.map(enquiry => (
-              <tr key={enquiry.id} className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0">
-                <td className="px-4 py-[11px]">
+              <tr
+                key={enquiry.id}
+                className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
+                onClick={() => setPreviewEnquiry(enquiry)}
+              >
+                <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(enquiry.id)}
@@ -290,7 +296,7 @@ export default function EnquiriesManager() {
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.postcode || '-'}</td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.topic || '-'}</td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] max-w-[200px] truncate">{enquiry.message || '-'}</td>
-                <td className="px-4 py-[11px]">
+                <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
                   <select
                     value={enquiry.status || 'new'}
                     onChange={e => updateStatus(enquiry.id, e.target.value)}
@@ -300,23 +306,16 @@ export default function EnquiriesManager() {
                   </select>
                 </td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] whitespace-nowrap">{formatDate(enquiry.created_at)}</td>
-                <td className="px-4 py-[11px] text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewEnquiry(enquiry)}
-                      className="text-[12px] font-medium text-[#1c2b1e] hover:underline"
-                    >
+                <td className="px-4 py-[11px] text-right" onClick={e => e.stopPropagation()}>
+                  <div className="flex justify-end">
+                    <ActionMenu label={`Open actions for enquiry from ${enquiry.customer_name || 'customer'}`}>
+                      <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewEnquiry(enquiry)}>
                       Preview
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteEnquiries([enquiry.id])}
-                      disabled={isSaving}
-                      className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                    >
+                      </ActionMenuItem>
+                      <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => deleteEnquiries([enquiry.id])}>
                       Delete
-                    </button>
+                      </ActionMenuItem>
+                    </ActionMenu>
                   </div>
                 </td>
               </tr>
@@ -361,22 +360,15 @@ export default function EnquiriesManager() {
               <div><span className="text-[#8b8a81]">Received</span><p className="text-[#1a1a18]">{formatDate(enquiry.created_at)}</p></div>
             </div>
             {enquiry.message && <p className="text-[12px] text-[#5a5a52] leading-relaxed border-t border-[#edf4eb] pt-3">{enquiry.message}</p>}
-            <div className="flex items-center justify-between pt-3 border-t border-[#edf4eb] mt-3">
-              <button
-                type="button"
-                onClick={() => setPreviewEnquiry(enquiry)}
-                className="text-[12px] font-medium text-[#1c2b1e] hover:underline"
-              >
-                Preview
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteEnquiries([enquiry.id])}
-                disabled={isSaving}
-                className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-              >
-                Delete
-              </button>
+            <div className="flex items-center justify-end pt-3 border-t border-[#edf4eb] mt-3">
+              <ActionMenu label={`Open actions for enquiry from ${enquiry.customer_name || 'customer'}`}>
+                <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewEnquiry(enquiry)}>
+                  Preview
+                </ActionMenuItem>
+                <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => deleteEnquiries([enquiry.id])}>
+                  Delete
+                </ActionMenuItem>
+              </ActionMenu>
             </div>
           </div>
         ))}

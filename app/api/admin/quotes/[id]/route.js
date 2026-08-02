@@ -85,6 +85,8 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       travel_cost_ex_gst: totals.travel_cost_ex_gst,
       delivery_cost_ex_gst: totals.delivery_cost_ex_gst,
       installation_cost_ex_gst: totals.installation_cost_ex_gst,
+      painting_cost_ex_gst: totals.painting_cost_ex_gst,
+      glass_cost_ex_gst: totals.glass_cost_ex_gst,
       other_cost_ex_gst: totals.other_cost_ex_gst,
       markup_percent: totals.markup_percent,
       markup_amount_ex_gst: totals.markup_amount_ex_gst,

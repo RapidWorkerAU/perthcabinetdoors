@@ -813,6 +813,7 @@
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
+  min-height: 40px;
   padding: 6px 14px;
 }
 
@@ -1298,10 +1299,10 @@
   cursor: pointer;
   display: inline-flex;
   font-size: 17px;
-  height: 32px;
+  height: 40px;
   justify-content: center;
   line-height: 1;
-  width: 32px;
+  width: 40px;
 }
 
 .productModalGrid {
@@ -1548,6 +1549,35 @@
     padding-right: 18px;
   }
 
+  .field input,
+  .field select,
+  .field textarea,
+  .quoteWrap .field input,
+  .quoteWrap .field select,
+  .quoteWrap .field textarea,
+  .inlineField input,
+  .inlineField select,
+  .inlineSize input,
+  .inlineHinges select,
+  .productModalColourField .inlineField input,
+  .productModalColourField .inlineField select,
+  .imageSelectControl {
+    font-size: 16px;
+  }
+
+  .productAddBtn,
+  .saveRowBtn,
+  .cancelRowBtn,
+  .editRowBtn,
+  .deleteRowBtn {
+    min-height: 40px;
+  }
+
+  .productModalClose {
+    height: 44px;
+    width: 44px;
+  }
+
   .infoSide,
   .sidebar {
     position: static;
@@ -1630,6 +1660,14 @@
     width: 100%;
   }
 
+  .productLineCardMeta {
+    grid-template-columns: 1fr;
+  }
+
+  .productLineCardMeta span {
+    margin-bottom: -4px;
+  }
+
   .productModalOverlay {
     padding: 0;
   }
@@ -1650,7 +1688,13 @@
   }
 
   .productModalFooter button {
+    min-height: 44px;
     width: 100%;
+  }
+
+  .siteFooter p,
+  .siteFooter a {
+    overflow-wrap: anywhere;
   }
 
   .siteFooter {

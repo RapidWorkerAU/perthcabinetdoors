@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
-import PortalModal from "@/components/PortalModal";
+import PublicFilterSheet from "@/components/public/PublicFilterSheet";
+import PublicFooter from "@/components/public/PublicFooter";
+import PublicProductCard from "@/components/public/PublicProductCard";
 import { DEFAULT_TYPES, PRODUCTS } from "./product-data";
 import styles from "./products.module.css";
 
@@ -103,7 +106,7 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
     <main className={styles.page}>
       <header className={styles.pageHeader}>
         <div className={styles.pageHeaderInner}>
-          <div className={styles.breadcrumb}><a href="/">Home</a> &rsaquo; Products</div>
+          <div className={styles.breadcrumb}><Link href="/">Home</Link> &rsaquo; Products</div>
           <h1>Our Products</h1>
           <p>
             Browse our range of Polytec cabinet doors, drawer fronts and panels. All made to your
@@ -153,35 +156,7 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
 
           <div className={styles.productGrid}>
             {visibleProducts.map((product) => (
-              <article className={styles.tile} key={product.id}>
-                <div className={styles.tileImage}>
-                  {product.galleryImages?.[0] ? (
-                    <img className={styles.tileProductImage} src={product.galleryImages[0]} alt={product.name} />
-                  ) : (
-                    <div className={styles.tileImagePlaceholder}>
-                      <div className={styles.tileImageIcon} />
-                      <span className={styles.tileImageLabel}>Product photo</span>
-                    </div>
-                  )}
-                  <div className={styles.tileBadges}>
-                    {product.compatLabel ? <span className={`${styles.badge} ${styles.badgeCompat}`}>{product.compatLabel}</span> : null}
-                    <span className={`${styles.badge} ${styles.badgeMaterial}`}>{product.materialLabel}</span>
-                  </div>
-                </div>
-                <div className={styles.tileBody}>
-                  <div className={styles.tileType}>{product.typeLabel}</div>
-                  <h2 className={styles.tileName}>{product.name}</h2>
-                  <p className={styles.tileDesc}>{product.desc}</p>
-                  <div className={styles.tileFooter}>
-                    <div>
-                      <div className={styles.tilePriceLabel}>Starting from</div>
-                      <div className={styles.tilePriceAmount}>${product.price}</div>
-                      <div className={styles.tilePriceSize}>{product.size}</div>
-                    </div>
-                    <a href={`/products/${product.slug || product.id}`} className={styles.tileBtn}>View details</a>
-                  </div>
-                </div>
-              </article>
+              <PublicProductCard classNames={styles} key={product.id} product={product} />
             ))}
 
             {visibleProducts.length === 0 ? (
@@ -194,35 +169,17 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
         </section>
       </div>
 
-      <footer>
-        <div className={styles.siteFooter}>
-          <p>Copyright 2026 Perth Cabinet Doors. All rights reserved.</p>
-          <p>
-            Perth, Western Australia &nbsp;&middot;&nbsp; <a href="tel:0408906784">0408 906 784</a>{" "}
-            &nbsp;&middot;&nbsp; <a href="mailto:sales@perthcabinetdoors.com.au">sales@perthcabinetdoors.com.au</a>
-          </p>
-        </div>
-      </footer>
+      <PublicFooter className={styles.siteFooter} />
 
-      <PortalModal
+      <PublicFilterSheet
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        ariaLabel="Filter products"
         title="Filter products"
-        footer={
-          <>
-            <button className={styles.modalFilterReset} type="button" onClick={resetFilters}>
-              Reset all filters
-            </button>
-            <button
-              className={styles.mobileFilterApplyBtn}
-              type="button"
-              onClick={() => setFiltersOpen(false)}
-            >
-              Show {visibleProducts.length} results
-            </button>
-          </>
-        }
+        resetClassName={styles.modalFilterReset}
+        applyClassName={styles.mobileFilterApplyBtn}
+        resultsLabel={`Show ${visibleProducts.length} results`}
+        onReset={resetFilters}
+        onApply={() => setFiltersOpen(false)}
       >
         <FilterGroups
           types={types}
@@ -230,7 +187,7 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
           onToggleType={handleToggleType}
           onToggleMaterial={handleToggleMaterial}
         />
-      </PortalModal>
+      </PublicFilterSheet>
     </main>
   );
 }

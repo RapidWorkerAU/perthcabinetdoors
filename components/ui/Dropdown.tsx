@@ -65,6 +65,7 @@ export interface DropdownProps {
   selectAll?:         boolean
   disabled?:          boolean
   containerClassName?: string
+  triggerClassName?:   string
   maxDisplay?:        number
   autoWidth?:         boolean
   /** Overrides the panel's z-index. Needed when rendered inside a high z-index
@@ -90,6 +91,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
       selectAll = false,
       disabled = false,
       containerClassName,
+      triggerClassName,
       maxDisplay = 3,
       autoWidth = false,
       contentZIndex,
@@ -281,7 +283,8 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                   ? 'flex min-h-[40px] flex-wrap items-center gap-1 py-[6px] pl-[8px] pr-[36px]'
                   : 'flex h-[40px] items-center px-3 pr-[64px] text-[14px]',
                 triggerBorderClass,
-                disabled && 'cursor-not-allowed border-[#edf4eb] bg-[#f5f8f4] text-[#8b8a81]'
+                disabled && 'cursor-not-allowed border-[#edf4eb] bg-[#f5f8f4] text-[#8b8a81]',
+                triggerClassName
               )}
             >
               {/* Multi: pills */}
@@ -349,7 +352,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
           {/* Panel */}
           <Popover.Portal>
             <Popover.Content
-              sideOffset={4}
+              sideOffset={8}
               align="start"
               onOpenAutoFocus={e => {
                 e.preventDefault()

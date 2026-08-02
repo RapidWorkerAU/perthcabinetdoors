@@ -10,6 +10,7 @@ export interface ActionMenuProps {
   label: string
   disabled?: boolean
   align?: 'start' | 'center' | 'end'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   children: React.ReactNode
 }
 
@@ -22,6 +23,7 @@ export function ActionMenu({
   label,
   disabled = false,
   align = 'end',
+  size = 'sm',
   children,
 }: ActionMenuProps) {
   const [open, setOpen] = React.useState(false)
@@ -29,8 +31,8 @@ export function ActionMenu({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <IconButton label={label} size="sm" variant="ghost" disabled={disabled}>
-          <IconDotsVertical size={16} />
+        <IconButton label={label} size={size} variant="neutral" disabled={disabled}>
+          <IconDotsVertical size={size === 'xs' ? 14 : 16} />
         </IconButton>
       </Popover.Trigger>
       <Popover.Portal>

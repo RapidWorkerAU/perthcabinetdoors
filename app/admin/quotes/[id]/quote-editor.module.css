@@ -212,10 +212,10 @@
   box-shadow: none !important;
   height: 22px !important;
   min-height: 0 !important;
-  padding: 0;
+  padding: 0 28px 0 0;
 }
 
-.quoteItemsTable .quoteColourCombo:has(input:disabled) {
+.quoteItemsTable .quoteColourCombo:has(button:disabled) {
   background: #f5f8f4 !important;
   opacity: 0.6;
 }
@@ -228,6 +228,13 @@
 .quoteItemsTable .quoteColourCombo input {
   padding-left: 6px !important;
   padding-right: 24px !important;
+}
+
+.quoteItemsTable .quoteColourCombo > button:first-of-type {
+  max-width: 100%;
+  min-width: 0;
+  padding-left: 6px;
+  width: 100%;
 }
 
 .quoteItemsTable .quoteConfigCell > * {

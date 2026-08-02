@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { IconPlus } from '@tabler/icons-react'
+import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -10,7 +11,6 @@ import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/Admin
 import { AdminPageHeader } from '@/components/ui/AdminPageHeader'
 import { BulkActionBar } from '@/components/ui/BulkActionBar'
 import { StatusPill } from '@/components/ui/StatusPill'
-import { TextAction } from '@/components/ui/TextAction'
 import { useToast } from '@/components/ui/Toast'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 
@@ -230,11 +230,15 @@ export default function CustomersManager() {
       header: '',
       className: 'text-right',
       cell: customer => (
-        <div className="flex items-center justify-end gap-3">
-          <TextAction onClick={() => openEditCustomerModal(customer)}>Edit</TextAction>
-          <TextAction variant="danger" disabled={isSaving} onClick={() => setConfirmDeleteIds([customer.id])}>
+        <div className="flex justify-end">
+          <ActionMenu label={`Open actions for customer ${customer.name || 'customer'}`}>
+            <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => openEditCustomerModal(customer)}>
+              Edit
+            </ActionMenuItem>
+            <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => setConfirmDeleteIds([customer.id])}>
             Delete
-          </TextAction>
+            </ActionMenuItem>
+          </ActionMenu>
         </div>
       ),
     },
@@ -268,11 +272,15 @@ export default function CustomersManager() {
             </div>
           )}
         </dl>
-        <div className="mt-3 flex items-center justify-between border-t border-[#edf4eb] pt-3">
-          <TextAction onClick={() => openEditCustomerModal(customer)}>Edit</TextAction>
-          <TextAction variant="danger" disabled={isSaving} onClick={() => setConfirmDeleteIds([customer.id])}>
+        <div className="mt-3 flex items-center justify-end border-t border-[#edf4eb] pt-3">
+          <ActionMenu label={`Open actions for customer ${customer.name || 'customer'}`}>
+            <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => openEditCustomerModal(customer)}>
+              Edit
+            </ActionMenuItem>
+            <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => setConfirmDeleteIds([customer.id])}>
             Delete
-          </TextAction>
+            </ActionMenuItem>
+          </ActionMenu>
         </div>
       </article>
     )
@@ -293,6 +301,7 @@ export default function CustomersManager() {
         columns={customerColumns}
         getRowId={customer => customer.id}
         getRowLabel={customer => customer.name || 'customer'}
+        onRowClick={openEditCustomerModal}
         loading={isLoading}
         emptyTitle="No customers found."
         searchValue={search}
@@ -311,8 +320,15 @@ export default function CustomersManager() {
           />
         ) : undefined}
         primaryAction={(
-          <Button variant="primary" size="sm" iconLeft={<IconPlus size={14} />} onClick={openNewCustomerModal}>
-            Add customer
+          <Button
+            variant="primary"
+            size="sm"
+            iconLeft={<IconPlus size={14} />}
+            onClick={openNewCustomerModal}
+            aria-label="Add customer"
+            className="max-sm:w-10 max-sm:px-0"
+          >
+            <span className="max-sm:hidden">Add customer</span>
           </Button>
         )}
         mobileCard={renderCustomerMobileCard}

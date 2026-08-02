@@ -299,7 +299,7 @@
   color: #1a1a18;
   cursor: pointer;
   display: block;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
   letter-spacing: 0;
   margin-top: 4px;
@@ -952,6 +952,16 @@
     grid-template-columns: 1fr;
   }
 
+  .field input,
+  .field textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .submitBtn {
+    min-height: 44px;
+  }
+
   .profileSwatches,
   .edgeProfileList {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1006,6 +1016,16 @@
     flex-wrap: wrap;
   }
 
+  .specRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .specRow strong {
+    text-align: left;
+  }
+
   /* .viewerToggle stays a 3-column grid (not the 2-per-row flex-wrap
      .finishTab uses) deliberately — it has no gap between segments by
      design (a connected segmented control, divided by border-right only),
@@ -1042,15 +1062,11 @@
     min-height: 280px;
   }
 
-  /* .galleryThumbs is display:flex with no flex-wrap (base rule), so 4
-     fixed 72x72 thumbnails + gaps (318px total) never actually wrapped to
-     2 columns here — they just got tight/clipped on narrower phones.
-     Switching to a real grid (with fluid, non-fixed thumb sizing below)
-     makes 2-per-row actually happen. */
+  /* Keep all four secondary images visible in one row on mobile. */
   .galleryThumbs {
     display: grid;
     gap: 8px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .thumb {
@@ -1072,6 +1088,11 @@
 
   .formActions button {
     width: 100%;
+  }
+
+  .siteFooter p,
+  .siteFooter a {
+    overflow-wrap: anywhere;
   }
 
   .lightboxViewer {
