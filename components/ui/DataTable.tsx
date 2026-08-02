@@ -184,12 +184,12 @@ export function DataTable<T extends { id: string }>({
     <div className={className}>
 
       {/* ══════════════════════════ DESKTOP ══════════════════════════════════ */}
-      <div className="hidden md:block w-full border border-[#dde1e9] rounded-[8px] overflow-hidden bg-white">
+      <div className="hidden md:block w-full border border-[#dbd8cc] rounded-[8px] overflow-hidden bg-white">
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#eef0f4]">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#edf4eb]">
           <div className="relative">
-            <IconSearch size={14} className="pointer-events-none absolute left-[10px] top-1/2 -translate-y-1/2 text-[#9ba7b8]" />
+            <IconSearch size={14} className="pointer-events-none absolute left-[10px] top-1/2 -translate-y-1/2 text-[#8b8a81]" />
             <input
               type="text"
               value={searchQuery}
@@ -197,9 +197,9 @@ export function DataTable<T extends { id: string }>({
               placeholder={searchPlaceholder}
               disabled={loading}
               className={cn(
-                'h-[36px] border border-[#dde1e9] rounded-[6px] pl-[32px] pr-3 text-[14px]',
-                'outline-none focus:border-[#2d9692] w-[240px] transition-colors',
-                'disabled:bg-[#f7f8fa] disabled:text-[#9ba7b8]',
+                'h-[36px] border border-[#dbd8cc] rounded-[6px] pl-[32px] pr-3 text-[14px]',
+                'outline-none focus:border-[#6b9e61] w-[240px] transition-colors',
+                'disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]',
               )}
             />
           </div>
@@ -215,13 +215,13 @@ export function DataTable<T extends { id: string }>({
 
         {/* Bulk action bar */}
         {selectedIds.length > 0 && (
-          <div className="flex items-center justify-between bg-[#1a2533] text-white px-4 py-[9px] text-[13px]">
+          <div className="flex items-center justify-between bg-[#1c2b1e] text-white px-4 py-[9px] text-[13px]">
             <span>{selectedIds.length} record{selectedIds.length !== 1 ? 's' : ''} selected</span>
             <div className="flex items-center gap-3">
               <button className="flex items-center gap-1 text-white/80 hover:text-white transition-colors">
                 <IconDownload size={14} /> Export selected
               </button>
-              <button className="flex items-center gap-1 text-[#f87171] hover:text-[#ef4444] transition-colors">
+              <button className="flex items-center gap-1 text-[#fecaca] hover:text-white transition-colors">
                 <IconTrash size={14} /> Delete selected
               </button>
               <button onClick={() => setSelectedIds([])} className="ml-2 text-white/60 hover:text-white" aria-label="Clear selection">
@@ -232,7 +232,7 @@ export function DataTable<T extends { id: string }>({
         )}
 
         {/* Column headers */}
-        <div className="grid border-b border-[#dde1e9] bg-[#f7f8fa] px-4" style={{ gridTemplateColumns: gridCols }}>
+        <div className="grid border-b border-[#dbd8cc] bg-[#f5f8f4] px-4" style={{ gridTemplateColumns: gridCols }}>
           {selectable && (
             <div className="py-[9px] pr-3 flex items-center">
               <input
@@ -240,7 +240,7 @@ export function DataTable<T extends { id: string }>({
                 checked={allSelected}
                 ref={(el: HTMLInputElement | null) => { if (el) el.indeterminate = someSelected }}
                 onChange={toggleAll}
-                className="w-4 h-4 rounded-[3px] accent-[#2d9692] cursor-pointer"
+                className="w-4 h-4 rounded-[3px] accent-[#6b9e61] cursor-pointer"
               />
             </div>
           )}
@@ -248,10 +248,10 @@ export function DataTable<T extends { id: string }>({
             <div
               key={String(col.key)}
               className={cn(
-                'py-[9px] pr-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6e7e92]',
+                'py-[9px] pr-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]',
                 'flex items-center gap-1',
-                col.sortable && 'cursor-pointer select-none hover:text-[#3d4d5f]',
-                sortKey === String(col.key) && 'text-[#2d9692]',
+                col.sortable && 'cursor-pointer select-none hover:text-[#1a1a18]',
+                sortKey === String(col.key) && 'text-[#2d5e28]',
               )}
               onClick={() => {
                 if (!col.sortable) return
@@ -272,7 +272,7 @@ export function DataTable<T extends { id: string }>({
         <div>
           {/* Skeleton rows */}
           {loading && Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="grid border-b border-[#eef0f4] last:border-b-0 px-4 items-center" style={{ gridTemplateColumns: gridCols }}>
+            <div key={i} className="grid border-b border-[#edf4eb] last:border-b-0 px-4 items-center" style={{ gridTemplateColumns: gridCols }}>
               {selectable && <div className="py-[11px] pr-3"><SkeletonText width="16px" /></div>}
               {columns.map((col, j) => (
                 <div key={String(col.key)} className="py-[11px] pr-3">
@@ -296,15 +296,15 @@ export function DataTable<T extends { id: string }>({
               <React.Fragment key={row.id}>
                 <div
                   className={cn(
-                    'group grid border-b border-[#eef0f4] last:border-b-0 px-4',
-                    'hover:bg-[#f7f8fa] transition-colors items-center',
-                    isSelected && !isEditing && 'bg-[#f0f8f7]',
+                    'group grid border-b border-[#edf4eb] last:border-b-0 px-4',
+                    'hover:bg-[#f5f8f4] transition-colors items-center',
+                    isSelected && !isEditing && 'bg-[#edf4eb]',
                     isEditing  && 'bg-white',
                     onRowClick && !isEditing && 'cursor-pointer',
                   )}
                   style={{
                     gridTemplateColumns: gridCols,
-                    ...(isEditing ? { boxShadow: 'inset 3px 0 0 #2d9692' } : {}),
+                    ...(isEditing ? { boxShadow: 'inset 3px 0 0 #6b9e61' } : {}),
                   }}
                   onClick={onRowClick && !isEditing ? () => onRowClick(row) : undefined}
                 >
@@ -314,12 +314,12 @@ export function DataTable<T extends { id: string }>({
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleRow(row.id)}
-                        className="w-4 h-4 rounded-[3px] accent-[#2d9692] cursor-pointer"
+                        className="w-4 h-4 rounded-[3px] accent-[#6b9e61] cursor-pointer"
                       />
                     </div>
                   )}
                   {columns.map(col => (
-                    <div key={String(col.key)} className="py-[11px] pr-3 text-[13px] text-[#1a2533] flex items-center min-w-0">
+                    <div key={String(col.key)} className="py-[11px] pr-3 text-[13px] text-[#1a1a18] flex items-center min-w-0">
                       {renderCell(col, row, isEditing)}
                     </div>
                   ))}
@@ -336,9 +336,9 @@ export function DataTable<T extends { id: string }>({
                           onClick={() => setOpenMenuId(openMenuId === row.id ? null : row.id)}
                           className={cn(
                             'w-[28px] h-[28px] rounded-[5px] flex items-center justify-center',
-                            'text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors',
+                            'text-[#8b8a81] hover:bg-[#edf4eb] hover:text-[#1a1a18] transition-colors',
                             'opacity-0 group-hover:opacity-100',
-                            openMenuId === row.id && 'opacity-100 bg-[#eef0f4]',
+                            openMenuId === row.id && 'opacity-100 bg-[#edf4eb]',
                           )}
                           data-row-menu
                           aria-label="Row actions"
@@ -348,7 +348,7 @@ export function DataTable<T extends { id: string }>({
                         {openMenuId === row.id && (
                           <div
                             data-row-menu
-                            className="absolute right-0 top-full mt-1 z-[60] bg-white border border-[#dde1e9] rounded-[6px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] py-1 w-[160px]"
+                            className="absolute right-0 top-full mt-1 z-[60] bg-white border border-[#dbd8cc] rounded-[6px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] py-1 w-[160px]"
                           >
                             {rowMenuItems ? (
                               /* Caller-supplied menu items — each maps to onRowAction(action). */
@@ -357,7 +357,7 @@ export function DataTable<T extends { id: string }>({
                                   key={item.action}
                                   className={cn(
                                     'flex w-full items-center gap-2 px-3 py-[8px] text-[13px] cursor-pointer',
-                                    item.variant === 'danger' ? 'text-[#ef4444] hover:bg-[#fee2e2]' : 'text-[#1a2533] hover:bg-[#f7f8fa]',
+                                    item.variant === 'danger' ? 'text-[#b42318] hover:bg-[#fef2f2]' : 'text-[#1a1a18] hover:bg-[#f5f8f4]',
                                   )}
                                   onClick={() => { setOpenMenuId(null); onRowAction?.(item.action as 'view' | 'quickEdit' | 'fullEdit' | 'delete', row) }}
                                 >
@@ -373,15 +373,15 @@ export function DataTable<T extends { id: string }>({
                                 ].map(item => (
                                   <button
                                     key={item.action}
-                                    className="flex w-full items-center gap-2 px-3 py-[8px] text-[13px] text-[#1a2533] cursor-pointer hover:bg-[#f7f8fa]"
+                                    className="flex w-full items-center gap-2 px-3 py-[8px] text-[13px] text-[#1a1a18] cursor-pointer hover:bg-[#f5f8f4]"
                                     onClick={() => { setOpenMenuId(null); onRowAction?.(item.action, row) }}
                                   >
                                     {item.icon} {item.label}
                                   </button>
                                 ))}
-                                <div className="my-1 border-t border-[#eef0f4]" />
+                                <div className="my-1 border-t border-[#edf4eb]" />
                                 <button
-                                  className="flex w-full items-center gap-2 px-3 py-[8px] text-[13px] text-[#ef4444] cursor-pointer hover:bg-[#fee2e2]"
+                                  className="flex w-full items-center gap-2 px-3 py-[8px] text-[13px] text-[#b42318] cursor-pointer hover:bg-[#fef2f2]"
                                   onClick={() => { setOpenMenuId(null); onRowAction?.('delete', row) }}
                                 >
                                   <IconTrash size={14} /> Delete record
@@ -396,7 +396,7 @@ export function DataTable<T extends { id: string }>({
                 </div>
                 {/* Quick-edit info bar */}
                 {isEditing && (
-                  <div className="flex items-center justify-between bg-[#f0f8f7] border-t border-[#b5dfdd] px-4 py-[7px] text-[12px] text-[#1c5f5d]">
+                  <div className="flex items-center justify-between bg-[#edf4eb] border-t border-[#a8c5a0] px-4 py-[7px] text-[12px] text-[#2d5e28]">
                     <span>Quick editing — description and attachments require full edit</span>
                     <span className="opacity-70">Esc to cancel · Enter to save</span>
                   </div>
@@ -408,26 +408,26 @@ export function DataTable<T extends { id: string }>({
 
         {/* Desktop pagination */}
         {totalCount !== undefined && onPageChange && (
-          <div className="flex items-center justify-between px-4 py-[10px] border-t border-[#eef0f4] text-[13px] text-[#6e7e92]">
+          <div className="flex items-center justify-between px-4 py-[10px] border-t border-[#edf4eb] text-[13px] text-[#5a5a52]">
             <span>Showing {start}–{end} of {totalCount} records</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => onPageChange(page - 1)}
                 disabled={page <= 1}
-                className="h-[28px] w-[28px] flex items-center justify-center rounded-[4px] border border-[#dde1e9] disabled:opacity-40 hover:bg-[#f7f8fa] transition-colors"
+                className="h-[28px] w-[28px] flex items-center justify-center rounded-[4px] border border-[#dbd8cc] disabled:opacity-40 hover:bg-[#f5f8f4] transition-colors"
               >
                 <IconChevronLeft size={13} />
               </button>
               {pageNumbers.map((p, i) =>
                 p === '...' ? (
-                  <span key={`e${i}`} className="px-1 text-[#9ba7b8]">…</span>
+                  <span key={`e${i}`} className="px-1 text-[#8b8a81]">…</span>
                 ) : (
                   <button
                     key={p}
                     onClick={() => onPageChange(p as number)}
                     className={cn(
                       'h-[28px] min-w-[28px] px-2 rounded-[4px] border text-[13px] transition-colors',
-                      p === page ? 'bg-[#2d9692] text-white border-[#2d9692]' : 'border-[#dde1e9] hover:bg-[#f7f8fa]',
+                      p === page ? 'bg-[#1c2b1e] text-white border-[#1c2b1e]' : 'border-[#dbd8cc] hover:bg-[#f5f8f4]',
                     )}
                   >
                     {p}
@@ -437,7 +437,7 @@ export function DataTable<T extends { id: string }>({
               <button
                 onClick={() => onPageChange(page + 1)}
                 disabled={page >= totalPages}
-                className="h-[28px] w-[28px] flex items-center justify-center rounded-[4px] border border-[#dde1e9] disabled:opacity-40 hover:bg-[#f7f8fa] transition-colors"
+                className="h-[28px] w-[28px] flex items-center justify-center rounded-[4px] border border-[#dbd8cc] disabled:opacity-40 hover:bg-[#f5f8f4] transition-colors"
               >
                 <IconChevronRight size={13} />
               </button>
@@ -452,25 +452,25 @@ export function DataTable<T extends { id: string }>({
         {/* Mobile toolbar */}
         <div className="flex items-center gap-2 mb-3">
           <div className="relative flex-1">
-            <IconSearch size={14} className="pointer-events-none absolute left-[11px] top-1/2 -translate-y-1/2 text-[#9ba7b8]" />
+            <IconSearch size={14} className="pointer-events-none absolute left-[11px] top-1/2 -translate-y-1/2 text-[#8b8a81]" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder={searchPlaceholder}
               disabled={loading}
-              className="w-full h-[40px] border border-[#dde1e9] rounded-[6px] pl-[36px] pr-3 text-[14px] outline-none focus:border-[#2d9692]"
+              className="w-full h-[40px] border border-[#dbd8cc] rounded-[6px] pl-[36px] pr-3 text-[14px] outline-none focus:border-[#6b9e61]"
             />
           </div>
           {filterFields.length > 0 && (
             <button
               onClick={() => setFilterSheetOpen(true)}
-              className="relative h-[40px] w-[40px] rounded-[6px] border border-[#dde1e9] bg-white flex items-center justify-center text-[#6e7e92]"
+              className="relative h-[40px] w-[40px] rounded-[6px] border border-[#dbd8cc] bg-white flex items-center justify-center text-[#5a5a52]"
               aria-label="Filter"
             >
               <IconFilter size={16} />
               {Object.values(activeFilters).flat().length > 0 && (
-                <span className="absolute -top-1 -right-1 w-[16px] h-[16px] rounded-full bg-[#2d9692] text-white text-[10px] flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-[16px] h-[16px] rounded-full bg-[#6b9e61] text-white text-[10px] flex items-center justify-center">
                   {Object.values(activeFilters).flat().length}
                 </span>
               )}
@@ -478,7 +478,7 @@ export function DataTable<T extends { id: string }>({
           )}
           <button
             onClick={() => setSortSheetOpen(true)}
-            className="h-[40px] w-[40px] rounded-[6px] border border-[#dde1e9] bg-white flex items-center justify-center text-[#6e7e92]"
+            className="h-[40px] w-[40px] rounded-[6px] border border-[#dbd8cc] bg-white flex items-center justify-center text-[#5a5a52]"
             aria-label="Sort"
           >
             <IconArrowsSort size={16} />
@@ -486,7 +486,7 @@ export function DataTable<T extends { id: string }>({
           {onAdd && (
             <button
               onClick={onAdd}
-              className="h-[40px] w-[40px] rounded-[6px] bg-[#2d9692] flex items-center justify-center text-white"
+              className="h-[40px] w-[40px] rounded-[6px] bg-[#1c2b1e] flex items-center justify-center text-white"
               aria-label={addLabel}
             >
               <IconPlus size={16} />
@@ -496,7 +496,7 @@ export function DataTable<T extends { id: string }>({
 
         {/* Mobile skeleton */}
         {loading && Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="bg-white border border-[#dde1e9] rounded-[8px] mb-2 p-[14px]">
+          <div key={i} className="bg-white border border-[#dbd8cc] rounded-[8px] mb-2 p-[14px]">
             <div className="flex items-center justify-between mb-2">
               <SkeletonText width="80px" /><SkeletonText width="20px" />
             </div>
@@ -515,45 +515,45 @@ export function DataTable<T extends { id: string }>({
         {!loading && data.map(row => (
           <div
             key={row.id}
-            className={cn('bg-white border border-[#dde1e9] rounded-[8px] mb-2 overflow-hidden', onRowClick && 'cursor-pointer')}
+            className={cn('bg-white border border-[#dbd8cc] rounded-[8px] mb-2 overflow-hidden', onRowClick && 'cursor-pointer')}
             onClick={onRowClick ? () => onRowClick(row) : undefined}
           >
             <div className="p-[14px]">
               <div className="flex items-center justify-between">
-                <span className="text-[12px] font-medium text-[#2d9692]">{row.id}</span>
+                <span className="text-[12px] font-medium text-[#2d5e28]">{row.id}</span>
                 <button
                   onClick={e => { e.stopPropagation(); setMobileMenuRow(row) }}
-                  className="w-[28px] h-[28px] rounded-[5px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4]"
+                  className="w-[28px] h-[28px] rounded-[5px] flex items-center justify-center text-[#8b8a81] hover:bg-[#edf4eb]"
                   aria-label="Row actions"
                 >
                   <IconDotsVertical size={15} />
                 </button>
               </div>
               {columns[0] && (
-                <div className="text-[14px] font-medium text-[#1a2533] leading-snug mt-1 mb-2">
+                <div className="text-[14px] font-medium text-[#1a1a18] leading-snug mt-1 mb-2">
                   {renderCell(columns[0], row, false)}
                 </div>
               )}
               {columns.slice(1).map(col => (
                 <div key={String(col.key)} className="flex items-center gap-2 mb-[6px]">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#9ba7b8] flex-shrink-0" style={{ width: 56 }}>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] flex-shrink-0" style={{ width: 56 }}>
                     {col.label}
                   </span>
-                  <span className="text-[12px] text-[#3d4d5f] flex items-center">
+                  <span className="text-[12px] text-[#5a5a52] flex items-center">
                     {renderCell(col, row, false)}
                   </span>
                 </div>
               ))}
-              <div className="flex gap-2 border-t border-[#eef0f4] pt-[10px] mt-[10px]" onClick={e => e.stopPropagation()}>
+              <div className="flex gap-2 border-t border-[#edf4eb] pt-[10px] mt-[10px]" onClick={e => e.stopPropagation()}>
                 <button
                   onClick={() => onRowAction?.('view', row)}
-                  className="flex-1 h-[36px] rounded-[6px] border border-[#dde1e9] bg-white text-[12px] font-medium text-[#3d4d5f] flex items-center justify-center gap-1"
+                  className="flex-1 h-[36px] rounded-[6px] border border-[#dbd8cc] bg-white text-[12px] font-medium text-[#1a1a18] flex items-center justify-center gap-1"
                 >
                   <IconEye size={14} /> View
                 </button>
                 <button
                   onClick={() => onRowAction?.('fullEdit', row)}
-                  className="flex-1 h-[36px] rounded-[6px] bg-[#2d9692] text-white text-[12px] font-medium flex items-center justify-center gap-1"
+                  className="flex-1 h-[36px] rounded-[6px] bg-[#1c2b1e] text-white text-[12px] font-medium flex items-center justify-center gap-1"
                 >
                   <IconEdit size={14} /> Edit
                 </button>
@@ -564,11 +564,11 @@ export function DataTable<T extends { id: string }>({
 
         {/* Mobile pagination */}
         {totalCount !== undefined && onPageChange && (
-          <div className="flex items-center justify-between py-3 text-[13px] text-[#6e7e92]">
+          <div className="flex items-center justify-between py-3 text-[13px] text-[#5a5a52]">
             <button
               onClick={() => onPageChange(page - 1)}
               disabled={page <= 1}
-              className="h-[32px] px-3 rounded-[4px] border border-[#dde1e9] disabled:opacity-40 flex items-center gap-1"
+              className="h-[32px] px-3 rounded-[4px] border border-[#dbd8cc] disabled:opacity-40 flex items-center gap-1"
             >
               <IconChevronLeft size={13} /> Prev
             </button>
@@ -576,7 +576,7 @@ export function DataTable<T extends { id: string }>({
             <button
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
-              className="h-[32px] px-3 rounded-[4px] border border-[#dde1e9] disabled:opacity-40 flex items-center gap-1"
+              className="h-[32px] px-3 rounded-[4px] border border-[#dbd8cc] disabled:opacity-40 flex items-center gap-1"
             >
               Next <IconChevronRight size={13} />
             </button>
@@ -590,9 +590,9 @@ export function DataTable<T extends { id: string }>({
       <Modal open={mobileMenuRow !== null} onClose={() => setMobileMenuRow(null)} title="" hideCloseButton contentFit>
         {mobileMenuRow && (
           <div className="pb-2">
-            <div className="flex md:hidden mx-auto w-[36px] h-[4px] bg-[#dde1e9] rounded-full mb-3" aria-hidden="true" />
-            <p className="text-[12px] font-medium text-[#2d9692] mb-[2px]">{mobileMenuRow.id}</p>
-            <p className="text-[14px] font-medium text-[#1a2533] mb-4">
+            <div className="flex md:hidden mx-auto w-[36px] h-[4px] bg-[#dbd8cc] rounded-full mb-3" aria-hidden="true" />
+            <p className="text-[12px] font-medium text-[#2d5e28] mb-[2px]">{mobileMenuRow.id}</p>
+            <p className="text-[14px] font-medium text-[#1a1a18] mb-4">
               {columns[0] ? renderCell(columns[0], mobileMenuRow, false) : ''}
             </p>
             {([
@@ -601,15 +601,15 @@ export function DataTable<T extends { id: string }>({
             ] as const).map(item => (
               <button
                 key={item.action}
-                className="flex w-full items-center gap-3 py-[11px] text-[14px] text-[#1a2533] border-b border-[#eef0f4]"
+                className="flex w-full items-center gap-3 py-[11px] text-[14px] text-[#1a1a18] border-b border-[#edf4eb]"
                 onClick={() => { setMobileMenuRow(null); onRowAction?.(item.action, mobileMenuRow) }}
               >
-                <span className="text-[#6e7e92]">{item.icon}</span>
+                <span className="text-[#5a5a52]">{item.icon}</span>
                 {item.label}
               </button>
             ))}
             <button
-              className="flex w-full items-center gap-3 py-[11px] text-[14px] text-[#ef4444]"
+              className="flex w-full items-center gap-3 py-[11px] text-[14px] text-[#b42318]"
               onClick={() => { setMobileMenuRow(null); onRowAction?.('delete', mobileMenuRow) }}
             >
               <IconTrash size={16} /> Delete record
@@ -631,8 +631,8 @@ export function DataTable<T extends { id: string }>({
             <button
               key={String(col.key)}
               className={cn(
-                'flex w-full items-center justify-between py-[11px] border-b border-[#eef0f4] text-[14px]',
-                mobileSortKey === String(col.key) ? 'text-[#2d9692] font-medium' : 'text-[#1a2533]',
+                'flex w-full items-center justify-between py-[11px] border-b border-[#edf4eb] text-[14px]',
+                mobileSortKey === String(col.key) ? 'text-[#2d5e28] font-medium' : 'text-[#1a1a18]',
               )}
               onClick={() => {
                 setMobileSortKey(String(col.key))
@@ -642,8 +642,8 @@ export function DataTable<T extends { id: string }>({
             >
               {col.label}
               {mobileSortKey === String(col.key) && (
-                <span className="w-4 h-4 rounded-full border-[1.5px] border-[#2d9692] flex items-center justify-center">
-                  <span className="w-2 h-2 rounded-full bg-[#2d9692]" />
+                <span className="w-4 h-4 rounded-full border-[1.5px] border-[#6b9e61] flex items-center justify-center">
+                  <span className="w-2 h-2 rounded-full bg-[#6b9e61]" />
                 </span>
               )}
             </button>
@@ -670,7 +670,7 @@ export function DataTable<T extends { id: string }>({
         >
           {filterFields.map(field => (
             <div key={field.key} className="mb-4">
-              <p className="text-[12px] font-semibold uppercase tracking-wider text-[#9ba7b8] mb-2">{field.label}</p>
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-2">{field.label}</p>
               <div className="flex flex-wrap gap-2">
                 {field.options.map(opt => {
                   const active = (activeFilters[field.key] ?? []).includes(opt)
@@ -683,7 +683,7 @@ export function DataTable<T extends { id: string }>({
                       })}
                       className={cn(
                         'px-3 py-[6px] rounded-full border text-[13px] transition-colors',
-                        active ? 'bg-[#f0f8f7] border-[#2d9692] text-[#1c5f5d]' : 'bg-white border-[#dde1e9] text-[#3d4d5f]',
+                        active ? 'bg-[#edf4eb] border-[#6b9e61] text-[#2d5e28]' : 'bg-white border-[#dbd8cc] text-[#1a1a18]',
                       )}
                     >
                       {opt}

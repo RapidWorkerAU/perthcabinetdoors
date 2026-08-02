@@ -88,10 +88,10 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
     // Border colour applied to prefix/suffix blocks — mirrors the input border state
     const addonBorder = error
-      ? 'border-[#ef4444]'
+      ? 'border-[#b42318]'
       : successMessage
       ? 'border-[#16a34a]'
-      : 'border-[#dde1e9] group-focus-within:border-[#2d9692]'
+      : 'border-[#dbd8cc] group-focus-within:border-[#6b9e61]'
 
     const hasBelow =
       !!(error || successMessage || helper) ||
@@ -103,9 +103,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {/* Label row */}
         {label && (
           <div className="flex items-center gap-1">
-            <label className="text-[13px] font-medium text-[#1a2533]">{label}</label>
+            <label className="text-[13px] font-medium text-[#1a1a18]">{label}</label>
             {optional && (
-              <span className="text-[11px] font-normal text-[#9ba7b8]">(optional)</span>
+              <span className="text-[11px] font-normal text-[#8b8a81]">(optional)</span>
             )}
           </div>
         )}
@@ -116,8 +116,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           {prefix && (
             <div
               className={cn(
-                'flex items-center px-3 text-[13px] text-[#6e7e92]',
-                'bg-[#f7f8fa] border border-r-0 rounded-l-[6px] transition-colors duration-150',
+                'flex items-center px-3 text-[13px] text-[#5a5a52]',
+                'bg-[#f5f8f4] border border-r-0 rounded-l-[6px] transition-colors duration-150',
                 addonBorder
               )}
             >
@@ -127,7 +127,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
           <div className="relative flex-1">
             {iconLeft && (
-              <span className="pointer-events-none absolute left-[10px] top-1/2 -translate-y-1/2 text-[#9ba7b8]">
+              <span className="pointer-events-none absolute left-[10px] top-1/2 -translate-y-1/2 text-[#8b8a81]">
                 {iconLeft}
               </span>
             )}
@@ -140,11 +140,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               onChange={handleChange}
               maxLength={maxLength}
               className={cn(
-                'h-[40px] w-full border border-[#dde1e9] bg-white px-3',
-                'text-[14px] text-[#1a2533] outline-none transition-colors duration-150',
-                'placeholder:text-[#9ba7b8]',
-                'hover:border-[#9ba7b8]',
-                'focus:border-[#2d9692]',
+                'h-[40px] w-full border border-[#dbd8cc] bg-white px-3',
+                'text-[14px] text-[#1a1a18] outline-none transition-colors duration-150',
+                'placeholder:text-[#8b8a81]',
+                'hover:border-[#8b8a81]',
+                'focus:border-[#6b9e61]',
                 // Radius — adjusted when prefix/suffix present
                 !prefix && !suffix && 'rounded-[6px]',
                 prefix && !suffix  && 'rounded-r-[6px] rounded-l-none',
@@ -154,9 +154,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
                 iconLeft     && 'pl-9',
                 hasRightAddon && 'pr-9',
                 // Disabled
-                disabled && 'bg-[#f7f8fa] text-[#9ba7b8] cursor-not-allowed border-[#eef0f4] hover:border-[#eef0f4] focus:border-[#eef0f4]',
+                disabled && 'bg-[#f5f8f4] text-[#8b8a81] cursor-not-allowed border-[#edf4eb] hover:border-[#edf4eb] focus:border-[#edf4eb]',
                 // Error
-                error && 'border-[#ef4444] hover:border-[#ef4444] focus:border-[#ef4444]',
+                error && 'border-[#b42318] hover:border-[#b42318] focus:border-[#b42318]',
                 // Success (only when no error)
                 !error && successMessage && 'border-[#16a34a] hover:border-[#16a34a] focus:border-[#16a34a]',
                 className
@@ -169,12 +169,12 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
                 type="button"
                 onClick={onClear}
                 tabIndex={-1}
-                className="absolute right-[10px] top-1/2 -translate-y-1/2 text-[#9ba7b8] hover:text-[#3d4d5f] transition-colors duration-150"
+                className="absolute right-[10px] top-1/2 -translate-y-1/2 text-[#8b8a81] hover:text-[#1a1a18] transition-colors duration-150"
               >
                 <IconX size={15} />
               </button>
             ) : iconRight ? (
-              <span className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-[#9ba7b8]">
+              <span className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-[#8b8a81]">
                 {iconRight}
               </span>
             ) : null}
@@ -183,8 +183,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           {suffix && (
             <div
               className={cn(
-                'flex items-center px-3 text-[13px] text-[#6e7e92]',
-                'bg-[#f7f8fa] border border-l-0 rounded-r-[6px] transition-colors duration-150',
+                'flex items-center px-3 text-[13px] text-[#5a5a52]',
+                'bg-[#f5f8f4] border border-l-0 rounded-r-[6px] transition-colors duration-150',
                 addonBorder
               )}
             >
@@ -198,7 +198,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               {error ? (
-                <p className="flex items-center gap-1 text-[12px] text-[#ef4444]">
+                <p className="flex items-center gap-1 text-[12px] text-[#b42318]">
                   <IconAlertCircle size={13} className="flex-shrink-0" />
                   <span>{error}</span>
                 </p>
@@ -208,12 +208,12 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
                   <span>{successMessage}</span>
                 </p>
               ) : helper ? (
-                <p className="text-[12px] text-[#6e7e92]">{helper}</p>
+                <p className="text-[12px] text-[#5a5a52]">{helper}</p>
               ) : null}
             </div>
 
             {showCount && maxLength !== undefined && (
-              <p className="flex-shrink-0 text-right text-[11px] text-[#9ba7b8]">
+              <p className="flex-shrink-0 text-right text-[11px] text-[#8b8a81]">
                 {currentLength} / {maxLength}
               </p>
             )}

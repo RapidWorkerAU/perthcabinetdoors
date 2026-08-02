@@ -52,15 +52,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          'bg-[#2d9692] text-white hover:bg-[#237775]',
+          'bg-[#1c2b1e] text-white hover:bg-[#2d3f2f]',
         secondary:
-          'bg-transparent border-[1.5px] border-[#2d9692] text-[#2d9692] hover:bg-[#f0f8f7]',
+          'bg-transparent border-[1.5px] border-[#6b9e61] text-[#2d5e28] hover:bg-[#edf4eb]',
         ghost:
-          'bg-transparent text-[#2d9692] hover:bg-[#f0f8f7]',
+          'bg-transparent text-[#2d5e28] hover:bg-[#edf4eb]',
         neutral:
-          'bg-[#eef0f4] text-[#3d4d5f] border-[0.5px] border-[#dde1e9] hover:bg-[#dde1e9]',
+          'bg-white text-[#1a1a18] border border-[#dbd8cc] hover:bg-[#f5f8f4]',
         danger:
-          'bg-[#ef4444] text-white hover:bg-[#dc2626]',
+          'bg-[#b42318] text-white hover:bg-[#8f1c13]',
       },
       size: {
         sm: 'h-8 text-[13px]',
@@ -145,7 +145,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
                 'inline-block h-[14px] w-[14px] flex-shrink-0 animate-spin rounded-full border-2',
                 isWhiteSpinner
                   ? 'border-white/30 border-t-white'
-                  : 'border-[#2d9692]/30 border-t-[#2d9692]'
+                  : 'border-[#6b9e61]/30 border-t-[#6b9e61]'
               )}
             />
             {!iconOnly && loadingText}
@@ -171,10 +171,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <span className="relative inline-flex group">
         {button}
         <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-          <div className="whitespace-nowrap rounded-[4px] bg-[#1a2533] px-2 py-1 text-[11px] text-white">
+          <div className="whitespace-nowrap rounded-[4px] bg-[#1a1a18] px-2 py-1 text-[11px] text-white">
             {tooltip}
           </div>
-          <span className="absolute left-1/2 top-full -translate-x-1/2 border-x-[4px] border-t-[4px] border-x-transparent border-t-[#1a2533]" />
+          <span className="absolute left-1/2 top-full -translate-x-1/2 border-x-[4px] border-t-[4px] border-x-transparent border-t-[#1a1a18]" />
         </div>
       </span>
     )

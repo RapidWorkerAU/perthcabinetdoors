@@ -7,7 +7,10 @@ import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } fro
 import { buildColourFamilyFromLibraryRows, COLOUR_MATERIALS, inferThicknessFromMaterial } from "../../../../lib/pcd-colour-library";
 import styles from "../../admin-content.module.css";
 import { useToast } from "@/components/ui/Toast";
-import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
+import { BulkActionBar } from "@/components/ui/BulkActionBar";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { TextAction } from "@/components/ui/TextAction";
 import productStyles from "./product-editor.module.css";
 
 function productClass(name) {
@@ -1291,9 +1294,17 @@ export default function ProductEditorForm({
             </p>
             <div className={`${styles.productsHeaderBar} ${styles.tableToolbar}`}>
               <div className={styles.tableToolbarFilters}>
-                <AdminBulkDeleteButton count={selectedPricingRowIndexes.length} onConfirm={() => removePricingRows(selectedPricingRowIndexes)} />
+                {selectedPricingRowIndexes.length > 0 ? (
+                  <BulkActionBar
+                    selectedCount={selectedPricingRowIndexes.length}
+                    noun="pricing row"
+                    variant="inline"
+                    onClear={() => setSelectedPricingRowIndexes([])}
+                    onDelete={() => removePricingRows(selectedPricingRowIndexes)}
+                  />
+                ) : null}
               </div>
-              <button type="button" className={styles.secondaryButton} onClick={addPricingRow}>Add pricing row</button>
+              <Button type="button" variant="neutral" size="sm" onClick={addPricingRow}>Add pricing row</Button>
             </div>
             <div className={styles.pricingEditTableWrap}>
               <table className={styles.pricingEditTable}>
@@ -1332,9 +1343,9 @@ export default function ProductEditorForm({
                         <input type="checkbox" checked={Boolean(row.popular)} onChange={(event) => updatePricingRow(index, "popular", event.target.checked)} />
                       </td>
                       <td className={styles.actionsCol}>
-                        <AdminActionDropdown label={`Open actions for pricing row ${index + 1}`}>
-                          <AdminConfirmDeleteAction onConfirm={() => removePricingRow(index)} />
-                        </AdminActionDropdown>
+                        <TextAction variant="danger" onClick={() => removePricingRow(index)}>
+                          Delete
+                        </TextAction>
                       </td>
                     </tr>
                   ))}
@@ -1421,34 +1432,30 @@ export default function ProductEditorForm({
     };
 
     return (
-      <div className={styles.mediaModalBackdrop} role="dialog" aria-modal="true" onMouseDown={closeEditSection}>
-        <div className={styles.productEditModalPanel} onMouseDown={(event) => event.stopPropagation()}>
-          <div className={styles.mediaModalHeader}>
-            <div>
-              <p className={styles.tableMeta}>Product editor</p>
-              <h2 className={styles.mediaModalTitle}>{titleMap[activeEditSection] || "Edit section"}</h2>
-            </div>
-            <button type="button" className={styles.modalCloseButton} onClick={closeEditSection}>
-              Close
-            </button>
-          </div>
-          <div className={styles.productEditModalBody}>
-            <p className={styles.productEditModalIntro}>{descriptionMap[activeEditSection]}</p>
-            {renderModalContent()}
-          </div>
-          <div className={styles.mediaModalFooter}>
-            {activeEditSection === "pricing" ? (
-              <button type="button" className={styles.primaryButton} onClick={savePricingSection} disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save pricing"}
-              </button>
-            ) : (
-              <button type="button" className={styles.primaryButton} onClick={closeEditSection}>
-                Done
-              </button>
-            )}
-          </div>
+      <Modal
+        open={Boolean(activeEditSection)}
+        onClose={closeEditSection}
+        title={titleMap[activeEditSection] || "Edit section"}
+        subtitle="Product editor"
+        size="xl"
+        layout="form"
+        footer={
+          activeEditSection === "pricing" ? (
+            <Button type="button" onClick={savePricingSection} loading={isSaving} loadingText="Saving...">
+              Save pricing
+            </Button>
+          ) : (
+            <Button type="button" onClick={closeEditSection}>
+              Done
+            </Button>
+          )
+        }
+      >
+        <div className={styles.productEditModalBody}>
+          <p className={styles.productEditModalIntro}>{descriptionMap[activeEditSection]}</p>
+          {renderModalContent()}
         </div>
-      </div>
+      </Modal>
     );
   }
 
@@ -1464,13 +1471,14 @@ export default function ProductEditorForm({
         <p className="text-[14px] text-[#5a5a52] leading-relaxed mb-8">
           The product editor requires a larger screen. Please open this page on a desktop or laptop to continue.
         </p>
-        <button
+        <Button
           type="button"
           onClick={() => router.back()}
-          className="h-[44px] w-full max-w-[280px] bg-[#eef0f4] border border-[#dde1e9] rounded-[8px] text-[14px] font-medium text-[#3d4d5f] hover:bg-[#dde1e9] transition-colors"
+          variant="neutral"
+          className="h-[44px] w-full max-w-[280px]"
         >
           ← Go back
-        </button>
+        </Button>
       </div>
 
       <form onSubmit={handleSubmit}>
@@ -1499,20 +1507,23 @@ export default function ProductEditorForm({
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <button
+            <Button
               type="button"
-              className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
+              variant="neutral"
+              size="sm"
               onClick={() => router.push("/admin/products")}
             >
               Back
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
-              disabled={isSaving || isApplyingMedia}
+              size="sm"
+              loading={isSaving}
+              loadingText="Saving..."
+              disabled={isApplyingMedia}
             >
-              {isSaving ? "Saving..." : "Save"}
-            </button>
+              Save
+            </Button>
           </div>
         </div>
 
@@ -1688,20 +1699,31 @@ export default function ProductEditorForm({
 
       {renderEditModal()}
 
-      {isMediaModalOpen ? (
-        <div className={styles.mediaModalBackdrop} role="dialog" aria-modal="true">
-          <div className={styles.mediaModalPanel}>
-            <div className={styles.mediaModalHeader}>
-              <div>
-                <p className={styles.tableMeta}>Media library</p>
-                <h2 className={styles.mediaModalTitle}>Select file</h2>
-              </div>
-              <button type="button" className={styles.modalCloseButton} onClick={closeMediaModal}>
-                Close
-              </button>
-            </div>
-
-            <div className={styles.mediaModalBody}>
+      <Modal
+        open={isMediaModalOpen}
+        onClose={closeMediaModal}
+        title="Select file"
+        subtitle="Media library"
+        size="xl"
+        layout="form"
+        footer={
+          <>
+            <Button type="button" variant="neutral" onClick={closeMediaModal}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleDoneMedia}
+              loading={isApplyingMedia}
+              loadingText="Applying..."
+              disabled={isUploading}
+            >
+              Done
+            </Button>
+          </>
+        }
+      >
+        <div className={styles.mediaModalBody}>
               <div className={styles.mediaUploadArea}>
                 <input
                   ref={fileInputRef}
@@ -1711,14 +1733,16 @@ export default function ProductEditorForm({
                   onChange={handleUploadFiles}
                   className={styles.mediaHiddenInput}
                 />
-                <button
+                <Button
                   type="button"
-                  className={styles.secondaryButton}
+                  variant="neutral"
+                  size="sm"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading}
+                  loading={isUploading}
+                  loadingText="Uploading..."
                 >
-                  {isUploading ? "Uploading..." : "Upload image"}
-                </button>
+                  Upload image
+                </Button>
                 {isUploading ? (
                   <div className={styles.uploadProgressWrap}>
                     <div className={styles.uploadProgressText}>
@@ -1758,25 +1782,7 @@ export default function ProductEditorForm({
                 )}
               </div>
             </div>
-
-            <div className={styles.mediaModalFooter}>
-              <button type="button" className={styles.overlayCancelButton} onClick={closeMediaModal}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                onClick={handleDoneMedia}
-                disabled={isApplyingMedia || isUploading}
-              >
-                {isApplyingMedia ? "Applying..." : "Done"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      </Modal>
     </div>
   );
 }
-
-

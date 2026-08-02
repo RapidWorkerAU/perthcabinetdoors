@@ -19,11 +19,11 @@ import {
   thicknessOptionsForMaterial,
 } from "../../../../lib/quote-form-data";
 import { Modal } from '@/components/ui/Modal';
+import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
 import workflowStyles from "../../_components/admin-workflow.module.css";
-import { AdminActionDropdown, AdminConfirmDeleteAction } from "../../_components/AdminActionDropdown";
 import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
 import { AdminPagination } from "../../_components/AdminPagination";
 
@@ -1891,12 +1891,14 @@ export default function QuoteEditor({ quoteId }) {
                           </td>
                           <td className="px-4 py-[11px] text-[#1a1a18] font-mono">{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
                           <td className="px-4 py-[11px]">
-                            <AdminActionDropdown label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
-                              <button type="button" className={styles.tableActionMenuItem} onClick={() => setActiveCabinetLineIndex(index)}>
+                            <ActionMenu label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
+                              <ActionMenuItem onClick={() => setActiveCabinetLineIndex(index)}>
                                 Configure
-                              </button>
-                              <AdminConfirmDeleteAction onConfirm={() => removeLine(index)} />
-                            </AdminActionDropdown>
+                              </ActionMenuItem>
+                              <ActionMenuItem variant="danger" onClick={() => removeLine(index)}>
+                                Delete
+                              </ActionMenuItem>
+                            </ActionMenu>
                           </td>
                         </tr>
                       );

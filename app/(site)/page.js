@@ -1,5 +1,7 @@
 import LandingHeroVideo from "./LandingHeroVideo";
 import PublicSiteNav from "./PublicSiteNav";
+import PublicButton from "@/components/public/PublicButton";
+import PublicFooter from "@/components/public/PublicFooter";
 
 export const metadata = {
   title: "Perth Cabinet Doors | Custom Cabinet Doors, Panels & Drawer Fronts - Perth WA",
@@ -27,15 +29,15 @@ export default function HomePage() {
             Kaboodle kitchen with less waste and less downtime.
           </p>
           <div className="landing-actions">
-            <a href="/request-quote" className="landing-button landing-button-primary">
+            <PublicButton href="/request-quote" className="landing-button landing-button-primary">
               Get a Free Quote
-            </a>
-            <a href="#how-it-works" className="landing-button landing-button-secondary">
+            </PublicButton>
+            <PublicButton href="#how-it-works" className="landing-button landing-button-secondary">
               See How It Works
-            </a>
-            <a href="/products" className="landing-button landing-button-secondary">
+            </PublicButton>
+            <PublicButton href="/products" className="landing-button landing-button-secondary">
               View Products
-            </a>
+            </PublicButton>
           </div>
           <p className="landing-hero-trust">
             Flat-rate delivery across Perth metro - 20+ years cabinet making experience - Bespoke cabinetry available
@@ -259,19 +261,13 @@ export default function HomePage() {
           Tell us what you need and we will come back with a free, no-obligation quote. From a single
           replacement door to a full custom fitout, we can help.
         </p>
-        <a href="/request-quote" className="landing-button landing-button-primary">
+        <PublicButton href="/request-quote" className="landing-button landing-button-primary">
           Get a Free Quote
-        </a>
+        </PublicButton>
         <span>Flat-rate shipping across Perth metro - No minimum order - Expert advice from our team</span>
       </section>
 
-      <footer className="landing-footer">
-        <p>Copyright 2026 Perth Cabinet Doors. All rights reserved.</p>
-        <p>
-          Perth, Western Australia - <a href="tel:0408906784">0408 906 784</a> -{" "}
-          <a href="mailto:sales@perthcabinetdoors.com.au">sales@perthcabinetdoors.com.au</a>
-        </p>
-      </footer>
+      <PublicFooter className="landing-footer" separator="dash" />
     </main>
   );
 }

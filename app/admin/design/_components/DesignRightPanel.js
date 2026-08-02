@@ -2587,7 +2587,7 @@ function evenShelfHeights(heightMm, qty) {
 // the assembly is one cleat height plus one board thickness, both fixed, so the
 // form asks for the height of the SHELF TOP (what's on a robe drawing) and
 // converts to the stored mount height.
-function ShelfRailForm({ item, allItems, room, onItemChange, colourImages = null }) {
+function ShelfRailForm({ item, allItems, room, onItemChange, openSection, toggleSection, colourImages = null }) {
   const [draft, setDraft] = useState(item);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -2628,12 +2628,6 @@ function ShelfRailForm({ item, allItems, room, onItemChange, colourImages = null
     pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
     clearTimeout(timerRef.current); setSaving(true);
     timerRef.current = setTimeout(flushPending, 600);
-  }
-  function setNow(key, val) {
-    const next = { ...latestRef.current, [key]: val };
-    latestRef.current = next; setDraft(next);
-    pendingPatchRef.current = { ...pendingPatchRef.current, [key]: val };
-    clearTimeout(timerRef.current); setSaving(true); flushPending();
   }
   function setMultiNow(patch) {
     const next = { ...latestRef.current, ...patch };
@@ -2688,32 +2682,48 @@ function ShelfRailForm({ item, allItems, room, onItemChange, colourImages = null
     { value: "open", label: "Nothing" },
   ];
 
+  const section = (id) => ({ open: openSection === id, onToggle: () => toggleSection(id), theme: "light" });
+  const supportLabel = (v) => (SUPPORTS.find((s) => s.value === v) || {}).label || v;
+  const summary = {
+    size: `${draft.width_mm || "?"} span · ${draft.depth_mm || "?"} deep · ${topMm} high`,
+    ends: `${supportLabel(cfg.left_support)} / ${supportLabel(cfg.right_support)}`,
+    cleats: [
+      `${cfg.rail_height_mm}mm`,
+      cfg.front_rail.on ? "front rail" : "no front rail",
+      [cfg.back_cleat && "back", cfg.end_cleat_left && "left", cfg.end_cleat_right && "right"].filter(Boolean).join(" + ") || "no cleats",
+    ].join(" · "),
+    colours: [draft.colour || draft.material || "no board", cfg.cleat_style?.colour ? `cleats ${cfg.cleat_style.colour}` : ""].filter(Boolean).join(" · "),
+    notes: draft.notes ? String(draft.notes).split("\n")[0] : "",
+  };
+
   return (
-    <div className={styles.addItemForm}>
-      <SaveStatus saving={saving} error={saveError} onRetry={retrySave} />
+    <>
+      <div className={styles.rightScroll} style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
+        <SaveStatus saving={saving} error={saveError} onRetry={retrySave} />
 
-      {warnings.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 4 }}>
-          {warnings.map((w) => (
-            <p key={w.code} style={{
-              margin: 0, padding: "7px 9px", borderRadius: 6, fontSize: 11, lineHeight: 1.4,
-              background: w.level === "error" ? "rgba(220,38,38,0.10)" : "rgba(245,158,11,0.12)",
-              color: w.level === "error" ? "#b91c1c" : "#92400e",
-              border: `1px solid ${w.level === "error" ? "rgba(220,38,38,0.3)" : "rgba(245,158,11,0.35)"}`,
-            }}>
-              {w.level === "error" ? "⛔ " : "⚠ "}{w.message}
-            </p>
-          ))}
-        </div>
-      )}
+        {/* Outside the accordion deliberately — a shelf with nothing holding one
+            end up shouldn't be hidden behind a collapsed section. */}
+        {warnings.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {warnings.map((w) => (
+              <p key={w.code} style={{
+                margin: 0, padding: "7px 9px", borderRadius: 6, fontSize: 11, lineHeight: 1.4,
+                background: w.level === "error" ? "rgba(220,38,38,0.10)" : "rgba(245,158,11,0.12)",
+                color: w.level === "error" ? "#b91c1c" : "#92400e",
+                border: `1px solid ${w.level === "error" ? "rgba(220,38,38,0.3)" : "rgba(245,158,11,0.35)"}`,
+              }}>
+                {w.level === "error" ? "⛔ " : "⚠ "}{w.message}
+              </p>
+            ))}
+          </div>
+        )}
 
+      <ConfigSection title="Size & position" summary={summary.size} {...section("size")}>
       <div className={styles.fieldGroup}>
         <label className={styles.fieldLabel}>
           Label
           <input className={styles.fieldInput} value={draft.label || ""} onChange={(e) => set("label", e.target.value)} placeholder="e.g. Long hang shelf" />
         </label>
-
-        <SectionDivider label="Size & position" />
         <div className={styles.fieldRow}>
           <label className={styles.fieldLabel}>
             Span mm
@@ -2737,8 +2747,11 @@ function ShelfRailForm({ item, allItems, room, onItemChange, colourImages = null
         <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
           {`Overall ${derivedH}mm deep front-to-top — ${cfg.rail_height_mm}mm cleats plus the ${shelfThicknessLabel(draft)} shelf. Guide span for this build: ${limit}mm.`}
         </p>
+      </div>
+      </ConfigSection>
 
-        <SectionDivider label="What each end lands on" />
+      <ConfigSection title="What each end lands on" summary={summary.ends} {...section("ends")}>
+      <div className={styles.fieldGroup}>
         <div className={styles.fieldRow}>
           <label className={styles.fieldLabel}>
             Left end
@@ -2756,8 +2769,11 @@ function ShelfRailForm({ item, allItems, room, onItemChange, colourImages = null
         <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={redetect}>
           Detect from the plan
         </button>
+      </div>
+      </ConfigSection>
 
-        <SectionDivider label="Cleats & front rail" />
+      <ConfigSection title="Cleats & front rail" summary={summary.cleats} {...section("cleats")}>
+      <div className={styles.fieldGroup}>
         <label className={styles.fieldCheckLabel}>
           <input type="checkbox" checked={cfg.back_cleat} onChange={(e) => setCfg({ back_cleat: e.target.checked })} />
           Back cleat
@@ -2792,8 +2808,11 @@ function ShelfRailForm({ item, allItems, room, onItemChange, colourImages = null
           The cleats and the front rail share one height so both rip from the same strip. A deeper rail stiffens the
           shelf far more than a taller one costs — stiffness goes with depth cubed.
         </p>
+      </div>
+      </ConfigSection>
 
-        <SectionDivider label="Colours" />
+      <ConfigSection title="Colours & finishes" summary={summary.colours} {...section("colours")}>
+      <div className={styles.fieldGroup}>
         <ColourField
           label="Shelf"
           value={{ material: draft.material, finish: draft.finish, colour: draft.colour, thickness_mm: draft.carcass_thickness_mm, cost_per_sqm: draft.cost_per_sqm_carcass }}
@@ -2829,14 +2848,19 @@ function ShelfRailForm({ item, allItems, room, onItemChange, colourImages = null
         <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
           {`Cleats are always ${CLEAT_THICKNESS_MM}mm — they're the structural part, so only library colours stocked in ${CLEAT_THICKNESS_MM}mm are offered.`}
         </p>
-
-        <SectionDivider label="Notes" />
-        <label className={styles.fieldLabel}>
-          Notes
-          <textarea className={styles.fieldInput} rows={3} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="Anything the bench needs to know" />
-        </label>
       </div>
-    </div>
+      </ConfigSection>
+
+      <ConfigSection title="Notes" summary={summary.notes} {...section("notes")}>
+        <div className={styles.fieldGroup}>
+          <label className={styles.fieldLabel}>
+            Notes
+            <textarea className={styles.fieldInput} rows={3} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="Anything the bench needs to know" />
+          </label>
+        </div>
+      </ConfigSection>
+      </div>
+    </>
   );
 }
 
@@ -2850,7 +2874,7 @@ function shelfThicknessLabel(item) {
 // no doors, no drawers, no benchtop and no corner geometry, so it gets a short
 // form of its own — size, the two colours, shelves, back and an optional
 // kickboard — rather than a doors-and-benchtop panel with most of it hidden.
-function BookcaseForm({ item, allItems, onItemChange, colourImages = null }) {
+function BookcaseForm({ item, allItems, onItemChange, openSection, toggleSection, colourImages = null }) {
   const [draft, setDraft] = useState(item);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -2938,16 +2962,32 @@ function BookcaseForm({ item, allItems, onItemChange, colourImages = null }) {
     setNow("shelf_heights_mm", evenShelfHeights(latestRef.current.height_mm, latestRef.current.shelf_qty));
   }
 
+  const section = (id) => ({ open: openSection === id, onToggle: () => toggleSection(id), theme: "light" });
+  const summary = {
+    size: [
+      [draft.width_mm, draft.height_mm, draft.depth_mm].every(Boolean) ? `${draft.width_mm}×${draft.height_mm}×${draft.depth_mm}` : "size not set",
+      (draft.qty || 1) > 1 ? `×${draft.qty}` : "",
+    ].filter(Boolean).join(" · "),
+    colours: [draft.colour || draft.material || "no board", draft.shelf_colour ? `shelves ${draft.shelf_colour}` : ""].filter(Boolean).join(" · "),
+    shelves: shelfQty > 0 ? `${shelfQty} shelf${shelfQty === 1 ? "" : "ves"}` : "no shelves",
+    construction: [
+      (draft.back_panel_included ?? true) ? "solid back" : "no back",
+      draft.has_kickboard ? "kickboard" : "on the floor",
+    ].join(" · "),
+    notes: draft.notes ? String(draft.notes).split("\n")[0] : "",
+  };
+
   return (
-    <div className={styles.addItemForm}>
-      <SaveStatus saving={saving} error={saveError} onRetry={retrySave} />
+    <>
+      <div className={styles.rightScroll} style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
+        <SaveStatus saving={saving} error={saveError} onRetry={retrySave} />
+
+      <ConfigSection title="Size" summary={summary.size} {...section("size")}>
       <div className={styles.fieldGroup}>
         <label className={styles.fieldLabel}>
           Label
           <input className={styles.fieldInput} value={draft.label || ""} onChange={(e) => set("label", e.target.value)} placeholder="e.g. Living room bookcase" />
         </label>
-
-        <SectionDivider label="Size" />
         <div className={styles.fieldRow}>
           <label className={styles.fieldLabel}>
             Width mm
@@ -2968,8 +3008,11 @@ function BookcaseForm({ item, allItems, onItemChange, colourImages = null }) {
             <input className={styles.fieldInput} type="number" min="1" value={draft.qty ?? 1} onChange={(e) => set("qty", e.target.value)} />
           </label>
         </div>
+      </div>
+      </ConfigSection>
 
-        <SectionDivider label="Colours" />
+      <ConfigSection title="Colours & finishes" summary={summary.colours} {...section("colours")}>
+      <div className={styles.fieldGroup}>
         <ColourField
           label="Bookcase"
           value={{ material: draft.material, finish: draft.finish, colour: draft.colour, thickness_mm: draft.carcass_thickness_mm, cost_per_sqm: draft.cost_per_sqm_carcass }}
@@ -3000,8 +3043,11 @@ function BookcaseForm({ item, allItems, onItemChange, colourImages = null }) {
             cost_per_sqm_shelf: style?.cost_per_sqm ?? draft.cost_per_sqm_shelf ?? 0,
           })}
         />
+      </div>
+      </ConfigSection>
 
-        <SectionDivider label="Shelves" />
+      <ConfigSection title="Shelves" summary={summary.shelves} {...section("shelves")}>
+      <div className={styles.fieldGroup}>
         <label className={styles.fieldLabel}>
           How many shelves
           <input className={styles.fieldInput} type="number" min="0" max="20" value={draft.shelf_qty ?? 0} onChange={(e) => setShelfQty(e.target.value)} />
@@ -3022,8 +3068,11 @@ function BookcaseForm({ item, allItems, onItemChange, colourImages = null }) {
             </button>
           </>
         )}
+      </div>
+      </ConfigSection>
 
-        <SectionDivider label="Construction" />
+      <ConfigSection title="Construction" summary={summary.construction} {...section("construction")}>
+      <div className={styles.fieldGroup}>
         <label className={styles.fieldCheckLabel}>
           <input type="checkbox" checked={draft.back_panel_included ?? true} onChange={(e) => setNow("back_panel_included", e.target.checked)} />
           Solid back
@@ -3044,14 +3093,19 @@ function BookcaseForm({ item, allItems, onItemChange, colourImages = null }) {
             <input className={styles.fieldInput} type="number" min="1" value={draft.kickboard_height_mm ?? 120} onChange={(e) => set("kickboard_height_mm", e.target.value)} />
           </label>
         )}
-
-        <SectionDivider label="Notes" />
-        <label className={styles.fieldLabel}>
-          Notes
-          <textarea className={styles.fieldInput} rows={3} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="Anything the bench needs to know" />
-        </label>
       </div>
-    </div>
+      </ConfigSection>
+
+      <ConfigSection title="Notes" summary={summary.notes} {...section("notes")}>
+        <div className={styles.fieldGroup}>
+          <label className={styles.fieldLabel}>
+            Notes
+            <textarea className={styles.fieldInput} rows={3} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="Anything the bench needs to know" />
+          </label>
+        </div>
+      </ConfigSection>
+      </div>
+    </>
   );
 }
 
@@ -3796,9 +3850,9 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
           </p>
         )}
         {item.item_type === "shelf_rail" ? (
-          <ShelfRailForm key={item.id} item={item} allItems={allItems} room={room} onItemChange={onItemChange} colourImages={colourImages} />
+          <ShelfRailForm key={item.id} item={item} allItems={allItems} room={room} onItemChange={onItemChange} openSection={openSection} toggleSection={toggleSection} colourImages={colourImages} />
         ) : item.item_type === "bookcase" ? (
-          <BookcaseForm key={item.id} item={item} allItems={allItems} onItemChange={onItemChange} colourImages={colourImages} />
+          <BookcaseForm key={item.id} item={item} allItems={allItems} onItemChange={onItemChange} openSection={openSection} toggleSection={toggleSection} colourImages={colourImages} />
         ) : isCabinet ? (
           <CabinetConfigForm key={item.id} item={item} allItems={allItems} room={room} materialDefaults={materialDefaults} onItemChange={onItemChange} onSelectItem={onSelectItem} openSection={openSection} toggleSection={toggleSection} fullWidth={fullWidth} colourImages={colourImages} />
         ) : ["obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"].includes(item.item_type) ? (

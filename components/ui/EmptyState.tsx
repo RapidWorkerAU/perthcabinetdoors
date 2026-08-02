@@ -26,19 +26,19 @@ export function EmptyState({ title, description, icon, action, size = 'md' }: Em
       isMd ? 'py-12 px-6' : 'py-8 px-4',
     )}>
       <div className={cn(
-        'rounded-full bg-[#eef0f4] flex items-center justify-center text-[#9ba7b8]',
+        'rounded-full bg-[#edf4eb] flex items-center justify-center text-[#6b9e61]',
         isMd ? 'w-[56px] h-[56px] mb-4' : 'w-[44px] h-[44px] mb-3',
       )}>
         {icon ?? (isMd ? <IconInbox size={24} /> : <IconInbox size={20} />)}
       </div>
       <p className={cn(
-        'font-semibold text-[#1a2533] mb-1',
+        'font-semibold text-[#1a1a18] mb-1',
         isMd ? 'text-[15px]' : 'text-[14px]',
       )}>
         {title}
       </p>
       {description && (
-        <p className="text-[13px] text-[#6e7e92] leading-relaxed max-w-[320px]">
+        <p className="text-[13px] text-[#5a5a52] leading-relaxed max-w-[320px]">
           {description}
         </p>
       )}

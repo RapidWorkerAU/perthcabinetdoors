@@ -48,8 +48,8 @@ export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
         'rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden font-medium',
         SIZE_CLASS[size],
         showImage    ? '' :
-        showInitials ? 'bg-[#daefee] text-[#1c5f5d]' :
-                       'bg-[#eef0f4] text-[#9ba7b8]',
+        showInitials ? 'bg-[#edf4eb] text-[#2d5e28]' :
+                       'bg-[#f5f5f4] text-[#8b8a81]',
         className,
       )}
     >

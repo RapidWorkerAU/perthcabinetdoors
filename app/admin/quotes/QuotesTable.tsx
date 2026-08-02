@@ -1,11 +1,18 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { IconPlus } from '@tabler/icons-react'
 import { formatMoney } from '../../../lib/pcd-quote-utils'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
-import { cn } from '@/lib/utils'
+import { AdminPageHeader } from '@/components/ui/AdminPageHeader'
+import { BulkActionBar } from '@/components/ui/BulkActionBar'
+import { Button } from '@/components/ui/Button'
+import { ConfirmModal } from '@/components/ui/Modal'
+import { StatusFilterBar, type StatusFilterOption } from '@/components/ui/StatusFilterBar'
+import { StatusPill } from '@/components/ui/StatusPill'
+import { TextAction } from '@/components/ui/TextAction'
 import { useToast } from '@/components/ui/Toast'
 
 const STATUSES = ['draft', 'sent', 'viewed', 'approved', 'rejected']
@@ -18,12 +25,6 @@ function formatDate(value?: string | null) {
     month: 'short',
     year: 'numeric',
   }).format(new Date(value))
-}
-
-function getStatusClass(status?: string | null) {
-  if (status === 'approved') return 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
-  if (status === 'rejected') return 'bg-[#fef2f2] text-[#991b1b] border-[#fca5a5]'
-  return 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'
 }
 
 function suburbFromAddress(value?: string | null) {
@@ -62,8 +63,7 @@ export default function QuotesTable() {
   const [setupRequired,     setSetupRequired]     = useState(false)
   const [statusFilter,      setStatusFilter]      = useState('draft')
   const [selectedQuoteIds,  setSelectedQuoteIds]  = useState<string[]>([])
-  const [confirmDeleteId,  setConfirmDeleteId]   = useState('')
-  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [confirmDeleteIds,  setConfirmDeleteIds]  = useState<string[]>([])
 
   const statusCounts = useMemo(() => {
     return quotes.reduce<Record<string, number>>(
@@ -84,7 +84,15 @@ export default function QuotesTable() {
 
   const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(visibleQuotes, statusFilter)
 
-  async function loadQuotes() {
+  const statusFilterOptions = useMemo<StatusFilterOption[]>(() => (
+    FILTERS.map(status => ({
+      value: status,
+      label: status === 'all' ? 'All' : formatAdminLabel(status),
+      count: statusCounts[status] || 0,
+    }))
+  ), [statusCounts])
+
+  const loadQuotes = useCallback(async () => {
     setIsLoading(true)
     try {
       const response = await fetch('/api/admin/quotes', { cache: 'no-store' })
@@ -97,9 +105,9 @@ export default function QuotesTable() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
 
-  useEffect(() => { loadQuotes() }, [])
+  useEffect(() => { loadQuotes() }, [loadQuotes])
 
   async function createQuote() {
     setIsCreating(true)
@@ -161,18 +169,15 @@ export default function QuotesTable() {
       toast({ title: err instanceof Error ? err.message : 'Could not delete selected quotes.', variant: 'error' })
     } finally {
       setIsDeleting(false)
-      setConfirmDeleteId('')
-      setConfirmBulkDelete(false)
+      setConfirmDeleteIds([])
     }
   }
 
   function toggleSelectedQuote(id: string) {
-    setConfirmBulkDelete(false)
     setSelectedQuoteIds(current => current.includes(id) ? current.filter(i => i !== id) : [...current, id])
   }
 
   function toggleSelectedPage(checked: boolean) {
-    setConfirmBulkDelete(false)
     const pageIds = pageItems.map(q => q.id)
     setSelectedQuoteIds(current => {
       if (!checked) return current.filter(id => !pageIds.includes(id))
@@ -184,85 +189,32 @@ export default function QuotesTable() {
 
   return (
     <div className="p-4 md:p-6">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-[20px] font-bold text-[#1a1a18]">Quotes</h1>
-          <p className="text-[13px] text-[#5a5a52] mt-[2px]">Manage your quote pipeline</p>
-        </div>
-      </div>
+      <AdminPageHeader title="Quotes" subtitle="Manage your quote pipeline" />
 
       {/* Status filter bar */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {FILTERS.map(status => (
-          <button
-            key={status}
-            type="button"
-            onClick={() => setStatusFilter(status)}
-            className={cn(
-              'flex items-center gap-2 px-3 py-[6px] rounded-full text-[12px] font-medium border transition-colors',
-              statusFilter === status
-                ? 'bg-[#1c2b1e] text-white border-[#1c2b1e]'
-                : 'bg-white text-[#5a5a52] border-[#dbd8cc] hover:bg-[#f5f8f4]'
-            )}
-          >
-            {status === 'all' ? 'All' : formatAdminLabel(status)}
-            <span className={cn(
-              'text-[11px] font-semibold px-[5px] py-[1px] rounded-full',
-              statusFilter === status ? 'bg-white/20 text-white' : 'bg-[#edf4eb] text-[#2d5e28]'
-            )}>
-              {statusCounts[status] || 0}
-            </span>
-          </button>
-        ))}
-      </div>
+      <StatusFilterBar options={statusFilterOptions} value={statusFilter} onChange={setStatusFilter} className="mb-4" />
 
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           {selectedQuoteIds.length > 0 ? (
-            confirmBulkDelete ? (
-              <span className="flex items-center gap-2 text-[13px]">
-                <span className="text-[#5a5a52]">Delete {selectedQuoteIds.length} quotes?</span>
-                <button
-                  type="button"
-                  onClick={() => deleteQuotes(selectedQuoteIds)}
-                  disabled={isDeleting}
-                  className="font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                >
-                  Confirm delete
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmBulkDelete(false)}
-                  className="font-medium text-[#5a5a52] hover:underline"
-                >
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmBulkDelete(true)}
-                disabled={isDeleting}
-                className="text-[13px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-              >
-                Delete {selectedQuoteIds.length} selected
-              </button>
-            )
+            <BulkActionBar
+              selectedCount={selectedQuoteIds.length}
+              noun="quote"
+              variant="inline"
+              onClear={() => setSelectedQuoteIds([])}
+              onDelete={() => setConfirmDeleteIds(selectedQuoteIds)}
+              deleting={isDeleting}
+            />
           ) : (
             <span className="text-[13px] text-[#8b8a81]">
               {visibleQuotes.length} {visibleQuotes.length === 1 ? 'quote' : 'quotes'}
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={createQuote}
-          disabled={isCreating}
-          className="h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
-        >
-          {isCreating ? 'Creating...' : 'New quote'}
-        </button>
+        <Button variant="primary" size="sm" iconLeft={<IconPlus size={14} />} onClick={createQuote} loading={isCreating} loadingText="Creating...">
+          New quote
+        </Button>
       </div>
 
       {setupRequired && (
@@ -325,24 +277,15 @@ export default function QuotesTable() {
                     <td className="px-4 py-[11px] text-[#1a1a18]">{quote.customer_name || '-'}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{quoteCustomerSuburb(quote)}</td>
                     <td className="px-4 py-[11px]">
-                      <span className={cn(
-                        'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
-                        getStatusClass(status)
-                      )}>
-                        {status.replace(/^./, char => char.toUpperCase())}
-                      </span>
+                      <StatusPill status={status}>{formatAdminLabel(status)}</StatusPill>
                     </td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(quote.total_inc_gst, quote.currency || 'AUD')}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18] whitespace-nowrap">{formatDate(quote.updated_at || quote.created_at)}</td>
                     <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/admin/quotes/${quote.id}`)}
-                          className="text-[12px] font-medium text-[#1c2b1e] hover:underline"
-                        >
+                        <TextAction onClick={() => router.push(`/admin/quotes/${quote.id}`)}>
                           Open
-                        </button>
+                        </TextAction>
                         {quote.access_code && (
                           <a
                             href={`/quotes/view?code=${encodeURIComponent(quote.access_code)}`}
@@ -353,42 +296,12 @@ export default function QuotesTable() {
                             View
                           </a>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => duplicateQuote(quote.id)}
-                          disabled={duplicatingQuoteId === quote.id}
-                          className="text-[12px] font-medium text-[#1c2b1e] hover:underline disabled:opacity-50"
-                        >
+                        <TextAction onClick={() => duplicateQuote(quote.id)} disabled={duplicatingQuoteId === quote.id}>
                           {duplicatingQuoteId === quote.id ? 'Duplicating...' : 'Duplicate'}
-                        </button>
-                        {confirmDeleteId === quote.id ? (
-                          <span className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => deleteQuotes([quote.id])}
-                              disabled={isDeleting}
-                              className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                            >
-                              Confirm?
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteId('')}
-                              className="text-[12px] font-medium text-[#5a5a52] hover:underline"
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId(quote.id)}
-                            disabled={isDeleting}
-                            className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                          >
-                            Delete
-                          </button>
-                        )}
+                        </TextAction>
+                        <TextAction variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([quote.id])}>
+                          Delete
+                        </TextAction>
                       </div>
                     </td>
                   </tr>
@@ -436,25 +349,16 @@ export default function QuotesTable() {
                 <div>
                   <dt className="text-[#8b8a81]">Status</dt>
                   <dd>
-                    <span className={cn(
-                      'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
-                      getStatusClass(status)
-                    )}>
-                      {status.replace(/^./, char => char.toUpperCase())}
-                    </span>
+                    <StatusPill status={status}>{formatAdminLabel(status)}</StatusPill>
                   </dd>
                 </div>
                 <div><dt className="text-[#8b8a81]">Total</dt><dd className="text-[#1a1a18]">{formatMoney(quote.total_inc_gst, quote.currency || 'AUD')}</dd></div>
                 <div><dt className="text-[#8b8a81]">Updated</dt><dd className="text-[#1a1a18]">{formatDate(quote.updated_at || quote.created_at)}</dd></div>
               </dl>
               <div className="pt-3 border-t border-[#edf4eb] flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => router.push(`/admin/quotes/${quote.id}`)}
-                  className="h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors"
-                >
+                <Button variant="primary" size="sm" onClick={() => router.push(`/admin/quotes/${quote.id}`)}>
                   Open
-                </button>
+                </Button>
                 {quote.access_code && (
                   <a
                     href={`/quotes/view?code=${encodeURIComponent(quote.access_code)}`}
@@ -465,14 +369,9 @@ export default function QuotesTable() {
                     View
                   </a>
                 )}
-                <button
-                  type="button"
-                  onClick={() => duplicateQuote(quote.id)}
-                  disabled={duplicatingQuoteId === quote.id}
-                  className="h-[34px] px-4 border border-[#dbd8cc] text-[#1a1a18] text-[13px] font-medium rounded-[6px] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
-                >
-                  {duplicatingQuoteId === quote.id ? 'Duplicating...' : 'Duplicate'}
-                </button>
+                <Button variant="neutral" size="sm" onClick={() => duplicateQuote(quote.id)} loading={duplicatingQuoteId === quote.id} loadingText="Duplicating...">
+                  Duplicate
+                </Button>
               </div>
             </article>
           )
@@ -487,6 +386,22 @@ export default function QuotesTable() {
           />
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmDeleteIds.length > 0}
+        onClose={() => setConfirmDeleteIds([])}
+        title={confirmDeleteIds.length === 1 ? 'Delete quote?' : 'Delete quotes?'}
+        description={
+          confirmDeleteIds.length === 1
+            ? 'This quote will be permanently removed.'
+            : `${confirmDeleteIds.length} quotes will be permanently removed.`
+        }
+        variant="danger"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={() => deleteQuotes(confirmDeleteIds)}
+        loading={isDeleting}
+      />
     </div>
   )
 }

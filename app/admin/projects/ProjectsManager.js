@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMoney } from "../../../lib/pcd-quote-utils";
 import styles from "../admin-content.module.css";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
-import { AdminActionDropdown, AdminBulkDeleteButton, AdminConfirmDeleteAction } from "../_components/AdminActionDropdown";
 import { AdminPagination, useAdminPagination } from "../_components/AdminPagination";
+import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
+import { BulkActionBar } from "@/components/ui/BulkActionBar";
+import { ConfirmModal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 
 function formatDate(value) {
@@ -41,6 +43,7 @@ export default function ProjectsManager() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState([]);
+  const [confirmDeleteIds, setConfirmDeleteIds] = useState([]);
 
   const totals = useMemo(() => {
     return projects.reduce(
@@ -57,7 +60,7 @@ export default function ProjectsManager() {
   }, [projects]);
   const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(projects);
 
-  async function loadProjects() {
+  const loadProjects = useCallback(async () => {
     setIsLoading(true);
 
     try {
@@ -74,11 +77,11 @@ export default function ProjectsManager() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [toast]);
 
   useEffect(() => {
     loadProjects();
-  }, []);
+  }, [loadProjects]);
 
   async function deleteProjects(ids) {
     if (!ids.length) return;
@@ -100,6 +103,7 @@ export default function ProjectsManager() {
       toast({ title: error?.message || "Could not delete selected projects.", variant: "error" });
     } finally {
       setIsDeleting(false);
+      setConfirmDeleteIds([]);
     }
   }
 
@@ -119,7 +123,16 @@ export default function ProjectsManager() {
     <section className={styles.productsSection}>
       <div className={`${styles.productsHeaderBar} ${styles.tableToolbar}`}>
         <div className={styles.tableToolbarFilters}>
-          <AdminBulkDeleteButton count={selectedProjectIds.length} disabled={isDeleting} onConfirm={() => deleteProjects(selectedProjectIds)} />
+          {selectedProjectIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedProjectIds.length}
+              noun="project"
+              variant="inline"
+              onClear={() => setSelectedProjectIds([])}
+              onDelete={() => setConfirmDeleteIds(selectedProjectIds)}
+              deleting={isDeleting}
+            />
+          ) : null}
         </div>
         <div className={styles.rowActions}>
           <span className={styles.projectListMetric}>{totals.active} active</span>
@@ -193,12 +206,14 @@ export default function ProjectsManager() {
                     <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(project.total_inc_gst, "AUD")}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{formatDate(project.accepted_at || project.created_at)}</td>
                     <td className="px-4 py-[11px]">
-                      <AdminActionDropdown label={`Open actions for project ${project.project_number || project.id}`}>
-                        <button type="button" className={styles.tableActionMenuItem} onClick={() => router.push(`/admin/projects/${project.id}`)}>
+                      <ActionMenu label={`Open actions for project ${project.project_number || project.id}`}>
+                        <ActionMenuItem onClick={() => router.push(`/admin/projects/${project.id}`)}>
                           Open
-                        </button>
-                        <AdminConfirmDeleteAction disabled={isDeleting} onConfirm={() => deleteProjects([project.id])} />
-                      </AdminActionDropdown>
+                        </ActionMenuItem>
+                        <ActionMenuItem variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([project.id])}>
+                          Delete
+                        </ActionMenuItem>
+                      </ActionMenu>
                     </td>
                   </tr>
                 );
@@ -230,6 +245,22 @@ export default function ProjectsManager() {
           onPageChange={setPage}
         />
       </div>
+
+      <ConfirmModal
+        open={confirmDeleteIds.length > 0}
+        onClose={() => setConfirmDeleteIds([])}
+        title={confirmDeleteIds.length === 1 ? "Delete project?" : "Delete projects?"}
+        description={
+          confirmDeleteIds.length === 1
+            ? "This project will be permanently removed."
+            : `${confirmDeleteIds.length} projects will be permanently removed.`
+        }
+        variant="danger"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={() => deleteProjects(confirmDeleteIds)}
+        loading={isDeleting}
+      />
     </section>
   );
 }

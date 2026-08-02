@@ -40,11 +40,11 @@ export interface PillProps {
 }
 
 const VARIANT_STYLES: Record<PillVariant, { pill: string; dot: string }> = {
-  'open':          { pill: 'bg-[#daefee] text-[#1c5f5d]',                           dot: 'bg-[#2d9692]' },
+  'open':          { pill: 'bg-[#edf4eb] text-[#2d5e28]',                           dot: 'bg-[#6b9e61]' },
   'in-progress':   { pill: 'bg-[#fef3c7] text-[#92400e]',                           dot: 'bg-[#f59e0b]' },
   'under-review':  { pill: 'bg-[#e0e7ff] text-[#3730a3]',                           dot: 'bg-[#6366f1]' },
-  'overdue':       { pill: 'bg-[#fee2e2] text-[#991b1b]',                           dot: 'bg-[#ef4444]' },
-  'closed':        { pill: 'bg-[#eef0f4] text-[#3d4d5f]',                           dot: 'bg-[#6e7e92]'  },
+  'overdue':       { pill: 'bg-[#fef2f2] text-[#991b1b]',                           dot: 'bg-[#b42318]' },
+  'closed':        { pill: 'bg-[#f5f5f4] text-[#5a5a52]',                           dot: 'bg-[#8b8a81]'  },
   'risk-low':      { pill: 'bg-[#dcfce9] text-[#14532d]',                           dot: '' },
   'risk-medium':   { pill: 'bg-[#fef3c7] text-[#78350f]',                           dot: '' },
   'risk-high':     { pill: 'bg-[#fee2e2] text-[#7f1d1d]',                           dot: '' },

@@ -88,16 +88,16 @@ const VARIANT_CLASS: Record<ToastVariant, string> = {
   success: 'bg-[#f0fdf5] border-[#bbf7d2] text-[#14532d]',
   error:   'bg-[#fef2f2] border-[#fecaca] text-[#7f1d1d]',
   warning: 'bg-[#fffbeb] border-[#fde68a] text-[#78350f]',
-  info:    'bg-[#f0f8f7] border-[#b5dfdd] text-[#1c5f5d]',
-  neutral: 'bg-white border-[#dde1e9] text-[#1a2533]',
+  info:    'bg-[#edf4eb] border-[#a8c5a0] text-[#2d5e28]',
+  neutral: 'bg-white border-[#dbd8cc] text-[#1a1a18]',
 }
 
 const PROGRESS_COLOR: Record<ToastVariant, string> = {
   success: 'bg-[#16a34a]',
   error:   '',
   warning: 'bg-[#d97706]',
-  info:    'bg-[#2d9692]',
-  neutral: 'bg-[#9ba7b8]',
+  info:    'bg-[#6b9e61]',
+  neutral: 'bg-[#8b8a81]',
 }
 
 // ── Icon ───────────────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ function ToastIcon({ variant }: { variant: ToastVariant }): React.ReactElement {
   if (variant === 'error')   return <IconAlertCircle   size={18} className={cls} />
   if (variant === 'warning') return <IconAlertTriangle size={18} className={cls} />
   if (variant === 'info')    return <IconInfoCircle    size={18} className={cls} />
-  /* neutral */              return <IconBell          size={18} className={cn(cls, 'text-[#6e7e92]')} />
+  /* neutral */              return <IconBell          size={18} className={cn(cls, 'text-[#5a5a52]')} />
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────────

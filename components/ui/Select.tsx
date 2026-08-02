@@ -56,9 +56,9 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         {/* Label row */}
         {label && (
           <div className="flex items-center gap-1">
-            <label className="text-[13px] font-medium text-[#1a2533]">{label}</label>
+            <label className="text-[13px] font-medium text-[#1a1a18]">{label}</label>
             {optional && (
-              <span className="text-[11px] font-normal text-[#9ba7b8]">(optional)</span>
+              <span className="text-[11px] font-normal text-[#8b8a81]">(optional)</span>
             )}
           </div>
         )}
@@ -69,13 +69,13 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             disabled={disabled}
             className={cn(
-              'h-[40px] w-full rounded-[6px] border border-[#dde1e9] bg-white',
-              'pl-3 pr-8 text-[14px] text-[#1a2533]',
+              'h-[40px] w-full rounded-[6px] border border-[#dbd8cc] bg-white',
+              'pl-3 pr-8 text-[14px] text-[#1a1a18]',
               'appearance-none cursor-pointer outline-none transition-colors duration-150',
-              'hover:border-[#9ba7b8]',
-              'focus:border-[#2d9692]',
-              disabled && 'bg-[#f7f8fa] text-[#9ba7b8] cursor-not-allowed border-[#eef0f4] hover:border-[#eef0f4] focus:border-[#eef0f4]',
-              error && 'border-[#ef4444] hover:border-[#ef4444] focus:border-[#ef4444]',
+              'hover:border-[#8b8a81]',
+              'focus:border-[#6b9e61]',
+              disabled && 'bg-[#f5f8f4] text-[#8b8a81] cursor-not-allowed border-[#edf4eb] hover:border-[#edf4eb] focus:border-[#edf4eb]',
+              error && 'border-[#b42318] hover:border-[#b42318] focus:border-[#b42318]',
               className
             )}
             {...props}
@@ -93,7 +93,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           </select>
 
           {/* Custom chevron — pointer-events-none so clicks pass through to select */}
-          <span className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-[#9ba7b8]">
+          <span className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-[#8b8a81]">
             <IconChevronDown size={16} />
           </span>
         </div>
@@ -102,12 +102,12 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         {hasBelow && (
           <div>
             {error ? (
-              <p className="flex items-center gap-1 text-[12px] text-[#ef4444]">
+              <p className="flex items-center gap-1 text-[12px] text-[#b42318]">
                 <IconAlertCircle size={13} className="flex-shrink-0" />
                 <span>{error}</span>
               </p>
             ) : helper ? (
-              <p className="text-[12px] text-[#6e7e92]">{helper}</p>
+              <p className="text-[12px] text-[#5a5a52]">{helper}</p>
             ) : null}
           </div>
         )}

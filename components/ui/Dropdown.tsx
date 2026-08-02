@@ -99,6 +99,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
     const [open, setOpen]           = React.useState(false)
     const [searchQuery, setSearchQuery] = React.useState('')
     const searchRef = React.useRef<HTMLInputElement>(null)
+    const listboxId = React.useId()
 
     // ── Derived values ──────────────────────────────────────────────────────
 
@@ -176,8 +177,8 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
 
     function RadioIndicator({ selected }: { selected: boolean }) {
       return (
-        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-[#dde1e9]">
-          {selected && <span className="h-2 w-2 rounded-full bg-[#2d9692]" />}
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-[#dbd8cc]">
+          {selected && <span className="h-2 w-2 rounded-full bg-[#6b9e61]" />}
         </span>
       )
     }
@@ -188,7 +189,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
           checked={checked}
           className={cn(
             'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] border-[1.5px] transition-colors',
-            checked ? 'bg-[#2d9692] border-[#2d9692]' : 'bg-white border-[#dde1e9]'
+            checked ? 'bg-[#6b9e61] border-[#6b9e61]' : 'bg-white border-[#dbd8cc]'
           )}
           onCheckedChange={() => {}}
           tabIndex={-1}
@@ -214,10 +215,10 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
           onClick={() => handleSelect(opt.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleSelect(opt.value) }}
           className={cn(
-            'flex cursor-pointer items-center gap-[10px] px-3 py-[9px] text-[14px] text-[#1a2533]',
+            'flex cursor-pointer items-center gap-[10px] px-3 py-[9px] text-[14px] text-[#1a1a18]',
             'outline-none transition-colors duration-100',
-            'hover:bg-[#f7f8fa]',
-            selected && 'bg-[#f0f8f7] text-[#1c5f5d]'
+            'hover:bg-[#f5f8f4]',
+            selected && 'bg-[#edf4eb] text-[#2d5e28]'
           )}
         >
           {multiple
@@ -232,10 +233,10 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
     // ── Trigger content ──────────────────────────────────────────────────────
 
     const triggerBorderClass = error
-      ? 'border-[#ef4444]'
+      ? 'border-[#b42318]'
       : open
-      ? 'border-[#2d9692]'
-      : 'border-[#dde1e9]'
+      ? 'border-[#6b9e61]'
+      : 'border-[#dbd8cc]'
 
     const singleLabel = options.find(o => o.value === singleValue)?.label
 
@@ -255,9 +256,9 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
         {/* Label */}
         {label && (
           <div className="flex items-center gap-1">
-            <span className="text-[13px] font-medium text-[#1a2533]">{label}</span>
+            <span className="text-[13px] font-medium text-[#1a1a18]">{label}</span>
             {optional && (
-              <span className="text-[11px] font-normal text-[#9ba7b8]">(optional)</span>
+              <span className="text-[11px] font-normal text-[#8b8a81]">(optional)</span>
             )}
           </div>
         )}
@@ -270,6 +271,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
             <div
               role="combobox"
               aria-expanded={open}
+              aria-controls={listboxId}
               aria-haspopup="listbox"
               aria-disabled={disabled}
               className={cn(
@@ -279,26 +281,26 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                   ? 'flex min-h-[40px] flex-wrap items-center gap-1 py-[6px] pl-[8px] pr-[36px]'
                   : 'flex h-[40px] items-center px-3 pr-[64px] text-[14px]',
                 triggerBorderClass,
-                disabled && 'cursor-not-allowed border-[#eef0f4] bg-[#f7f8fa] text-[#9ba7b8]'
+                disabled && 'cursor-not-allowed border-[#edf4eb] bg-[#f5f8f4] text-[#8b8a81]'
               )}
             >
               {/* Multi: pills */}
               {multiple && (
                 <>
                   {selectedOptions.length === 0 && (
-                    <span className="text-[14px] text-[#9ba7b8]">{placeholder}</span>
+                    <span className="text-[14px] text-[#8b8a81]">{placeholder}</span>
                   )}
                   {displayedPills.map(opt => (
                     <span
                       key={opt.value}
-                      className="inline-flex items-center gap-1 rounded-full bg-[#eef0f4] px-2 py-[3px] text-[12px] font-medium text-[#3d4d5f]"
+                      className="inline-flex items-center gap-1 rounded-full bg-[#edf4eb] px-2 py-[3px] text-[12px] font-medium text-[#2d5e28]"
                     >
                       {opt.label}
                       <button
                         type="button"
                         tabIndex={-1}
                         onClick={e => handleRemovePill(opt.value, e)}
-                        className="ml-[2px] text-[#6e7e92] hover:text-[#1a2533] transition-colors"
+                        className="ml-[2px] text-[#5a5a52] hover:text-[#1a1a18] transition-colors"
                         aria-label={`Remove ${opt.label}`}
                       >
                         <IconX size={11} />
@@ -306,14 +308,14 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                     </span>
                   ))}
                   {overflowCount > 0 && (
-                    <span className="text-[12px] text-[#6e7e92]">+{overflowCount} more</span>
+                    <span className="text-[12px] text-[#5a5a52]">+{overflowCount} more</span>
                   )}
                 </>
               )}
 
               {/* Single: label or placeholder */}
               {!multiple && (
-                <span className={singleLabel ? 'text-[#1a2533]' : 'text-[#9ba7b8]'}>
+                <span className={singleLabel ? 'text-[#1a1a18]' : 'text-[#8b8a81]'}>
                   {singleLabel ?? placeholder}
                 </span>
               )}
@@ -325,7 +327,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                   tabIndex={-1}
                   onClick={handleClear}
                   className={cn(
-                    'absolute top-1/2 -translate-y-1/2 text-[#9ba7b8] hover:text-[#3d4d5f] transition-colors',
+                    'absolute top-1/2 -translate-y-1/2 text-[#8b8a81] hover:text-[#1a1a18] transition-colors',
                     multiple ? 'right-[28px]' : 'right-[30px]'
                   )}
                   aria-label="Clear selection"
@@ -335,7 +337,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
               )}
 
               {/* Chevron */}
-              <span className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-[#9ba7b8]">
+              <span className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-[#8b8a81]">
                 <IconChevronDown
                   size={16}
                   className={cn('transition-transform duration-150', open && 'rotate-180')}
@@ -360,18 +362,18 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                 ...(contentZIndex != null ? { zIndex: contentZIndex } : {}),
               }}
               className={cn(
-                'z-[60] overflow-hidden rounded-[6px] border border-[#dde1e9] bg-white',
+                'z-[60] overflow-hidden rounded-[6px] border border-[#dbd8cc] bg-white',
                 'shadow-[0_4px_16px_rgba(0,0,0,0.08)]'
               )}
             >
 
               {/* Search input */}
               {isSearchable && (
-                <div className="border-b border-[#eef0f4] p-2">
+                <div className="border-b border-[#edf4eb] p-2">
                   <div className="relative">
                     <IconSearch
                       size={14}
-                      className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[#9ba7b8]"
+                      className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[#8b8a81]"
                     />
                     <input
                       ref={searchRef}
@@ -380,9 +382,9 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                       onChange={e => setSearchQuery(e.target.value)}
                       placeholder={searchPlaceholder}
                       className={cn(
-                        'h-[34px] w-full rounded-[4px] border border-[#dde1e9] bg-[#f7f8fa]',
-                        'pl-[28px] pr-2 text-[13px] text-[#1a2533] outline-none',
-                        'focus:border-[#2d9692] focus:bg-white transition-colors'
+                        'h-[34px] w-full rounded-[4px] border border-[#dbd8cc] bg-[#f5f8f4]',
+                        'pl-[28px] pr-2 text-[13px] text-[#1a1a18] outline-none',
+                        'focus:border-[#6b9e61] focus:bg-white transition-colors'
                       )}
                     />
                   </div>
@@ -393,10 +395,11 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
               {multiple && selectAll && (
                 <div
                   role="option"
+                  aria-selected={allFilteredSelected}
                   tabIndex={0}
                   onClick={handleSelectAll}
                   onKeyDown={e => { if (e.key === 'Enter') handleSelectAll() }}
-                  className="flex cursor-pointer items-center gap-[10px] border-b border-[#eef0f4] px-3 py-2 text-[13px] font-medium text-[#6e7e92] outline-none hover:bg-[#f7f8fa]"
+                  className="flex cursor-pointer items-center gap-[10px] border-b border-[#edf4eb] px-3 py-2 text-[13px] font-medium text-[#5a5a52] outline-none hover:bg-[#f5f8f4]"
                 >
                   <CheckboxIndicator checked={allFilteredSelected || (someFilteredSelected ? false : false)} />
                   Select all
@@ -404,12 +407,12 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
               )}
 
               {/* Options list */}
-              <div role="listbox" className={cn(
+              <div id={listboxId} role="listbox" aria-multiselectable={multiple || undefined} className={cn(
                 'overflow-y-auto',
                 isScrollable ? 'max-h-[200px] min-h-[148px]' : ''
               )}>
                 {filteredOptions.length === 0 ? (
-                  <div className="px-3 py-5 text-center text-[13px] text-[#9ba7b8]">
+                  <div className="px-3 py-5 text-center text-[13px] text-[#8b8a81]">
                     <IconSearchOff size={20} className="mx-auto mb-2 block" />
                     No results for &ldquo;{searchQuery}&rdquo;
                   </div>
@@ -421,7 +424,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                     {/* Grouped options */}
                     {groupNames.map(group => (
                       <div key={group}>
-                        <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9ba7b8]">
+                        <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">
                           {group}
                         </div>
                         {filteredOptions
@@ -435,12 +438,12 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
 
               {/* Multi footer */}
               {multiple && selectedValues.length > 0 && (
-                <div className="flex items-center justify-between border-t border-[#eef0f4] px-3 py-2 text-[12px] text-[#6e7e92]">
+                <div className="flex items-center justify-between border-t border-[#edf4eb] px-3 py-2 text-[12px] text-[#5a5a52]">
                   <span>{selectedValues.length} selected</span>
                   <button
                     type="button"
                     onClick={() => onChange?.([])}
-                    className="font-medium text-[#2d9692] hover:text-[#1c5f5d] transition-colors"
+                    className="font-medium text-[#2d5e28] hover:text-[#1c2b1e] transition-colors"
                   >
                     Clear all
                   </button>
@@ -455,12 +458,12 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
         {(error || helper) && (
           <div>
             {error ? (
-              <p className="flex items-center gap-1 text-[12px] text-[#ef4444]">
+              <p className="flex items-center gap-1 text-[12px] text-[#b42318]">
                 <IconAlertCircle size={13} className="flex-shrink-0" />
                 <span>{error}</span>
               </p>
             ) : (
-              <p className="text-[12px] text-[#6e7e92]">{helper}</p>
+              <p className="text-[12px] text-[#5a5a52]">{helper}</p>
             )}
           </div>
         )}

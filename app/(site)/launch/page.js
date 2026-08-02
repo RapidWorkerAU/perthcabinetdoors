@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DEFAULT_LAUNCH_SETTINGS } from "../../../lib/launch-settings";
 import { getAllowedAdminEmailClient } from "../../../lib/admin-access";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
+import PortalModal from "../../../components/PortalModal";
 import styles from "./launch.module.css";
 
 const LAUNCH_EMAIL = getAllowedAdminEmailClient();
@@ -240,73 +241,65 @@ function LaunchGate() {
         </div>
       </section>
 
-      {isEnquiryOpen ? (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="launch-enquiry-title" onMouseDown={() => setIsEnquiryOpen(false)}>
-          <section className={styles.enquiryModal} onMouseDown={(event) => event.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <p className={styles.eyebrow}>{settings.enquiryEyebrow}</p>
-                <h2 id="launch-enquiry-title">{settings.enquiryTitle}</h2>
-              </div>
-              <button type="button" className={styles.closeButton} onClick={() => setIsEnquiryOpen(false)} aria-label="Close enquiry form">
-                {settings.closeButtonText}
-              </button>
-            </div>
+      <PortalModal
+        open={isEnquiryOpen}
+        onClose={() => setIsEnquiryOpen(false)}
+        ariaLabel="Launch enquiry form"
+        eyebrow={settings.enquiryEyebrow}
+        title={settings.enquiryTitle}
+      >
+        <form className={styles.enquiryForm} onSubmit={submitEnquiry}>
+          <div className={styles.formGrid}>
+            <label>
+              First name
+              <input name="firstName" type="text" placeholder="e.g. Sarah" />
+            </label>
+            <label>
+              Last name
+              <input name="lastName" type="text" placeholder="e.g. Jones" />
+            </label>
+            <label>
+              Phone
+              <input name="phone" type="tel" placeholder="e.g. 0400 000 000" />
+            </label>
+            <label>
+              Email
+              <input name="email" type="email" placeholder="e.g. sarah@email.com" />
+            </label>
+            <label>
+              Postcode
+              <input name="postcode" type="text" inputMode="numeric" maxLength={4} placeholder="e.g. 6000" />
+            </label>
+            <label>
+              Topic
+              <select name="topic" defaultValue="General enquiry">
+                {TOPICS.map((topic) => (
+                  <option key={topic}>{topic}</option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.fullField}>
+              Message
+              <textarea name="message" placeholder="Tell us what you need." required />
+            </label>
+          </div>
 
-            <form className={styles.enquiryForm} onSubmit={submitEnquiry}>
-              <div className={styles.formGrid}>
-                <label>
-                  First name
-                  <input name="firstName" type="text" placeholder="e.g. Sarah" />
-                </label>
-                <label>
-                  Last name
-                  <input name="lastName" type="text" placeholder="e.g. Jones" />
-                </label>
-                <label>
-                  Phone
-                  <input name="phone" type="tel" placeholder="e.g. 0400 000 000" />
-                </label>
-                <label>
-                  Email
-                  <input name="email" type="email" placeholder="e.g. sarah@email.com" />
-                </label>
-                <label>
-                  Postcode
-                  <input name="postcode" type="text" inputMode="numeric" maxLength={4} placeholder="e.g. 6000" />
-                </label>
-                <label>
-                  Topic
-                  <select name="topic" defaultValue="General enquiry">
-                    {TOPICS.map((topic) => (
-                      <option key={topic}>{topic}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.fullField}>
-                  Message
-                  <textarea name="message" placeholder="Tell us what you need." required />
-                </label>
-              </div>
+          <div className={styles.modalFooter}>
+            <button type="button" className={styles.secondaryButton} onClick={() => setIsEnquiryOpen(false)}>
+              {settings.cancelButtonText}
+            </button>
+            <button type="submit" className={styles.submitButton} disabled={isSubmittingEnquiry}>
+              {isSubmittingEnquiry ? settings.sendingButtonText : settings.sendButtonText}
+            </button>
+          </div>
 
-              <div className={styles.modalFooter}>
-                <button type="button" className={styles.secondaryButton} onClick={() => setIsEnquiryOpen(false)}>
-                  {settings.cancelButtonText}
-                </button>
-                <button type="submit" className={styles.submitButton} disabled={isSubmittingEnquiry}>
-                  {isSubmittingEnquiry ? settings.sendingButtonText : settings.sendButtonText}
-                </button>
-              </div>
-
-              {enquiryStatus ? (
-                <p className={`${styles.statusMessage} ${enquiryStatus.type === "success" ? styles.statusSuccess : ""}`} role="status" aria-live="polite">
-                  {enquiryStatus.message}
-                </p>
-              ) : null}
-            </form>
-          </section>
-        </div>
-      ) : null}
+          {enquiryStatus ? (
+            <p className={`${styles.statusMessage} ${enquiryStatus.type === "success" ? styles.statusSuccess : ""}`} role="status" aria-live="polite">
+              {enquiryStatus.message}
+            </p>
+          ) : null}
+        </form>
+      </PortalModal>
     </main>
   );
 }

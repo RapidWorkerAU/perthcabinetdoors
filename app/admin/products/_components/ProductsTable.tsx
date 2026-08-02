@@ -3,9 +3,15 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { IconPlus } from '@tabler/icons-react'
 import { createSupabaseBrowserClient } from '../../../../lib/supabase/client'
 import { AdminPagination, useAdminPagination } from '../../_components/AdminPagination'
-import { cn } from '@/lib/utils'
+import { AdminPageHeader } from '@/components/ui/AdminPageHeader'
+import { BulkActionBar } from '@/components/ui/BulkActionBar'
+import { Button } from '@/components/ui/Button'
+import { ConfirmModal } from '@/components/ui/Modal'
+import { StatusPill } from '@/components/ui/StatusPill'
+import { TextAction } from '@/components/ui/TextAction'
 import { useToast } from '@/components/ui/Toast'
 
 function prettyCategory(category?: string | null) {
@@ -48,6 +54,7 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
   const [products,         setProducts]         = useState<Product[]>(initialProducts || [])
   const [isDeleting,       setIsDeleting]       = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
+  const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[]>([])
 
   const sorted = useMemo(
     () => [...products].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
@@ -70,6 +77,7 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
       router.refresh()
     } finally {
       setIsDeleting(false)
+      setConfirmDeleteIds([])
     }
   }
 
@@ -89,35 +97,27 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
 
   return (
     <div className="p-4 md:p-6">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-[20px] font-bold text-[#1a1a18]">Products</h1>
-          <p className="text-[13px] text-[#5a5a52] mt-[2px]">Manage your product catalogue</p>
-        </div>
-      </div>
+      <AdminPageHeader title="Products" subtitle="Manage your product catalogue" />
 
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           {selectedProductIds.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => deleteProducts(selectedProductIds)}
-              disabled={isDeleting}
-              className="text-[13px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-            >
-              Delete {selectedProductIds.length} selected
-            </button>
+            <BulkActionBar
+              selectedCount={selectedProductIds.length}
+              noun="product"
+              variant="inline"
+              onClear={() => setSelectedProductIds([])}
+              onDelete={() => setConfirmDeleteIds(selectedProductIds)}
+              deleting={isDeleting}
+            />
           ) : (
             <span className="text-[13px] text-[#8b8a81]">{sorted.length} {sorted.length === 1 ? 'product' : 'products'}</span>
           )}
         </div>
-        <Link
-          href="/admin/products/new"
-          className="h-[34px] px-4 bg-[#1c2b1e] !text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors inline-flex items-center"
-        >
+        <Button variant="primary" size="sm" iconLeft={<IconPlus size={14} />} onClick={() => router.push('/admin/products/new')}>
           Add product
-        </Link>
+        </Button>
       </div>
 
       <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
@@ -184,14 +184,9 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
                       {product.card_title || product.name}
                     </td>
                     <td className="px-4 py-[11px]">
-                      <span className={cn(
-                        'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
-                        active
-                          ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
-                          : 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'
-                      )}>
+                      <StatusPill tone={active ? 'active' : 'neutral'} status={active ? 'active' : 'draft'}>
                         {active ? 'Active' : 'Draft'}
-                      </span>
+                      </StatusPill>
                     </td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{product.image_count || 0}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{prettyCategory(product.category)}</td>
@@ -209,14 +204,9 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
                         >
                           Quote
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => deleteProducts([product.id])}
-                          disabled={isDeleting}
-                          className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                        >
+                        <TextAction variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([product.id])}>
                           Delete
-                        </button>
+                        </TextAction>
                       </div>
                     </td>
                   </tr>
@@ -240,6 +230,22 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
           onPageChange={setPage}
         />
       </div>
+
+      <ConfirmModal
+        open={confirmDeleteIds.length > 0}
+        onClose={() => setConfirmDeleteIds([])}
+        title={confirmDeleteIds.length === 1 ? 'Delete product?' : 'Delete products?'}
+        description={
+          confirmDeleteIds.length === 1
+            ? 'This product will be permanently removed from the catalogue.'
+            : `${confirmDeleteIds.length} products will be permanently removed from the catalogue.`
+        }
+        variant="danger"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={() => deleteProducts(confirmDeleteIds)}
+        loading={isDeleting}
+      />
     </div>
   )
 }

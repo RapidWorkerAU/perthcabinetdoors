@@ -20,7 +20,7 @@ const ROUNDED: Record<NonNullable<SkeletonProps['rounded']>, string> = {
 /** Generic pulsing loading placeholder. Width and height must be provided via className. */
 export function Skeleton({ className, rounded = 'md' }: SkeletonProps) {
   return (
-    <span className={cn('animate-pulse bg-[#eef0f4] block', ROUNDED[rounded], className)} />
+    <span className={cn('animate-pulse bg-[#edf4eb] block', ROUNDED[rounded], className)} />
   )
 }
 
@@ -34,7 +34,7 @@ export interface SkeletonTextProps {
 export function SkeletonText({ width, className }: SkeletonTextProps) {
   return (
     <span
-      className={cn('h-[14px] w-full rounded-[4px] bg-[#eef0f4] animate-pulse block', className)}
+      className={cn('h-[14px] w-full rounded-[4px] bg-[#edf4eb] animate-pulse block', className)}
       style={width ? { width } : undefined}
     />
   )
@@ -47,7 +47,7 @@ export interface SkeletonTableRowProps {
 /** Simulates one table row with four columns. */
 export function SkeletonTableRow({ className }: SkeletonTableRowProps) {
   return (
-    <div className={cn('flex items-center gap-4 px-4 py-3 border-b border-[#eef0f4]', className)}>
+    <div className={cn('flex items-center gap-4 px-4 py-3 border-b border-[#edf4eb]', className)}>
       <SkeletonText width="120px" />
       <SkeletonText width="40%" />
       <SkeletonText width="80px" />
@@ -63,7 +63,7 @@ export interface SkeletonCardProps {
 /** Simulates a content card with title and body text. */
 export function SkeletonCard({ className }: SkeletonCardProps) {
   return (
-    <div className={cn('bg-white border border-[#dde1e9] rounded-[8px] p-4 flex flex-col gap-3', className)}>
+    <div className={cn('bg-white border border-[#dbd8cc] rounded-[8px] p-4 flex flex-col gap-3', className)}>
       <SkeletonText width="40%" />
       <SkeletonText />
       <SkeletonText />

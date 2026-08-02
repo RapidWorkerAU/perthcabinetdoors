@@ -1,7 +1,8 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode } from "react";
 import styles from "./PortalModal.module.css";
+import { Modal } from "@/components/ui/Modal";
 
 type PortalModalProps = {
   open: boolean;
@@ -26,34 +27,23 @@ export default function PortalModal({
   onClose,
   size = "md",
 }: PortalModalProps) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
-
   if (!open) return null;
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label={ariaLabel}>
-      <button className={styles.backdrop} type="button" aria-label="Close" onClick={onClose} />
-      <section className={`${styles.dialog} ${styles[size]}`}>
-        <header className={styles.header}>
-          <div>
-            {eyebrow ? <p className={styles.eyebrow}>{eyebrow}</p> : null}
-            {title ? <h2>{title}</h2> : null}
-            {description ? <p className={styles.description}>{description}</p> : null}
-          </div>
-          <button className={styles.closeButton} type="button" onClick={onClose} aria-label="Close">
-            Close
-          </button>
-        </header>
-        <div className={styles.body}>{children}</div>
-        {footer ? <footer className={styles.footer}>{footer}</footer> : null}
-      </section>
-    </div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title || ariaLabel}
+      subtitle={description}
+      size="xl"
+      layout="form"
+      className={[styles.dialog, styles[size]].filter(Boolean).join(" ")}
+      footer={footer}
+    >
+      <div className={styles.body}>
+        {eyebrow ? <p className={styles.eyebrow}>{eyebrow}</p> : null}
+        {children}
+      </div>
+    </Modal>
   );
 }
