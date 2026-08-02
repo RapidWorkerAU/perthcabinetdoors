@@ -736,6 +736,24 @@ const QUOTE_COL_MIN = 36
 // Drag handles appear between resizable columns only (indices 2–13); cols 0,1,15 are fixed utility cols
 const RESIZE_HANDLE_INDICES = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
 
+function hardwareOptionLabel(item) {
+  return [item.brand, item.name, item.sku ? `(${item.sku})` : ""].filter(Boolean).join(" ");
+}
+
+function hardwareOptionsFromRows(rows = []) {
+  return rows
+    .filter((item) => item?.is_active !== false)
+    .map((item) => ({
+      id: item.id,
+      value: item.id,
+      name: hardwareOptionLabel(item),
+      label: hardwareOptionLabel(item),
+      meta: item.type === "drawer_runner" ? "Drawer runner" : item.type === "hinge" ? "Hinge" : "Handle",
+      src: item.image_url || "",
+      item,
+    }));
+}
+
 export default function QuoteEditor({ quoteId }) {
   const fileInputRef = useRef(null);
   const lineViewModelCacheRef = useRef(new WeakMap());
@@ -754,6 +772,7 @@ export default function QuoteEditor({ quoteId }) {
   const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
   const [activeLineConfigIndex, setActiveLineConfigIndex] = useState(null);
   const [activeLineConfigDraft, setActiveLineConfigDraft] = useState(null);
+  const [hardwareRows, setHardwareRows] = useState([]);
   const [hingeModal, setHingeModal] = useState(null);
   const [profileModal, setProfileModal] = useState(null);
   const [lineNoteModal, setLineNoteModal] = useState(null);
@@ -842,6 +861,7 @@ export default function QuoteEditor({ quoteId }) {
       ? `${window.location.origin}/quotes/view?code=${form.access_code}`
       : "";
   const attachmentPagination = useAdminTablePagination(form.attachments);
+  const hardwareOptions = useMemo(() => hardwareOptionsFromRows(hardwareRows), [hardwareRows]);
 
   function lineViewModel(line) {
     const cached = lineViewModelCacheRef.current.get(line);
@@ -859,6 +879,7 @@ export default function QuoteEditor({ quoteId }) {
         meta: "Edge profile",
         src: edgeOptionSrc(edge),
       })),
+      isHardware: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Hardware"),
       hingesApplicable: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Door"),
       colourSrc: colourSrcForLine(line),
       isBaseCabinet: isBaseCabinetLine(line),
@@ -909,6 +930,21 @@ export default function QuoteEditor({ quoteId }) {
     loadBusinessDefaults();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHardwareRows() {
+      try {
+        const response = await fetch("/api/admin/hardware", { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled && payload.ok) setHardwareRows(payload.hardware || []);
+      } catch {}
+    }
+    loadHardwareRows();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!shouldScrollQuoteItemsToBottomRef.current) return;
@@ -1159,6 +1195,51 @@ export default function QuoteEditor({ quoteId }) {
       }
       if (patch.product_type !== BASE_CABINET_TYPE) {
         next.cabinet_config = null;
+      }
+      if (patch.product_type === "Hardware") {
+        next.product_name = "";
+        next.description = "";
+        next.material = "";
+        next.supplier_name = "";
+        next.thickness = "";
+        next.finish = "";
+        next.colour = "";
+        next.edge_mould = "";
+        next.profile_type = "";
+        next.profile = "";
+        next.width_mm = "";
+        next.height_mm = "";
+        next.unit_cost_mode = "manual";
+        next.unit_cost_source_id = null;
+        next.unit_cost_source_label = "";
+        next.unit_cost_per_sqm_ex_gst = 0;
+        next.calculated_unit_cost_ex_gst = 0;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, "hardware_catalogue_id")) {
+      const item = hardwareRows.find((row) => row.id === patch.hardware_catalogue_id);
+      if (item) {
+        const label = hardwareOptionLabel(item);
+        next.product_type = "Hardware";
+        next.product_name = label;
+        next.description = item.description || label;
+        next.material = "";
+        next.supplier_name = "";
+        next.thickness = "";
+        next.finish = "";
+        next.colour = "";
+        next.edge_mould = "";
+        next.profile_type = "";
+        next.profile = "";
+        next.width_mm = item.width_mm || item.length_mm || "";
+        next.height_mm = item.height_mm || item.projection_mm || "";
+        next.product_unit_cost_ex_gst = Number(item.unit_cost_ex_gst || 0);
+        next.unit_cost_mode = "manual";
+        next.unit_cost_source_id = item.id;
+        next.unit_cost_source_label = label;
+        next.unit_cost_per_sqm_ex_gst = 0;
+        next.calculated_unit_cost_ex_gst = 0;
       }
     }
 
@@ -2071,6 +2152,7 @@ export default function QuoteEditor({ quoteId }) {
                     calculated,
                     materialOptions,
                     colourSrc,
+                    isHardware,
                     isBaseCabinet,
                   } = lineViewModel(line)
                   const isBaseCabinetEditable = isEditable && isBaseCabinet
@@ -2144,13 +2226,23 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Material */}
                         <td className={td}>
-                          {isEditable ? (
+                          {isEditable && isHardware ? (
+                            <QuoteImageCombobox
+                              placeholder="Hardware item"
+                              value={line.unit_cost_source_id || ""}
+                              displayValue={line.product_name || ""}
+                              options={hardwareOptions}
+                              onChange={option => updateProductLine(index, { hardware_catalogue_id: option.id || option.value })}
+                            />
+                          ) : isEditable ? (
                             <QuoteTileCombobox
                               placeholder="Select material"
                               value={line.material}
                               options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
                               onChange={option => updateProductLine(index, { material: option.name || option.label })}
                             />
+                          ) : isHardware ? (
+                            <span className={v1}>{line.product_name || <span className="text-[#c5cdd8]">—</span>}</span>
                           ) : (
                             <span className={v1}>{line.material || <span className="text-[#c5cdd8]">—</span>}</span>
                           )}
@@ -2158,7 +2250,9 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Supplier */}
                         <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
+                          {isHardware ? (
+                            <span className={naText}>N/A</span>
+                          ) : isEditable && !isBaseCabinetEditable ? (
                             <QuoteTileCombobox
                               disabled={!line.material}
                               placeholder="Supplier"
@@ -2173,12 +2267,14 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Finish */}
                         <td className={td}>
-                          <span className={v2}>{line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
+                          <span className={isHardware ? naText : v2}>{isHardware ? "N/A" : line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
                         </td>
 
                         {/* Colour */}
                         <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
+                          {isHardware ? (
+                            <span className={naText}>N/A</span>
+                          ) : isEditable && !isBaseCabinetEditable ? (
                             <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
                           ) : (
                             <span className={v3}>
@@ -2192,7 +2288,7 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Thickness */}
                         <td className={td}>
-                          <span className={v1}>{line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
+                          <span className={isHardware ? naText : v1}>{isHardware ? "N/A" : line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
                         </td>
 
                         {/* H mm */}
@@ -3088,22 +3184,35 @@ export default function QuoteEditor({ quoteId }) {
                   />
                 </label>
 
-                <label className={styles.fieldLabel}>
-                  Material
-                  <QuoteTileCombobox
-                    compact={false}
-                    placeholder="Select material"
-                    value={activeLineConfig.material}
-                    options={(activeLineConfigView?.materialOptions || MATERIAL_OPTIONS).map(m => ({ label: m, name: m, meta: 'Material' }))}
-                    onChange={option => updateLineConfigProduct({ material: option.name || option.label })}
-                  />
-                </label>
+                {activeLineConfigView?.isHardware ? (
+                  <label className={styles.fieldLabel}>
+                    Hardware item
+                    <QuoteImageCombobox
+                      placeholder="Select hardware"
+                      value={activeLineConfig.unit_cost_source_id || ""}
+                      displayValue={activeLineConfig.product_name || ""}
+                      options={hardwareOptions}
+                      onChange={option => updateLineConfigProduct({ hardware_catalogue_id: option.id || option.value })}
+                    />
+                  </label>
+                ) : (
+                  <label className={styles.fieldLabel}>
+                    Material
+                    <QuoteTileCombobox
+                      compact={false}
+                      placeholder="Select material"
+                      value={activeLineConfig.material}
+                      options={(activeLineConfigView?.materialOptions || MATERIAL_OPTIONS).map(m => ({ label: m, name: m, meta: 'Material' }))}
+                      onChange={option => updateLineConfigProduct({ material: option.name || option.label })}
+                    />
+                  </label>
+                )}
 
                 <label className={styles.fieldLabel}>
                   Supplier
                   <QuoteTileCombobox
                     compact={false}
-                    disabled={!activeLineConfig.material || activeLineConfigIsBaseCabinet}
+                    disabled={activeLineConfigView?.isHardware || !activeLineConfig.material || activeLineConfigIsBaseCabinet}
                     placeholder="Supplier"
                     value={COLOUR_SUPPLIERS.includes(activeLineConfig.supplier_name) ? activeLineConfig.supplier_name : COLOUR_SUPPLIERS[0]}
                     options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
@@ -3115,7 +3224,7 @@ export default function QuoteEditor({ quoteId }) {
                   Colour
                   <QuoteColourCombobox
                     compact={false}
-                    disabled={activeLineConfigIsBaseCabinet}
+                    disabled={activeLineConfigView?.isHardware || activeLineConfigIsBaseCabinet}
                     line={activeLineConfig}
                     onChange={patch => updateLineConfigProduct(patch)}
                   />
@@ -3491,7 +3600,7 @@ export default function QuoteEditor({ quoteId }) {
         (() => {
           const idx = editableLineIndex
           const line = editableLineDraft || form.lines[idx] || emptyLineWithDefaults(businessDefaults)
-          const { calculated, materialOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isBaseCabinet } = lineViewModel(line)
+          const { calculated, materialOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isHardware, isBaseCabinet } = lineViewModel(line)
           const isBaseCabinetEditable = isBaseCabinet
           const isLineSaving = savingLineIndex === idx
           const canResetUnitCost = !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
@@ -3525,20 +3634,30 @@ export default function QuoteEditor({ quoteId }) {
                     />
                   </div>
                   <div className="col-span-2">
-                    <span className={mfl}>Material</span>
-                    <QuoteTileCombobox
-                      compact={false}
-                      placeholder="Select material"
-                      value={line.material}
-                      options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
-                      onChange={option => updateProductLine(idx, { material: option.name || option.label })}
-                    />
+                    <span className={mfl}>{isHardware ? "Hardware item" : "Material"}</span>
+                    {isHardware ? (
+                      <QuoteImageCombobox
+                        placeholder="Select hardware"
+                        value={line.unit_cost_source_id || ""}
+                        displayValue={line.product_name || ""}
+                        options={hardwareOptions}
+                        onChange={option => updateProductLine(idx, { hardware_catalogue_id: option.id || option.value })}
+                      />
+                    ) : (
+                      <QuoteTileCombobox
+                        compact={false}
+                        placeholder="Select material"
+                        value={line.material}
+                        options={materialOptions.map(m => ({ label: m, name: m, meta: 'Material' }))}
+                        onChange={option => updateProductLine(idx, { material: option.name || option.label })}
+                      />
+                    )}
                   </div>
                   <div className="col-span-2">
                     <span className={mfl}>Supplier</span>
                     <QuoteTileCombobox
                       compact={false}
-                      disabled={!line.material || isBaseCabinetEditable}
+                      disabled={isHardware || !line.material || isBaseCabinetEditable}
                       placeholder="Supplier"
                       value={COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0]}
                       options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
@@ -3547,7 +3666,7 @@ export default function QuoteEditor({ quoteId }) {
                   </div>
                   <div className="col-span-2">
                     <span className={mfl}>Finish, colour &amp; thickness</span>
-                    <QuoteColourCombobox compact={false} disabled={isBaseCabinetEditable} line={line} onChange={patch => updateProductLine(idx, patch)} />
+                    <QuoteColourCombobox compact={false} disabled={isHardware || isBaseCabinetEditable} line={line} onChange={patch => updateProductLine(idx, patch)} />
                   </div>
                   {!isBaseCabinetEditable ? (
                     <>

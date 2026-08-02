@@ -893,7 +893,7 @@ export default function ColourLibraryManager({
                   <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
                     {renderColumnFilter('orderType', 'Order type')}
                   </th>
-                  {['Board size', 'Cost / board', 'Cost / sqm', 'Sort', 'Status', 'Actions'].map(col => (
+                  {['Board size', 'Cost / board', 'Cost / sqm', 'Status', 'Actions'].map(col => (
                     <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
                       {col}
                     </th>
@@ -932,7 +932,6 @@ export default function ColourLibraryManager({
                     <td className="px-4 py-[11px] text-[#1a1a18]">{boardSizeLabel(row)}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">${Number(row.cost_per_board_ex_gst || 0).toFixed(2)}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">${Number(row.cost_per_sqm_ex_gst  || 0).toFixed(2)}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{row.sort_order || 0}</td>
                     <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
                       <span className={cn(
                         'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
@@ -967,7 +966,7 @@ export default function ColourLibraryManager({
                 ))}
                 {!filteredRows.length && (
                   <tr>
-                    <td colSpan={14} className="py-12 text-center text-[13px] text-[#8b8a81]">
+                    <td colSpan={13} className="py-12 text-center text-[13px] text-[#8b8a81]">
                       {sortedRows.length
                         ? 'No colour lines match your search.'
                         : 'No colour lines yet. Add your first board colour entry.'}
