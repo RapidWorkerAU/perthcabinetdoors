@@ -217,6 +217,12 @@ export default function VariationApprovalClient() {
       <section className={styles.panel}>
         <div className={styles.panelHeader}>Variation Changes</div>
         <div className={styles.panelBody}>
+          <p className={styles.variationScopeNotice}>
+            <strong>Only the items listed below are changing.</strong>
+            The rest of your order {order.order_number ? `(${order.order_number}) ` : ""}stays exactly as it was
+            confirmed - same items, same finishes, same prices. Nothing that is not shown on this page is
+            affected by this variation.
+          </p>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
@@ -274,6 +280,10 @@ export default function VariationApprovalClient() {
                 {topup > 0 ? <div className={styles.totalRow}><span>Deposit top-up required</span><strong>{formatMoney(topup, variation.currency)}</strong></div> : null}
               </div>
             </div>
+            <p className={styles.variationScopeFootnote}>
+              The variation amount covers only the changed items above. The revised order total is your original
+              order total with that amount applied - everything else on the order is unchanged.
+            </p>
           </div>
         </section>
 
@@ -298,8 +308,8 @@ export default function VariationApprovalClient() {
                   <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
                   <span>
                     {topup > 0
-                      ? `I approve this variation and acknowledge that a deposit top-up of ${formatMoney(topup, variation.currency)} is required before it is applied to my order.`
-                      : "I approve this variation and acknowledge that it will update my order scope."}
+                      ? `I approve the changed items listed above and acknowledge that a deposit top-up of ${formatMoney(topup, variation.currency)} is required before they are applied to my order. The rest of my order is unchanged.`
+                      : "I approve the changed items listed above and acknowledge that they will update my order. The rest of my order is unchanged."}
                   </span>
                 </label>
                 {message ? <p className={styles.message}>{message}</p> : null}

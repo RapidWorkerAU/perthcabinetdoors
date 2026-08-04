@@ -701,7 +701,7 @@ export default function VariationEditor({ orderId, variationId }) {
             onChange={(option) => changeLineDraftAction(option.value)}
           />
         </label>
-        <label className={`${tw.fieldLabel} md:col-span-2`}>Order item
+        <label className={`${tw.fieldLabel} ${isPriceAdjustment ? "md:col-span-2" : "md:col-span-3"}`}>Order item
           <QuoteTileCombobox
             compact={false}
             disabled={["add", "price_adjustment"].includes(lineDraft.action)}
@@ -711,9 +711,19 @@ export default function VariationEditor({ orderId, variationId }) {
             onChange={(option) => applySourceLineToDraft(option.value)}
           />
         </label>
-        <label className={tw.fieldLabel}>Title
-          <input className={tw.fieldInput} value={lineDraft.title} disabled={isRemove} onChange={(event) => updateLineDraft({ title: event.target.value })} />
-        </label>
+        {/* Every other line names itself from its product type or hardware item,
+            the same way a quote line does. A price adjustment has neither, so it
+            is the only line that needs a name typed in. */}
+        {isPriceAdjustment ? (
+          <label className={tw.fieldLabel}>Adjustment name
+            <input
+              className={tw.fieldInput}
+              placeholder="Price adjustment"
+              value={lineDraft.title}
+              onChange={(event) => updateLineDraft({ title: event.target.value })}
+            />
+          </label>
+        ) : null}
 
         <label className={tw.fieldLabel}>Product type
           <QuoteTileCombobox
