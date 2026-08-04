@@ -17,7 +17,7 @@ import DesignTopBar, { barButton } from "../../../components/DesignTopBar";
 import AddItemRail from "../../../components/AddItemRail";
 import { resolveColourSrc, slotColourFields } from "../../../lib/pcd-colour-images";
 import { CABINET_MOUNT_MM } from "../../../lib/pcd-kickboard-utils";
-import { bayShelfCount } from "../../../lib/pcd-door-utils";
+import { bayShelfCount, applianceBayHeightMm, bayIsPinned, bayPercentOfCabinet, withResolvedBayHeights } from "../../../lib/pcd-door-utils";
 import { applianceKindDefaults } from "../../../lib/pcd-appliance-utils";
 import {
   SHELF_RAIL_DEFAULTS,
@@ -742,10 +742,20 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
     .filter(({ bay }) => bay.type === "doors");
 
   // ---- Multi-bay ("mixed" front) helpers ----
+  // A bay is either a SHARE of the cabinet height (height_pct) or PINNED to
+  // real millimetres (height_lock_mm) — an oven bay is 600mm however tall the
+  // cabinet is. withResolvedBayHeights turns whichever it is into the real
+  // height_mm that the elevation, the cut list and the quote all read, so the
+  // sizing rule lives in one place shared with the admin tool.
   const withEqualHeights = (secs, heightMm = item.height_mm) => {
-    const n = Math.max(1, secs.length);
-    const each = Math.round((Number(heightMm) || 720) / n);
-    return secs.map((s) => ({ ...s, height_mm: each }));
+    const share = secs.filter((s) => !bayIsPinned(s));
+    const evenPct = Math.round(1000 / Math.max(1, share.length)) / 10;
+    // A bay that has never been sized takes an even share of what's left,
+    // rather than inheriting whatever millimetres it happened to have.
+    return withResolvedBayHeights(
+      secs.map((s) => (bayIsPinned(s) || Number(s.height_pct) > 0 ? s : { ...s, height_pct: evenPct })),
+      heightMm
+    );
   };
   // heights_mm are real OPENING heights everywhere else in the tool: the
   // elevation, the cut list and the quote importer all subtract a reveal from
@@ -765,6 +775,9 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
   const bayForType = (type) =>
     type === "doors" ? { type: "doors", door: { columns: 1, rows: 1 } }
       : type === "drawers" ? { type: "drawers", drawer: { heights_mm: [1] } }
+      // An oven is a real size, so its bay pins itself to that size instead of
+      // taking an even share and ending up too tall to be useful.
+      : type === "appliance" ? { type: "appliance", appliance: "oven", height_lock_mm: applianceBayHeightMm("oven") }
       : { type };
   const bayCount = (b) => (b.type === "doors" ? Math.max(1, b.door?.columns || 1) : b.type === "drawers" ? ((b.drawer?.heights_mm || []).length || 1) : 0);
   const addBay = () => commitBays([...bays, bayForType("doors")]);
@@ -782,6 +795,20 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
   // Shelves live on the bay itself, not on the cabinet, so two open bays can
   // hold different numbers — spread evenly inside their own bay.
   const setBayShelves = (i, n) => commitBays(bays.map((b, x) => (x === i ? { ...b, shelf_qty: n } : b)));
+  // Typing a share re-sizes this bay; the other share bays give up or take back
+  // the difference. Pinned bays never move.
+  const setBaySharePct = (i, pct) => commitBays(bays.map((b, x) => (x === i ? { ...b, height_pct: Math.max(1, Math.min(99, pct)) } : b)));
+  const setBayFixedMm = (i, mm) => commitBays(bays.map((b, x) => (x === i ? { ...b, height_lock_mm: Math.max(1, mm) } : b)));
+  // Pinning captures the height the bay has right now so the cabinet doesn't
+  // jump the instant the lock is clicked, and unpinning hands it straight back
+  // as a share, for the same reason.
+  const setBayPinned = (i, pinned) => commitBays(bays.map((b, x) => {
+    if (x !== i) return b;
+    const mm = Math.max(1, Math.round(Number(b.height_mm) || 0));
+    return pinned
+      ? { ...b, height_lock_mm: mm }
+      : { ...b, height_lock_mm: 0, height_pct: bayPercentOfCabinet(mm, item.height_mm) || Math.round(1000 / Math.max(1, bays.length)) / 10 };
+  }));
   const setBayDoorOpening = (i, opening) => commitBays(bays.map((b, x) => (
     x === i && b.type === "doors"
       ? { ...b, door: doorConfigPatchForOpening(b.door || {}, opening) }
@@ -975,34 +1002,71 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 8 }}>Bays, top to bottom</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {bays.map((b, i) => (
-                  <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: C.soft, width: 12, flexShrink: 0 }}>{i + 1}</span>
-                    <select value={b.type || "doors"} onChange={(e) => setBayType(i, e.target.value)} style={{ ...btn, flex: 1, minWidth: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
-                      <option value="doors">Doors</option>
-                      <option value="drawers">Drawers</option>
-                      <option value="appliance">Oven</option>
-                      <option value="open">Open</option>
-                    </select>
-                    {(b.type === "doors" || b.type === "drawers") && (
-                      <select value={String(bayCount(b))} onChange={(e) => setBayCount(i, Number(e.target.value))} style={{ ...btn, width: 54, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
-                        {(b.type === "doors" ? [1, 2] : [1, 2, 3, 4]).map((n) => <option key={n} value={n}>{n}</option>)}
+                {bays.map((b, i) => {
+                  const pinned = bayIsPinned(b);
+                  const bayMm = Math.round(Number(b.height_mm) || 0);
+                  return (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: C.soft, width: 12, flexShrink: 0 }}>{i + 1}</span>
+                      <select value={b.type || "doors"} onChange={(e) => setBayType(i, e.target.value)} style={{ ...btn, flex: 1, minWidth: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
+                        <option value="doors">Doors</option>
+                        <option value="drawers">Drawers</option>
+                        <option value="appliance">Oven</option>
+                        <option value="open">Open</option>
                       </select>
-                    )}
-                    {/* An open bay holds shelves instead of fronts. */}
-                    {b.type === "open" && (
-                      <select value={String(Number(b.shelf_qty) || 0)} onChange={(e) => setBayShelves(i, Number(e.target.value))}
-                        title="Shelves in this bay"
-                        style={{ ...btn, width: 74, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
-                        {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? "no shelf" : `${n} shelf${n === 1 ? "" : "s"}`}</option>)}
-                      </select>
-                    )}
-                    <button type="button" onClick={() => removeBay(i)} disabled={bays.length <= 1}
-                      style={{ border: "none", background: "none", cursor: bays.length <= 1 ? "default" : "pointer", color: bays.length <= 1 ? "#ccc" : "#a03f2c", fontSize: 14, padding: "0 2px", flexShrink: 0 }}>✕</button>
+                      {(b.type === "doors" || b.type === "drawers") && (
+                        <select value={String(bayCount(b))} onChange={(e) => setBayCount(i, Number(e.target.value))} style={{ ...btn, width: 54, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
+                          {(b.type === "doors" ? [1, 2] : [1, 2, 3, 4]).map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      )}
+                      {/* An open bay holds shelves instead of fronts. */}
+                      {b.type === "open" && (
+                        <select value={String(Number(b.shelf_qty) || 0)} onChange={(e) => setBayShelves(i, Number(e.target.value))}
+                          title="Shelves in this bay"
+                          style={{ ...btn, width: 74, flexShrink: 0, padding: "5px 6px", fontSize: 12, cursor: "pointer" }}>
+                          {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? "no shelf" : `${n} shelf${n === 1 ? "" : "s"}`}</option>)}
+                        </select>
+                      )}
+                      <button type="button" onClick={() => removeBay(i)} disabled={bays.length <= 1}
+                        title="Remove this bay"
+                        style={{ border: "none", background: "none", cursor: bays.length <= 1 ? "default" : "pointer", color: bays.length <= 1 ? "#ccc" : "#a03f2c", fontSize: 14, padding: "0 2px", flexShrink: 0 }}>✕</button>
+                    </div>
+                    {/* How tall this bay is: a share of the cabinet, or locked
+                        to real millimetres for something like an oven. */}
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 18 }}>
+                      {pinned ? (
+                        <input type="number" min="1" value={Math.round(Number(b.height_lock_mm) || 0) || ""}
+                          onChange={(e) => setBayFixedMm(i, Number(e.target.value) || 0)}
+                          title="Fixed height in millimetres"
+                          style={{ ...btn, width: 72, flexShrink: 0, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
+                      ) : (
+                        <input type="number" min="1" max="99" step="0.1"
+                          value={Number(b.height_pct) > 0 ? Number(b.height_pct) : bayPercentOfCabinet(bayMm, item.height_mm)}
+                          onChange={(e) => setBaySharePct(i, Number(e.target.value) || 0)}
+                          title="Share of the cabinet height"
+                          style={{ ...btn, width: 72, flexShrink: 0, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
+                      )}
+                      <span style={{ fontSize: 11, color: C.soft, flexShrink: 0 }}>{pinned ? "mm" : "%"}</span>
+                      <button type="button" onClick={() => setBayPinned(i, !pinned)}
+                        title={pinned ? "Fixed height — click to size by share instead" : "Share of the cabinet — click to fix this height"}
+                        style={{ ...btn, padding: "4px 8px", fontSize: 11, cursor: "pointer", flexShrink: 0, color: pinned ? C.ink : C.soft }}>
+                        {pinned ? "🔒 Fixed" : "🔓 Share"}
+                      </button>
+                      <span style={{ fontSize: 11, color: C.soft, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {pinned ? `${bayPercentOfCabinet(bayMm, item.height_mm)}% of cabinet` : `${bayMm}mm`}
+                      </span>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <button type="button" onClick={addBay} style={{ ...btn, marginTop: 8, width: "100%", fontSize: 12 }}>+ Add bay</button>
+              <p style={{ fontSize: 11, color: C.soft, margin: "6px 0 0", lineHeight: 1.45 }}>
+                {bays.some(bayIsPinned)
+                  ? "Fixed bays keep their millimetres. The rest share whatever height is left, so changing the cabinet height only moves those."
+                  : "Bays share the cabinet height. Set one to Fixed to hold it at an exact size — an oven bay, for example."}
+              </p>
               {doorBays.length > 0 && (
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.edge}`, display: "flex", flexDirection: "column", gap: 8 }}>
                   <div style={{ fontSize: 11, color: C.soft }}>Door config</div>

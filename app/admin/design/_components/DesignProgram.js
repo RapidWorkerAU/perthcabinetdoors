@@ -16,6 +16,7 @@ import StageQuoteModal from "./StageQuoteModal";
 import CutListModal from "./CutListModal";
 import { RoomCutList } from "./CutListView";
 import useDesignProgram from "./useDesignProgram";
+import PinchZoom from "./PinchZoom";
 
 // three.js is heavy and only needed once the 3D view is opened, so it's split
 // out of the initial bundle and never server-rendered (r3f is client-only).
@@ -220,6 +221,8 @@ export default function DesignProgram({ projectId }) {
             selectedId={selectedItemId}
             colourImages={colourImages}
             showColours={showColours}
+            zoomable
+            zoomControls="full"
           />
         ) : selectedRoom ? (
           <>
@@ -231,18 +234,20 @@ export default function DesignProgram({ projectId }) {
               </span>
             </div>
             <div className={styles.canvasSvgWrap}>
-              <DesignCanvas
-                room={selectedRoom}
-                items={roomItems}
-                selectedItemId={selectedItemId}
-                overlappingItemIds={overlappingItemIds}
-                onItemClick={handleCanvasItemClick}
-                onDeselect={handleCanvasDeselect}
-                onItemDragEnd={handleItemDragEnd}
-                onFrontView={(wall) => setFrontViewWall(wall)}
-                colourImages={colourImages}
-                showColours={showColours}
-              />
+              <PinchZoom maxScale={4} controls="full">
+                <DesignCanvas
+                  room={selectedRoom}
+                  items={roomItems}
+                  selectedItemId={selectedItemId}
+                  overlappingItemIds={overlappingItemIds}
+                  onItemClick={handleCanvasItemClick}
+                  onDeselect={handleCanvasDeselect}
+                  onItemDragEnd={handleItemDragEnd}
+                  onFrontView={(wall) => setFrontViewWall(wall)}
+                  colourImages={colourImages}
+                  showColours={showColours}
+                />
+              </PinchZoom>
             </div>
           </>
         ) : (

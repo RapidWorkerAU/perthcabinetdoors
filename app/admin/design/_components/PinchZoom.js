@@ -14,7 +14,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
-export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, oneFingerPan = true, children }) {
+export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, oneFingerPan = true, controls = "reset", children }) {
   const [t, setT] = useState({ scale: 1, x: 0, y: 0 });
   const tRef = useRef(t);
   tRef.current = t;
@@ -94,6 +94,30 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
 
   function reset() { setT({ scale: 1, x: 0, y: 0 }); }
 
+  function zoomAt(point, nextScale) {
+    const cur = tRef.current;
+    const scale = clamp(nextScale, minScale, maxScale);
+    const ratio = scale / cur.scale;
+    const x = point.x - (point.x - cur.x) * ratio;
+    const y = point.y - (point.y - cur.y) * ratio;
+    setT(scale <= minScale + 0.01 ? { scale: minScale, x: 0, y: 0 } : { scale, x, y });
+  }
+
+  function centerPoint() {
+    const r = containerRef.current?.getBoundingClientRect();
+    if (!r) return { x: 0, y: 0 };
+    return { x: r.width / 2, y: r.height / 2 };
+  }
+
+  function onWheel(e) {
+    if (!containerRef.current) return;
+    e.preventDefault();
+    const r = containerRef.current.getBoundingClientRect();
+    const point = { x: e.clientX - r.left, y: e.clientY - r.top };
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    zoomAt(point, tRef.current.scale * factor);
+  }
+
   const zoomed = t.scale > 1.01;
 
   return (
@@ -103,6 +127,7 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}
+      onWheel={onWheel}
       style={{
         position: "relative",
         flex: 1,
@@ -124,7 +149,90 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
       >
         {children}
       </div>
-      {zoomed && (
+      {controls === "full" ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 2,
+            display: "flex",
+            gap: 4,
+            border: "1px solid rgba(255,255,255,0.25)",
+            background: "rgba(0,0,0,0.55)",
+            borderRadius: 8,
+            padding: 4,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => zoomAt(centerPoint(), tRef.current.scale * 1.2)}
+            disabled={t.scale >= maxScale - 0.01}
+            aria-label="Zoom in"
+            title="Zoom in"
+            style={{
+              appearance: "none",
+              border: "none",
+              background: "transparent",
+              color: "#fff",
+              borderRadius: 5,
+              minWidth: 28,
+              height: 26,
+              padding: "0 7px",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: t.scale >= maxScale - 0.01 ? "default" : "pointer",
+              opacity: t.scale >= maxScale - 0.01 ? 0.45 : 1,
+            }}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={reset}
+            disabled={!zoomed}
+            title="Reset zoom"
+            style={{
+              appearance: "none",
+              border: "none",
+              background: "transparent",
+              color: "#fff",
+              borderRadius: 5,
+              height: 26,
+              padding: "0 8px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: zoomed ? "pointer" : "default",
+              opacity: zoomed ? 1 : 0.45,
+            }}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomAt(centerPoint(), tRef.current.scale / 1.2)}
+            disabled={t.scale <= minScale + 0.01}
+            aria-label="Zoom out"
+            title="Zoom out"
+            style={{
+              appearance: "none",
+              border: "none",
+              background: "transparent",
+              color: "#fff",
+              borderRadius: 5,
+              minWidth: 28,
+              height: 26,
+              padding: "0 7px",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: t.scale <= minScale + 0.01 ? "default" : "pointer",
+              opacity: t.scale <= minScale + 0.01 ? 0.45 : 1,
+            }}
+          >
+            -
+          </button>
+        </div>
+      ) : zoomed ? (
         <button
           type="button"
           onClick={reset}
@@ -145,7 +253,7 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
         >
           Reset zoom
         </button>
-      )}
+      ) : null}
     </div>
   );
 }

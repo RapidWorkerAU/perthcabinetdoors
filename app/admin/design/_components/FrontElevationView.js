@@ -496,7 +496,7 @@ const WALL_AXIS = {
   right:  { widthKey: "depth_mm",  label: "Right Wall" },
 };
 
-export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, chrome = true, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false, selectOnPointerUp = false }) {
+export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, zoomControls = "reset", chrome = true, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false, selectOnPointerUp = false }) {
   const [currentWall, setCurrentWall] = useState(initialWall);
   const [selectedId, setSelectedId]   = useState(controlledSelectedId ?? null);
   const [drag, setDrag]               = useState(null);
@@ -708,12 +708,19 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     }
     if (!DRAGGABLE_TYPES.has(item.item_type)) return;
     // A corner cabinet's position on its secondary wall is derived, not
-    // stored — nothing to drag here. Select it (for the config panel) but
-    // don't start a drag; reposition it from its primary wall's elevation.
-    // Same for a freestanding cabinet shown via its virtual wall — its
-    // position here is projected from its 2D plan x_mm/y_mm, so reposition
-    // it from the floor plan instead.
-    if (isSecondaryWallView(item) || isIslandVirtualView(item)) {
+    // stored, and most freestanding items shown on a virtual elevation are
+    // projected from their 2D plan x_mm/y_mm — neither can be written back from
+    // this view, so neither slides sideways. Scribes are the exception: their
+    // along-wall span and mount height are edited visually in elevation, so
+    // they need the same left/right + up/down drag behaviour as a wall cabinet.
+    //
+    // Height is a different matter. mount_height_mm is stored directly and
+    // means the same thing in every view, so these items still drag UP and
+    // DOWN here — which is the only place a scribe's height off the floor can
+    // be set by eye, since a scribe is always freestanding and the floor plan
+    // is top-down.
+    const projectedAlongWall = isSecondaryWallView(item) || (isIslandVirtualView(item) && item.item_type !== "scribe");
+    if (projectedAlongWall && !VERTICAL_DRAG_TYPES.has(item.item_type)) {
       pressedRef.current = true;
       setSelectedId(item.id);
       onItemSelect?.(item.id);
@@ -732,6 +739,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       type:       "item",
       itemId:     item.id,
       item_type:  item.item_type,
+      // Height only: this item's along-wall position isn't stored in this
+      // view's axis, so it must not be written back from here.
+      verticalOnly: projectedAlongWall,
       width_mm:   item.width_mm  || 600,
       height_mm:  item.height_mm || 720,
       startPtX:   pt.x,
@@ -796,7 +806,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       const dxMm = (pt.x - drag.startPtX) / scale;
       const dyMm = (pt.y - drag.startPtY) / scale; // +ve = down SVG
 
-      let newX     = drag.startXmm + dxMm;
+      let newX     = drag.verticalOnly ? drag.startXmm : drag.startXmm + dxMm;
       let newMount = drag.startMount;
 
       if (VERTICAL_DRAG_TYPES.has(drag.item_type)) {
@@ -822,20 +832,24 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       // Convert straight back afterwards: only the stored (kickboard-free,
       // carcass-edge) values are ever written out.
       const snapped = applyEdgeSnap(newX - drag.lowT, newMount + drag.kbOff, drag.spanW, drag.height_mm, allWallOthers, drag.item_type, wallWidthMm, roomHeightMm);
-      newX     = snapped.x_mm + drag.lowT;
       newMount = snapped.mount_height_mm - drag.kbOff;
-      setSnapGuides(snapped.snapX != null || snapped.snapY != null
-        ? { x: snapped.snapX, y: snapped.snapY }
-        : null);
+      if (!drag.verticalOnly) newX = snapped.x_mm + drag.lowT;
+      // A height-only drag shows no sideways guide — nothing is moving there.
+      const snapX = drag.verticalOnly ? null : snapped.snapX;
+      setSnapGuides(snapX != null || snapped.snapY != null ? { x: snapX, y: snapped.snapY } : null);
 
-      // Collision resolution — recompute height-filtered obstacles after snap (mount may have changed)
-      const vLo = newMount + drag.kbOff, vHi = vLo + drag.height_mm;
-      const obstacles = allWallOthers
-        .filter((i) => i.mount_height_mm < vHi && i.mount_height_mm + i.height_mm > vLo);
+      if (!drag.verticalOnly) {
+        // Collision resolution — recompute height-filtered obstacles after snap (mount may have changed)
+        const vLo = newMount + drag.kbOff, vHi = vLo + drag.height_mm;
+        const obstacles = allWallOthers
+          .filter((i) => i.mount_height_mm < vHi && i.mount_height_mm + i.height_mm > vLo);
 
-      newX = resolveCollision1D(newX - drag.lowT, drag.spanW, obstacles, wallWidthMm) + drag.lowT;
+        newX = resolveCollision1D(newX - drag.lowT, drag.spanW, obstacles, wallWidthMm) + drag.lowT;
+      }
 
-      const pos = { x_mm: newX };
+      // x_mm is left out entirely on a height-only drag, so getDisp keeps
+      // reading the item's real projected position rather than a stale copy.
+      const pos = drag.verticalOnly ? {} : { x_mm: newX };
       if (VERTICAL_DRAG_TYPES.has(drag.item_type)) pos.mount_height_mm = newMount;
       setLocalPos((prev) => ({ ...prev, [drag.itemId]: pos }));
 
@@ -867,7 +881,11 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     setSnapGuides(null);
     if (drag.type === "item") {
       const pos = localPos[drag.itemId];
-      if (pos && onItemChange) {
+      if (pos && onItemChange && drag.verticalOnly) {
+        // Height only. Writing an x here would reinterpret a projected
+        // position as a stored one and teleport the item in the floor plan.
+        if (pos.mount_height_mm !== undefined) onItemChange(drag.itemId, { mount_height_mm: pos.mount_height_mm });
+      } else if (pos && onItemChange) {
         // pos.x_mm is in the (possibly flipped) elevation-local axis — undo
         // the flip from getWallPos before writing back to room-space.
         const rawX = axisFlipped ? wallWidthMm - pos.x_mm - drag.width_mm : pos.x_mm;
@@ -1181,7 +1199,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
         </div>
       ) : (
       <div className={styles.elevationSvgArea}>
-        <PinchZoom enabled={zoomable}>
+        <PinchZoom enabled={zoomable} controls={zoomControls} maxScale={4}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
@@ -1364,6 +1382,12 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const shortLabel = itemDisplayLabel(item).slice(0, 14);
             const fs = Math.min(Math.max(svgW / (shortLabel.length * 0.72), 7), 12);
             const canDrag = DRAGGABLE_TYPES.has(item.item_type);
+            // Projected items (freestanding, corner returns) only move up and
+            // down here — the cursor says so rather than promising a slide
+            // sideways that will not happen.
+            const dragIsVerticalOnly = canDrag
+              && (isSecondaryWallView(item) || (isIslandVirtualView(item) && item.item_type !== "scribe"))
+              && VERTICAL_DRAG_TYPES.has(item.item_type);
             const isObstruction = item.item_type === "obstruction";
             // Shelf & Rail is not a box — it's a board on cleats. It gets its
             // own drawing below instead of the generic carcass frame.
@@ -1392,7 +1416,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
             return (
               <g key={item.id}
-                style={{ cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "default" }}
+                style={{ cursor: dragIsVerticalOnly ? "ns-resize" : canDrag ? (isDragging ? "grabbing" : "grab") : "default" }}
                 onPointerDown={(e) => handleItemPointerDown(e, item)}
               >
                 {/* Cabinet body — obstructions are solid + hazard-hatched so

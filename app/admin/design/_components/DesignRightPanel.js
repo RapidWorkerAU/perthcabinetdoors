@@ -28,7 +28,7 @@ import {
   computeBenchtopRun,
 } from "../../../../lib/pcd-benchtop-utils";
 import { computeDrawerFrontHeights, DRAWER_RUNNER_LABELS, resolveRunnerType } from "../../../../lib/pcd-drawer-utils";
-import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, bayShelfCount } from "../../../../lib/pcd-door-utils";
+import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayShelfCount, applianceBayHeightMm, bayIsPinned, bayPercentOfCabinet, withResolvedBayHeights, legacyRowBayMigration } from "../../../../lib/pcd-door-utils";
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
 import { FRONT_PROFILE_PRESETS, normaliseFrontProfile } from "../../../../lib/pcd-front-profiles";
 import { applianceKindDefaults } from "../../../../lib/pcd-appliance-utils";
@@ -1195,6 +1195,30 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     latestRef.current = { ...latestRef.current, mount_height_mm: item.mount_height_mm };
   }, [item.mount_height_mm]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tall cabinets used to free a bay for an appliance through door_config.bays,
+  // a second bay system alongside mixed-front bays. It is retired, so any
+  // cabinet still on it converts the moment it is opened — otherwise its oven
+  // bay would render but no longer be editable anywhere.
+  useEffect(() => {
+    const patch = legacyRowBayMigration(item);
+    if (patch) setMultiNow(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+
+  // Bay heights are stored as real millimetres because that is what the cut
+  // list and the quote importer read. A cabinet height change has to be pushed
+  // through them, or the cabinet keeps quoting the old panel sizes while the
+  // elevation silently rescales and shows no problem.
+  useEffect(() => {
+    if (draft.front_type !== "mixed") return;
+    const cur = Array.isArray(draft.section_config?.sections) ? draft.section_config.sections : [];
+    if (!cur.length) return;
+    const next = withResolvedBayHeights(cur, draft.height_mm);
+    if (next.every((sec, i) => sec.height_mm === Math.round(Number(cur[i].height_mm) || 0))) return;
+    setNow("section_config", { ...(draft.section_config || {}), sections: next });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.height_mm, draft.front_type]);
+
   function flushPending() {
     flushItemPatch({ pendingPatchRef, itemId: item.id, onItemChange: onItemChangeRef.current, setSaving, setSaveError });
   }
@@ -1282,7 +1306,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     draft.has_rangehood ? "rangehood" : "",
   ].filter(Boolean).join(" · ");
 
-  const FRONT_LABELS = { none: "None", doors: "Doors", drawers: "Drawers", mixed: "Doors + drawers" };
+  const FRONT_LABELS = { none: "None", doors: "Doors", drawers: "Drawers", mixed: "Bays" };
   summary.front = FRONT_LABELS[draft.front_type || "none"] || "None";
 
   summary.finishing = [
@@ -1329,47 +1353,6 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   function updDoorCfgDebounced(patch) {
     const prev = latestRef.current.door_config || {};
     set("door_config", { ...prev, ...patch });
-  }
-
-  // ---- Tall-cabinet "free bay" helpers ----
-  // door_config.bays is an array aligned to door_config.rows, index 0 = TOP
-  // bay. Each entry is { type: "doors"|"appliance"|"open", appliance? }. Absent
-  // bays means every bay is doors (existing cabinets are untouched).
-  function normalizedBays(cfg, rows) {
-    const cur = Array.isArray(cfg.bays) ? cfg.bays : [];
-    return Array.from({ length: rows }, (_, i) => cur[i] || { type: "doors" });
-  }
-  function setBayType(index, patch) {
-    const prev = latestRef.current.door_config || {};
-    const rows = Math.max(1, prev.rows || 1);
-    const bays = normalizedBays(prev, rows).map((b, i) => {
-      if (i !== index) return b;
-      const next = { ...b, ...patch };
-      if (next.type !== "appliance") delete next.appliance;
-      return next;
-    });
-    setNow("door_config", { ...prev, bays });
-  }
-  // Changing "Rows high" must keep an existing bays array aligned to the new
-  // row count (pad new rows with doors, drop trailing rows). Left absent when
-  // no bays have been set yet, so untouched cabinets stay migration-free.
-  function setDoorRows(rows) {
-    const prev = latestRef.current.door_config || {};
-    const bays = Array.isArray(prev.bays) ? normalizedBays({ ...prev, rows }, rows) : null;
-    setNow("door_config", { ...prev, rows, ...(bays ? { bays } : {}) });
-  }
-  // Maps the per-bay dropdown's flat option value <-> the stored bay object.
-  const BAY_OPTIONS = [
-    { value: "doors",     label: "Doors",       patch: { type: "doors" } },
-    { value: "oven",      label: "Oven",        patch: { type: "appliance", appliance: "oven" } },
-    { value: "microwave", label: "Microwave",   patch: { type: "appliance", appliance: "microwave" } },
-    { value: "cooktop",   label: "Cooktop",     patch: { type: "appliance", appliance: "cooktop" } },
-    { value: "open",      label: "Open space",  patch: { type: "open" } },
-  ];
-  function bayOptionValue(i) {
-    const t = bayTypeForRow(doorCfg, i);
-    if (t === "appliance") return (Array.isArray(doorCfg.bays) && doorCfg.bays[i] && doorCfg.bays[i].appliance) || "oven";
-    return t; // "doors" | "open"
   }
 
   function updDoorStyle(patch) {
@@ -1432,6 +1415,18 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     if ((val === "drawers" || val === "mixed") && drawerDefault && !String(cur.drawer_style?.material || "").trim()) {
       patch.drawer_style = { ...cur.drawer_style, ...drawerDefault };
     }
+    // Switching to Bays with nothing set yet seeds a usable two-bay cabinet
+    // rather than an empty front the elevation can't draw.
+    if (val === "mixed" && !(Array.isArray(cur.section_config?.sections) && cur.section_config.sections.length)) {
+      const seeded = withResolvedBayHeights([
+        { type: "drawers", height_pct: 50 },
+        { type: "doors", height_pct: 50, door: { columns: 1, hinges: ["L"], equal_width: true, width_ratios: [1] } },
+      ], cur.height_mm);
+      // One drawer filling its bay — real millimetres, so it draws and cuts at
+      // the right size the moment the front type is switched on.
+      seeded[0].drawer = { heights_mm: [seeded[0].height_mm] };
+      patch.section_config = { ...(cur.section_config || {}), sections: seeded };
+    }
     setMultiNow(patch);
   }
 
@@ -1459,7 +1454,6 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // every drawer-type section shares drawer_style.
   const sectionCfg = draft.section_config || {};
   const sections = Array.isArray(sectionCfg.sections) ? sectionCfg.sections : [];
-  const sectionsTotal = sections.reduce((s, sec) => s + (Number(sec.height_mm) || 0), 0);
   const sectionsAnyDoors   = sections.some((s) => s.type === "doors");
   const sectionsAnyDrawers = sections.some((s) => s.type === "drawers");
   // Whether this cabinet's front actually has door / drawer faces — drives which
@@ -1479,29 +1473,30 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     return Array.isArray(prev.sections) ? prev.sections : [];
   }
 
+  // Every write goes through here, so `height_mm` is always the resolved answer
+  // for the current mix of pinned and share bays. Nothing downstream — the
+  // elevation, the 3D view, the cut list, the importer — has to know that
+  // percentages exist.
+  function commitSections(next, immediate = true) {
+    const prev = latestRef.current.section_config || {};
+    const sections = withResolvedBayHeights(next, latestRef.current.height_mm ?? draft.height_mm);
+    if (immediate) setNow("section_config", { ...prev, sections });
+    else set("section_config", { ...prev, sections });
+  }
+
   function addSection() {
     const cur = currentSections();
-    const total = cur.reduce((s, sec) => s + (Number(sec.height_mm) || 0), 0);
-    const h = Math.max(0, (draft.height_mm || 0) - total) || 300;
-    const prev = latestRef.current.section_config || {};
-    setNow("section_config", {
-      ...prev,
-      sections: [...cur, { height_mm: h, type: "doors", door: { columns: 1, hinges: ["L"], equal_width: true, width_ratios: [1] } }],
-    });
+    // A new bay takes an even share alongside the others rather than whatever
+    // millimetres happen to be left over.
+    commitSections([...cur, { type: "doors", height_pct: evenBaySharePct(cur.length + 1), door: { columns: 1, hinges: ["L"], equal_width: true, width_ratios: [1] } }]);
   }
 
   function removeSection(idx) {
-    const cur = currentSections();
-    const prev = latestRef.current.section_config || {};
-    setNow("section_config", { ...prev, sections: cur.filter((_, i) => i !== idx) });
+    commitSections(currentSections().filter((_, i) => i !== idx));
   }
 
   function updateSection(idx, patch, immediate = true) {
-    const cur = currentSections();
-    const next = cur.map((s, i) => (i === idx ? { ...s, ...patch } : s));
-    const prev = latestRef.current.section_config || {};
-    if (immediate) setNow("section_config", { ...prev, sections: next });
-    else set("section_config", { ...prev, sections: next });
+    commitSections(currentSections().map((s, i) => (i === idx ? { ...s, ...patch } : s)), immediate);
   }
 
   function updateSectionType(idx, type) {
@@ -1510,17 +1505,42 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     const patch = { type };
     if (type === "doors" && !sec.door) patch.door = { columns: 1, hinges: ["L"], equal_width: true, width_ratios: [1] };
     if (type === "drawers" && !sec.drawer) patch.drawer = { heights_mm: [sec.height_mm || 300] };
+    if (type === "appliance") {
+      // An appliance is a real size, so its bay pins itself to that size the
+      // moment it's chosen instead of floating on a share.
+      const appliance = sec.appliance || "oven";
+      patch.appliance = appliance;
+      patch.height_lock_mm = Number(sec.height_lock_mm) > 0 ? sec.height_lock_mm : applianceBayHeightMm(appliance);
+    } else {
+      patch.appliance = undefined;
+      // Release the pin only if it is still the one the appliance put there.
+      // A height typed by hand is the operator's, and stays.
+      if (sec.type === "appliance" && Number(sec.height_lock_mm) === applianceBayHeightMm(sec.appliance || "oven")) {
+        patch.height_lock_mm = 0;
+      }
+    }
     updateSection(idx, patch);
+  }
+
+  // Pinning captures the height the bay has right now, so the cabinet doesn't
+  // jump the instant the padlock is clicked. Unpinning hands that same height
+  // back as a share, for the same reason.
+  function setSectionPinned(idx, pinned) {
+    const sec = currentSections()[idx] || {};
+    const currentMm = Math.max(1, Math.round(Number(sec.height_mm) || 0));
+    updateSection(idx, pinned
+      ? { height_lock_mm: currentMm }
+      : { height_lock_mm: 0, height_pct: bayPercentOfCabinet(currentMm, draft.height_mm) || evenBaySharePct(currentSections().length) });
+  }
+
+  function evenBaySharePct(count) {
+    return Math.round(1000 / Math.max(1, count)) / 10;
   }
 
   function updateSectionSubConfig(idx, subKey, patch, immediate) {
     const cur = currentSections();
-    const sec = cur[idx] || {};
-    const prevSub = sec[subKey] || {};
-    const next = cur.map((s, i) => (i === idx ? { ...s, [subKey]: { ...prevSub, ...patch } } : s));
-    const prev = latestRef.current.section_config || {};
-    if (immediate) setNow("section_config", { ...prev, sections: next });
-    else set("section_config", { ...prev, sections: next });
+    const prevSub = cur[idx]?.[subKey] || {};
+    commitSections(cur.map((s, i) => (i === idx ? { ...s, [subKey]: { ...prevSub, ...patch } } : s)), immediate);
   }
 
   // ---- Corner cabinet door config (bi-fold, one leaf per wall) ----
@@ -1597,13 +1617,12 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     const fp = [];
     if (draft.front_type === "doors") {
       if (isCorner) { fp.push({ id: "corner", label: "Corner door" }, { id: "profile", label: "3D profile" }); return fp; }
-      if (draft.item_type === "tall_cabinet") fp.push({ id: "bays", label: "Bays" });
       fp.push({ id: "layout", label: "Doors" }, { id: "profile", label: "3D profile" }, { id: "drilling", label: "Hinge drilling" }, { id: "reveal", label: "Reveal & finger-pull" });
     } else if (draft.front_type === "drawers" && !isCorner) {
       fp.push({ id: "layout", label: "Drawers" }, { id: "profile", label: "3D profile" }, { id: "finger", label: "Finger-pull" }, { id: "runners", label: "Runners" });
     } else if (draft.front_type === "mixed" && !isCorner) {
       fp.push({ id: "profile", label: "3D profile" });
-      sections.forEach((s, i) => fp.push({ id: `sec-${i}`, label: `Section ${i + 1}` }));
+      sections.forEach((s, i) => fp.push({ id: `sec-${i}`, label: `Bay ${i + 1}` }));
     }
     return fp;
   })();
@@ -1652,29 +1671,98 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     </div>
   );
 
-  const renderTallBays = () => (
-    <div className={styles.fieldGroup}>
-      <label className={styles.fieldLabel}>
-        Rows high
-        <select className={styles.fieldSelect} value={doorRows} onChange={(e) => setDoorRows(Number(e.target.value))}>
-          <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
-        </select>
-      </label>
-      {Array.from({ length: doorRows }).map((_, i) => {
-        const val = bayOptionValue(i);
-        const isFree = val !== "doors";
-        return (
-          <div key={i}>
-            <label className={styles.fieldLabel}>
-              Bay {i + 1}{i === 0 ? " (top)" : i === doorRows - 1 ? " (bottom)" : ""}
-              <select className={styles.fieldSelect} value={val} onChange={(e) => { const opt = BAY_OPTIONS.find((o) => o.value === e.target.value) || BAY_OPTIONS[0]; setBayType(i, opt.patch); }}>
-                {BAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+
+  // A bay is sized either as a SHARE of the cabinet (%) or PINNED to real
+  // millimetres — an oven bay is 600mm however tall the cabinet is. The
+  // resolved millimetres are shown either way, so what actually gets cut is
+  // never a mystery.
+  const renderBayHeightFields = (idx, sec) => {
+    const pinned = bayIsPinned(sec);
+    const resolvedMm = Math.round(Number(sec.height_mm) || 0);
+    const resolvedPct = bayPercentOfCabinet(resolvedMm, draft.height_mm);
+    const typedPct = Number(sec.height_pct);
+    return (
+      <>
+        <div className={styles.fieldRow}>
+          <label className={styles.fieldLabel}>
+            {pinned ? "Fixed height mm" : "Share of cabinet %"}
+            {pinned ? (
+              <input className={styles.fieldInput} type="number" min="1"
+                value={Math.round(Number(sec.height_lock_mm) || 0) || ""}
+                onChange={(e) => updateSection(idx, { height_lock_mm: Math.max(1, Number(e.target.value) || 0) }, false)} />
+            ) : (
+              <input className={styles.fieldInput} type="number" min="0.1" step="0.1"
+                value={Number.isFinite(typedPct) && typedPct > 0 ? typedPct : resolvedPct}
+                onChange={(e) => updateSection(idx, { height_pct: Math.max(0.1, Number(e.target.value) || 0) }, false)} />
+            )}
+          </label>
+          <label className={styles.fieldLabel}>
+            Sizing
+            <select className={styles.fieldSelect} value={pinned ? "fixed" : "share"} onChange={(e) => setSectionPinned(idx, e.target.value === "fixed")}>
+              <option value="share">Share of cabinet height</option>
+              <option value="fixed">Fixed millimetres</option>
+            </select>
+          </label>
+        </div>
+        <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: "0 0 2px", lineHeight: 1.4 }}>
+          {pinned
+            ? `Cuts at ${resolvedMm}mm (${resolvedPct}% of this ${draft.height_mm || 0}mm cabinet). Stays this size when the cabinet height changes — the share bays absorb the difference.`
+            : `Cuts at ${resolvedMm}mm — ${resolvedPct}% of this ${draft.height_mm || 0}mm cabinet. Grows and shrinks with the cabinet.`}
+        </p>
+      </>
+    );
+  };
+
+  // The everyday bay list on the sidebar: what each bay is and how tall, with
+  // the deep per-bay door/drawer settings a click away in the window. Same
+  // shape as the public tool so a customer's cabinet reads the same here.
+  const renderBaySidebarList = () => (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>
+        Bays, top to bottom
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {sections.map((sec, i) => {
+          const pinned = bayIsPinned(sec);
+          const resolvedMm = Math.round(Number(sec.height_mm) || 0);
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", width: 16, flexShrink: 0 }}>{i + 1}</span>
+              <select className={styles.fieldSelect} style={{ flex: 1, minWidth: 0 }} value={sec.type || "doors"} onChange={(e) => updateSectionType(i, e.target.value)}>
+                <option value="doors">Doors</option>
+                <option value="drawers">Drawers</option>
+                <option value="appliance">Appliance</option>
+                <option value="open">Open space</option>
               </select>
-            </label>
-            {isFree && <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>Left free — no board is cut and nothing is quoted for this bay.</p>}
-          </div>
-        );
-      })}
+              {pinned ? (
+                <input className={styles.fieldInput} style={{ width: 78, flexShrink: 0 }} type="number" min="1"
+                  title="Fixed height in millimetres"
+                  value={Math.round(Number(sec.height_lock_mm) || 0) || ""}
+                  onChange={(e) => updateSection(i, { height_lock_mm: Math.max(1, Number(e.target.value) || 0) }, false)} />
+              ) : (
+                <input className={styles.fieldInput} style={{ width: 78, flexShrink: 0 }} type="number" min="0.1" step="0.1"
+                  title="Share of the cabinet height, as a percentage"
+                  value={Number(sec.height_pct) > 0 ? Number(sec.height_pct) : bayPercentOfCabinet(resolvedMm, draft.height_mm)}
+                  onChange={(e) => updateSection(i, { height_pct: Math.max(0.1, Number(e.target.value) || 0) }, false)} />
+              )}
+              <button type="button" title={pinned ? `Fixed at ${resolvedMm}mm — click to size by share` : `${resolvedMm}mm — click to fix this height`}
+                onClick={() => setSectionPinned(i, !pinned)}
+                style={{ border: "none", background: "none", cursor: "pointer", fontSize: 12, padding: "0 2px", flexShrink: 0, opacity: pinned ? 1 : 0.35 }}>
+                {pinned ? "🔒" : "🔓"}
+              </button>
+              <button type="button" onClick={() => removeSection(i)} disabled={sections.length <= 1}
+                title="Remove this bay"
+                style={{ border: "none", background: "none", cursor: sections.length <= 1 ? "default" : "pointer", color: sections.length <= 1 ? "#ccc" : "#a03f2c", fontSize: 14, padding: "0 2px", flexShrink: 0 }}>✕</button>
+            </div>
+          );
+        })}
+      </div>
+      <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 8 }} onClick={addSection}>+ Add bay</button>
+      <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: "6px 0 0", lineHeight: 1.4 }}>
+        {sections.some(bayIsPinned)
+          ? "Locked bays keep their millimetres; the rest share what is left of the cabinet height."
+          : "Bays share the cabinet height by percentage. Lock one to hold it at a fixed size."}
+      </p>
     </div>
   );
 
@@ -1685,28 +1773,33 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
       <div className={styles.fieldGroup}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--dt-text-muted, #888780)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Section {idx + 1} (top {idx === 0 ? "" : `+${sections.slice(0, idx).reduce((s, x) => s + (Number(x.height_mm) || 0), 0)}mm`})
+            Bay {idx + 1}{idx === 0 ? " (top)" : idx === sections.length - 1 ? " (bottom)" : ""}
           </span>
           <button type="button" onClick={() => { removeSection(idx); setFrontPart("sec-0"); }} style={{ background: "none", border: "none", padding: 0, color: "#c0392b", cursor: "pointer", fontSize: 11 }}>Remove</button>
         </div>
-        <p style={{ fontSize: 10, color: sectionsTotal === (draft.height_mm || 0) ? "var(--dt-text-muted, #888780)" : "#c0392b", margin: "0 0 4px", lineHeight: 1.4 }}>
-          {sectionsTotal === (draft.height_mm || 0) ? `All sections total ${sectionsTotal}mm — matches the cabinet height.` : `All sections total ${sectionsTotal}mm — ${Math.abs((draft.height_mm || 0) - sectionsTotal)}mm ${sectionsTotal < (draft.height_mm || 0) ? "short of" : "over"} the ${draft.height_mm || 0}mm cabinet height.`}
-        </p>
         <div className={styles.fieldRow}>
-          <label className={styles.fieldLabel}>
-            Height mm
-            <input className={styles.fieldInput} type="number" min="1" value={sec.height_mm || ""} onChange={(e) => updateSection(idx, { height_mm: Number(e.target.value) }, false)} />
-          </label>
           <label className={styles.fieldLabel}>
             Type
             <select className={styles.fieldSelect} value={sec.type || "doors"} onChange={(e) => updateSectionType(idx, e.target.value)}>
               <option value="doors">Doors</option>
               <option value="drawers">Drawers</option>
-              <option value="appliance">Oven / appliance</option>
+              <option value="appliance">Appliance</option>
               <option value="open">Open space</option>
             </select>
           </label>
+          {sec.type === "appliance" ? (
+            <label className={styles.fieldLabel}>
+              Appliance
+              <select className={styles.fieldSelect} value={sec.appliance || "oven"}
+                onChange={(e) => updateSection(idx, { appliance: e.target.value, height_lock_mm: applianceBayHeightMm(e.target.value) })}>
+                <option value="oven">Oven</option>
+                <option value="microwave">Microwave</option>
+                <option value="cooktop">Cooktop</option>
+              </select>
+            </label>
+          ) : null}
         </div>
+        {renderBayHeightFields(idx, sec)}
         {sec.type === "open" ? (
           <>
             <label className={styles.fieldLabel}>
@@ -1772,12 +1865,11 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
 
   const renderFrontPart = (partId) => {
     if (draft.front_type === "none") {
-      return <p style={{ fontSize: 12, color: "var(--dt-text-muted, #888780)" }}>No front on this cabinet — pick Doors, Drawers or Doors + Drawers first.</p>;
+      return <p style={{ fontSize: 12, color: "var(--dt-text-muted, #888780)" }}>No front on this cabinet — pick Doors, Drawers or Bays first.</p>;
     }
     if (partId === "profile") return renderFrontProfileFields();
     if (draft.front_type === "doors" && isCorner) return renderCornerDoorFields();
     if (draft.front_type === "doors") {
-      if (partId === "bays") return renderTallBays();
       return <div className={styles.fieldGroup}><DoorBankFields cfg={doorCfg} onChangeNow={updDoorCfg} onChange={updDoorCfgDebounced} heightMm={doorHeightMm} part={partId} /></div>;
     }
     if (draft.front_type === "drawers") {
@@ -2315,15 +2407,16 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
             </div>
         </ConfigSection>
 
-        {/* Doors & drawers — everyday choice on the sidebar; the detailed layout
-            (hinges, bays, mixed sections) opens in a window. */}
+        {/* Doors & drawers — everyday choice on the sidebar; the detailed
+            per-bay layout (hinges, runners, columns) opens in a window. Bays
+            list inline here, the same way the public tool shows them. */}
         <ConfigSection title="Doors & drawers" summary={summary.front} {...section("front")}>
           <div className={styles.fieldGroup}>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               {[
                 ["none", "None"],
                 ["doors", "Doors"],
-                ...(isCorner ? [] : [["drawers", "Drawers"], ["mixed", "Doors + Drawers"]]),
+                ...(isCorner ? [] : [["drawers", "Drawers"], ["mixed", "Bays"]]),
               ].map(([val, label]) => (
                 <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--dt-text, #1c1c1a)", cursor: "pointer" }}>
                   <input type="radio" name={`front_type_${item.id}`} value={val} checked={(draft.front_type ?? "none") === val} onChange={() => onFrontTypeChange(val)} />
@@ -2331,9 +2424,10 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 </label>
               ))}
             </div>
+            {draft.front_type === "mixed" && !isCorner && renderBaySidebarList()}
             {((draft.front_type && draft.front_type !== "none") || isCorner) && (
               <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10 }} onClick={() => { setFrontPart(frontParts[0]?.id || null); setOpenWin("front"); }}>
-                Edit door / drawer layout →
+                {draft.front_type === "mixed" && !isCorner ? "Edit bay layout →" : "Edit door / drawer layout →"}
               </button>
             )}
           </div>
@@ -2557,7 +2651,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
           renderPart={(p) => renderFrontPart(p.id)}
           onClose={() => setOpenWin(null)}
           footer={draft.front_type === "mixed" && !isCorner
-            ? <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%" }} onClick={() => { addSection(); setFrontPart(`sec-${sections.length}`); }}>+ Add section</button>
+            ? <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%" }} onClick={() => { addSection(); setFrontPart(`sec-${sections.length}`); }}>+ Add bay</button>
             : null}
         />
       )}
@@ -3289,6 +3383,13 @@ function DoorPanelForm({ item, room, onItemChange }) {
     setSaving(false);
   }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep the typed height in step when the item is dragged up or down in the
+  // front elevation, the same way CabinetConfigForm does.
+  useEffect(() => {
+    setDraft((prev) => ({ ...prev, mount_height_mm: item.mount_height_mm }));
+    latestRef.current = { ...latestRef.current, mount_height_mm: item.mount_height_mm };
+  }, [item.mount_height_mm]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Flush any unsaved edits immediately on switching away from this item —
   // see the matching comment in CabinetConfigForm for why this is needed.
   useEffect(() => {
@@ -3456,10 +3557,19 @@ function DoorPanelForm({ item, room, onItemChange }) {
               <input className={styles.fieldInput} type="number" min="1" value={draft.scribe_thickness_mm || ""} onChange={(e) => onScribeThicknessMmChange(e.target.value)} />
             </label>
           )}
-          <label className={styles.fieldLabel}>
-            Qty
-            <input className={styles.fieldInput} type="number" min="1" value={draft.qty ?? ""} onChange={(e) => set("qty", e.target.value)} />
-          </label>
+          {/* A scribe or panel is freestanding, so the top-down floor plan
+              can't set how high off the floor it sits. Type it here, or drag
+              it up and down in the front elevation. */}
+          <div className={styles.fieldRow}>
+            <label className={styles.fieldLabel}>
+              Height from floor mm
+              <input className={styles.fieldInput} type="number" min="0" value={draft.mount_height_mm ?? 0} onChange={(e) => set("mount_height_mm", e.target.value)} />
+            </label>
+            <label className={styles.fieldLabel}>
+              Qty
+              <input className={styles.fieldInput} type="number" min="1" value={draft.qty ?? ""} onChange={(e) => set("qty", e.target.value)} />
+            </label>
+          </div>
 
           {/* Board — the shared tile colour modal (same as every other colour
               picker). The picker returns a colour style; we adapt it to the

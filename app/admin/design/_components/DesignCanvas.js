@@ -156,8 +156,14 @@ function outerEdgeStripRect(rect, edge, t) {
 function cabinetSvgRect(item, lay) {
   const { scale, ox, oy, W, D } = lay;
   const { ew, ed } = islandEffectiveDims(item);
-  const iw  = Math.max(ew, 100);
-  const id  = Math.max(ed, 100);
+  // Scribes are intentionally thin in plan view: width_mm is the along-wall
+  // span and scribe_thickness_mm is the true projection from the cabinet/wall.
+  // The generic 100mm minimum made them render as chunky pink squares, which
+  // looked like false overlaps and made accurate placement beside cabinets
+  // nearly impossible.
+  const minFootprintMm = item.item_type === "scribe" ? 1 : 100;
+  const iw  = Math.max(ew, minFootprintMm);
+  const id  = Math.max(ed, minFootprintMm);
   const { absX, absY } = getAbsPos(item, W, D);
 
   switch (item.wall) {
