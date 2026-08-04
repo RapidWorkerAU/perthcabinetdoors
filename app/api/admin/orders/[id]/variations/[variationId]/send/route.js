@@ -32,6 +32,19 @@ function defaultEmailBody(variation, order, viewUrl) {
   ].join("\n");
 }
 
+function hasValue(value) {
+  return String(value ?? "").trim() !== "";
+}
+
+function isBoardVariationLine(line) {
+  return !["Hardware", "base_cabinet"].includes(line.product_type) && hasValue(line.material);
+}
+
+function hasMissingBoardPricing(line) {
+  if (!["add", "change"].includes(line.action) || !isBoardVariationLine(line)) return false;
+  return Number(line.unit_cost_per_sqm_ex_gst || 0) <= 0 || Number(line.product_unit_cost_ex_gst || 0) <= 0;
+}
+
 function variationEmailHtml({ variation, order, viewUrl, message, includePrice }) {
   const paragraphs = String(message || "")
     .split(/\n{2,}/)
@@ -82,12 +95,21 @@ export async function POST(request, { params }) {
       .eq("order_id", orderId)
       .maybeSingle();
     if (error || !variation) throw error || new Error("Variation not found.");
-    if (!variation.pcd_order_variation_lines?.length) {
-      const { count } = await context.supabase
-        .from("pcd_order_variation_lines")
-        .select("id", { count: "exact", head: true })
-        .eq("variation_id", variationId);
-      if (!count) return Response.json({ ok: false, error: "Add at least one variation line before sending." }, { status: 400 });
+    const { data: variationLines, error: linesError } = await context.supabase
+      .from("pcd_order_variation_lines")
+      .select("*")
+      .eq("variation_id", variationId)
+      .order("sort_order", { ascending: true });
+    if (linesError) throw linesError;
+    if (!variationLines?.length) {
+      return Response.json({ ok: false, error: "Add at least one variation line before sending." }, { status: 400 });
+    }
+    const unpricedLine = variationLines.find(hasMissingBoardPricing);
+    if (unpricedLine) {
+      return Response.json({
+        ok: false,
+        error: `The variation line "${unpricedLine.title || unpricedLine.product_type || "Variation item"}" uses a board without an uploaded price. Add the board cost or edit the line before sending.`,
+      }, { status: 400 });
     }
 
     const viewUrl = `${origin}/variations/view?code=${encodeURIComponent(variation.access_code)}`;

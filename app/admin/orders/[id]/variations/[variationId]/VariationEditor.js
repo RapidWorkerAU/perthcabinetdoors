@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { QuoteColourCombobox, QuoteImageCombobox, QuoteTileCombobox } from "@/components/admin/QuoteComboboxes";
 import styles from "../../../../admin-content.module.css";
-import { formatMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
 import {
   edgeProfilesForMaterial,
   MATERIAL_OPTIONS,
@@ -151,8 +151,80 @@ function emptyLine() {
     qty: 1,
     original_line_total_ex_gst: 0,
     proposed_line_total_ex_gst: 0,
+    unit_cost_mode: "manual",
+    unit_cost_source_id: null,
+    unit_cost_source_label: "",
+    unit_cost_per_sqm_ex_gst: 0,
+    calculated_unit_cost_ex_gst: 0,
+    product_unit_cost_ex_gst: "",
+    markup_percent: DEFAULT_BUSINESS_DEFAULTS.markup_percent,
     notes: "",
   };
+}
+
+function lineAreaSqm(line) {
+  const width = Number(line?.width_mm || 0);
+  const height = Number(line?.height_mm || 0);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return 0;
+  return (width * height) / 1000000;
+}
+
+function calculatedUnitCostFromLine(line) {
+  const rate = Number(line?.unit_cost_per_sqm_ex_gst || 0);
+  const area = lineAreaSqm(line);
+  if (!Number.isFinite(rate) || rate <= 0 || area <= 0) return 0;
+  return roundMoney(area * rate);
+}
+
+function applyVariationLinePricing(line, businessDefaults = DEFAULT_BUSINESS_DEFAULTS) {
+  if (line.action === "remove") {
+    return { ...line, proposed_line_total_ex_gst: 0 };
+  }
+  if (line.product_type === "Hardware" || line.action === "price_adjustment") {
+    return line;
+  }
+
+  const calculatedUnitCost = calculatedUnitCostFromLine(line);
+  const hasAutoSource = Number(line.unit_cost_per_sqm_ex_gst || 0) > 0;
+  const next = {
+    ...line,
+    calculated_unit_cost_ex_gst: calculatedUnitCost,
+    unit_cost_mode: hasAutoSource ? "auto" : "manual",
+  };
+
+  if (hasAutoSource && calculatedUnitCost > 0) {
+    next.product_unit_cost_ex_gst = calculatedUnitCost;
+    next.proposed_line_total_ex_gst = calculateQuoteLine(next, {
+      ...businessDefaults,
+      markup_percent: toNumber(next.markup_percent, businessDefaults.markup_percent),
+    }).line_total_ex_gst;
+  } else if (
+    Object.prototype.hasOwnProperty.call(line, "unit_cost_per_sqm_ex_gst") &&
+    toNumber(line.unit_cost_per_sqm_ex_gst) <= 0
+  ) {
+    next.product_unit_cost_ex_gst = "";
+    next.proposed_line_total_ex_gst = "";
+  }
+
+  return next;
+}
+
+function isBoardVariationDraft(line) {
+  return !["Hardware", BASE_CABINET_TYPE].includes(line.product_type) && Boolean(line.material);
+}
+
+function variationLinePricingError(line) {
+  if (!["add", "change"].includes(line.action) || !isBoardVariationDraft(line)) return "";
+  if (!line.colour || !line.thickness) {
+    return "Select a priced board colour before saving this variation line.";
+  }
+  if (toNumber(line.unit_cost_per_sqm_ex_gst) <= 0) {
+    return "This board does not have an uploaded price. Add the board cost before saving this variation line.";
+  }
+  if (calculatedUnitCostFromLine(line) <= 0) {
+    return "Enter width and height so this board variation can be priced.";
+  }
+  return "";
 }
 
 function defaultVariationEmailSubject(variation, order) {
@@ -184,6 +256,7 @@ export default function VariationEditor({ orderId, variationId }) {
   const [isAddLineModalOpen, setIsAddLineModalOpen] = useState(false);
   const [publishEmail, setPublishEmail] = useState(null);
   const [hardwareRows, setHardwareRows] = useState([]);
+  const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -196,6 +269,7 @@ export default function VariationEditor({ orderId, variationId }) {
   const lineDraftProfileTypeOptions = profileTypesForSelection(lineDraft.material, lineDraft.thickness);
   const lineDraftProfileOptions = profileNamesForSelection(lineDraft.profile_type, lineDraft.material, lineDraft.thickness);
   const selectedSupplier = COLOUR_SUPPLIERS.includes(lineDraft.supplier_name) ? lineDraft.supplier_name : COLOUR_SUPPLIERS[0];
+  const lineDraftPricingError = variationLinePricingError(lineDraft);
 
   useEffect(() => {
     toastRef.current = toast;
@@ -226,15 +300,22 @@ export default function VariationEditor({ orderId, variationId }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadHardwareRows() {
+    async function loadSupportingRows() {
       try {
-        const response = await fetch("/api/admin/hardware", { cache: "no-store" });
-        const payload = await response.json();
-        if (!cancelled && payload.ok) setHardwareRows(payload.hardware || []);
+        const [hardwareResponse, defaultsResponse] = await Promise.all([
+          fetch("/api/admin/hardware", { cache: "no-store" }),
+          fetch("/api/admin/business-defaults", { cache: "no-store" }),
+        ]);
+        const [hardwarePayload, defaultsPayload] = await Promise.all([
+          hardwareResponse.json(),
+          defaultsResponse.json(),
+        ]);
+        if (!cancelled && hardwarePayload.ok) setHardwareRows(hardwarePayload.hardware || []);
+        if (!cancelled && defaultsPayload.ok) setBusinessDefaults(defaultsPayload.defaults || DEFAULT_BUSINESS_DEFAULTS);
       } catch {}
     }
 
-    loadHardwareRows();
+    loadSupportingRows();
     return () => {
       cancelled = true;
     };
@@ -242,7 +323,7 @@ export default function VariationEditor({ orderId, variationId }) {
 
   function updateLineDraft(changes) {
     setLineDraft((current) => {
-      const next = { ...current, ...changes };
+      let next = { ...current, ...changes };
       if (Object.prototype.hasOwnProperty.call(changes, "product_type")) {
         next.title = productTypeLabel(changes.product_type);
         next.product_type = changes.product_type;
@@ -255,6 +336,13 @@ export default function VariationEditor({ orderId, variationId }) {
         next.edge_mould = "";
         next.profile_type = "";
         next.profile = "";
+        next.unit_cost_mode = "manual";
+        next.unit_cost_source_id = null;
+        next.unit_cost_source_label = "";
+        next.unit_cost_per_sqm_ex_gst = 0;
+        next.calculated_unit_cost_ex_gst = 0;
+        next.product_unit_cost_ex_gst = "";
+        next.proposed_line_total_ex_gst = 0;
       }
       if (Object.prototype.hasOwnProperty.call(changes, "material")) {
         next.supplier_name = changes.material ? COLOUR_SUPPLIERS[0] : "";
@@ -264,6 +352,13 @@ export default function VariationEditor({ orderId, variationId }) {
         next.edge_mould = "";
         next.profile_type = "";
         next.profile = "";
+        next.unit_cost_mode = "manual";
+        next.unit_cost_source_id = null;
+        next.unit_cost_source_label = "";
+        next.unit_cost_per_sqm_ex_gst = 0;
+        next.calculated_unit_cost_ex_gst = 0;
+        next.product_unit_cost_ex_gst = "";
+        next.proposed_line_total_ex_gst = 0;
       }
       if (Object.prototype.hasOwnProperty.call(changes, "thickness")) {
         next.profile_type = "";
@@ -272,17 +367,25 @@ export default function VariationEditor({ orderId, variationId }) {
       if (Object.prototype.hasOwnProperty.call(changes, "profile_type")) {
         next.profile = "";
       }
+      if (Object.prototype.hasOwnProperty.call(changes, "unit_cost_per_sqm_ex_gst")) {
+        next.unit_cost_mode = Number(changes.unit_cost_per_sqm_ex_gst || 0) > 0 ? "auto" : "manual";
+      }
+      if (["qty", "width_mm", "height_mm", "unit_cost_per_sqm_ex_gst", "colour", "finish", "thickness", "markup_percent"].some((field) =>
+        Object.prototype.hasOwnProperty.call(changes, field)
+      )) {
+        next = applyVariationLinePricing(next, businessDefaults);
+      }
       return next;
     });
   }
 
   function changeLineDraftAction(action) {
     if (action === "add") {
-      setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, notes: current.notes }));
+      setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, markup_percent: businessDefaults.markup_percent, notes: current.notes }));
       return;
     }
     if (action === "price_adjustment") {
-      setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, title: "Price adjustment", notes: current.notes }));
+      setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, title: "Price adjustment", markup_percent: businessDefaults.markup_percent, notes: current.notes }));
       return;
     }
     updateLineDraft({ action, proposed_line_total_ex_gst: action === "remove" ? 0 : lineDraft.proposed_line_total_ex_gst });
@@ -290,7 +393,7 @@ export default function VariationEditor({ orderId, variationId }) {
 
   function openAddLineModal() {
     setEditingLineId(null);
-    setLineDraft(emptyLine());
+    setLineDraft({ ...emptyLine(), markup_percent: businessDefaults.markup_percent });
     setIsAddLineModalOpen(true);
   }
 
@@ -351,8 +454,15 @@ export default function VariationEditor({ orderId, variationId }) {
       profile: item?.profile || "",
       edge_mould: item?.edge_mould || "",
       qty: item?.qty || 1,
+      unit_cost_mode: item?.unit_cost_mode || current.unit_cost_mode || "manual",
+      unit_cost_source_id: item?.unit_cost_source_id || null,
+      unit_cost_source_label: item?.unit_cost_source_label || "",
+      unit_cost_per_sqm_ex_gst: item?.unit_cost_per_sqm_ex_gst || 0,
+      calculated_unit_cost_ex_gst: item?.calculated_unit_cost_ex_gst || 0,
+      product_unit_cost_ex_gst: item?.product_unit_cost_ex_gst || "",
       original_line_total_ex_gst: item?.line_total_ex_gst || 0,
       proposed_line_total_ex_gst: current.action === "remove" ? 0 : item?.line_total_ex_gst || 0,
+      markup_percent: item?.markup_percent ?? current.markup_percent ?? businessDefaults.markup_percent,
     }));
   }
 
@@ -630,7 +740,19 @@ export default function VariationEditor({ orderId, variationId }) {
           />
         </label>
         <label className={tw.fieldLabel}>Proposed ex GST
-          <input className={tw.fieldInput} type="number" step="0.01" value={lineDraft.proposed_line_total_ex_gst} disabled={lineDraft.action === "remove"} onChange={(event) => updateLineDraft({ proposed_line_total_ex_gst: event.target.value })} />
+          <input
+            className={tw.fieldInput}
+            type="number"
+            step="0.01"
+            value={lineDraft.proposed_line_total_ex_gst}
+            disabled={lineDraft.action === "remove" || isBoardVariationDraft(lineDraft)}
+            onChange={(event) => updateLineDraft({ proposed_line_total_ex_gst: event.target.value })}
+          />
+          {isBoardVariationDraft(lineDraft) ? (
+            <span className={lineDraftPricingError ? "text-[11px] font-semibold text-[#991b1b]" : "text-[11px] text-[#2d5e28]"}>
+              {lineDraftPricingError || `Calculated from ${formatMoney(lineDraft.unit_cost_per_sqm_ex_gst, variation.currency)} per sqm.`}
+            </span>
+          ) : null}
         </label>
         <label className={`${tw.fieldLabel} md:col-span-4`}>Notes
           <input className={tw.fieldInput} value={lineDraft.notes} onChange={(event) => updateLineDraft({ notes: event.target.value })} />
@@ -738,7 +860,7 @@ export default function VariationEditor({ orderId, variationId }) {
           footer={
             <>
               <button type="button" className={tw.secondaryBtn} onClick={closeLineModal} disabled={isSaving}>Cancel</button>
-              <button type="button" className={tw.primaryBtn} disabled={isSaving} onClick={editingLineId ? () => updateLine(editingLineId) : addLine}>
+              <button type="button" className={tw.primaryBtn} disabled={isSaving || Boolean(lineDraftPricingError)} onClick={editingLineId ? () => updateLine(editingLineId) : addLine}>
                 {isSaving ? (editingLineId ? "Saving..." : "Adding...") : (editingLineId ? "Save line" : "Add line")}
               </button>
             </>

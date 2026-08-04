@@ -51,6 +51,12 @@ create table if not exists public.pcd_order_variation_lines (
   profile text,
   edge_mould text,
   qty numeric(12,2) not null default 1,
+  unit_cost_source_id uuid,
+  unit_cost_source_label text,
+  unit_cost_per_sqm_ex_gst numeric(12,2) not null default 0,
+  calculated_unit_cost_ex_gst numeric(12,2) not null default 0,
+  product_unit_cost_ex_gst numeric(12,2) not null default 0,
+  markup_percent numeric(8,4) not null default 40,
   original_line_total_ex_gst numeric(12,2) not null default 0,
   proposed_line_total_ex_gst numeric(12,2) not null default 0,
   line_total_ex_gst numeric(12,2) not null default 0,
@@ -62,6 +68,12 @@ create table if not exists public.pcd_order_variation_lines (
 
 alter table public.pcd_order_variation_lines
   add column if not exists supplier_name text,
+  add column if not exists unit_cost_source_id uuid,
+  add column if not exists unit_cost_source_label text,
+  add column if not exists unit_cost_per_sqm_ex_gst numeric(12,2) not null default 0,
+  add column if not exists calculated_unit_cost_ex_gst numeric(12,2) not null default 0,
+  add column if not exists product_unit_cost_ex_gst numeric(12,2) not null default 0,
+  add column if not exists markup_percent numeric(8,4) not null default 40,
   add column if not exists original_item_snapshot jsonb;
 
 create table if not exists public.pcd_order_variation_actions (
@@ -76,7 +88,13 @@ create table if not exists public.pcd_order_variation_actions (
 alter table public.pcd_order_line_items
   add column if not exists variation_id uuid references public.pcd_order_variations(id) on delete set null,
   add column if not exists removed_by_variation_id uuid references public.pcd_order_variations(id) on delete set null,
-  add column if not exists variation_status text;
+  add column if not exists variation_status text,
+  add column if not exists unit_cost_source_id uuid,
+  add column if not exists unit_cost_source_label text,
+  add column if not exists unit_cost_per_sqm_ex_gst numeric(12,2) not null default 0,
+  add column if not exists calculated_unit_cost_ex_gst numeric(12,2) not null default 0,
+  add column if not exists product_unit_cost_ex_gst numeric(12,2) not null default 0,
+  add column if not exists markup_percent numeric(8,4) not null default 40;
 
 alter table public.pcd_order_activity
   add column if not exists variation_id uuid references public.pcd_order_variations(id) on delete set null;

@@ -1,6 +1,7 @@
 import { requireAdminApiContext } from "../../../../../../../../../lib/admin-api";
 import { isVariationFinal, recalcVariation, variationLineDelta, VARIATION_LINE_ACTIONS } from "../../../../../../../../../lib/pcd-order-variations";
-import { toNumber } from "../../../../../../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../../lib/pcd-quote-utils";
+import { getBusinessDefaults } from "../../../../../../../../../lib/pcd-business-defaults";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -16,6 +17,37 @@ function nullableNumber(value) {
   if (value === "" || value === null || typeof value === "undefined") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function hasValue(value) {
+  return String(value ?? "").trim() !== "";
+}
+
+function isBoardPricedLine(row) {
+  return !["Hardware", "base_cabinet"].includes(row.product_type) && hasValue(row.material);
+}
+
+function changedBoardFields(row, sourceLine = null) {
+  if (!sourceLine) return true;
+  return ["title", "product_type", "material", "supplier_name", "thickness", "width_mm", "height_mm", "finish", "colour", "profile_type", "profile", "edge_mould", "qty"].some((field) => {
+    const next = String(row[field] ?? "").trim();
+    const before = String(sourceLine[field] ?? "").trim();
+    return next !== before;
+  });
+}
+
+function lineAreaSqm(row) {
+  const width = Number(row?.width_mm || 0);
+  const height = Number(row?.height_mm || 0);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return 0;
+  return (width * height) / 1000000;
+}
+
+function calculatedUnitCost(row) {
+  const rate = toNumber(row.unit_cost_per_sqm_ex_gst);
+  const area = lineAreaSqm(row);
+  if (rate <= 0 || area <= 0) return 0;
+  return roundMoney(rate * area);
 }
 
 function originalItemSnapshot(sourceLine) {
@@ -63,7 +95,7 @@ async function assertEditable(supabase, orderId, variationId) {
   if (isVariationFinal(data.status)) throw new Error("Finalised variations cannot be edited.");
 }
 
-function updatesFromPayload(payload, before, sourceLine = null) {
+function updatesFromPayload(payload, before, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS) {
   const updates = {};
   if (Object.prototype.hasOwnProperty.call(payload, "action")) {
     if (!VARIATION_LINE_ACTIONS.includes(payload.action)) throw new Error("Invalid variation line action.");
@@ -82,6 +114,8 @@ function updatesFromPayload(payload, before, sourceLine = null) {
     "profile_type",
     "profile",
     "edge_mould",
+    "unit_cost_source_id",
+    "unit_cost_source_label",
     "notes",
   ].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = payload[field] === "" ? null : cleanText(payload[field]);
@@ -89,14 +123,41 @@ function updatesFromPayload(payload, before, sourceLine = null) {
   ["width_mm", "height_mm"].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = nullableNumber(payload[field]);
   });
-  ["qty", "original_line_total_ex_gst", "proposed_line_total_ex_gst"].forEach((field) => {
+  ["qty", "original_line_total_ex_gst", "proposed_line_total_ex_gst", "unit_cost_per_sqm_ex_gst", "calculated_unit_cost_ex_gst", "product_unit_cost_ex_gst", "markup_percent"].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = toNumber(payload[field]);
   });
+  if (!Object.prototype.hasOwnProperty.call(updates, "markup_percent")) {
+    updates.markup_percent = toNumber(before.markup_percent, businessDefaults.markup_percent);
+  }
   const next = { ...before, ...updates };
   if (next.action === "change" || next.action === "remove") {
     if (sourceLine) updates.original_item_snapshot = originalItemSnapshot(sourceLine);
   } else if (Object.prototype.hasOwnProperty.call(payload, "action")) {
     updates.original_item_snapshot = null;
+  }
+  if (next.action === "remove") {
+    updates.proposed_line_total_ex_gst = 0;
+    next.proposed_line_total_ex_gst = 0;
+  } else if (isBoardPricedLine(next)) {
+    if (changedBoardFields(next, sourceLine) && toNumber(next.unit_cost_per_sqm_ex_gst) <= 0) {
+      throw new Error("The selected board does not have an uploaded price. Add the board cost before saving this variation line.");
+    }
+    if (toNumber(next.unit_cost_per_sqm_ex_gst) > 0) {
+      const unitCost = calculatedUnitCost(next);
+      if (unitCost <= 0) {
+        throw new Error("Enter width and height before saving this priced board variation line.");
+      }
+      const calculated = calculateQuoteLine({
+        ...next,
+        calculated_unit_cost_ex_gst: unitCost,
+        product_unit_cost_ex_gst: unitCost,
+        markup_percent: toNumber(next.markup_percent, businessDefaults.markup_percent),
+      }, businessDefaults);
+      updates.calculated_unit_cost_ex_gst = unitCost;
+      updates.product_unit_cost_ex_gst = calculated.product_unit_cost_ex_gst;
+      updates.proposed_line_total_ex_gst = calculated.line_total_ex_gst;
+      next.proposed_line_total_ex_gst = calculated.line_total_ex_gst;
+    }
   }
   updates.line_total_ex_gst = variationLineDelta(next);
   return updates;
@@ -112,10 +173,30 @@ function isMissingOriginalSnapshotColumn(error) {
   return error?.code === "PGRST204" && message.includes("original_item_snapshot") && message.includes("pcd_order_variation_lines");
 }
 
+function isMissingPricingColumn(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.code === "PGRST204" && (
+    message.includes("unit_cost_source_id") ||
+    message.includes("unit_cost_source_label") ||
+    message.includes("unit_cost_per_sqm_ex_gst") ||
+    message.includes("calculated_unit_cost_ex_gst") ||
+    message.includes("product_unit_cost_ex_gst") ||
+    message.includes("markup_percent")
+  ) && message.includes("pcd_order_variation_lines");
+}
+
 function withoutFallbackColumns(row, error) {
   const rest = { ...row };
   if (isMissingSupplierNameColumn(error)) delete rest.supplier_name;
   if (isMissingOriginalSnapshotColumn(error)) delete rest.original_item_snapshot;
+  if (isMissingPricingColumn(error)) {
+    delete rest.unit_cost_source_id;
+    delete rest.unit_cost_source_label;
+    delete rest.unit_cost_per_sqm_ex_gst;
+    delete rest.calculated_unit_cost_ex_gst;
+    delete rest.product_unit_cost_ex_gst;
+    delete rest.markup_percent;
+  }
   return rest;
 }
 
@@ -145,8 +226,9 @@ export async function PATCH(request, { params }) {
     if (["change", "remove"].includes(nextAction) && !sourceLine) {
       return Response.json({ ok: false, error: "Choose an order line for this variation action." }, { status: 400 });
     }
+    const businessDefaults = await getBusinessDefaults(context.supabase);
 
-    const updates = updatesFromPayload(payload, before, sourceLine);
+    const updates = updatesFromPayload(payload, before, sourceLine, businessDefaults);
     let { data: line, error } = await context.supabase
       .from("pcd_order_variation_lines")
       .update(updates)
@@ -154,7 +236,7 @@ export async function PATCH(request, { params }) {
       .eq("variation_id", variationId)
       .select("*")
       .single();
-    if (isMissingSupplierNameColumn(error) || isMissingOriginalSnapshotColumn(error)) {
+    if (isMissingSupplierNameColumn(error) || isMissingOriginalSnapshotColumn(error) || isMissingPricingColumn(error)) {
       const retry = await context.supabase
         .from("pcd_order_variation_lines")
         .update(withoutFallbackColumns(updates, error))

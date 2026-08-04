@@ -1,6 +1,7 @@
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { isVariationFinal, recalcVariation, variationLineDelta, VARIATION_LINE_ACTIONS } from "../../../../../../../../lib/pcd-order-variations";
-import { toNumber } from "../../../../../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
+import { getBusinessDefaults } from "../../../../../../../../lib/pcd-business-defaults";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -16,6 +17,37 @@ function nullableNumber(value) {
   if (value === "" || value === null || typeof value === "undefined") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function hasValue(value) {
+  return String(value ?? "").trim() !== "";
+}
+
+function isBoardPricedLine(row) {
+  return !["Hardware", "base_cabinet"].includes(row.product_type) && hasValue(row.material);
+}
+
+function changedBoardFields(row, sourceLine = null) {
+  if (!sourceLine) return true;
+  return ["title", "product_type", "material", "supplier_name", "thickness", "width_mm", "height_mm", "finish", "colour", "profile_type", "profile", "edge_mould", "qty"].some((field) => {
+    const next = String(row[field] ?? "").trim();
+    const before = String(sourceLine[field] ?? "").trim();
+    return next !== before;
+  });
+}
+
+function lineAreaSqm(row) {
+  const width = Number(row?.width_mm || 0);
+  const height = Number(row?.height_mm || 0);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return 0;
+  return (width * height) / 1000000;
+}
+
+function calculatedUnitCost(row) {
+  const rate = toNumber(row.unit_cost_per_sqm_ex_gst);
+  const area = lineAreaSqm(row);
+  if (rate <= 0 || area <= 0) return 0;
+  return roundMoney(rate * area);
 }
 
 function originalItemSnapshot(sourceLine) {
@@ -64,14 +96,8 @@ async function existingOrderLine(supabase, orderId, itemId) {
   return data;
 }
 
-function linePayload(payload, sourceLine = null) {
+function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS) {
   const action = VARIATION_LINE_ACTIONS.includes(payload.action) ? payload.action : "add";
-  const original = action === "add" || action === "price_adjustment"
-    ? 0
-    : toNumber(payload.original_line_total_ex_gst ?? sourceLine?.line_total_ex_gst);
-  const proposed = action === "remove"
-    ? 0
-    : toNumber(payload.proposed_line_total_ex_gst ?? payload.line_total_ex_gst ?? sourceLine?.line_total_ex_gst);
   const row = {
     order_line_item_id: action === "add" || action === "price_adjustment" ? null : payload.order_line_item_id || null,
     action,
@@ -89,11 +115,42 @@ function linePayload(payload, sourceLine = null) {
     profile: cleanText(payload.profile ?? sourceLine?.profile),
     edge_mould: cleanText(payload.edge_mould ?? sourceLine?.edge_mould),
     qty: Math.max(0, toNumber(payload.qty ?? sourceLine?.qty, 1)),
-    original_line_total_ex_gst: original,
-    proposed_line_total_ex_gst: proposed,
+    unit_cost_source_id: payload.unit_cost_source_id || null,
+    unit_cost_source_label: cleanText(payload.unit_cost_source_label),
+    unit_cost_per_sqm_ex_gst: toNumber(payload.unit_cost_per_sqm_ex_gst),
+    calculated_unit_cost_ex_gst: toNumber(payload.calculated_unit_cost_ex_gst),
+    product_unit_cost_ex_gst: toNumber(payload.product_unit_cost_ex_gst),
+    markup_percent: toNumber(payload.markup_percent, businessDefaults.markup_percent),
+    original_line_total_ex_gst: action === "add" || action === "price_adjustment"
+      ? 0
+      : toNumber(payload.original_line_total_ex_gst ?? sourceLine?.line_total_ex_gst),
+    proposed_line_total_ex_gst: 0,
     original_item_snapshot: action === "change" || action === "remove" ? originalItemSnapshot(sourceLine) : null,
     notes: cleanText(payload.notes),
   };
+
+  if (action === "remove") {
+    row.proposed_line_total_ex_gst = 0;
+  } else if (isBoardPricedLine(row)) {
+    if (changedBoardFields(row, sourceLine) && toNumber(row.unit_cost_per_sqm_ex_gst) <= 0) {
+      throw new Error("The selected board does not have an uploaded price. Add the board cost before saving this variation line.");
+    }
+    if (toNumber(row.unit_cost_per_sqm_ex_gst) > 0) {
+      row.calculated_unit_cost_ex_gst = calculatedUnitCost(row);
+      if (row.calculated_unit_cost_ex_gst <= 0) {
+        throw new Error("Enter width and height before saving this priced board variation line.");
+      }
+      row.product_unit_cost_ex_gst = row.calculated_unit_cost_ex_gst;
+      const calculated = calculateQuoteLine(row, businessDefaults);
+      row.product_unit_cost_ex_gst = calculated.product_unit_cost_ex_gst;
+      row.proposed_line_total_ex_gst = calculated.line_total_ex_gst;
+    } else {
+      row.proposed_line_total_ex_gst = toNumber(payload.proposed_line_total_ex_gst ?? payload.line_total_ex_gst ?? sourceLine?.line_total_ex_gst);
+    }
+  } else {
+    row.proposed_line_total_ex_gst = toNumber(payload.proposed_line_total_ex_gst ?? payload.line_total_ex_gst ?? sourceLine?.line_total_ex_gst);
+  }
+
   row.line_total_ex_gst = variationLineDelta(row);
   return row;
 }
@@ -108,10 +165,30 @@ function isMissingOriginalSnapshotColumn(error) {
   return error?.code === "PGRST204" && message.includes("original_item_snapshot") && message.includes("pcd_order_variation_lines");
 }
 
+function isMissingPricingColumn(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.code === "PGRST204" && (
+    message.includes("unit_cost_source_id") ||
+    message.includes("unit_cost_source_label") ||
+    message.includes("unit_cost_per_sqm_ex_gst") ||
+    message.includes("calculated_unit_cost_ex_gst") ||
+    message.includes("product_unit_cost_ex_gst") ||
+    message.includes("markup_percent")
+  ) && message.includes("pcd_order_variation_lines");
+}
+
 function withoutFallbackColumns(row, error) {
   const rest = { ...row };
   if (isMissingSupplierNameColumn(error)) delete rest.supplier_name;
   if (isMissingOriginalSnapshotColumn(error)) delete rest.original_item_snapshot;
+  if (isMissingPricingColumn(error)) {
+    delete rest.unit_cost_source_id;
+    delete rest.unit_cost_source_label;
+    delete rest.unit_cost_per_sqm_ex_gst;
+    delete rest.calculated_unit_cost_ex_gst;
+    delete rest.product_unit_cost_ex_gst;
+    delete rest.markup_percent;
+  }
   return rest;
 }
 
@@ -127,6 +204,7 @@ export async function POST(request, { params }) {
     if (["change", "remove"].includes(payload.action) && !sourceLine) {
       return Response.json({ ok: false, error: "Choose an order line for this variation action." }, { status: 400 });
     }
+    const businessDefaults = await getBusinessDefaults(context.supabase);
 
     const { count } = await context.supabase
       .from("pcd_order_variation_lines")
@@ -136,7 +214,7 @@ export async function POST(request, { params }) {
     const row = {
       variation_id: variationId,
       sort_order: count || 0,
-      ...linePayload(payload, sourceLine),
+      ...linePayload(payload, sourceLine, businessDefaults),
     };
 
     let { data: line, error } = await context.supabase
@@ -144,7 +222,7 @@ export async function POST(request, { params }) {
       .insert(row)
       .select("*")
       .single();
-    if (isMissingSupplierNameColumn(error) || isMissingOriginalSnapshotColumn(error)) {
+    if (isMissingSupplierNameColumn(error) || isMissingOriginalSnapshotColumn(error) || isMissingPricingColumn(error)) {
       const retry = await context.supabase
         .from("pcd_order_variation_lines")
         .insert(withoutFallbackColumns(row, error))
