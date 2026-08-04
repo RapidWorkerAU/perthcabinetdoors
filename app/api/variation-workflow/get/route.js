@@ -17,6 +17,22 @@ export async function GET(request) {
       .maybeSingle();
     if (error || !variation) throw error || new Error("Variation not found.");
 
+    const sourceItemIds = (variation.pcd_order_variation_lines || [])
+      .map((line) => line.order_line_item_id)
+      .filter(Boolean);
+    if (sourceItemIds.length) {
+      const { data: sourceItems, error: sourceItemsError } = await supabase
+        .from("pcd_order_line_items")
+        .select("*")
+        .in("id", sourceItemIds);
+      if (sourceItemsError) throw sourceItemsError;
+      const sourceItemsById = new Map((sourceItems || []).map((item) => [item.id, item]));
+      variation.pcd_order_variation_lines = (variation.pcd_order_variation_lines || []).map((line) => ({
+        ...line,
+        original_order_item: line.original_item_snapshot || sourceItemsById.get(line.order_line_item_id) || null,
+      }));
+    }
+
     if (variation.status === "sent" && !variation.viewed_at) {
       const now = new Date().toISOString();
       const { error: viewError } = await supabase

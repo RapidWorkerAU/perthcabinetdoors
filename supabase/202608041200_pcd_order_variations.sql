@@ -54,13 +54,15 @@ create table if not exists public.pcd_order_variation_lines (
   original_line_total_ex_gst numeric(12,2) not null default 0,
   proposed_line_total_ex_gst numeric(12,2) not null default 0,
   line_total_ex_gst numeric(12,2) not null default 0,
+  original_item_snapshot jsonb,
   notes text,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
 
 alter table public.pcd_order_variation_lines
-  add column if not exists supplier_name text;
+  add column if not exists supplier_name text,
+  add column if not exists original_item_snapshot jsonb;
 
 create table if not exists public.pcd_order_variation_actions (
   id uuid primary key default gen_random_uuid(),

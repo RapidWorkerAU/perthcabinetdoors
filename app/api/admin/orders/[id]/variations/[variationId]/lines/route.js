@@ -18,6 +18,28 @@ function nullableNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function originalItemSnapshot(sourceLine) {
+  if (!sourceLine) return null;
+  return {
+    id: sourceLine.id || null,
+    title: sourceLine.title || null,
+    description: sourceLine.description || null,
+    product_type: sourceLine.product_type || null,
+    material: sourceLine.material || null,
+    supplier_name: sourceLine.supplier_name || null,
+    thickness: sourceLine.thickness || null,
+    width_mm: sourceLine.width_mm ?? null,
+    height_mm: sourceLine.height_mm ?? null,
+    finish: sourceLine.finish || null,
+    colour: sourceLine.colour || null,
+    profile_type: sourceLine.profile_type || null,
+    profile: sourceLine.profile || null,
+    edge_mould: sourceLine.edge_mould || null,
+    qty: sourceLine.qty ?? 1,
+    line_total_ex_gst: sourceLine.line_total_ex_gst ?? 0,
+  };
+}
+
 async function loadEditableVariation(supabase, orderId, variationId) {
   const { data, error } = await supabase
     .from("pcd_order_variations")
@@ -69,6 +91,7 @@ function linePayload(payload, sourceLine = null) {
     qty: Math.max(0, toNumber(payload.qty ?? sourceLine?.qty, 1)),
     original_line_total_ex_gst: original,
     proposed_line_total_ex_gst: proposed,
+    original_item_snapshot: action === "change" || action === "remove" ? originalItemSnapshot(sourceLine) : null,
     notes: cleanText(payload.notes),
   };
   row.line_total_ex_gst = variationLineDelta(row);
@@ -80,8 +103,15 @@ function isMissingSupplierNameColumn(error) {
   return error?.code === "PGRST204" && message.includes("supplier_name") && message.includes("pcd_order_variation_lines");
 }
 
-function withoutSupplierName(row) {
-  const { supplier_name: _supplierName, ...rest } = row;
+function isMissingOriginalSnapshotColumn(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.code === "PGRST204" && message.includes("original_item_snapshot") && message.includes("pcd_order_variation_lines");
+}
+
+function withoutFallbackColumns(row, error) {
+  const rest = { ...row };
+  if (isMissingSupplierNameColumn(error)) delete rest.supplier_name;
+  if (isMissingOriginalSnapshotColumn(error)) delete rest.original_item_snapshot;
   return rest;
 }
 
@@ -114,10 +144,10 @@ export async function POST(request, { params }) {
       .insert(row)
       .select("*")
       .single();
-    if (isMissingSupplierNameColumn(error)) {
+    if (isMissingSupplierNameColumn(error) || isMissingOriginalSnapshotColumn(error)) {
       const retry = await context.supabase
         .from("pcd_order_variation_lines")
-        .insert(withoutSupplierName(row))
+        .insert(withoutFallbackColumns(row, error))
         .select("*")
         .single();
       line = retry.data;

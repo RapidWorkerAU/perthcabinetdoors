@@ -21,6 +21,75 @@ function actionLabel(value) {
   return titleCase(value);
 }
 
+function itemTitle(item) {
+  return item?.title || item?.product_type || "Variation item";
+}
+
+function itemDetails(item) {
+  return [
+    item?.material,
+    item?.colour || item?.finish,
+    item?.thickness,
+    item?.profile_type,
+    item?.profile,
+    item?.edge_mould,
+  ].filter(Boolean);
+}
+
+function sizeText(item) {
+  const width = toNumber(item?.width_mm);
+  const height = toNumber(item?.height_mm);
+  if (width > 0 && height > 0) return `${width}mm x ${height}mm`;
+  if (width > 0) return `${width}mm wide`;
+  if (height > 0) return `${height}mm high`;
+  return "";
+}
+
+function specRows(item, currency, totalField = "line_total_ex_gst") {
+  const rows = itemDetails(item);
+  const size = sizeText(item);
+  if (size) rows.push(size);
+  rows.push(`Qty ${item?.qty || 1}`);
+  rows.push(`${formatMoney(item?.[totalField], currency)} ex GST`);
+  return rows;
+}
+
+function ChangeSpec({ label, item, fallback, currency, totalField }) {
+  return (
+    <div className={styles.variationChangeSpec}>
+      <span>{label}</span>
+      {item ? (
+        <>
+          <strong>{itemTitle(item)}</strong>
+          {specRows(item, currency, totalField).map((row, index) => (
+            <small key={`${label}-${index}`}>{row}</small>
+          ))}
+        </>
+      ) : (
+        <strong>{fallback}</strong>
+      )}
+    </div>
+  );
+}
+
+function proposedItemFromLine(line) {
+  return {
+    title: line.title,
+    product_type: line.product_type,
+    material: line.material,
+    colour: line.colour,
+    finish: line.finish,
+    thickness: line.thickness,
+    profile_type: line.profile_type,
+    profile: line.profile,
+    edge_mould: line.edge_mould,
+    width_mm: line.width_mm,
+    height_mm: line.height_mm,
+    qty: line.qty,
+    proposed_line_total_ex_gst: line.proposed_line_total_ex_gst,
+  };
+}
+
 async function readJsonResponse(response) {
   const text = await response.text();
   try {
@@ -154,10 +223,8 @@ export default function VariationApprovalClient() {
                 <tr>
                   <th>#</th>
                   <th>Action</th>
-                  <th>Item</th>
-                  <th>Qty</th>
-                  <th>Current ex GST</th>
-                  <th>Proposed ex GST</th>
+                  <th>Current</th>
+                  <th>Proposed</th>
                   <th>Variation ex GST</th>
                   <th>Notes</th>
                 </tr>
@@ -168,13 +235,22 @@ export default function VariationApprovalClient() {
                     <td>{index + 1}</td>
                     <td>{actionLabel(line.action)}</td>
                     <td>
-                      <strong>{line.title || line.product_type || "Variation item"}</strong>
-                      <br />
-                      <span>{[line.material, line.colour, line.thickness].filter(Boolean).join(" - ") || "-"}</span>
+                      <ChangeSpec
+                        label="Changed from"
+                        item={line.action === "add" || line.action === "price_adjustment" ? null : line.original_order_item}
+                        fallback={line.action === "add" ? "New item" : "Original item"}
+                        currency={variation.currency}
+                      />
                     </td>
-                    <td>{line.qty || 1}</td>
-                    <td>{formatMoney(line.original_line_total_ex_gst, variation.currency)}</td>
-                    <td>{formatMoney(line.proposed_line_total_ex_gst, variation.currency)}</td>
+                    <td>
+                      <ChangeSpec
+                        label="Changed to"
+                        item={line.action === "remove" ? null : proposedItemFromLine(line)}
+                        fallback={line.action === "remove" ? "Removed from order" : "Adjustment"}
+                        currency={variation.currency}
+                        totalField="proposed_line_total_ex_gst"
+                      />
+                    </td>
                     <td>{formatMoney(line.line_total_ex_gst, variation.currency)}</td>
                     <td>{line.notes || "-"}</td>
                   </tr>

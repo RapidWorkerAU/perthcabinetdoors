@@ -18,6 +18,40 @@ function nullableNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function originalItemSnapshot(sourceLine) {
+  if (!sourceLine) return null;
+  return {
+    id: sourceLine.id || null,
+    title: sourceLine.title || null,
+    description: sourceLine.description || null,
+    product_type: sourceLine.product_type || null,
+    material: sourceLine.material || null,
+    supplier_name: sourceLine.supplier_name || null,
+    thickness: sourceLine.thickness || null,
+    width_mm: sourceLine.width_mm ?? null,
+    height_mm: sourceLine.height_mm ?? null,
+    finish: sourceLine.finish || null,
+    colour: sourceLine.colour || null,
+    profile_type: sourceLine.profile_type || null,
+    profile: sourceLine.profile || null,
+    edge_mould: sourceLine.edge_mould || null,
+    qty: sourceLine.qty ?? 1,
+    line_total_ex_gst: sourceLine.line_total_ex_gst ?? 0,
+  };
+}
+
+async function existingOrderLine(supabase, orderId, itemId) {
+  if (!itemId) return null;
+  const { data, error } = await supabase
+    .from("pcd_order_line_items")
+    .select("*")
+    .eq("id", itemId)
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function assertEditable(supabase, orderId, variationId) {
   const { data, error } = await supabase
     .from("pcd_order_variations")
@@ -29,7 +63,7 @@ async function assertEditable(supabase, orderId, variationId) {
   if (isVariationFinal(data.status)) throw new Error("Finalised variations cannot be edited.");
 }
 
-function updatesFromPayload(payload, before) {
+function updatesFromPayload(payload, before, sourceLine = null) {
   const updates = {};
   if (Object.prototype.hasOwnProperty.call(payload, "action")) {
     if (!VARIATION_LINE_ACTIONS.includes(payload.action)) throw new Error("Invalid variation line action.");
@@ -59,6 +93,11 @@ function updatesFromPayload(payload, before) {
     if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = toNumber(payload[field]);
   });
   const next = { ...before, ...updates };
+  if (next.action === "change" || next.action === "remove") {
+    if (sourceLine) updates.original_item_snapshot = originalItemSnapshot(sourceLine);
+  } else if (Object.prototype.hasOwnProperty.call(payload, "action")) {
+    updates.original_item_snapshot = null;
+  }
   updates.line_total_ex_gst = variationLineDelta(next);
   return updates;
 }
@@ -68,8 +107,15 @@ function isMissingSupplierNameColumn(error) {
   return error?.code === "PGRST204" && message.includes("supplier_name") && message.includes("pcd_order_variation_lines");
 }
 
-function withoutSupplierName(row) {
-  const { supplier_name: _supplierName, ...rest } = row;
+function isMissingOriginalSnapshotColumn(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.code === "PGRST204" && message.includes("original_item_snapshot") && message.includes("pcd_order_variation_lines");
+}
+
+function withoutFallbackColumns(row, error) {
+  const rest = { ...row };
+  if (isMissingSupplierNameColumn(error)) delete rest.supplier_name;
+  if (isMissingOriginalSnapshotColumn(error)) delete rest.original_item_snapshot;
   return rest;
 }
 
@@ -89,7 +135,18 @@ export async function PATCH(request, { params }) {
       .maybeSingle();
     if (!before) return Response.json({ ok: false, error: "Variation line not found." }, { status: 404 });
 
-    const updates = updatesFromPayload(payload, before);
+    const nextAction = payload.action || before.action;
+    const nextOrderLineItemId = Object.prototype.hasOwnProperty.call(payload, "order_line_item_id")
+      ? payload.order_line_item_id
+      : before.order_line_item_id;
+    const sourceLine = ["change", "remove"].includes(nextAction)
+      ? await existingOrderLine(context.supabase, orderId, nextOrderLineItemId)
+      : null;
+    if (["change", "remove"].includes(nextAction) && !sourceLine) {
+      return Response.json({ ok: false, error: "Choose an order line for this variation action." }, { status: 400 });
+    }
+
+    const updates = updatesFromPayload(payload, before, sourceLine);
     let { data: line, error } = await context.supabase
       .from("pcd_order_variation_lines")
       .update(updates)
@@ -97,10 +154,10 @@ export async function PATCH(request, { params }) {
       .eq("variation_id", variationId)
       .select("*")
       .single();
-    if (isMissingSupplierNameColumn(error)) {
+    if (isMissingSupplierNameColumn(error) || isMissingOriginalSnapshotColumn(error)) {
       const retry = await context.supabase
         .from("pcd_order_variation_lines")
-        .update(withoutSupplierName(updates))
+        .update(withoutFallbackColumns(updates, error))
         .eq("id", lineId)
         .eq("variation_id", variationId)
         .select("*")
