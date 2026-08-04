@@ -8,8 +8,15 @@ export const metadata = {
 
 export default function VariationViewPage() {
   return (
-    <main className="min-h-screen bg-[#f5f8f4] px-4 py-8">
-      <div className="mx-auto max-w-6xl">
+    <div className={`${styles.page} ${styles.quoteViewPage}`}>
+      <section className={styles.quoteViewHero}>
+        <div className={styles.quoteViewHeroInner}>
+          <img src="/images/light-pcd-logo-horizontal.png" alt="Perth Cabinet Doors" className={styles.quoteViewLogo} />
+          <h1>Order Variation</h1>
+          <p>Review the changes, confirm the revised scope, and approve or reject when ready.</p>
+        </div>
+      </section>
+      <main className={styles.quoteViewMain}>
         <Suspense
           fallback={
             <section className={styles.panel}>
@@ -20,7 +27,7 @@ export default function VariationViewPage() {
         >
           <VariationApprovalClient />
         </Suspense>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
