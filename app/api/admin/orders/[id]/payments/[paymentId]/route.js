@@ -3,6 +3,24 @@ import { describeChanges, logOrderActivity } from "../../../../../../../lib/pcd-
 
 const PAYMENT_TYPES = new Set(["deposit", "progress", "final", "other"]);
 
+function hasPaymentRequest(payment) {
+  return Boolean(
+    payment?.request_status ||
+    payment?.requested_at ||
+    payment?.request_url ||
+    payment?.stripe_checkout_session_id ||
+    payment?.stripe_payment_intent_id
+  );
+}
+
+function canDeletePayment(payment) {
+  return Boolean(payment) && !payment.is_paid && !hasPaymentRequest(payment);
+}
+
+function canEditPaymentFinancialFields(payment) {
+  return Boolean(payment) && !payment.is_paid && !hasPaymentRequest(payment);
+}
+
 async function idsFromParams(params) {
   const resolved = await params;
   return { orderId: resolved?.id, paymentId: resolved?.paymentId };
@@ -100,6 +118,18 @@ export async function PATCH(request, { params }) {
       .eq("order_id", orderId)
       .maybeSingle();
 
+    if (!beforePayment) {
+      return Response.json({ ok: false, error: "Payment not found." }, { status: 404 });
+    }
+
+    const financialFields = ["payment_type", "amount", "is_paid", "paid_at"];
+    if (!canEditPaymentFinancialFields(beforePayment) && financialFields.some((field) => Object.prototype.hasOwnProperty.call(updates, field))) {
+      return Response.json(
+        { ok: false, error: "Paid or requested payment lines can only have notes edited." },
+        { status: 409 }
+      );
+    }
+
     const { data, error } = await context.supabase
       .from("pcd_order_payments")
       .update(updates)
@@ -149,6 +179,17 @@ export async function DELETE(_request, { params }) {
       .eq("id", paymentId)
       .eq("order_id", orderId)
       .maybeSingle();
+
+    if (!beforePayment) {
+      return Response.json({ ok: false, error: "Payment not found." }, { status: 404 });
+    }
+
+    if (!canDeletePayment(beforePayment)) {
+      return Response.json(
+        { ok: false, error: "Only unpaid payment lines with no sent payment request can be deleted." },
+        { status: 409 }
+      );
+    }
 
     const { error } = await context.supabase
       .from("pcd_order_payments")

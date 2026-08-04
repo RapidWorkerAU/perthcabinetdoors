@@ -1,4 +1,5 @@
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
+import { applyAcceptedVariation } from "../../../../lib/pcd-order-variations";
 import { sendPaymentReceivedSalesEmail } from "../../../../lib/pcd-payment-notifications";
 import { fromCents, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
@@ -36,6 +37,7 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
   const paymentId = metadata.payment_id;
   const orderId = metadata.order_id;
   const quoteId = metadata.quote_id || null;
+  const variationId = metadata.variation_id || null;
   if (!paymentId || !orderId) return;
 
   const { data: existingPayment, error: existingPaymentError } = await supabase
@@ -92,6 +94,10 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
     }
   }
 
+  if (metadata.flow === "variation_deposit_topup" && variationId) {
+    await applyAcceptedVariation(supabase, variationId, { actorType: "system" });
+  }
+
   const [{ data: order }, { data: quote }] = await Promise.all([
     supabase.from("pcd_orders").select("*").eq("id", orderId).maybeSingle(),
     quoteId ? supabase.from("pcd_quotes").select("*").eq("id", quoteId).maybeSingle() : Promise.resolve({ data: null }),
@@ -100,6 +106,7 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
   await logOrderActivity(supabase, {
     order_id: orderId,
     quote_id: quoteId,
+    variation_id: variationId,
     actor_type: "customer",
     action_type: "payment_received",
     title: "Payment received",

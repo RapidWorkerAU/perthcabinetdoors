@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { IconMessage } from "@tabler/icons-react";
 import {
   DEFAULT_BUSINESS_DEFAULTS,
   formatMoney,
@@ -12,7 +14,6 @@ import {
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
-import { AdminPagination, useAdminPagination } from "../../_components/AdminPagination";
 
 const sections = [
   { key: "overview", label: "Overview" },
@@ -22,6 +23,7 @@ const sections = [
   { key: "madeInHouse", label: "Made In House" },
   { key: "cutList", label: "Cut List" },
   { key: "payments", label: "Payments" },
+  { key: "variations", label: "Variations" },
   { key: "activity", label: "Activity Log" },
   { key: "notes", label: "Notes" },
 ];
@@ -34,7 +36,9 @@ const paymentTypes = [
 ];
 
 function sortedItems(order) {
-  return [...(order?.pcd_order_line_items || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  return [...(order?.pcd_order_line_items || [])]
+    .filter((item) => item.variation_status !== "removed")
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 }
 
 function sortedQuoteLines(order) {
@@ -49,6 +53,12 @@ function sortedPayments(order) {
 
 function sortedActivity(order) {
   return [...(order?.pcd_order_activity || [])].sort(
+    (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+  );
+}
+
+function sortedVariations(order) {
+  return [...(order?.pcd_order_variations || [])].sort(
     (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
   );
 }
@@ -310,12 +320,14 @@ function lineValue(value, fallback = "-") {
 }
 
 export default function OrderDetail({ orderId }) {
+  const router = useRouter();
   const [order, setOrder] = useState(null);
   const [activeSection, setActiveSection] = useState("overview");
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [savingItemId, setSavingItemId] = useState("");
   const [savingPaymentId, setSavingPaymentId] = useState("");
+  const [editingPaymentId, setEditingPaymentId] = useState("");
   const [isGeneratingCutListPdf, setIsGeneratingCutListPdf] = useState(false);
   const { toast } = useToast();
   const [colourSupplierMap, setColourSupplierMap] = useState({});
@@ -340,12 +352,7 @@ export default function OrderDetail({ orderId }) {
   const quoteLines = useMemo(() => sortedQuoteLines(order), [order]);
   const payments = useMemo(() => sortedPayments(order), [order]);
   const activity = useMemo(() => sortedActivity(order), [order]);
-  const planningPagination = useAdminPagination(planningRows);
-  const supplierMadePagination = useAdminPagination(supplierMadeRows);
-  const madeInHousePagination = useAdminPagination(madeInHouseRows);
-  const cutListPagination = useAdminPagination(cutListRows);
-  const paymentPagination = useAdminPagination(payments);
-  const activityPagination = useAdminPagination(activity);
+  const variations = useMemo(() => sortedVariations(order), [order]);
   const paymentTotals = useMemo(() => {
     const orderTotal = Number(order?.total_inc_gst || 0);
     const pending = payments.reduce((total, payment) => total + (!payment.is_paid ? Number(payment.amount || 0) : 0), 0);
@@ -373,9 +380,9 @@ export default function OrderDetail({ orderId }) {
     muted: "text-[11px] text-[#8b8a81]",
     mono: "font-mono",
     pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border",
-    tableWrap: "overflow-x-auto",
+    tableWrap: "overflow-x-auto md:max-h-[calc(100vh-260px)] md:overflow-auto",
     table: "w-full text-[13px] border-collapse",
-    th: "text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] px-4 py-[9px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
+    th: "sticky top-0 z-10 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] px-4 py-[9px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
     td: "px-4 py-[11px] border-b border-[#edf4eb] text-[#1a1a18] align-middle",
     tdLast: "px-4 py-[11px] text-[#1a1a18] align-middle",
     inlineInput: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
@@ -530,6 +537,28 @@ export default function OrderDetail({ orderId }) {
     }
   }
 
+  async function createVariation() {
+    if (!order) return;
+    setIsSavingOrder(true);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/variations`, { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        toast({ title: payload.error || "Could not create variation.", variant: "error" });
+        return;
+      }
+      setOrder((current) => current ? {
+        ...current,
+        pcd_order_variations: [payload.variation, ...(current.pcd_order_variations || [])],
+      } : current);
+      router.push(`/admin/orders/${orderId}/variations/${payload.variation.id}`);
+    } catch (error) {
+      toast({ title: error?.message || "Could not create variation.", variant: "error" });
+    } finally {
+      setIsSavingOrder(false);
+    }
+  }
+
   async function updatePayment(payment, changes) {
     if (!order) return;
     const previousOrder = order;
@@ -565,6 +594,10 @@ export default function OrderDetail({ orderId }) {
 
   async function deletePayment(payment) {
     if (!order) return;
+    if (!canDeletePaymentLine(payment)) {
+      toast({ title: "Only unpaid payment lines with no sent payment request can be deleted.", variant: "error" });
+      return;
+    }
     const previousOrder = order;
     setSavingPaymentId(payment.id);
     setOrder((current) =>
@@ -585,6 +618,7 @@ export default function OrderDetail({ orderId }) {
         return withSyncedDepositFields(current, current.pcd_order_payments || []);
       });
       toast({ title: "Payment line deleted.", variant: "success" });
+      closePaymentEdit(payment.id);
     } catch (error) {
       setOrder(previousOrder);
       toast({ title: error?.message || "Could not delete payment.", variant: "error" });
@@ -734,6 +768,74 @@ export default function OrderDetail({ orderId }) {
     });
   }
 
+  function paymentHasRequest(payment) {
+    return Boolean(
+      payment?.request_status ||
+      payment?.requested_at ||
+      payment?.request_url ||
+      payment?.stripe_checkout_session_id ||
+      payment?.stripe_payment_intent_id
+    );
+  }
+
+  function canDeletePaymentLine(payment) {
+    return !payment?.is_paid && !paymentHasRequest(payment);
+  }
+
+  function canRequestPaymentLine(payment) {
+    return !payment?.is_paid && !paymentHasRequest(payment) && Number(payment?.amount || 0) > 0;
+  }
+
+  function canEditPaymentFinancialFields(payment) {
+    return !payment?.is_paid && !paymentHasRequest(payment);
+  }
+
+  function paymentStatusText(payment) {
+    if (payment.is_paid) return "Paid";
+    if (paymentHasRequest(payment)) return "Requested";
+    return "Pending";
+  }
+
+  function paymentStatusClass(payment) {
+    if (payment.is_paid) return "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]";
+    if (paymentHasRequest(payment)) return "bg-[#fffbeb] text-[#92400e] border-[#fcd34d]";
+    return "bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]";
+  }
+
+  function paymentTypeText(value) {
+    return paymentTypes.find((type) => type.value === value)?.label || titleCaseStatus(value || "progress");
+  }
+
+  function closePaymentEdit(paymentId) {
+    setEditingPaymentId((current) => (current === paymentId ? "" : current));
+  }
+
+  function panelNotesButton(row, className = "") {
+    const hasNotes = Boolean(row.plan.notes);
+    const disabled = savingItemId === row.item.id;
+    return (
+      <button
+        type="button"
+        className={`inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+          hasNotes
+            ? "border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28] hover:bg-[#dfeedd]"
+            : "border-[#dbd8cc] bg-white text-[#8b8a81] hover:bg-[#f5f8f4] hover:text-[#1a1a18]"
+        } ${className}`}
+        onClick={() => openPanelNotes(row)}
+        disabled={disabled}
+        title={hasNotes ? row.plan.notes : "No notes attached"}
+        aria-label={hasNotes ? `View notes for ${row.piece}` : `Add notes for ${row.piece}`}
+      >
+        <span className="relative inline-flex">
+          <IconMessage size={13} />
+          {hasNotes && (
+            <span className="absolute -right-[3px] -top-[3px] h-[5px] w-[5px] rounded-full bg-[#2d5e28] ring-1 ring-white" />
+          )}
+        </span>
+      </button>
+    );
+  }
+
   function supplierLookupKey(value) {
     return String(value || "")
       .trim()
@@ -863,22 +965,22 @@ export default function OrderDetail({ orderId }) {
     const quote = order.pcd_quote || order;
     const quoteCurrency = quote.currency || "AUD";
     return (
-      <div>
+      <div className="md:flex md:h-full md:min-h-0 md:flex-col">
         <div className="mb-3 px-3 py-2 bg-[#edf4eb] border border-[#a8c5a0] rounded-[6px] text-[12px] text-[#2d5e28]">
           Read only — edit line items in the original quote.
         </div>
 
-        <div className={tw.card}>
+        <div className={`${tw.card} md:flex md:min-h-0 md:flex-1 md:flex-col`}>
           <div className={tw.cardHeader}>
             <span className={tw.cardTitle}>Line items</span>
             <span className={tw.muted}>{quoteLines.length} {quoteLines.length === 1 ? "line" : "lines"}</span>
           </div>
-          <div className={tw.tableWrap}>
+          <div className={`${tw.tableWrap} md:min-h-0 md:flex-1 md:overflow-auto`}>
             <table className={tw.table}>
               <thead>
                 <tr>
                   {["#","Type","Material / colour","Size","Qty","Edge","Drill?","Supply?","Hinge qty","Unit cost","Markup","Unit price","Total ex GST"].map(h => (
-                    <th key={h} className={tw.th}>{h}</th>
+                    <th key={h} className={`${tw.th} md:sticky md:top-0 md:z-10`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -939,7 +1041,7 @@ export default function OrderDetail({ orderId }) {
                 </tr>
               </thead>
               <tbody>
-                {planningPagination.pageItems.map(row => {
+                {planningRows.map(row => {
                   const item = row.item;
                   const thermolaminated = isThermolaminatedItem(item);
                   return (
@@ -974,16 +1076,9 @@ export default function OrderDetail({ orderId }) {
               </tbody>
             </table>
           </div>
-          <AdminPagination
-            label="planning rows"
-            page={planningPagination.page}
-            pageCount={planningPagination.pageCount}
-            totalItems={planningPagination.totalItems}
-            onPageChange={planningPagination.setPage}
-          />
         </div>
         <div className="md:hidden flex flex-col gap-3 p-3">
-          {planningPagination.pageItems.map(row => {
+          {planningRows.map(row => {
             const item = row.item;
             const thermolaminated = isThermolaminatedItem(item);
             return (
@@ -1016,7 +1111,6 @@ export default function OrderDetail({ orderId }) {
           {!planningRows.length && (
             <p className="py-8 text-center text-[12px] text-[#8b8a81]">No order items yet.</p>
           )}
-          <AdminPagination label="planning rows" page={planningPagination.page} pageCount={planningPagination.pageCount} totalItems={planningPagination.totalItems} onPageChange={planningPagination.setPage} />
         </div>
       </div>
     );
@@ -1036,7 +1130,7 @@ export default function OrderDetail({ orderId }) {
                 </tr>
               </thead>
               <tbody>
-                {supplierMadePagination.pageItems.map(row => (
+                {supplierMadeRows.map(row => (
                   <tr key={row.key}>
                     <td className={tw.td}>
                       <p className="text-[12px] font-semibold text-[#1a1a18]">{row.source}</p>
@@ -1096,13 +1190,7 @@ export default function OrderDetail({ orderId }) {
                       />
                     </td>
                     <td className={tw.tdLast}>
-                      <button
-                        type="button"
-                        className={tw.smBtn}
-                        onClick={() => openPanelNotes(row)}
-                      >
-                        {row.plan.notes ? "Edit notes" : "Add notes"}
-                      </button>
+                      {panelNotesButton(row)}
                     </td>
                   </tr>
                 ))}
@@ -1112,16 +1200,9 @@ export default function OrderDetail({ orderId }) {
               </tbody>
             </table>
           </div>
-          <AdminPagination
-            label="supplier-made items"
-            page={supplierMadePagination.page}
-            pageCount={supplierMadePagination.pageCount}
-            totalItems={supplierMadePagination.totalItems}
-            onPageChange={supplierMadePagination.setPage}
-          />
         </div>
         <div className="md:hidden flex flex-col gap-3 p-3">
-          {supplierMadePagination.pageItems.map(row => (
+          {supplierMadeRows.map(row => (
             <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
               <div className="mb-3">
                 <p className="text-[13px] font-semibold text-[#1a1a18]">{row.source}</p>
@@ -1152,14 +1233,13 @@ export default function OrderDetail({ orderId }) {
                 </label>
               </div>
               <div className="pt-3 mt-3 border-t border-[#edf4eb]">
-                <button type="button" className={tw.smBtn} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button>
+                {panelNotesButton(row)}
               </div>
             </article>
           ))}
           {!supplierMadeRows.length && (
             <p className="py-8 text-center text-[12px] text-[#8b8a81]">No supplier-made items yet.</p>
           )}
-          <AdminPagination label="supplier-made items" page={supplierMadePagination.page} pageCount={supplierMadePagination.pageCount} totalItems={supplierMadePagination.totalItems} onPageChange={supplierMadePagination.setPage} />
         </div>
       </div>
     );
@@ -1179,7 +1259,7 @@ export default function OrderDetail({ orderId }) {
                 </tr>
               </thead>
               <tbody>
-                {madeInHousePagination.pageItems.map(row => {
+                {madeInHouseRows.map(row => {
                   const boardRequired = !!row.plan.board_required;
                   return (
                     <tr key={row.key}>
@@ -1253,13 +1333,7 @@ export default function OrderDetail({ orderId }) {
                         </select>
                       </td>
                       <td className={tw.tdLast}>
-                        <button
-                          type="button"
-                          className={tw.smBtn}
-                          onClick={() => openPanelNotes(row)}
-                        >
-                          {row.plan.notes ? "Edit notes" : "Add notes"}
-                        </button>
+                        {panelNotesButton(row)}
                       </td>
                     </tr>
                   );
@@ -1270,16 +1344,9 @@ export default function OrderDetail({ orderId }) {
               </tbody>
             </table>
           </div>
-          <AdminPagination
-            label="made-in-house items"
-            page={madeInHousePagination.page}
-            pageCount={madeInHousePagination.pageCount}
-            totalItems={madeInHousePagination.totalItems}
-            onPageChange={madeInHousePagination.setPage}
-          />
         </div>
         <div className="md:hidden flex flex-col gap-3 p-3">
-          {madeInHousePagination.pageItems.map(row => {
+          {madeInHouseRows.map(row => {
             const boardRequired = !!row.plan.board_required;
             return (
               <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
@@ -1319,7 +1386,7 @@ export default function OrderDetail({ orderId }) {
                   </label>
                 </div>
                 <div className="pt-3 mt-3 border-t border-[#edf4eb]">
-                  <button type="button" className={tw.smBtn} onClick={() => openPanelNotes(row)}>{row.plan.notes ? "Edit notes" : "Add notes"}</button>
+                  {panelNotesButton(row)}
                 </div>
               </article>
             );
@@ -1327,7 +1394,6 @@ export default function OrderDetail({ orderId }) {
           {!madeInHouseRows.length && (
             <p className="py-8 text-center text-[12px] text-[#8b8a81]">No made-in-house items yet.</p>
           )}
-          <AdminPagination label="made-in-house items" page={madeInHousePagination.page} pageCount={madeInHousePagination.pageCount} totalItems={madeInHousePagination.totalItems} onPageChange={madeInHousePagination.setPage} />
         </div>
       </div>
     );
@@ -1368,10 +1434,10 @@ export default function OrderDetail({ orderId }) {
                 </tr>
               </thead>
               <tbody>
-                {cutListPagination.pageItems.map((row, index) => (
+                {cutListRows.map((row, index) => (
                   <tr key={row.key}>
                     <td className={tw.td + " text-[#8b8a81] font-mono text-[11px]"}>
-                      {(cutListPagination.page - 1) * 8 + index + 1}
+                      {index + 1}
                     </td>
                     <td className={tw.td}>{row.source}</td>
                     <td className={tw.td + " whitespace-nowrap text-[#5a5a52]"}>{row.cabinet || "—"}</td>
@@ -1390,16 +1456,9 @@ export default function OrderDetail({ orderId }) {
               </tbody>
             </table>
           </div>
-          <AdminPagination
-            label="cut list rows"
-            page={cutListPagination.page}
-            pageCount={cutListPagination.pageCount}
-            totalItems={cutListPagination.totalItems}
-            onPageChange={cutListPagination.setPage}
-          />
         </div>
         <div className="md:hidden flex flex-col gap-3 p-3">
-          {cutListPagination.pageItems.map(row => (
+          {cutListRows.map(row => (
             <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
               <div className="mb-2">
                 <p className="text-[13px] font-semibold text-[#1a1a18]">{row.piece}</p>
@@ -1423,7 +1482,6 @@ export default function OrderDetail({ orderId }) {
           {!cutListRows.length && (
             <p className="py-8 text-center text-[12px] text-[#8b8a81]">No cut list rows yet. Assign items to Made in house in Item Planning first.</p>
           )}
-          <AdminPagination label="cut list rows" page={cutListPagination.page} pageCount={cutListPagination.pageCount} totalItems={cutListPagination.totalItems} onPageChange={cutListPagination.setPage} />
         </div>
       </div>
     );
@@ -1477,158 +1535,219 @@ export default function OrderDetail({ orderId }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {paymentPagination.pageItems.map(payment => (
-                    <tr key={payment.id}>
-                      <td className={tw.td}>
-                        <select
-                          className={tw.inlineSelect}
-                          style={{minWidth: "120px"}}
-                          value={payment.payment_type || "progress"}
-                          disabled={savingPaymentId === payment.id}
-                          onChange={e => updatePayment(payment, { payment_type: e.target.value })}
-                        >
-                          {paymentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-                        </select>
-                      </td>
-                      <td className={tw.td}>
-                        <input
-                          className={tw.inlineInput + " font-mono"}
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          style={{minWidth: "100px"}}
-                          value={payment.amount ?? ""}
-                          disabled={savingPaymentId === payment.id}
-                          onChange={e => updatePaymentLocal(payment.id, { amount: e.target.value })}
-                          onBlur={e => updatePayment(payment, { amount: e.target.value || 0 })}
-                        />
-                      </td>
-                      <td className={tw.td}>
-                        <select
-                          className={tw.inlineSelect}
-                          style={{minWidth: "90px"}}
-                          value={payment.is_paid ? "paid" : "pending"}
-                          disabled={savingPaymentId === payment.id}
-                          onChange={e => updatePayment(payment, { is_paid: e.target.value === "paid" })}
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="paid">Paid</option>
-                        </select>
-                      </td>
-                      <td className={tw.td}>
-                        <input
-                          className={tw.inlineInput}
-                          type="date"
-                          style={{minWidth: "130px"}}
-                          value={payment.paid_at || ""}
-                          disabled={savingPaymentId === payment.id || !payment.is_paid}
-                          onChange={e => updatePaymentLocal(payment.id, { paid_at: e.target.value })}
-                          onBlur={e => updatePayment(payment, { paid_at: e.target.value })}
-                        />
-                      </td>
-                      <td className={tw.td}>
-                        <input
-                          className={tw.inlineInput}
-                          style={{minWidth: "160px"}}
-                          value={payment.notes || ""}
-                          disabled={savingPaymentId === payment.id}
-                          onChange={e => updatePaymentLocal(payment.id, { notes: e.target.value })}
-                          onBlur={e => updatePayment(payment, { notes: e.target.value })}
-                        />
-                      </td>
-                      <td className={tw.tdLast}>
-                        <div className="flex items-center gap-2">
-                          {!payment.is_paid && Number(payment.amount || 0) > 0 && (
+                  {payments.map(payment => {
+                    const isEditing = editingPaymentId === payment.id;
+                    const isSaving = savingPaymentId === payment.id;
+                    const hasRequest = paymentHasRequest(payment);
+                    const canEditFinancialFields = canEditPaymentFinancialFields(payment);
+                    const canDelete = canDeletePaymentLine(payment);
+                    return (
+                      <tr key={payment.id}>
+                        <td className={tw.td}>
+                          {isEditing ? (
+                            <select
+                              className={tw.inlineSelect}
+                              style={{minWidth: "120px"}}
+                              value={payment.payment_type || "progress"}
+                              disabled={isSaving || !canEditFinancialFields}
+                              onChange={e => updatePayment(payment, { payment_type: e.target.value })}
+                            >
+                              {paymentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-[12px] font-medium text-[#1a1a18]">{paymentTypeText(payment.payment_type)}</span>
+                          )}
+                        </td>
+                        <td className={tw.td}>
+                          {isEditing ? (
+                            <input
+                              className={tw.inlineInput + " font-mono"}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              style={{minWidth: "100px"}}
+                              value={payment.amount ?? ""}
+                              disabled={isSaving || !canEditFinancialFields}
+                              onChange={e => updatePaymentLocal(payment.id, { amount: e.target.value })}
+                              onBlur={e => updatePayment(payment, { amount: e.target.value || 0 })}
+                            />
+                          ) : (
+                            <span className="font-mono text-[12px] text-[#1a1a18]">{formatMoney(Number(payment.amount || 0), order.currency || "AUD")}</span>
+                          )}
+                        </td>
+                        <td className={tw.td}>
+                          {isEditing ? (
+                            <select
+                              className={tw.inlineSelect}
+                              style={{minWidth: "90px"}}
+                              value={payment.is_paid ? "paid" : "pending"}
+                              disabled={isSaving || !canEditFinancialFields}
+                              onChange={e => updatePayment(payment, { is_paid: e.target.value === "paid" })}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="paid">Paid</option>
+                            </select>
+                          ) : (
+                            <span className={`${tw.pill} ${paymentStatusClass(payment)}`}>{paymentStatusText(payment)}</span>
+                          )}
+                        </td>
+                        <td className={tw.td}>
+                          {isEditing ? (
+                            <input
+                              className={tw.inlineInput}
+                              type="date"
+                              style={{minWidth: "130px"}}
+                              value={payment.paid_at || ""}
+                              disabled={isSaving || !canEditFinancialFields || !payment.is_paid}
+                              onChange={e => updatePaymentLocal(payment.id, { paid_at: e.target.value })}
+                              onBlur={e => updatePayment(payment, { paid_at: e.target.value })}
+                            />
+                          ) : (
+                            <span className="text-[12px] text-[#5a5a52]">{payment.paid_at ? formatDate(payment.paid_at) : "—"}</span>
+                          )}
+                        </td>
+                        <td className={tw.td}>
+                          {isEditing ? (
+                            <input
+                              className={tw.inlineInput}
+                              style={{minWidth: "160px"}}
+                              value={payment.notes || ""}
+                              disabled={isSaving}
+                              onChange={e => updatePaymentLocal(payment.id, { notes: e.target.value })}
+                              onBlur={e => updatePayment(payment, { notes: e.target.value })}
+                            />
+                          ) : (
+                            <span className="block max-w-[240px] truncate text-[12px] text-[#5a5a52]" title={payment.notes || ""}>{payment.notes || "—"}</span>
+                          )}
+                        </td>
+                        <td className={tw.tdLast}>
+                          <div className="flex items-center gap-2">
+                            {!payment.is_paid && hasRequest && payment.request_url ? (
+                              <a className={tw.smBtn} href={payment.request_url} target="_blank" rel="noopener noreferrer">Payment link</a>
+                            ) : null}
+                            {canRequestPaymentLine(payment) && (
+                              <button
+                                type="button"
+                                className={tw.smBtn}
+                                disabled={isSaving}
+                                onClick={() => setPaymentRequestModal({
+                                  payment,
+                                  subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
+                                  message: [`Hi ${order.customer_name || "there"},`, "", `A payment is requested for ${order.order_number || "your order"}.`, "", "Please use the button below to complete your payment.", "", "Regards,", "Perth Cabinet Doors"].join("\n"),
+                                })}
+                              >
+                                Request
+                              </button>
+                            )}
                             <button
                               type="button"
-                              className={tw.smBtn}
-                              disabled={savingPaymentId === payment.id}
-                              onClick={() => setPaymentRequestModal({
-                                payment,
-                                subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
-                                message: [`Hi ${order.customer_name || "there"},`, "", `A payment is requested for ${order.order_number || "your order"}.`, "", "Please use the button below to complete your payment.", "", "Regards,", "Perth Cabinet Doors"].join("\n"),
-                              })}
+                              className={isEditing ? tw.primaryBtn + " !h-[26px] !px-3 !text-[11px]" : tw.smBtn}
+                              disabled={isSaving}
+                              onClick={() => (isEditing ? closePaymentEdit(payment.id) : setEditingPaymentId(payment.id))}
                             >
-                              Request
+                              {isEditing ? "Done" : "Edit"}
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            className={tw.dangerBtn}
-                            disabled={savingPaymentId === payment.id}
-                            onClick={() => deletePayment(payment)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {canDelete && (
+                              <button
+                                type="button"
+                                className={tw.dangerBtn}
+                                disabled={isSaving}
+                                onClick={() => deletePayment(payment)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {!payments.length && (
                     <tr><td colSpan={6} className="py-8 text-center text-[12px] text-[#8b8a81]">No payment lines yet.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            <AdminPagination
-              label="payments"
-              page={paymentPagination.page}
-              pageCount={paymentPagination.pageCount}
-              totalItems={paymentPagination.totalItems}
-              onPageChange={paymentPagination.setPage}
-            />
           </div>
           <div className="md:hidden flex flex-col gap-3 p-3">
-            {paymentPagination.pageItems.map(payment => (
-              <article key={payment.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
-                <div className="mb-3">
-                  <select
-                    className={tw.inlineSelect}
-                    value={payment.payment_type || "progress"}
-                    disabled={savingPaymentId === payment.id}
-                    onChange={e => updatePayment(payment, { payment_type: e.target.value })}
-                  >
-                    {paymentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-                  </select>
-                </div>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px] mb-3">
-                  <div>
-                    <dt className="text-[#8b8a81] mb-1">Amount</dt>
-                    <dd><input className={tw.inlineInput + " font-mono"} type="number" min="0" step="0.01" value={payment.amount ?? ""} disabled={savingPaymentId === payment.id} onChange={e => updatePaymentLocal(payment.id, { amount: e.target.value })} onBlur={e => updatePayment(payment, { amount: e.target.value || 0 })} /></dd>
+            {payments.map(payment => {
+              const isEditing = editingPaymentId === payment.id;
+              const isSaving = savingPaymentId === payment.id;
+              const hasRequest = paymentHasRequest(payment);
+              const canEditFinancialFields = canEditPaymentFinancialFields(payment);
+              const canDelete = canDeletePaymentLine(payment);
+              return (
+                <article key={payment.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#1a1a18]">{paymentTypeText(payment.payment_type)}</p>
+                      <p className="font-mono text-[12px] text-[#5a5a52]">{formatMoney(Number(payment.amount || 0), order.currency || "AUD")}</p>
+                    </div>
+                    <span className={`${tw.pill} ${paymentStatusClass(payment)}`}>{paymentStatusText(payment)}</span>
                   </div>
-                  <div>
-                    <dt className="text-[#8b8a81] mb-1">Status</dt>
-                    <dd>
-                      <select className={tw.inlineSelect} value={payment.is_paid ? "paid" : "pending"} disabled={savingPaymentId === payment.id} onChange={e => updatePayment(payment, { is_paid: e.target.value === "paid" })}>
-                        <option value="pending">Pending</option>
-                        <option value="paid">Paid</option>
-                      </select>
-                    </dd>
-                  </div>
-                  <div className="col-span-2">
-                    <dt className="text-[#8b8a81] mb-1">Date paid</dt>
-                    <dd><input className={tw.inlineInput} type="date" value={payment.paid_at || ""} disabled={savingPaymentId === payment.id || !payment.is_paid} onChange={e => updatePaymentLocal(payment.id, { paid_at: e.target.value })} onBlur={e => updatePayment(payment, { paid_at: e.target.value })} /></dd>
-                  </div>
-                </dl>
-                <div className="mb-3">
-                  <input className={tw.inlineInput} placeholder="Notes" value={payment.notes || ""} disabled={savingPaymentId === payment.id} onChange={e => updatePaymentLocal(payment.id, { notes: e.target.value })} onBlur={e => updatePayment(payment, { notes: e.target.value })} />
-                </div>
-                <div className="pt-3 mt-3 border-t border-[#edf4eb] flex flex-wrap gap-2">
-                  {!payment.is_paid && Number(payment.amount || 0) > 0 && (
-                    <button type="button" className={tw.smBtn} disabled={savingPaymentId === payment.id} onClick={() => setPaymentRequestModal({
-                      payment,
-                      subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
-                      message: [`Hi ${order.customer_name || "there"},`, "", `A payment is requested for ${order.order_number || "your order"}.`, "", "Please use the button below to complete your payment.", "", "Regards,", "Perth Cabinet Doors"].join("\n"),
-                    })}>Request</button>
+                  {isEditing ? (
+                    <>
+                      <div className="mb-3">
+                        <select
+                          className={tw.inlineSelect}
+                          value={payment.payment_type || "progress"}
+                          disabled={isSaving || !canEditFinancialFields}
+                          onChange={e => updatePayment(payment, { payment_type: e.target.value })}
+                        >
+                          {paymentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                        </select>
+                      </div>
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px] mb-3">
+                        <div>
+                          <dt className="text-[#8b8a81] mb-1">Amount</dt>
+                          <dd><input className={tw.inlineInput + " font-mono"} type="number" min="0" step="0.01" value={payment.amount ?? ""} disabled={isSaving || !canEditFinancialFields} onChange={e => updatePaymentLocal(payment.id, { amount: e.target.value })} onBlur={e => updatePayment(payment, { amount: e.target.value || 0 })} /></dd>
+                        </div>
+                        <div>
+                          <dt className="text-[#8b8a81] mb-1">Status</dt>
+                          <dd>
+                            <select className={tw.inlineSelect} value={payment.is_paid ? "paid" : "pending"} disabled={isSaving || !canEditFinancialFields} onChange={e => updatePayment(payment, { is_paid: e.target.value === "paid" })}>
+                              <option value="pending">Pending</option>
+                              <option value="paid">Paid</option>
+                            </select>
+                          </dd>
+                        </div>
+                        <div className="col-span-2">
+                          <dt className="text-[#8b8a81] mb-1">Date paid</dt>
+                          <dd><input className={tw.inlineInput} type="date" value={payment.paid_at || ""} disabled={isSaving || !canEditFinancialFields || !payment.is_paid} onChange={e => updatePaymentLocal(payment.id, { paid_at: e.target.value })} onBlur={e => updatePayment(payment, { paid_at: e.target.value })} /></dd>
+                        </div>
+                      </dl>
+                      <div className="mb-3">
+                        <input className={tw.inlineInput} placeholder="Notes" value={payment.notes || ""} disabled={isSaving} onChange={e => updatePaymentLocal(payment.id, { notes: e.target.value })} onBlur={e => updatePayment(payment, { notes: e.target.value })} />
+                      </div>
+                    </>
+                  ) : (
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px] mb-3">
+                      <div><dt className="text-[#8b8a81]">Date paid</dt><dd className="text-[#1a1a18]">{payment.paid_at ? formatDate(payment.paid_at) : "—"}</dd></div>
+                      <div><dt className="text-[#8b8a81]">Notes</dt><dd className="text-[#1a1a18]">{payment.notes || "—"}</dd></div>
+                    </dl>
                   )}
-                  <button type="button" className={tw.dangerBtn} disabled={savingPaymentId === payment.id} onClick={() => deletePayment(payment)}>Delete</button>
-                </div>
-              </article>
-            ))}
+                  <div className="pt-3 mt-3 border-t border-[#edf4eb] flex flex-wrap gap-2">
+                    {!payment.is_paid && hasRequest && payment.request_url ? (
+                      <a className={tw.smBtn} href={payment.request_url} target="_blank" rel="noopener noreferrer">Payment link</a>
+                    ) : null}
+                    {canRequestPaymentLine(payment) && (
+                      <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => setPaymentRequestModal({
+                        payment,
+                        subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
+                        message: [`Hi ${order.customer_name || "there"},`, "", `A payment is requested for ${order.order_number || "your order"}.`, "", "Please use the button below to complete your payment.", "", "Regards,", "Perth Cabinet Doors"].join("\n"),
+                      })}>Request</button>
+                    )}
+                    <button type="button" className={isEditing ? tw.primaryBtn + " !h-[26px] !px-3 !text-[11px]" : tw.smBtn} disabled={isSaving} onClick={() => (isEditing ? closePaymentEdit(payment.id) : setEditingPaymentId(payment.id))}>{isEditing ? "Done" : "Edit"}</button>
+                    {canDelete && (
+                      <button type="button" className={tw.dangerBtn} disabled={isSaving} onClick={() => deletePayment(payment)}>Delete</button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
             {!payments.length && (
               <p className="py-8 text-center text-[12px] text-[#8b8a81]">No payment lines yet.</p>
             )}
-            <AdminPagination label="payments" page={paymentPagination.page} pageCount={paymentPagination.pageCount} totalItems={paymentPagination.totalItems} onPageChange={paymentPagination.setPage} />
           </div>
         </div>
       </div>
@@ -1810,6 +1929,71 @@ export default function OrderDetail({ orderId }) {
     );
   }
 
+  function renderVariations() {
+    return (
+      <div className={tw.card}>
+        <div className={tw.cardHeader}>
+          <div>
+            <span className={tw.cardTitle}>Order variations</span>
+            <p className={tw.muted}>Commercial changes are sent to the customer for approval before they update the order.</p>
+          </div>
+          <button type="button" className={tw.primaryBtn} disabled={isSavingOrder} onClick={createVariation}>
+            Create variation
+          </button>
+        </div>
+        <div className={tw.tableWrap}>
+          <table className={tw.table}>
+            <thead>
+              <tr>
+                {["Variation", "Status", "Lines", "Variation total", "Deposit top-up", "Sent", "Approved", "Actions"].map((heading) => (
+                  <th key={heading} className={tw.th}>{heading}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {variations.map((variation) => (
+                <tr key={variation.id}>
+                  <td className={tw.td}>
+                    <p className="text-[12px] font-semibold text-[#1a1a18]">{variation.variation_number}</p>
+                    <p className={tw.muted}>{variation.title || "Order Variation"}</p>
+                  </td>
+                  <td className={tw.td}>
+                    <span className={`${tw.pill} ${
+                      ["applied", "approved"].includes(variation.status)
+                        ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
+                        : variation.status === "approved_pending_payment"
+                        ? "bg-[#fffbeb] text-[#92400e] border-[#fcd34d]"
+                        : ["rejected", "cancelled"].includes(variation.status)
+                        ? "bg-[#fef2f2] text-[#991b1b] border-[#fca5a5]"
+                        : "bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]"
+                    }`}>{titleCaseStatus(variation.status)}</span>
+                  </td>
+                  <td className={tw.td}>{variation.pcd_order_variation_lines?.length || 0}</td>
+                  <td className={tw.td + " font-mono"}>{formatMoney(variation.total_inc_gst, variation.currency || order.currency || "AUD")}</td>
+                  <td className={tw.td + " font-mono"}>{formatMoney(variation.deposit_topup_required, variation.currency || order.currency || "AUD")}</td>
+                  <td className={tw.td}>{formatDate(variation.sent_at)}</td>
+                  <td className={tw.td}>{formatDate(variation.approved_at || variation.applied_at)}</td>
+                  <td className={tw.tdLast}>
+                    <Link className={tw.smBtn} href={`/admin/orders/${orderId}/variations/${variation.id}`}>
+                      Open
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+              {!variations.length ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-[12px] text-[#8b8a81]">
+                    No variations yet. Create one when the customer asks to add, change, or remove accepted scope.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   function renderPanelNotesModal() {
     if (!panelNotesModal) return null;
     const row = panelNotesModal.row;
@@ -1854,7 +2038,7 @@ export default function OrderDetail({ orderId }) {
         </div>
 
         {/* Desktop table */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className={`${tw.tableWrap} hidden md:block`}>
           <table className={tw.table}>
             <thead>
               <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
@@ -1864,7 +2048,7 @@ export default function OrderDetail({ orderId }) {
               </tr>
             </thead>
             <tbody>
-              {activityPagination.pageItems.map((entry) => (
+              {activity.map((entry) => (
                 <tr key={entry.id} className="border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4] transition-colors">
                   <td className={tw.td + ' whitespace-nowrap text-[#8b8a81] text-[11px]'}>
                     {formatDateTime(entry.created_at)}
@@ -1908,7 +2092,7 @@ export default function OrderDetail({ orderId }) {
 
         {/* Mobile cards */}
         <div className="md:hidden flex flex-col divide-y divide-[#edf4eb]">
-          {activityPagination.pageItems.map(entry => (
+          {activity.map(entry => (
             <div key={entry.id} className="px-4 py-3">
               <div className="flex items-start justify-between gap-2 mb-1">
                 <p className="text-[12px] font-semibold text-[#1a1a18]">{entry.title}</p>
@@ -1944,13 +2128,6 @@ export default function OrderDetail({ orderId }) {
           )}
         </div>
 
-        <AdminPagination
-          label="activity entries"
-          page={activityPagination.page}
-          pageCount={activityPagination.pageCount}
-          totalItems={activityPagination.totalItems}
-          onPageChange={activityPagination.setPage}
-        />
       </div>
     );
   }
@@ -1984,6 +2161,7 @@ export default function OrderDetail({ orderId }) {
     if (activeSection === "madeInHouse") return renderMadeInHouse();
     if (activeSection === "cutList") return renderCutList();
     if (activeSection === "payments") return renderPayments();
+    if (activeSection === "variations") return renderVariations();
     if (activeSection === "activity") return renderActivity();
     if (activeSection === "notes") return renderNotes();
     return renderOverview();
@@ -1993,10 +2171,10 @@ export default function OrderDetail({ orderId }) {
 
   return (
     <>
-      <div className="flex flex-col md:flex-row min-h-full">
+      <div className="flex flex-col md:flex-row min-h-full md:h-full md:min-h-0">
 
         {/* Desktop left sidebar nav */}
-        <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 border-r border-[#edf4eb] bg-white">
+        <aside className="hidden md:flex flex-col w-[220px] h-full min-h-0 flex-shrink-0 border-r border-[#edf4eb] bg-white">
           <div className="px-4 py-4 border-b border-[#edf4eb]">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">Order</p>
             <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{order.order_number || "Order"}</p>
@@ -2064,8 +2242,8 @@ export default function OrderDetail({ orderId }) {
         </div>
 
         {/* Desktop right content panel */}
-        <main className="hidden md:flex flex-1 flex-col min-w-0 bg-[#f5f8f4]">
-          <div className="p-6">
+        <main className="hidden md:flex flex-1 flex-col min-w-0 min-h-0 bg-[#f5f8f4]">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">
             {renderSection()}
           </div>
         </main>

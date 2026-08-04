@@ -12,57 +12,57 @@ import launchStyles from './launch-preview.module.css'
 
 interface DefaultField {
   key:        string
+  group:      string
   label:      string
-  help:       string
-  type?:      string
   step?:      string
-  min?:       string
-  transform?: string
   prefix?:    string
   suffix?:    string
+  hint:       string
 }
 
 const DEFAULTS_FIELDS: DefaultField[] = [
   {
-    key:       'currency',
-    label:     'Default quote currency',
-    help:      'Used for quote totals and customer-facing pricing across the backend.',
-    type:      'text',
-    transform: 'uppercase',
+    group: 'Labour',
+    key:   'labour_hours_per_cabinet',
+    label: 'Labour hours per cabinet',
+    suffix: 'h',
+    step:  '0.25',
+    hint:  'Added to quote labour for every base-cabinet line x qty.',
   },
   {
-    key:   'gst_rate',
-    label: 'Default GST rate',
-    help:  'Used for quote GST calculations unless a quote already has its own stored rate.',
-    type:  'number',
-    step:  '0.01',
-    min:   '0',
-  },
-  {
-    key:    'markup_percent',
-    label:  'Default line markup %',
-    help:   'Used for new quote item lines. Admin can still edit the markup on each line.',
-    suffix: '%',
-  },
-  {
-    key:    'hinge_drilling_unit_cost_ex_gst',
-    label:  'Hinge drilling cost ex GST',
-    help:   'Cost per hinge hole set used when hinge drilling is required.',
-    prefix: '$',
-  },
-  {
-    key:    'hinge_supply_unit_cost_ex_gst',
-    label:  'Hinge supply cost ex GST',
-    help:   'Cost per supplied hinge used when hinge supply is required.',
-    prefix: '$',
-  },
-  {
+    group:  'Labour',
     key:    'worker_hourly_rate',
-    label:  'Labour hourly rate ex GST',
-    help:   'Used as the default worker hourly rate on quotes.',
+    label:  'Worker hourly rate',
     prefix: '$',
+    step:   '1',
+    hint:   'Ex GST. Multiplies total labour hours.',
+  },
+  {
+    group:  'Pricing',
+    key:    'markup_percent',
+    label:  'Default markup',
+    suffix: '%',
+    step:   '1',
+    hint:   'Applied to product cost on each line.',
+  },
+  {
+    group: 'Pricing',
+    key:   'gst_rate',
+    label: 'GST rate',
+    step:  '0.01',
+    hint:  'As a decimal. 0.1 = 10%.',
+  },
+  {
+    group:  'Hardware fees',
+    key:    'hinge_drilling_unit_cost_ex_gst',
+    label:  'Hinge drilling',
+    prefix: '$',
+    step:   '0.5',
+    hint:   'Per hinge hole, ex GST. Supplied hinges are added as separate hardware line items.',
   },
 ]
+
+const DEFAULTS_GROUPS = ['Labour', 'Pricing', 'Hardware fees']
 
 const LAUNCH_TEXT_FIELDS: [string, string, string?][] = [
   ['statusPill', 'Status pill'],
@@ -543,83 +543,75 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
 
   // Defaults tab content
   const defaultsContent = (
-    <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-      <form onSubmit={handleDefaultsSave}>
-        <div className="px-5 py-4 border-b border-[#edf4eb]">
-          <h3 className="text-[15px] font-semibold text-[#1a1a18]">Quote Calculation Defaults</h3>
-          <p className="text-[12px] text-[#5a5a52] mt-[2px]">
-            These values are applied to new quote lines and cost fields. Existing quotes and per-line edits stay editable.
-          </p>
-        </div>
-        <div className="px-5 py-5 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {DEFAULTS_FIELDS.map(field => (
-            <div key={field.key} className="flex flex-col gap-1.5">
-              <label className="text-[12px] font-medium text-[#5a5a52]" htmlFor={`default-${field.key}`}>
-                {field.label}
-              </label>
-              <p className="text-[11px] text-[#8b8a81]">{field.help}</p>
-              {field.prefix || field.suffix ? (
-                <div className="flex items-center h-[36px] border border-[#dbd8cc] rounded-[6px] overflow-hidden">
-                  {field.prefix && (
-                    <span className="px-3 h-full flex items-center text-[13px] text-[#5a5a52] bg-[#f5f8f4] border-r border-[#dbd8cc] flex-shrink-0">
-                      {field.prefix}
+    <form onSubmit={handleDefaultsSave}>
+      <div className="mb-5">
+        <h3 className="text-[15px] font-semibold text-[#1a1a18]">Business Defaults</h3>
+        <p className="mt-[2px] max-w-[760px] text-[13px] leading-relaxed text-[#5a5a52]">
+          Set the pricing, labour and quote text defaults used when quotes are created or recalculated.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.1fr]">
+        <div className="flex flex-col gap-4">
+          {DEFAULTS_GROUPS.map(group => (
+            <div key={group} className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
+              <div className="border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px] text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
+                {group}
+              </div>
+              <div className="divide-y divide-[#edf4eb]">
+                {DEFAULTS_FIELDS.filter(field => field.group === group).map(field => (
+                  <label key={field.key} className="flex items-center justify-between gap-4 px-4 py-3">
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-medium text-[#1a1a18]">{field.label}</span>
+                      <span className="mt-[2px] block text-[11px] leading-snug text-[#8b8a81]">{field.hint}</span>
                     </span>
-                  )}
-                  <input
-                    id={`default-${field.key}`}
-                    className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white"
-                    type={field.type || 'number'}
-                    min={field.min || '0'}
-                    step={field.step || '0.01'}
-                    value={(defaults[field.key] as string | number) ?? ''}
-                    onChange={e =>
-                      updateDefault(
-                        field.key,
-                        field.transform === 'uppercase'
-                          ? e.target.value.toUpperCase()
-                          : e.target.value
-                      )
-                    }
-                  />
-                  {field.suffix && (
-                    <span className="px-3 h-full flex items-center text-[13px] text-[#5a5a52] bg-[#f5f8f4] border-l border-[#dbd8cc] flex-shrink-0">
-                      {field.suffix}
+                    <span className="flex flex-shrink-0 items-center gap-1">
+                      {field.prefix ? <span className="text-[12px] text-[#8b8a81]">{field.prefix}</span> : null}
+                      <input
+                        className="h-[36px] w-[110px] rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-right font-mono text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
+                        type="number"
+                        min="0"
+                        step={field.step}
+                        value={(defaults[field.key] as string | number) ?? ''}
+                        onChange={event => updateDefault(field.key, event.target.value === '' ? '' : Number(event.target.value))}
+                      />
+                      {field.suffix ? <span className="text-[12px] text-[#8b8a81]">{field.suffix}</span> : null}
                     </span>
-                  )}
-                </div>
-              ) : (
-                <input
-                  id={`default-${field.key}`}
-                  className={inputClass}
-                  type={field.type || 'number'}
-                  min={field.min}
-                  step={field.step}
-                  value={(defaults[field.key] as string | number) ?? ''}
-                  onChange={e =>
-                    updateDefault(
-                      field.key,
-                      field.transform === 'uppercase'
-                        ? e.target.value.toUpperCase()
-                        : e.target.value
-                    )
-                  }
-                />
-              )}
+                  </label>
+                ))}
+              </div>
             </div>
           ))}
         </div>
-        {defaultsFeedback && (
-          <div className="px-5 pb-4">
-            <p className="text-[13px] text-[#5a5a52]">{defaultsFeedback}</p>
+
+        <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
+          <div className="border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Quote terms</p>
           </div>
-        )}
-        <div className="px-5 pb-5 flex items-center gap-3">
-          <button type="submit" className={primaryBtn} disabled={defaultsBusy}>
-            {defaultsBusy ? 'Saving...' : 'Save defaults'}
-          </button>
+          <div className="p-4">
+            <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
+              Default terms text
+              <textarea
+                className="min-h-[132px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] leading-relaxed text-[#1a1a18] outline-none focus:border-[#6b9e61]"
+                value={(defaults.quote_terms as string) || ''}
+                onChange={event => updateDefault('quote_terms', event.target.value)}
+                placeholder="Default terms shown on new quotes."
+              />
+            </label>
+            <p className="mt-2 text-[11px] leading-snug text-[#8b8a81]">
+              This auto-populates the quote editor terms field when a quote has no quote-specific terms yet.
+            </p>
+          </div>
         </div>
-      </form>
-    </div>
+      </div>
+
+      <div className="mt-5 flex items-center gap-3">
+        <button type="submit" className={primaryBtn} disabled={defaultsBusy}>
+          {defaultsBusy ? 'Saving...' : 'Save defaults'}
+        </button>
+        {defaultsFeedback ? <span className="text-[13px] text-[#5a5a52]">{defaultsFeedback}</span> : null}
+      </div>
+    </form>
   )
 
   const tabContent = activeTab === 'profile' ? profileContent : activeTab === 'launch' ? launchContent : defaultsContent
@@ -652,7 +644,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
 
   return (
     <>
-      <div className="min-h-full">
+      <div className="flex min-h-full flex-col md:h-full md:min-h-0">
         {/* Page header */}
         <div className="px-4 md:px-6 py-5 border-b border-[#edf4eb] bg-white">
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Settings</h1>
@@ -660,8 +652,8 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
         </div>
 
         {/* Desktop: two-panel */}
-        <div className="hidden md:flex items-start">
-          <aside className="w-[220px] flex-shrink-0 border-r border-[#edf4eb] bg-white min-h-full">
+        <div className="hidden md:flex min-h-0 flex-1 items-stretch">
+          <aside className="w-[220px] min-h-0 flex-shrink-0 border-r border-[#edf4eb] bg-white">
             <nav className="p-3 flex flex-col gap-[2px]">
               {TAB_ITEMS.map(item => (
                 <button
@@ -683,7 +675,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
               ))}
             </nav>
           </aside>
-          <main className="flex-1 p-6 bg-[#f5f8f4] min-h-full">
+          <main className="min-h-0 flex-1 overflow-y-auto bg-[#f5f8f4] p-6">
             {tabContent}
           </main>
         </div>

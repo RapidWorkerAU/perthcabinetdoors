@@ -26,8 +26,6 @@ import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
 import workflowStyles from "../../_components/admin-workflow.module.css";
-import { AdminTablePagination, useAdminTablePagination } from "../../_components/AdminTablePagination";
-import { AdminPagination } from "../../_components/AdminPagination";
 
 const sections = [
   { key: "details", label: "Information & Contacts" },
@@ -859,7 +857,6 @@ export default function QuoteEditor({ quoteId }) {
     typeof window !== "undefined" && form.access_code
       ? `${window.location.origin}/quotes/view?code=${form.access_code}`
       : "";
-  const attachmentPagination = useAdminTablePagination(form.attachments);
   const hardwareOptions = useMemo(() => hardwareOptionsFromRows(hardwareRows), [hardwareRows]);
 
   function lineViewModel(line) {
@@ -1995,12 +1992,12 @@ export default function QuoteEditor({ quoteId }) {
           <>
             {/* Desktop table */}
             <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="max-h-[calc(100vh-260px)] overflow-auto">
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
                       {['#', 'Cabinet', 'Material', 'Colour', 'Qty', 'Configuration', 'Total ex GST', 'Actions'].map(h => (
-                        <th key={h} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{h}</th>
+                        <th key={h} className="sticky top-0 z-10 bg-[#f5f8f4] px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -2796,8 +2793,8 @@ export default function QuoteEditor({ quoteId }) {
           {form.attachments.length === 0 ? (
             <p className={tw.muted + " text-center py-6"}>No attachments yet.</p>
           ) : (
-            <div className="flex flex-col divide-y divide-[#edf4eb]">
-              {attachmentPagination.pageItems.map(attachment => (
+            <div className="flex max-h-[420px] flex-col divide-y divide-[#edf4eb] overflow-y-auto pr-1">
+              {form.attachments.map(attachment => (
                 <div key={attachment.id} className="flex items-center gap-3 py-3">
                   <div className="w-[32px] h-[32px] rounded-[6px] bg-[#edf4eb] flex items-center justify-center flex-shrink-0 text-[#6b9e61] text-[11px] font-bold">
                     {(attachment.file_type || "FILE").slice(0, 3).toUpperCase()}
@@ -2822,13 +2819,6 @@ export default function QuoteEditor({ quoteId }) {
               ))}
             </div>
           )}
-          <AdminPagination
-            label="attachments"
-            page={attachmentPagination.page}
-            pageCount={attachmentPagination.pageCount}
-            totalItems={attachmentPagination.totalItems}
-            onPageChange={attachmentPagination.setPage}
-          />
         </div>
       </div>
     );

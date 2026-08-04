@@ -35,6 +35,16 @@ async function assertPaymentWithinOrderTotal(supabase, orderId, paymentId, amoun
   }
 }
 
+function hasPaymentRequest(payment) {
+  return Boolean(
+    payment?.request_status ||
+    payment?.requested_at ||
+    payment?.request_url ||
+    payment?.stripe_checkout_session_id ||
+    payment?.stripe_payment_intent_id
+  );
+}
+
 function defaultEmailMessage(order) {
   return [
     `Hi ${order.customer_name || "there"},`,
@@ -99,6 +109,7 @@ export async function POST(request, { params }) {
       .maybeSingle();
     if (paymentError || !payment) throw paymentError || new Error("Payment line not found.");
     if (payment.is_paid) throw new Error("This payment line is already paid.");
+    if (hasPaymentRequest(payment)) throw new Error("A payment request has already been sent for this line.");
     if (Number(payment.amount || 0) <= 0) throw new Error("Payment amount must be greater than zero.");
 
     const order = payment.pcd_orders;

@@ -63,6 +63,18 @@ async function loadOrder(supabase, id) {
     data.pcd_order_payments = payments || [];
   }
 
+  const { data: variations, error: variationsError } = await supabase
+    .from("pcd_order_variations")
+    .select("*, pcd_order_variation_lines(*)")
+    .eq("order_id", id)
+    .order("created_at", { ascending: false });
+
+  if (variationsError) {
+    data.pcd_order_variations = [];
+  } else {
+    data.pcd_order_variations = variations || [];
+  }
+
   const { data: quoteRequests } = data.quote_id
     ? await supabase
         .from("pcd_quote_requests")
