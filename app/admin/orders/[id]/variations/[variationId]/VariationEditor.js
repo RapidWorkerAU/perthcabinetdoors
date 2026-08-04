@@ -112,6 +112,11 @@ function materialOptionsForType(productType) {
   return MATERIALS_BY_TYPE[productType] || MATERIAL_OPTIONS;
 }
 
+function firstBoardMaterialForType(productType) {
+  if (!productType || productType === "Hardware" || productType === BASE_CABINET_TYPE) return "";
+  return materialOptionsForType(productType)[0] || "";
+}
+
 function hardwareOptionLabel(item) {
   return [item.brand, item.name, item.sku ? `(${item.sku})` : ""].filter(Boolean).join(" ");
 }
@@ -150,8 +155,8 @@ function emptyLine() {
     edge_mould: "",
     qty: 1,
     original_line_total_ex_gst: 0,
-    proposed_line_total_ex_gst: 0,
-    unit_cost_mode: "manual",
+    proposed_line_total_ex_gst: "",
+    unit_cost_mode: "auto",
     unit_cost_source_id: null,
     unit_cost_source_label: "",
     unit_cost_per_sqm_ex_gst: 0,
@@ -170,55 +175,76 @@ function lineAreaSqm(line) {
 }
 
 function calculatedUnitCostFromLine(line) {
-  const rate = Number(line?.unit_cost_per_sqm_ex_gst || 0);
+  let rate = Number(line?.unit_cost_per_sqm_ex_gst || 0);
+  const boardCost = Number(line?.cost_per_board_ex_gst || 0);
+  const boardWidth = Number(line?.preferred_board_width_mm || 0);
+  const boardHeight = Number(line?.preferred_board_height_mm || 0);
+  const boardArea = boardWidth > 0 && boardHeight > 0 ? (boardWidth * boardHeight) / 1000000 : 0;
+  if ((!Number.isFinite(rate) || rate <= 0) && boardCost > 0 && boardArea > 0) {
+    rate = roundMoney(boardCost / boardArea);
+  }
   const area = lineAreaSqm(line);
   if (!Number.isFinite(rate) || rate <= 0 || area <= 0) return 0;
   return roundMoney(area * rate);
-}
-
-function applyVariationLinePricing(line, businessDefaults = DEFAULT_BUSINESS_DEFAULTS) {
-  if (line.action === "remove") {
-    return { ...line, proposed_line_total_ex_gst: 0 };
-  }
-  if (line.product_type === "Hardware" || line.action === "price_adjustment") {
-    return line;
-  }
-
-  const calculatedUnitCost = calculatedUnitCostFromLine(line);
-  const hasAutoSource = Number(line.unit_cost_per_sqm_ex_gst || 0) > 0;
-  const next = {
-    ...line,
-    calculated_unit_cost_ex_gst: calculatedUnitCost,
-    unit_cost_mode: hasAutoSource ? "auto" : "manual",
-  };
-
-  if (hasAutoSource && calculatedUnitCost > 0) {
-    next.product_unit_cost_ex_gst = calculatedUnitCost;
-    next.proposed_line_total_ex_gst = calculateQuoteLine(next, {
-      ...businessDefaults,
-      markup_percent: toNumber(next.markup_percent, businessDefaults.markup_percent),
-    }).line_total_ex_gst;
-  } else if (
-    Object.prototype.hasOwnProperty.call(line, "unit_cost_per_sqm_ex_gst") &&
-    toNumber(line.unit_cost_per_sqm_ex_gst) <= 0
-  ) {
-    next.product_unit_cost_ex_gst = "";
-    next.proposed_line_total_ex_gst = "";
-  }
-
-  return next;
 }
 
 function isBoardVariationDraft(line) {
   return !["Hardware", BASE_CABINET_TYPE].includes(line.product_type) && Boolean(line.material);
 }
 
+function hasBoardCostSource(line) {
+  return toNumber(line.unit_cost_per_sqm_ex_gst) > 0 || (
+    toNumber(line.cost_per_board_ex_gst) > 0 &&
+    toNumber(line.preferred_board_width_mm) > 0 &&
+    toNumber(line.preferred_board_height_mm) > 0
+  );
+}
+
+// Board lines price themselves off the colour library (rate per sqm x area x
+// markup), exactly like a quote line. A typed unit cost flips the line to
+// "manual" and is left alone until the operator resets it. Hardware and base
+// cabinets have no board rate, so they price off the typed unit cost.
+function applyVariationLinePricing(line, businessDefaults = DEFAULT_BUSINESS_DEFAULTS) {
+  if (line.action === "remove") {
+    return { ...line, proposed_line_total_ex_gst: 0 };
+  }
+  if (line.action === "price_adjustment") {
+    return line;
+  }
+
+  const isBoard = isBoardVariationDraft(line);
+  const calculatedUnitCost = isBoard ? calculatedUnitCostFromLine(line) : 0;
+  const hasAutoSource = isBoard && hasBoardCostSource(line);
+  const next = {
+    ...line,
+    calculated_unit_cost_ex_gst: calculatedUnitCost,
+    unit_cost_mode: hasAutoSource ? line.unit_cost_mode || "auto" : "manual",
+  };
+
+  if (next.unit_cost_mode === "auto") {
+    next.product_unit_cost_ex_gst = calculatedUnitCost > 0 ? calculatedUnitCost : "";
+  }
+
+  const unitCost = toNumber(next.product_unit_cost_ex_gst);
+  if (!isBoard && unitCost <= 0) {
+    // Nothing to price from — keep whatever total was typed by hand.
+    return next;
+  }
+
+  next.proposed_line_total_ex_gst = unitCost > 0
+    ? calculateQuoteLine(next, businessDefaults).line_total_ex_gst
+    : "";
+
+  return next;
+}
+
 function variationLinePricingError(line) {
   if (!["add", "change"].includes(line.action) || !isBoardVariationDraft(line)) return "";
+  if (line.unit_cost_mode === "manual" && toNumber(line.product_unit_cost_ex_gst) > 0) return "";
   if (!line.colour || !line.thickness) {
     return "Select a priced board colour before saving this variation line.";
   }
-  if (toNumber(line.unit_cost_per_sqm_ex_gst) <= 0) {
+  if (!hasBoardCostSource(line)) {
     return "This board does not have an uploaded price. Add the board cost before saving this variation line.";
   }
   if (calculatedUnitCostFromLine(line) <= 0) {
@@ -321,62 +347,77 @@ export default function VariationEditor({ orderId, variationId }) {
     };
   }, []);
 
+  function clearBoardSelection(next) {
+    next.finish = "";
+    next.colour = "";
+    next.thickness = "";
+    next.edge_mould = "";
+    next.profile_type = "";
+    next.profile = "";
+    next.unit_cost_mode = "auto";
+    next.unit_cost_source_id = null;
+    next.unit_cost_source_label = "";
+    next.unit_cost_per_sqm_ex_gst = 0;
+    next.cost_per_board_ex_gst = 0;
+    next.preferred_board_width_mm = 0;
+    next.preferred_board_height_mm = 0;
+    next.calculated_unit_cost_ex_gst = 0;
+    next.product_unit_cost_ex_gst = "";
+    next.proposed_line_total_ex_gst = "";
+  }
+
   function updateLineDraft(changes) {
     setLineDraft((current) => {
       let next = { ...current, ...changes };
-      if (Object.prototype.hasOwnProperty.call(changes, "product_type")) {
+      const has = (field) => Object.prototype.hasOwnProperty.call(changes, field);
+
+      if (has("product_type")) {
+        // Keep the material if the new type still offers it, so switching
+        // Doors -> Drawer fronts doesn't throw away the colour selection.
+        const keepMaterial = Boolean(next.material) && materialOptionsForType(changes.product_type).includes(next.material);
         next.title = productTypeLabel(changes.product_type);
-        next.product_type = changes.product_type;
         next.hardware_catalogue_id = "";
-        next.material = "";
-        next.supplier_name = "";
-        next.finish = "";
-        next.colour = "";
-        next.thickness = "";
-        next.edge_mould = "";
-        next.profile_type = "";
-        next.profile = "";
-        next.unit_cost_mode = "manual";
-        next.unit_cost_source_id = null;
-        next.unit_cost_source_label = "";
-        next.unit_cost_per_sqm_ex_gst = 0;
-        next.calculated_unit_cost_ex_gst = 0;
-        next.product_unit_cost_ex_gst = "";
-        next.proposed_line_total_ex_gst = 0;
+        if (!keepMaterial) {
+          next.material = firstBoardMaterialForType(changes.product_type);
+          next.supplier_name = next.material ? COLOUR_SUPPLIERS[0] : "";
+          clearBoardSelection(next);
+        }
       }
-      if (Object.prototype.hasOwnProperty.call(changes, "material")) {
+      if (has("material")) {
         next.supplier_name = changes.material ? COLOUR_SUPPLIERS[0] : "";
-        next.finish = "";
-        next.colour = "";
-        next.thickness = "";
-        next.edge_mould = "";
+        clearBoardSelection(next);
+      }
+      if (has("supplier_name") && !has("colour")) {
+        // The old supplier's board rate must not survive the switch.
+        clearBoardSelection(next);
+      }
+      if (has("thickness") && !has("colour")) {
         next.profile_type = "";
         next.profile = "";
+      }
+      if (has("profile_type")) {
+        next.profile = "";
+      }
+      if (has("colour")) {
+        // A colour pick brings its own board rate, so go back to auto pricing.
+        next.unit_cost_mode = "auto";
+      }
+      if (has("product_unit_cost_ex_gst")) {
         next.unit_cost_mode = "manual";
-        next.unit_cost_source_id = null;
-        next.unit_cost_source_label = "";
-        next.unit_cost_per_sqm_ex_gst = 0;
-        next.calculated_unit_cost_ex_gst = 0;
-        next.product_unit_cost_ex_gst = "";
-        next.proposed_line_total_ex_gst = 0;
       }
-      if (Object.prototype.hasOwnProperty.call(changes, "thickness")) {
-        next.profile_type = "";
-        next.profile = "";
-      }
-      if (Object.prototype.hasOwnProperty.call(changes, "profile_type")) {
-        next.profile = "";
-      }
-      if (Object.prototype.hasOwnProperty.call(changes, "unit_cost_per_sqm_ex_gst")) {
-        next.unit_cost_mode = Number(changes.unit_cost_per_sqm_ex_gst || 0) > 0 ? "auto" : "manual";
-      }
-      if (["qty", "width_mm", "height_mm", "unit_cost_per_sqm_ex_gst", "colour", "finish", "thickness", "markup_percent"].some((field) =>
-        Object.prototype.hasOwnProperty.call(changes, field)
-      )) {
+      if ([
+        "qty", "width_mm", "height_mm", "unit_cost_per_sqm_ex_gst", "colour", "finish", "thickness",
+        "markup_percent", "product_unit_cost_ex_gst", "material", "product_type", "unit_cost_mode",
+        "supplier_name",
+      ].some(has)) {
         next = applyVariationLinePricing(next, businessDefaults);
       }
       return next;
     });
+  }
+
+  function resetLineDraftUnitCost() {
+    updateLineDraft({ unit_cost_mode: "auto" });
   }
 
   function changeLineDraftAction(action) {
@@ -398,8 +439,15 @@ export default function VariationEditor({ orderId, variationId }) {
   }
 
   function openEditLineModal(line) {
+    const draft = { ...emptyLine() };
+    Object.entries(line).forEach(([field, value]) => {
+      // Nulls from the database would turn controlled inputs uncontrolled.
+      draft[field] = value === null ? emptyLine()[field] ?? "" : value;
+    });
+    const calculated = calculatedUnitCostFromLine(draft);
+    draft.unit_cost_mode = calculated > 0 && toNumber(draft.product_unit_cost_ex_gst) !== calculated ? "manual" : "auto";
     setEditingLineId(line.id);
-    setLineDraft({ ...emptyLine(), ...line });
+    setLineDraft(draft);
     setIsAddLineModalOpen(true);
   }
 
@@ -414,7 +462,7 @@ export default function VariationEditor({ orderId, variationId }) {
     if (!option?.item) return;
     const item = option.item;
     const label = option.label || hardwareOptionLabel(item);
-    setLineDraft((current) => ({
+    setLineDraft((current) => applyVariationLinePricing({
       ...current,
       hardware_catalogue_id: item.id,
       product_type: "Hardware",
@@ -430,8 +478,13 @@ export default function VariationEditor({ orderId, variationId }) {
       edge_mould: "",
       profile_type: "",
       profile: "",
-      proposed_line_total_ex_gst: Number(item.unit_cost_ex_gst || 0) * Math.max(1, Number(current.qty || 1)),
-    }));
+      unit_cost_mode: "manual",
+      unit_cost_source_id: item.id,
+      unit_cost_source_label: label,
+      unit_cost_per_sqm_ex_gst: 0,
+      calculated_unit_cost_ex_gst: 0,
+      product_unit_cost_ex_gst: Number(item.unit_cost_ex_gst || 0),
+    }, businessDefaults));
   }
 
   function applySourceLineToDraft(itemId, setter = setLineDraft) {
@@ -454,7 +507,7 @@ export default function VariationEditor({ orderId, variationId }) {
       profile: item?.profile || "",
       edge_mould: item?.edge_mould || "",
       qty: item?.qty || 1,
-      unit_cost_mode: item?.unit_cost_mode || current.unit_cost_mode || "manual",
+      unit_cost_mode: item?.unit_cost_source_id ? "auto" : "manual",
       unit_cost_source_id: item?.unit_cost_source_id || null,
       unit_cost_source_label: item?.unit_cost_source_label || "",
       unit_cost_per_sqm_ex_gst: item?.unit_cost_per_sqm_ex_gst || 0,
@@ -621,6 +674,22 @@ export default function VariationEditor({ orderId, variationId }) {
   }
 
   function renderAddLineFields() {
+    const isRemove = lineDraft.action === "remove";
+    const isPriceAdjustment = lineDraft.action === "price_adjustment";
+    const isHardware = lineDraft.product_type === "Hardware";
+    const isBaseCabinet = lineDraft.product_type === BASE_CABINET_TYPE;
+    const isBoardLine = isBoardVariationDraft(lineDraft);
+    const boardFieldsLocked = isRemove || isPriceAdjustment || isHardware || isBaseCabinet;
+    const showEdges = !boardFieldsLocked && lineDraftEdgeOptions.length > 0;
+    const showProfiles = !boardFieldsLocked && lineDraftProfileTypeOptions.length > 0;
+    const canResetUnitCost =
+      isBoardLine &&
+      lineDraft.unit_cost_mode === "manual" &&
+      toNumber(lineDraft.calculated_unit_cost_ex_gst) > 0 &&
+      toNumber(lineDraft.product_unit_cost_ex_gst) !== toNumber(lineDraft.calculated_unit_cost_ex_gst);
+
+    const notApplicable = <input className={tw.fieldInput} value="Not applicable" disabled readOnly />;
+
     return (
       <div className="grid gap-3 md:grid-cols-4">
         <label className={tw.fieldLabel}>Action
@@ -636,29 +705,30 @@ export default function VariationEditor({ orderId, variationId }) {
           <QuoteTileCombobox
             compact={false}
             disabled={["add", "price_adjustment"].includes(lineDraft.action)}
-            placeholder="Select item"
+            placeholder={["add", "price_adjustment"].includes(lineDraft.action) ? "Not applicable" : "Select item"}
             value={lineDraft.order_line_item_id}
             options={orderItems.map((item) => ({ value: item.id, label: itemLabel(item), name: itemLabel(item) }))}
             onChange={(option) => applySourceLineToDraft(option.value)}
           />
         </label>
         <label className={tw.fieldLabel}>Title
-          <input className={tw.fieldInput} value={lineDraft.title} disabled={lineDraft.action === "remove"} onChange={(event) => updateLineDraft({ title: event.target.value })} />
+          <input className={tw.fieldInput} value={lineDraft.title} disabled={isRemove} onChange={(event) => updateLineDraft({ title: event.target.value })} />
         </label>
+
         <label className={tw.fieldLabel}>Product type
           <QuoteTileCombobox
             compact={false}
-            disabled={lineDraft.action === "remove"}
+            disabled={isRemove || isPriceAdjustment}
             placeholder="Select type"
             value={lineDraft.product_type}
             options={variationProductTypes.map((type) => ({ ...type, name: type.label, meta: "Product type" }))}
             onChange={(option) => updateLineDraft({ product_type: option.value })}
           />
         </label>
-        {lineDraft.product_type === "Hardware" ? (
-          <label className={`${tw.fieldLabel} md:col-span-2`}>Hardware item
+        {isHardware ? (
+          <label className={`${tw.fieldLabel} md:col-span-3`}>Hardware item
             <QuoteImageCombobox
-              disabled={lineDraft.action === "remove"}
+              disabled={isRemove}
               placeholder="Select hardware"
               value={lineDraft.hardware_catalogue_id || ""}
               displayValue={lineDraft.title}
@@ -666,94 +736,160 @@ export default function VariationEditor({ orderId, variationId }) {
               onChange={(option) => chooseHardwareOption(option.value)}
             />
           </label>
-        ) : null}
-        <label className={tw.fieldLabel}>Material
-          <QuoteTileCombobox
-            compact={false}
-            disabled={lineDraft.action === "remove" || !lineDraft.product_type || lineDraft.product_type === "Hardware"}
-            placeholder={lineDraft.product_type === "Hardware" ? "N/A" : "Select material"}
-            value={lineDraft.material}
-            options={lineDraftMaterialOptions.map((material) => ({ value: material, label: material, name: material, meta: "Material" }))}
-            onChange={(option) => updateLineDraft({ material: option.value || option.name || option.label })}
-          />
+        ) : (
+          <>
+            <label className={tw.fieldLabel}>Material
+              <QuoteTileCombobox
+                compact={false}
+                disabled={isRemove || isPriceAdjustment}
+                placeholder="Select material"
+                value={lineDraft.material}
+                options={lineDraftMaterialOptions.map((material) => ({ value: material, label: material, name: material, meta: "Material" }))}
+                onChange={(option) => updateLineDraft({ material: option.value || option.name || option.label })}
+              />
+            </label>
+            <label className={tw.fieldLabel}>Supplier
+              <QuoteTileCombobox
+                compact={false}
+                disabled={isRemove || isPriceAdjustment || !lineDraft.material}
+                placeholder={lineDraft.material ? "Select supplier" : "Select material first"}
+                value={selectedSupplier}
+                options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
+                onChange={(option) => updateLineDraft({ supplier_name: option.value })}
+              />
+            </label>
+            <label className={tw.fieldLabel}>Colour
+              <QuoteColourCombobox
+                compact={false}
+                disabled={isRemove || isPriceAdjustment}
+                line={lineDraft}
+                onChange={(patch) => updateLineDraft(patch)}
+              />
+            </label>
+          </>
+        )}
+
+        <label className={tw.fieldLabel}>Finish
+          <input className={tw.fieldInput} value={lineDraft.finish || ""} placeholder="Set by the colour" disabled readOnly />
         </label>
-        <label className={tw.fieldLabel}>Supplier
-          <QuoteTileCombobox
-            compact={false}
-            disabled={lineDraft.action === "remove" || !lineDraft.material}
-            placeholder="Select supplier"
-            value={selectedSupplier}
-            options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
-            onChange={(option) => updateLineDraft({ supplier_name: option.value, finish: "", colour: "", thickness: "", profile_type: "", profile: "" })}
-          />
-        </label>
-        <label className={tw.fieldLabel}>Colour / finish
-          <QuoteColourCombobox
-            compact={false}
-            disabled={lineDraft.action === "remove"}
-            line={lineDraft}
-            onChange={(patch) => updateLineDraft(patch)}
-          />
-        </label>
-        <label className={tw.fieldLabel}>Qty
-          <input className={tw.fieldInput} type="number" step="0.01" value={lineDraft.qty} disabled={lineDraft.action === "remove"} onChange={(event) => {
-            const qty = event.target.value;
-            const hardwareItem = hardwareRows.find((item) => item.id === lineDraft.hardware_catalogue_id);
-            updateLineDraft({
-              qty,
-              ...(hardwareItem ? { proposed_line_total_ex_gst: Number(hardwareItem.unit_cost_ex_gst || 0) * Math.max(1, Number(qty || 1)) } : {}),
-            });
-          }} />
+        <label className={tw.fieldLabel}>Thickness
+          <input className={tw.fieldInput} value={lineDraft.thickness || ""} placeholder="Set by the colour" disabled readOnly />
         </label>
         <label className={tw.fieldLabel}>Width mm
-          <input className={tw.fieldInput} type="number" value={lineDraft.width_mm} disabled={lineDraft.action === "remove"} onChange={(event) => updateLineDraft({ width_mm: event.target.value })} />
+          <input className={tw.fieldInput} type="number" value={lineDraft.width_mm} disabled={isRemove || isPriceAdjustment} onChange={(event) => updateLineDraft({ width_mm: event.target.value })} />
         </label>
         <label className={tw.fieldLabel}>Height mm
-          <input className={tw.fieldInput} type="number" value={lineDraft.height_mm} disabled={lineDraft.action === "remove"} onChange={(event) => updateLineDraft({ height_mm: event.target.value })} />
+          <input className={tw.fieldInput} type="number" value={lineDraft.height_mm} disabled={isRemove || isPriceAdjustment} onChange={(event) => updateLineDraft({ height_mm: event.target.value })} />
+        </label>
+
+        <label className={tw.fieldLabel}>Qty
+          <input className={tw.fieldInput} type="number" step="0.01" value={lineDraft.qty} disabled={isRemove} onChange={(event) => updateLineDraft({ qty: event.target.value })} />
         </label>
         <label className={tw.fieldLabel}>Edge
-          <QuoteImageCombobox
-            disabled={lineDraft.action === "remove" || !lineDraftEdgeOptions.length}
-            placeholder={lineDraftEdgeOptions.length ? "Select edge" : "N/A"}
-            value={lineDraft.edge_mould}
-            options={lineDraftEdgeOptions.map((edge) => ({ value: edge, label: edge, name: edge, meta: "Edge", src: edgeOptionSrc(edge) }))}
-            onChange={(option) => updateLineDraft({ edge_mould: option.value || option.name || option.label })}
-          />
+          {showEdges ? (
+            <QuoteImageCombobox
+              disabled={isRemove}
+              placeholder="Select edge"
+              value={lineDraft.edge_mould}
+              options={lineDraftEdgeOptions.map((edge) => ({ value: edge, label: edge, name: edge, meta: "Edge", src: edgeOptionSrc(edge) }))}
+              onChange={(option) => updateLineDraft({ edge_mould: option.value || option.name || option.label })}
+            />
+          ) : notApplicable}
         </label>
         <label className={tw.fieldLabel}>Profile type
-          <QuoteTileCombobox
-            compact={false}
-            disabled={lineDraft.action === "remove" || !lineDraftProfileTypeOptions.length}
-            placeholder={lineDraftProfileTypeOptions.length ? "Select profile type" : "N/A"}
-            value={lineDraft.profile_type}
-            options={lineDraftProfileTypeOptions.map((profileType) => ({ value: profileType, label: profileType, name: profileType, meta: "Profile type" }))}
-            onChange={(option) => updateLineDraft({ profile_type: option.value || option.name || option.label })}
-          />
+          {showProfiles ? (
+            <QuoteTileCombobox
+              compact={false}
+              disabled={isRemove}
+              placeholder="Select profile type"
+              value={lineDraft.profile_type}
+              options={lineDraftProfileTypeOptions.map((profileType) => ({ value: profileType, label: profileType, name: profileType, meta: "Profile type" }))}
+              onChange={(option) => updateLineDraft({ profile_type: option.value || option.name || option.label })}
+            />
+          ) : notApplicable}
         </label>
         <label className={tw.fieldLabel}>Profile
-          <QuoteImageCombobox
-            disabled={lineDraft.action === "remove" || !lineDraftProfileOptions.length}
-            placeholder={lineDraftProfileOptions.length ? "Select profile" : "N/A"}
-            value={lineDraft.profile}
-            options={lineDraftProfileOptions.map((profile) => ({ value: profile, label: profile, name: profile, meta: lineDraft.profile_type, src: profileOptionSrc(lineDraft.profile_type, profile) }))}
-            onChange={(option) => updateLineDraft({ profile: option.value || option.name || option.label })}
+          {showProfiles ? (
+            <QuoteImageCombobox
+              disabled={isRemove || !lineDraft.profile_type}
+              placeholder={lineDraft.profile_type ? "Select profile" : "Select profile type first"}
+              value={lineDraft.profile}
+              options={lineDraftProfileOptions.map((profile) => ({ value: profile, label: profile, name: profile, meta: lineDraft.profile_type, src: profileOptionSrc(lineDraft.profile_type, profile) }))}
+              onChange={(option) => updateLineDraft({ profile: option.value || option.name || option.label })}
+            />
+          ) : notApplicable}
+        </label>
+
+        <label className={tw.fieldLabel}>Unit cost ex GST
+          <input
+            className={tw.fieldInput}
+            type="number"
+            step="0.01"
+            placeholder={isBoardLine ? "Calculated from the board rate" : "0.00"}
+            value={lineDraft.product_unit_cost_ex_gst}
+            disabled={isRemove || isPriceAdjustment}
+            onChange={(event) => updateLineDraft({ product_unit_cost_ex_gst: event.target.value })}
+          />
+          {canResetUnitCost ? (
+            <button type="button" className="self-start text-[11px] font-medium text-[#2d5e28] hover:underline" onClick={resetLineDraftUnitCost}>
+              Reset to {formatMoney(lineDraft.calculated_unit_cost_ex_gst, variation.currency)}
+            </button>
+          ) : null}
+        </label>
+        <label className={tw.fieldLabel}>Markup %
+          <input
+            className={tw.fieldInput}
+            type="number"
+            step="0.01"
+            value={lineDraft.markup_percent}
+            disabled={isRemove || isPriceAdjustment}
+            onChange={(event) => updateLineDraft({ markup_percent: event.target.value })}
           />
         </label>
-        <label className={tw.fieldLabel}>Proposed ex GST
+        <label className={`${tw.fieldLabel} md:col-span-2`}>Proposed ex GST
           <input
             className={tw.fieldInput}
             type="number"
             step="0.01"
             value={lineDraft.proposed_line_total_ex_gst}
-            disabled={lineDraft.action === "remove" || isBoardVariationDraft(lineDraft)}
+            disabled={isRemove || (isBoardLine && lineDraft.unit_cost_mode === "auto")}
             onChange={(event) => updateLineDraft({ proposed_line_total_ex_gst: event.target.value })}
           />
-          {isBoardVariationDraft(lineDraft) ? (
+          {isBoardLine ? (
             <span className={lineDraftPricingError ? "text-[11px] font-semibold text-[#991b1b]" : "text-[11px] text-[#2d5e28]"}>
-              {lineDraftPricingError || `Calculated from ${formatMoney(lineDraft.unit_cost_per_sqm_ex_gst, variation.currency)} per sqm.`}
+              {lineDraftPricingError
+                || (lineDraft.unit_cost_mode === "manual"
+                  ? "Using the unit cost typed above."
+                  : `Calculated from ${formatMoney(lineDraft.unit_cost_per_sqm_ex_gst, variation.currency)} per sqm.`)}
+              {lineDraftPricingError.includes("uploaded price") ? (
+                <>
+                  {" "}
+                  <Link className="underline underline-offset-2" href="/admin/options" target="_blank">
+                    Open Board Library
+                  </Link>
+                </>
+              ) : null}
             </span>
           ) : null}
         </label>
+
+        <div className="grid grid-cols-3 gap-3 rounded-[6px] border border-[#edf4eb] bg-[#f5f8f4] px-3 py-2 md:col-span-4">
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Current ex GST</span>
+            <span className="mt-1 block font-mono text-[14px] font-semibold text-[#1a1a18]">{formatMoney(lineDraft.original_line_total_ex_gst, variation.currency)}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Proposed ex GST</span>
+            <span className="mt-1 block font-mono text-[14px] font-semibold text-[#1a1a18]">{formatMoney(toNumber(lineDraft.proposed_line_total_ex_gst), variation.currency)}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Variation</span>
+            <span className="mt-1 block font-mono text-[14px] font-semibold text-[#2d5e28]">
+              {formatMoney(toNumber(lineDraft.proposed_line_total_ex_gst) - toNumber(lineDraft.original_line_total_ex_gst), variation.currency)}
+            </span>
+          </div>
+        </div>
+
         <label className={`${tw.fieldLabel} md:col-span-4`}>Notes
           <input className={tw.fieldInput} value={lineDraft.notes} onChange={(event) => updateLineDraft({ notes: event.target.value })} />
         </label>
@@ -860,7 +996,7 @@ export default function VariationEditor({ orderId, variationId }) {
           footer={
             <>
               <button type="button" className={tw.secondaryBtn} onClick={closeLineModal} disabled={isSaving}>Cancel</button>
-              <button type="button" className={tw.primaryBtn} disabled={isSaving || Boolean(lineDraftPricingError)} onClick={editingLineId ? () => updateLine(editingLineId) : addLine}>
+              <button type="button" className={tw.primaryBtn} disabled={isSaving} onClick={editingLineId ? () => updateLine(editingLineId) : addLine}>
                 {isSaving ? (editingLineId ? "Saving..." : "Adding...") : (editingLineId ? "Save line" : "Add line")}
               </button>
             </>

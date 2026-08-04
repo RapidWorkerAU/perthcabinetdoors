@@ -352,6 +352,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
           {/* Panel */}
           <Popover.Portal>
             <Popover.Content
+              data-pcd-dropdown-menu="true"
               sideOffset={8}
               align="start"
               onOpenAutoFocus={e => {

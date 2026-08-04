@@ -1,117 +1,84 @@
 "use client";
 
-import React, { memo, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import React, { memo, useEffect, useId, useMemo, useRef, useState } from "react";
+import * as Popover from "@radix-ui/react-popover";
+import { IconChevronDown, IconSearch, IconSearchOff } from "@tabler/icons-react";
 import { COLOUR_SUPPLIERS, optionsFromColourFamily } from "@/lib/pcd-colour-library";
 import { Dropdown } from "@/components/ui/Dropdown";
-import styles from "@/app/admin/admin-content.module.css";
-import quoteStyles from "@/app/admin/quotes/[id]/quote-editor.module.css";
+
+// These comboboxes are built on the same Radix Popover primitive as
+// components/ui/Dropdown, so they behave identically whether they are rendered
+// on a plain page or inside a Modal. The previous hand-rolled `createPortal`
+// menu rendered as a sibling of the Radix Dialog, which meant the dialog's
+// `pointer-events: none` body lock and its focus trap made every option
+// unclickable and the search box untypeable — the menu opened but nothing in it
+// could be selected, so the field looked disabled.
 
 const colourOptionsCache = new Map();
-const ADMIN_DROPDOWN_OPEN_EVENT = "pcd-admin-dropdown-open";
+
+const TRIGGER_BASE = [
+  "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-[6px] border bg-white",
+  "pr-[34px] text-left transition-colors duration-150",
+].join(" ");
+
+const TRIGGER_SIZE = {
+  compact: "h-[30px] rounded-[3px] px-[6px] pr-[24px] text-[10px]",
+  full: "h-[44px] px-3 text-[14px]",
+};
 
 function optionMetaLabel(option) {
   return [option.finish || option.meta || "", option.thickness || "", option.supplier || ""].filter(Boolean).join(" - ");
 }
 
-export const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", disabled = false, placeholder, value, displayValue = "", options, onChange, disablePortal = false }) {
+function optionKey(option, index) {
+  return `${option.value || option.label || option.name || "option"}-${option.id || option.src || index}`;
+}
+
+function optionMatchesQuery(option, query) {
+  return [option.label, option.name, option.finish, option.thickness, option.supplier, option.meta]
+    .filter(Boolean)
+    .some((field) => String(field).toLowerCase().includes(query));
+}
+
+/**
+ * Searchable combobox with a thumbnail per option (colours, edges, profiles,
+ * hardware). Same trigger metrics as QuoteTileCombobox so a form mixing the two
+ * lines up.
+ */
+export const QuoteImageCombobox = memo(function QuoteImageCombobox({
+  className = "",
+  compact = false,
+  disabled = false,
+  emptyMessage = "No match",
+  placeholder = "Select an option...",
+  value,
+  displayValue = "",
+  options = [],
+  onChange,
+  contentZIndex = 9999,
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [menuStyle, setMenuStyle] = useState({});
   const searchRef = useRef(null);
-  const dropdownIdRef = useRef(`quote-combobox-${Math.random().toString(36).slice(2)}`);
-  const menuRef = useRef(null);
-  const wrapRef = useRef(null);
+  const listboxId = useId();
+
+  const selectedOption = options.find((option) =>
+    [option.value, option.name, option.label].filter(Boolean).includes(value)
+  );
+
   const cleanedQuery = query.trim().toLowerCase();
-  const selectedOption = options.find((option) => [option.value, option.name, option.label].filter(Boolean).includes(value));
-  const visibleOptions =
-    cleanedQuery.length >= 3
-      ? options.filter((option) =>
-          [option.label, option.name, option.finish, option.thickness, option.supplier, option.meta]
-            .filter(Boolean)
-            .some((field) => String(field).toLowerCase().includes(cleanedQuery))
-        )
-      : options;
+  const visibleOptions = useMemo(
+    () => (cleanedQuery ? options.filter((option) => optionMatchesQuery(option, cleanedQuery)) : options),
+    [options, cleanedQuery]
+  );
 
-  useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
+  const selectedLabel = selectedOption?.label || selectedOption?.name || displayValue || (value ? String(value) : "");
 
-  useEffect(() => {
-    if (!open) return;
-
-    function closeOtherDropdowns(event) {
-      if (event.detail !== dropdownIdRef.current) setOpen(false);
-    }
-
-    function closeOnOutsidePointer(event) {
-      const target = event.target;
-      if (wrapRef.current?.contains(target) || menuRef.current?.contains(target)) return;
-      setOpen(false);
-    }
-
-    window.addEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
-    document.addEventListener("mousedown", closeOnOutsidePointer);
-    return () => {
-      window.removeEventListener(ADMIN_DROPDOWN_OPEN_EVENT, closeOtherDropdowns);
-      document.removeEventListener("mousedown", closeOnOutsidePointer);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !wrapRef.current) return;
-
-    function positionMenu() {
-      const rect = wrapRef.current.getBoundingClientRect();
-      const viewportPadding = 12;
-
-      if (disablePortal) {
-        const gap = 8;
-        const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
-        const spaceAbove = rect.top - viewportPadding;
-        const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
-        const availableHeight = openAbove ? spaceAbove : spaceBelow;
-        const maxHeight = Math.max(160, Math.min(360, availableHeight - 4));
-        setMenuStyle({
-          bottom: openAbove ? `calc(100% + ${gap}px)` : "auto",
-          left: 0,
-          maxHeight: `${maxHeight}px`,
-          minWidth: "320px",
-          position: "absolute",
-          top: openAbove ? "auto" : `calc(100% + ${gap}px)`,
-          width: "100%",
-          zIndex: 9999,
-        });
-        return;
-      }
-
-      const preferredWidth = Math.max(rect.width, 320);
-      const width = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2);
-      const left = Math.min(Math.max(rect.left, viewportPadding), window.innerWidth - width - viewportPadding);
-      const gap = 8;
-      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
-      const spaceAbove = rect.top - viewportPadding;
-      const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
-      const availableHeight = openAbove ? spaceAbove : spaceBelow;
-      const maxHeight = Math.max(160, Math.min(360, availableHeight - 4));
-      setMenuStyle({
-        bottom: openAbove ? `${window.innerHeight - rect.top + gap}px` : "auto",
-        left: `${left}px`,
-        maxHeight: `${maxHeight}px`,
-        position: "fixed",
-        top: openAbove ? "auto" : `${rect.bottom + gap}px`,
-        width: `${width}px`,
-      });
-    }
-
-    positionMenu();
-    window.addEventListener("resize", positionMenu);
-    window.addEventListener("scroll", positionMenu, true);
-    return () => {
-      window.removeEventListener("resize", positionMenu);
-      window.removeEventListener("scroll", positionMenu, true);
-    };
-  }, [open, disablePortal]);
+  function handleOpenChange(next) {
+    if (disabled) return;
+    setOpen(next);
+    if (!next) setQuery("");
+  }
 
   function choose(option) {
     onChange(option);
@@ -119,85 +86,122 @@ export const QuoteImageCombobox = memo(function QuoteImageCombobox({ className =
     setQuery("");
   }
 
-  function openMenu() {
-    if (disabled) return;
-    window.dispatchEvent(new CustomEvent(ADMIN_DROPDOWN_OPEN_EVENT, { detail: dropdownIdRef.current }));
-    setOpen(true);
-    window.setTimeout(() => searchRef.current?.focus(), 0);
-  }
-
   return (
-    <div className={`${styles.quoteColourCombo} ${quoteStyles.quoteColourCombo} ${className}`} ref={wrapRef}>
-      <button
-        disabled={disabled}
-        type="button"
-        onClick={() => open ? setOpen(false) : openMenu()}
-        className="flex min-w-0 flex-1 items-center gap-2 bg-transparent text-left text-[inherit] text-[#1a1a18] outline-none disabled:cursor-not-allowed disabled:text-[#8b8a81]"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {selectedOption?.src ? (
-          <img src={selectedOption.src} alt="" className="h-4 w-4 flex-shrink-0 rounded-[3px] border border-[#dbd8cc] object-cover" />
-        ) : null}
-        <span className={`min-w-0 flex-1 truncate ${value ? "" : "text-[#8b8a81]"}`}>
-          {selectedOption?.label || selectedOption?.name || displayValue || value || placeholder}
-        </span>
-      </button>
-      <button
-        aria-label="Open options"
-        className={quoteStyles.quoteColourComboButton}
-        disabled={disabled}
-        type="button"
-        onMouseDown={(event) => {
-          event.preventDefault();
-          if (disabled) return;
-          if (open) {
-            setOpen(false);
-          } else {
-            openMenu();
-          }
-        }}
-      />
-      {open && !disabled && typeof document !== "undefined"
-        ? (() => {
-            const menu = (
-              <div className={styles.quoteColourMenu} ref={menuRef} style={menuStyle}>
-                <div className="border-b border-[#edf4eb] p-2">
-                  <input
-                    ref={searchRef}
-                    type="text"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search..."
-                    className="h-[32px] w-full rounded-[4px] border border-[#dbd8cc] bg-[#f5f8f4] px-3 text-[13px] text-[#1a1a18] outline-none transition-colors focus:border-[#6b9e61] focus:bg-white"
-                  />
-                </div>
-                {visibleOptions.length ? (
-                  visibleOptions.map((option, index) => (
-                    <button
-                      className={styles.quoteColourOption}
-                      key={`${option.value || option.label || option.name || "option"}-${option.id || option.src || index}`}
-                      type="button"
-                      onClick={() => choose(option)}
-                    >
-                      <span className={styles.quoteOptionThumb}>
-                        {option.src ? <img alt="" src={option.src} /> : <span>{String(option.name || option.label || "?").slice(0, 2).toUpperCase()}</span>}
-                      </span>
-                      <span>
-                        <strong>{option.name || option.label}</strong>
-                        <small>{optionMetaLabel(option)}</small>
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <div className={styles.quoteColourEmpty}>No match</div>
-                )}
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
+      <Popover.Trigger asChild disabled={disabled}>
+        <div
+          role="combobox"
+          aria-controls={listboxId}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-disabled={disabled}
+          tabIndex={disabled ? -1 : 0}
+          className={[
+            TRIGGER_BASE,
+            compact ? TRIGGER_SIZE.compact : TRIGGER_SIZE.full,
+            open ? "border-[#6b9e61]" : "border-[#dbd8cc]",
+            disabled ? "cursor-not-allowed border-[#edf4eb] bg-[#f5f8f4] text-[#8b8a81]" : "text-[#1a1a18]",
+            className,
+          ].filter(Boolean).join(" ")}
+        >
+          {selectedOption?.src ? (
+            <img
+              src={selectedOption.src}
+              alt=""
+              className="h-[22px] w-[22px] flex-shrink-0 rounded-[4px] border border-[#dbd8cc] bg-white object-contain"
+            />
+          ) : null}
+          <span className={`min-w-0 flex-1 truncate ${selectedLabel ? "" : "text-[#8b8a81]"}`}>
+            {selectedLabel || placeholder}
+          </span>
+          <span className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-[#8b8a81]">
+            <IconChevronDown size={16} className={`transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+          </span>
+        </div>
+      </Popover.Trigger>
+
+      <Popover.Portal>
+        <Popover.Content
+          data-pcd-dropdown-menu="true"
+          align="start"
+          sideOffset={8}
+          collisionPadding={12}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            searchRef.current?.focus();
+          }}
+          style={{
+            maxWidth: "min(380px, calc(100vw - 24px))",
+            minWidth: "var(--radix-popover-trigger-width)",
+            width: "max-content",
+            zIndex: contentZIndex,
+          }}
+          className="overflow-hidden rounded-[6px] border border-[#dbd8cc] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.08)]"
+        >
+          <div className="border-b border-[#edf4eb] p-2">
+            <div className="relative">
+              <IconSearch size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[#8b8a81]" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search..."
+                className="h-[34px] w-full rounded-[4px] border border-[#dbd8cc] bg-[#f5f8f4] pl-[28px] pr-2 text-[13px] text-[#1a1a18] outline-none transition-colors focus:border-[#6b9e61] focus:bg-white"
+              />
+            </div>
+          </div>
+
+          <div id={listboxId} role="listbox" className="max-h-[280px] overflow-y-auto p-1">
+            {visibleOptions.length ? (
+              visibleOptions.map((option, index) => {
+                const selected = [option.value, option.name, option.label].filter(Boolean).includes(value);
+                const meta = optionMetaLabel(option);
+                return (
+                  <div
+                    key={optionKey(option, index)}
+                    role="option"
+                    aria-selected={selected}
+                    tabIndex={0}
+                    onClick={() => choose(option)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        choose(option);
+                      }
+                    }}
+                    className={[
+                      "flex cursor-pointer items-center gap-[10px] rounded-[4px] px-2 py-[7px] text-left outline-none",
+                      "transition-colors duration-100 hover:bg-[#f5f8f4]",
+                      selected ? "bg-[#edf4eb]" : "",
+                    ].filter(Boolean).join(" ")}
+                  >
+                    <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-[#c7d8bf] bg-[#eef5ea] text-[10px] font-bold text-[#1c2b1e]">
+                      {option.src ? (
+                        <img src={option.src} alt="" className="h-full w-full bg-white object-contain" />
+                      ) : (
+                        String(option.name || option.label || "?").slice(0, 2).toUpperCase()
+                      )}
+                    </span>
+                    <span className="grid min-w-0 gap-[2px]">
+                      <strong className={`truncate text-[13px] font-semibold ${selected ? "text-[#2d5e28]" : "text-[#1a1a18]"}`}>
+                        {option.name || option.label}
+                      </strong>
+                      {meta ? <small className="truncate text-[11px] text-[#8b8a81]">{meta}</small> : null}
+                    </span>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="px-3 py-5 text-center text-[13px] text-[#8b8a81]">
+                <IconSearchOff size={20} className="mx-auto mb-2 block" />
+                {emptyMessage}
               </div>
-            );
-            return disablePortal ? menu : createPortal(menu, document.body);
-          })()
-        : null}
-    </div>
+            )}
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 });
 
@@ -279,7 +283,13 @@ export const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact =
 
   return (
     <QuoteImageCombobox
+      compact={compact}
       disabled={disabled || !line.material}
+      emptyMessage={
+        databaseOptions === null
+          ? "Loading colours..."
+          : `No ${selectedSupplier} colours for ${line.material}. Try another supplier.`
+      }
       placeholder={line.material ? "Finish, colour & thickness" : "Select material first"}
       value={selectedValue}
       displayValue={displayValue}
@@ -293,6 +303,9 @@ export const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact =
           unit_cost_source_id: option.id || null,
           unit_cost_source_label: [option.supplier || selectedSupplier, option.label || option.name].filter(Boolean).join(" - "),
           unit_cost_per_sqm_ex_gst: Number(option.costPerSqmExGst || 0),
+          cost_per_board_ex_gst: Number(option.costPerBoardExGst || 0),
+          preferred_board_width_mm: Number(option.preferredBoardWidthMm || 0),
+          preferred_board_height_mm: Number(option.preferredBoardHeightMm || 0),
         })
       }
     />

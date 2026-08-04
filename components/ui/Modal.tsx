@@ -61,6 +61,10 @@ export function Modal({
 }: ModalProps) {
   const hideHeader = !title && hideCloseButton
   const isSheet = layout ? layout === 'sheet' : contentFit
+  const isDropdownMenuEvent = (event: Event) => {
+    const target = event.target as HTMLElement | null
+    return Boolean(target?.closest('[data-pcd-combobox-menu="true"], [data-pcd-dropdown-menu="true"]'))
+  }
 
   return (
     <Dialog.Root open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
@@ -91,6 +95,15 @@ export function Modal({
           height (full-screen mobile or max-h desktop form modal).
         */}
         <Dialog.Content
+          onPointerDownOutside={(event) => {
+            if (isDropdownMenuEvent(event)) event.preventDefault()
+          }}
+          onFocusOutside={(event) => {
+            if (isDropdownMenuEvent(event)) event.preventDefault()
+          }}
+          onInteractOutside={(event) => {
+            if (isDropdownMenuEvent(event)) event.preventDefault()
+          }}
           className={cn(
             'fixed z-50 w-full bg-white border border-[#dbd8cc]',
             'duration-200',

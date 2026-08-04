@@ -50,6 +50,28 @@ function calculatedUnitCost(row) {
   return roundMoney(rate * area);
 }
 
+async function boardPricingSource(supabase, sourceId) {
+  if (!sourceId) return null;
+  const { data, error } = await supabase
+    .from("pcd_colour_library")
+    .select("id,name,finish_type,supplier_name,thickness,cost_per_board_ex_gst,cost_per_sqm_ex_gst,preferred_board_width_mm,preferred_board_height_mm")
+    .eq("id", sourceId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function effectiveBoardRate(payload = {}, pricingSource = null) {
+  const directRate = toNumber(pricingSource?.cost_per_sqm_ex_gst ?? payload.unit_cost_per_sqm_ex_gst);
+  if (directRate > 0) return directRate;
+  const boardCost = toNumber(pricingSource?.cost_per_board_ex_gst ?? payload.cost_per_board_ex_gst);
+  const boardWidth = toNumber(pricingSource?.preferred_board_width_mm ?? payload.preferred_board_width_mm);
+  const boardHeight = toNumber(pricingSource?.preferred_board_height_mm ?? payload.preferred_board_height_mm);
+  const boardArea = boardWidth > 0 && boardHeight > 0 ? (boardWidth * boardHeight) / 1000000 : 0;
+  if (boardCost > 0 && boardArea > 0) return roundMoney(boardCost / boardArea);
+  return 0;
+}
+
 function originalItemSnapshot(sourceLine) {
   if (!sourceLine) return null;
   return {
@@ -95,7 +117,7 @@ async function assertEditable(supabase, orderId, variationId) {
   if (isVariationFinal(data.status)) throw new Error("Finalised variations cannot be edited.");
 }
 
-function updatesFromPayload(payload, before, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS) {
+function updatesFromPayload(payload, before, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null) {
   const updates = {};
   if (Object.prototype.hasOwnProperty.call(payload, "action")) {
     if (!VARIATION_LINE_ACTIONS.includes(payload.action)) throw new Error("Invalid variation line action.");
@@ -126,6 +148,13 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
   ["qty", "original_line_total_ex_gst", "proposed_line_total_ex_gst", "unit_cost_per_sqm_ex_gst", "calculated_unit_cost_ex_gst", "product_unit_cost_ex_gst", "markup_percent"].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = toNumber(payload[field]);
   });
+  if (pricingSource) {
+    updates.unit_cost_source_id = pricingSource.id;
+    updates.unit_cost_source_label = [pricingSource.supplier_name || "Polytec", pricingSource.finish_type, pricingSource.name, pricingSource.thickness].filter(Boolean).join(" - ");
+    updates.unit_cost_per_sqm_ex_gst = effectiveBoardRate(payload, pricingSource);
+  } else if (Object.prototype.hasOwnProperty.call(payload, "unit_cost_source_id")) {
+    updates.unit_cost_per_sqm_ex_gst = effectiveBoardRate(payload, null);
+  }
   if (!Object.prototype.hasOwnProperty.call(updates, "markup_percent")) {
     updates.markup_percent = toNumber(before.markup_percent, businessDefaults.markup_percent);
   }
@@ -139,21 +168,24 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
     updates.proposed_line_total_ex_gst = 0;
     next.proposed_line_total_ex_gst = 0;
   } else if (isBoardPricedLine(next)) {
-    if (changedBoardFields(next, sourceLine) && toNumber(next.unit_cost_per_sqm_ex_gst) <= 0) {
+    // A hand-typed unit cost wins over the board rate, same as a quote line.
+    const manualUnitCost = payload.unit_cost_mode === "manual" ? toNumber(payload.product_unit_cost_ex_gst) : 0;
+    if (manualUnitCost <= 0 && changedBoardFields(next, sourceLine) && toNumber(next.unit_cost_per_sqm_ex_gst) <= 0) {
       throw new Error("The selected board does not have an uploaded price. Add the board cost before saving this variation line.");
     }
-    if (toNumber(next.unit_cost_per_sqm_ex_gst) > 0) {
-      const unitCost = calculatedUnitCost(next);
-      if (unitCost <= 0) {
+    if (manualUnitCost > 0 || toNumber(next.unit_cost_per_sqm_ex_gst) > 0) {
+      const calculatedCost = calculatedUnitCost(next);
+      if (manualUnitCost <= 0 && calculatedCost <= 0) {
         throw new Error("Enter width and height before saving this priced board variation line.");
       }
+      const unitCost = manualUnitCost > 0 ? manualUnitCost : calculatedCost;
       const calculated = calculateQuoteLine({
         ...next,
-        calculated_unit_cost_ex_gst: unitCost,
+        calculated_unit_cost_ex_gst: calculatedCost,
         product_unit_cost_ex_gst: unitCost,
         markup_percent: toNumber(next.markup_percent, businessDefaults.markup_percent),
       }, businessDefaults);
-      updates.calculated_unit_cost_ex_gst = unitCost;
+      updates.calculated_unit_cost_ex_gst = calculatedCost;
       updates.product_unit_cost_ex_gst = calculated.product_unit_cost_ex_gst;
       updates.proposed_line_total_ex_gst = calculated.line_total_ex_gst;
       next.proposed_line_total_ex_gst = calculated.line_total_ex_gst;
@@ -227,8 +259,9 @@ export async function PATCH(request, { params }) {
       return Response.json({ ok: false, error: "Choose an order line for this variation action." }, { status: 400 });
     }
     const businessDefaults = await getBusinessDefaults(context.supabase);
+    const pricingSource = await boardPricingSource(context.supabase, payload.unit_cost_source_id);
 
-    const updates = updatesFromPayload(payload, before, sourceLine, businessDefaults);
+    const updates = updatesFromPayload(payload, before, sourceLine, businessDefaults, pricingSource);
     let { data: line, error } = await context.supabase
       .from("pcd_order_variation_lines")
       .update(updates)
