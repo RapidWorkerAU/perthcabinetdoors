@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   IconMail,
@@ -29,9 +30,21 @@ interface Attention {
   pendingPayments: AttentionItem[]
 }
 
+type FinancialRow = { id: string; monthKey: string | null; amount: number }
+
+interface FinancialData {
+  orders:     FinancialRow[]
+  deposits:   FinancialRow[]
+  sentQuotes: FinancialRow[]
+  years:      number[]
+  currentMonth: string
+  currentYear:  number
+}
+
 interface DashboardProps {
   stats:     Stats
   attention: Attention
+  financial: FinancialData
   todayLabel: string
 }
 
@@ -71,6 +84,33 @@ const GROUP_COLOURS = {
     emptyMsg:'No pending payments — all clear ✓',
   },
 } as const
+
+const MONTHS = [
+  { value: '01', label: 'January' },
+  { value: '02', label: 'February' },
+  { value: '03', label: 'March' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'June' },
+  { value: '07', label: 'July' },
+  { value: '08', label: 'August' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+] as const
+
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    maximumFractionDigits: 0,
+  }).format(value || 0)
+}
+
+function sumFinancialRows(rows: FinancialRow[], selectedMonthKey: string): number {
+  return rows.reduce((total, row) => row.monthKey === selectedMonthKey ? total + Number(row.amount || 0) : total, 0)
+}
 
 // ─── AttentionGroup ──────────────────────────────────────────────────────────
 
@@ -143,6 +183,72 @@ function AttentionGroup({
 
 // ─── NeedsAttentionPanel ─────────────────────────────────────────────────────
 
+function FinancialSummaryPanel({ financial }: { financial: FinancialData }) {
+  const [month, setMonth] = useState(financial.currentMonth)
+  const [year, setYear] = useState(String(financial.currentYear))
+  const selectedMonthKey = `${year}-${month}`
+  const selectedMonthLabel = MONTHS.find(option => option.value === month)?.label || 'Selected month'
+  const yearOptions = financial.years.length ? financial.years : [financial.currentYear]
+
+  const totals = useMemo(() => ({
+    confirmedOrders: sumFinancialRows(financial.orders, selectedMonthKey),
+    receivedDeposits: sumFinancialRows(financial.deposits, selectedMonthKey),
+    sentQuotePipeline: sumFinancialRows(financial.sentQuotes, selectedMonthKey),
+  }), [financial, selectedMonthKey])
+  const totalOpportunity = totals.confirmedOrders + totals.sentQuotePipeline
+
+  return (
+    <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
+      <div className="flex flex-col gap-3 px-4 py-3 border-b border-[#edf4eb] sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-[13px] font-semibold text-[#1a1a18]">Financials</h2>
+          <p className="text-[11px] text-[#8b8a81] mt-[2px]">{selectedMonthLabel} {year}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:w-[260px]">
+          <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">
+            Month
+            <select
+              className="h-[32px] border border-[#dbd8cc] rounded-[6px] bg-white px-2 text-[12px] font-medium normal-case tracking-normal text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
+              value={month}
+              onChange={event => setMonth(event.target.value)}
+            >
+              {MONTHS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">
+            Year
+            <select
+              className="h-[32px] border border-[#dbd8cc] rounded-[6px] bg-white px-2 text-[12px] font-medium normal-case tracking-normal text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
+              value={year}
+              onChange={event => setYear(event.target.value)}
+            >
+              {yearOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#edf4eb]">
+        {([
+          { label: 'Confirmed order total', value: totals.confirmedOrders },
+          { label: 'Received deposits', value: totals.receivedDeposits },
+          { label: 'Sent quote pipeline', value: totals.sentQuotePipeline },
+          { label: 'Total confirmed + pipeline', value: totalOpportunity },
+        ] as const).map(item => (
+          <div key={item.label} className="px-4 py-4">
+            <div className="text-[19px] font-medium font-mono leading-none text-[#1a1a18]">{formatMoney(item.value)}</div>
+            <div className="mt-[6px] text-[11px] text-[#8b8a81]">{item.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function NeedsAttentionPanel({ attention }: { attention: Attention }) {
   const total =
     attention.enquiries.length +
@@ -198,7 +304,7 @@ function NeedsAttentionPanel({ attention }: { attention: Attention }) {
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
-export default function DashboardClient({ stats, attention, todayLabel }: DashboardProps) {
+export default function DashboardClient({ stats, attention, financial, todayLabel }: DashboardProps) {
   return (
     <div className="p-5 max-w-[1400px]">
 
@@ -247,8 +353,11 @@ export default function DashboardClient({ stats, attention, todayLabel }: Dashbo
       {/* Body — needs attention left, quick actions + summary right */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-4 items-start">
 
-        {/* Left — needs attention */}
-        <NeedsAttentionPanel attention={attention} />
+        {/* Left — financials + needs attention */}
+        <div className="flex flex-col gap-4">
+          <FinancialSummaryPanel financial={financial} />
+          <NeedsAttentionPanel attention={attention} />
+        </div>
 
         {/* Right — quick actions + summary (unchanged) */}
         <div className="flex flex-col gap-4">
