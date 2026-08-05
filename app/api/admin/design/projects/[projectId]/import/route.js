@@ -59,6 +59,7 @@ const QUOTE_PRODUCT_TYPES = {
   drawer_front: "Drawer front",
   panel: "Panel",
   scribe: "Panel",
+  benchtop: "Benchtop",
 };
 
 function itemLabel(item) {
@@ -1126,15 +1127,17 @@ function benchtopLinesForCabinet(item, selectedCabinetItems, roomName) {
   // Base surface — the whole run's area × rate. Real dimensions (unlike a
   // cabinet line) because a benchtop IS priced as a flat area sheet.
   lines.push({
-    product_type: "Table top",
+    product_type: QUOTE_PRODUCT_TYPES.benchtop,
     product_name: label,
     description: traceLabel ? `${label} — ${traceLabel}` : label,
     notes: `Benchtop surface — ${lengthMm}mm run × ${depthMm}mm deep, ${thicknessMm}mm.`,
+    material,
     width_mm: lengthMm,
     height_mm: depthMm,
     qty: 1,
     thickness: `${thicknessMm}mm`,
     unit_cost_per_sqm_ex_gst: rate,
+    unit_cost_source_label: material,
     unit_cost_mode: "auto",
   });
 
@@ -1144,15 +1147,17 @@ function benchtopLinesForCabinet(item, selectedCabinetItems, roomName) {
   const wf = benchtopRunWaterfallEnds(item, selectedCabinetItems);
   const benchHeightMm = benchtopUndersideMm(item);
   const pushWaterfall = (side) => lines.push({
-    product_type: "Table top",
+    product_type: QUOTE_PRODUCT_TYPES.benchtop,
     product_name: `${label} — waterfall end (${side})`,
     description: traceLabel ? `${label} waterfall end (${side}) — ${traceLabel}` : `${label} waterfall end (${side})`,
     notes: `Waterfall end — ${benchHeightMm}mm high × ${depthMm}mm deep.`,
+    material,
     width_mm: depthMm,
     height_mm: benchHeightMm,
     qty: 1,
     thickness: `${thicknessMm}mm`,
     unit_cost_per_sqm_ex_gst: rate,
+    unit_cost_source_label: material,
     unit_cost_mode: "auto",
   });
   if (wf?.left)  pushWaterfall("left");
@@ -1167,12 +1172,14 @@ function benchtopLinesForCabinet(item, selectedCabinetItems, roomName) {
   }
   if (cutoutCount > 0) {
     lines.push({
-      product_type: "Table top",
+      product_type: QUOTE_PRODUCT_TYPES.benchtop,
       product_name: "Benchtop cutout",
       description: traceLabel ? `Benchtop cutout(s) — ${traceLabel}` : "Benchtop cutout(s)",
       notes: "Sink / cooktop cutout — flat fee per cutout.",
+      material,
       qty: cutoutCount,
       product_unit_cost_ex_gst: DEFAULT_BENCHTOP_CUTOUT_FEE_EX_GST,
+      unit_cost_source_label: material,
       unit_cost_mode: "manual",
     });
   }

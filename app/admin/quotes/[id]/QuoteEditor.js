@@ -38,9 +38,11 @@ const sections = [
 ];
 
 const BASE_CABINET_TYPE = "base_cabinet";
+const BENCHTOP_TYPE = "Benchtop";
 const colourOptionsCache = new Map();
 const quoteProductTypes = [
   ...PRODUCT_TYPES.map((type) => ({ value: type, label: type })),
+  ...(PRODUCT_TYPES.includes(BENCHTOP_TYPE) ? [] : [{ value: BENCHTOP_TYPE, label: BENCHTOP_TYPE }]),
   { value: BASE_CABINET_TYPE, label: "Base cabinet" },
 ];
 const ADMIN_DROPDOWN_OPEN_EVENT = "pcd-admin-dropdown-open";
@@ -283,6 +285,10 @@ function normalizeProductTypeKey(value) {
 
 function isBaseCabinetLine(line) {
   return normalizeProductTypeKey(line?.product_type) === normalizeProductTypeKey(BASE_CABINET_TYPE);
+}
+
+function isBenchtopLine(line) {
+  return normalizeProductTypeKey(line?.product_type) === normalizeProductTypeKey(BENCHTOP_TYPE);
 }
 
 // Turns an unrecognized raw value (e.g. "drawer_front") into a readable
@@ -751,6 +757,19 @@ function hardwareOptionsFromRows(rows = []) {
     }));
 }
 
+function benchtopOptionsFromRows(rows = []) {
+  return rows
+    .filter((item) => item?.is_active !== false)
+    .map((item) => ({
+      id: item.id,
+      value: item.id,
+      name: item.name,
+      label: item.name,
+      meta: `${formatMoney(item.cost_per_sqm_ex_gst || 0)} / sqm`,
+      item,
+    }));
+}
+
 export default function QuoteEditor({ quoteId }) {
   const fileInputRef = useRef(null);
   const lineViewModelCacheRef = useRef(new WeakMap());
@@ -770,6 +789,7 @@ export default function QuoteEditor({ quoteId }) {
   const [activeLineConfigIndex, setActiveLineConfigIndex] = useState(null);
   const [activeLineConfigDraft, setActiveLineConfigDraft] = useState(null);
   const [hardwareRows, setHardwareRows] = useState([]);
+  const [benchtopMaterialRows, setBenchtopMaterialRows] = useState([]);
   const [hingeModal, setHingeModal] = useState(null);
   const [profileModal, setProfileModal] = useState(null);
   const [lineNoteModal, setLineNoteModal] = useState(null);
@@ -858,6 +878,7 @@ export default function QuoteEditor({ quoteId }) {
       ? `${window.location.origin}/quotes/view?code=${form.access_code}`
       : "";
   const hardwareOptions = useMemo(() => hardwareOptionsFromRows(hardwareRows), [hardwareRows]);
+  const benchtopMaterialOptions = useMemo(() => benchtopOptionsFromRows(benchtopMaterialRows), [benchtopMaterialRows]);
 
   function lineViewModel(line) {
     const cached = lineViewModelCacheRef.current.get(line);
@@ -876,6 +897,7 @@ export default function QuoteEditor({ quoteId }) {
         src: edgeOptionSrc(edge),
       })),
       isHardware: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Hardware"),
+      isBenchtop: isBenchtopLine(line),
       hingesApplicable: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Door"),
       colourSrc: colourSrcForLine(line),
       isBaseCabinet: isBaseCabinetLine(line),
@@ -937,6 +959,21 @@ export default function QuoteEditor({ quoteId }) {
       } catch {}
     }
     loadHardwareRows();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBenchtopMaterials() {
+      try {
+        const response = await fetch("/api/admin/benchtop-materials", { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled && payload.ok) setBenchtopMaterialRows(payload.materials || []);
+      } catch {}
+    }
+    loadBenchtopMaterials();
     return () => {
       cancelled = true;
     };
@@ -1215,6 +1252,26 @@ export default function QuoteEditor({ quoteId }) {
         next.unit_cost_per_sqm_ex_gst = 0;
         next.calculated_unit_cost_ex_gst = 0;
       }
+      if (patch.product_type === BENCHTOP_TYPE) {
+        next.product_name = "Benchtop";
+        next.description = next.description || "Benchtop";
+        next.material = "";
+        next.supplier_name = "";
+        next.thickness = "";
+        next.finish = "";
+        next.colour = "";
+        next.edge_mould = "";
+        next.profile_type = "";
+        next.profile = "";
+        next.hinge_holes = false;
+        next.hinge_supply = false;
+        next.hinge_qty = "";
+        next.unit_cost_mode = "manual";
+        next.unit_cost_source_id = null;
+        next.unit_cost_source_label = "";
+        next.unit_cost_per_sqm_ex_gst = 0;
+        next.calculated_unit_cost_ex_gst = 0;
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(patch, "hardware_catalogue_id")) {
@@ -1240,6 +1297,32 @@ export default function QuoteEditor({ quoteId }) {
         next.unit_cost_source_label = label;
         next.unit_cost_per_sqm_ex_gst = 0;
         next.calculated_unit_cost_ex_gst = 0;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, "benchtop_material_id")) {
+      const item = benchtopMaterialRows.find((row) => row.id === patch.benchtop_material_id);
+      if (item) {
+        const rate = Number(item.cost_per_sqm_ex_gst || 0);
+        next.product_type = BENCHTOP_TYPE;
+        next.product_name = "Benchtop";
+        next.description = next.description || "Benchtop";
+        next.material = item.name || "";
+        next.supplier_name = "";
+        next.thickness = "";
+        next.finish = "";
+        next.colour = "";
+        next.edge_mould = "";
+        next.profile_type = "";
+        next.profile = "";
+        next.hinge_holes = false;
+        next.hinge_supply = false;
+        next.hinge_qty = "";
+        next.unit_cost_mode = rate > 0 ? "auto" : "manual";
+        next.unit_cost_source_id = item.id;
+        next.unit_cost_source_label = item.name || "";
+        next.unit_cost_per_sqm_ex_gst = rate;
+        return applyCalculatedUnitCost(next, { forceAuto: rate > 0 });
       }
     }
 
@@ -2152,6 +2235,7 @@ export default function QuoteEditor({ quoteId }) {
                     materialOptions,
                     colourSrc,
                     isHardware,
+                    isBenchtop,
                     isBaseCabinet,
                   } = lineViewModel(line)
                   const isBaseCabinetEditable = isEditable && isBaseCabinet
@@ -2233,6 +2317,13 @@ export default function QuoteEditor({ quoteId }) {
                               options={hardwareOptions}
                               onChange={option => updateProductLine(index, { hardware_catalogue_id: option.id || option.value })}
                             />
+                          ) : isEditable && isBenchtop ? (
+                            <QuoteTileCombobox
+                              placeholder="Select material"
+                              value={line.unit_cost_source_id || line.material}
+                              options={benchtopMaterialOptions}
+                              onChange={option => updateProductLine(index, { benchtop_material_id: option.id || option.value })}
+                            />
                           ) : isEditable ? (
                             <QuoteTileCombobox
                               placeholder="Select material"
@@ -2249,7 +2340,7 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Supplier */}
                         <td className={td}>
-                          {isHardware ? (
+                          {isHardware || isBenchtop ? (
                             <span className={naText}>N/A</span>
                           ) : isEditable && !isBaseCabinetEditable ? (
                             <QuoteTileCombobox
@@ -2266,12 +2357,12 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Finish */}
                         <td className={td}>
-                          <span className={isHardware ? naText : v2}>{isHardware ? "N/A" : line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
+                          <span className={isHardware || isBenchtop ? naText : v2}>{isHardware || isBenchtop ? "N/A" : line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
                         </td>
 
                         {/* Colour */}
                         <td className={td}>
-                          {isHardware ? (
+                          {isHardware || isBenchtop ? (
                             <span className={naText}>N/A</span>
                           ) : isEditable && !isBaseCabinetEditable ? (
                             <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
@@ -2287,7 +2378,7 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Thickness */}
                         <td className={td}>
-                          <span className={isHardware ? naText : v1}>{isHardware ? "N/A" : line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
+                          <span className={isHardware || isBenchtop ? naText : v1}>{isHardware || isBenchtop ? "N/A" : line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
                         </td>
 
                         {/* H mm */}
@@ -3185,6 +3276,17 @@ export default function QuoteEditor({ quoteId }) {
                       onChange={option => updateLineConfigProduct({ hardware_catalogue_id: option.id || option.value })}
                     />
                   </label>
+                ) : activeLineConfigView?.isBenchtop ? (
+                  <label className={styles.fieldLabel}>
+                    Benchtop material
+                    <QuoteTileCombobox
+                      compact={false}
+                      placeholder="Select material"
+                      value={activeLineConfig.unit_cost_source_id || activeLineConfig.material}
+                      options={benchtopMaterialOptions}
+                      onChange={option => updateLineConfigProduct({ benchtop_material_id: option.id || option.value })}
+                    />
+                  </label>
                 ) : (
                   <label className={styles.fieldLabel}>
                     Material
@@ -3202,7 +3304,7 @@ export default function QuoteEditor({ quoteId }) {
                   Supplier
                   <QuoteTileCombobox
                     compact={false}
-                    disabled={activeLineConfigView?.isHardware || !activeLineConfig.material || activeLineConfigIsBaseCabinet}
+                    disabled={activeLineConfigView?.isHardware || activeLineConfigView?.isBenchtop || !activeLineConfig.material || activeLineConfigIsBaseCabinet}
                     placeholder="Supplier"
                     value={COLOUR_SUPPLIERS.includes(activeLineConfig.supplier_name) ? activeLineConfig.supplier_name : COLOUR_SUPPLIERS[0]}
                     options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
@@ -3214,7 +3316,7 @@ export default function QuoteEditor({ quoteId }) {
                   Colour
                   <QuoteColourCombobox
                     compact={false}
-                    disabled={activeLineConfigView?.isHardware || activeLineConfigIsBaseCabinet}
+                    disabled={activeLineConfigView?.isHardware || activeLineConfigView?.isBenchtop || activeLineConfigIsBaseCabinet}
                     line={activeLineConfig}
                     onChange={patch => updateLineConfigProduct(patch)}
                   />
@@ -3568,7 +3670,7 @@ export default function QuoteEditor({ quoteId }) {
         (() => {
           const idx = editableLineIndex
           const line = editableLineDraft || form.lines[idx] || emptyLineWithDefaults(businessDefaults)
-          const { calculated, materialOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isHardware, isBaseCabinet } = lineViewModel(line)
+          const { calculated, materialOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isHardware, isBenchtop, isBaseCabinet } = lineViewModel(line)
           const isBaseCabinetEditable = isBaseCabinet
           const isLineSaving = savingLineIndex === idx
           const canResetUnitCost = !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
@@ -3602,7 +3704,7 @@ export default function QuoteEditor({ quoteId }) {
                     />
                   </div>
                   <div className="col-span-2">
-                    <span className={mfl}>{isHardware ? "Hardware item" : "Material"}</span>
+                    <span className={mfl}>{isHardware ? "Hardware item" : isBenchtop ? "Benchtop material" : "Material"}</span>
                     {isHardware ? (
                       <QuoteImageCombobox
                         placeholder="Select hardware"
@@ -3610,6 +3712,14 @@ export default function QuoteEditor({ quoteId }) {
                         displayValue={line.product_name || ""}
                         options={hardwareOptions}
                         onChange={option => updateProductLine(idx, { hardware_catalogue_id: option.id || option.value })}
+                      />
+                    ) : isBenchtop ? (
+                      <QuoteTileCombobox
+                        compact={false}
+                        placeholder="Select material"
+                        value={line.unit_cost_source_id || line.material}
+                        options={benchtopMaterialOptions}
+                        onChange={option => updateProductLine(idx, { benchtop_material_id: option.id || option.value })}
                       />
                     ) : (
                       <QuoteTileCombobox
@@ -3625,7 +3735,7 @@ export default function QuoteEditor({ quoteId }) {
                     <span className={mfl}>Supplier</span>
                     <QuoteTileCombobox
                       compact={false}
-                      disabled={isHardware || !line.material || isBaseCabinetEditable}
+                      disabled={isHardware || isBenchtop || !line.material || isBaseCabinetEditable}
                       placeholder="Supplier"
                       value={COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0]}
                       options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
@@ -3634,7 +3744,7 @@ export default function QuoteEditor({ quoteId }) {
                   </div>
                   <div className="col-span-2">
                     <span className={mfl}>Finish, colour &amp; thickness</span>
-                    <QuoteColourCombobox compact={false} disabled={isHardware || isBaseCabinetEditable} line={line} onChange={patch => updateProductLine(idx, patch)} />
+                    <QuoteColourCombobox compact={false} disabled={isHardware || isBenchtop || isBaseCabinetEditable} line={line} onChange={patch => updateProductLine(idx, patch)} />
                   </div>
                   {!isBaseCabinetEditable ? (
                     <>
