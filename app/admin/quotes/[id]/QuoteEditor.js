@@ -62,7 +62,6 @@ const emptyLine = {
   edge_mould: "",
   qty: 1,
   hinge_holes: false,
-  hinge_supply: false,
   hinge_qty: "",
   product_unit_cost_ex_gst: "",
   unit_cost_mode: "manual",
@@ -144,7 +143,6 @@ function lineFromQuoteLine(line) {
     supplier_name: line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || (line.material ? COLOUR_SUPPLIERS[0] : ""),
     profile_type: line.profile_type ?? "",
     hinge_holes: Boolean(line.hinge_holes),
-    hinge_supply: false,
     hinge_qty: line.hinge_qty ?? "",
     product_unit_cost_ex_gst: line.product_unit_cost_ex_gst ?? "",
     unit_cost_mode: line.unit_cost_mode === "auto" ? "auto" : "manual",
@@ -255,7 +253,7 @@ function lineValue(value, fallback = "-") {
 // empty box while retyping isn't fought by the browser's number-input
 // validation), which means nothing was stopping a pasted value like
 // "1,200" from turning into NaN downstream and silently zeroing out the
-// line's calculated cost. Restrict to digits only — every one of these is a
+// line's calculated cost. Restrict to digits only - every one of these is a
 // whole-unit mm dimension or a whole cabinet/door count in this business.
 function sanitizeIntegerInput(value) {
   return String(value ?? "").replace(/[^0-9]/g, "");
@@ -269,7 +267,7 @@ function safeLineQty(value) {
 }
 
 // Markup should never go negative (that's a below-cost quote line with no
-// warning) — strip a typed/pasted minus sign at input time rather than only
+// warning) - strip a typed/pasted minus sign at input time rather than only
 // catching it after the fact.
 function sanitizeNonNegativeDecimalInput(value) {
   return String(value ?? "").replace(/[^0-9.]/g, "");
@@ -494,7 +492,7 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", di
       const viewportPadding = 12;
 
       if (disablePortal) {
-        // Rendered inline (no portal) — position relative to the wrapper via `absolute`.
+        // Rendered inline (no portal) - position relative to the wrapper via `absolute`.
         // `position: fixed` would be offset by Dialog.Content's CSS transform.
         const gap = 8;
         const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
@@ -733,11 +731,11 @@ const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact = true, 
 });
 
 const QUOTE_COL_KEY = 'pcd-quote-table-col-widths'
-const QUOTE_COL_DEFAULTS = [18, 22, 88, 92, 78, 78, 116, 62, 60, 60, 52, 76, 80, 102]
+const QUOTE_COL_DEFAULTS = [22, 34, 130, 150, 110, 105, 170, 85, 80, 80, 65, 105, 85, 130, 135, 135, 95, 95, 105, 110, 190]
 const QUOTE_COL_TOTAL = QUOTE_COL_DEFAULTS.reduce((a, b) => a + b, 0)
 const QUOTE_COL_MIN = 36
-// Drag handles appear between resizable columns only (indices 2–13); cols 0,1,15 are fixed utility cols
-const RESIZE_HANDLE_INDICES = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+// Drag handles appear between resizable columns only (indices 2-13); cols 0,1,15 are fixed utility cols
+const RESIZE_HANDLE_INDICES = new Set(Array.from({ length: QUOTE_COL_DEFAULTS.length - 3 }, (_, index) => index + 2))
 
 function hardwareOptionLabel(item) {
   return [item.brand, item.name, item.sku ? `(${item.sku})` : ""].filter(Boolean).join(" ");
@@ -786,8 +784,6 @@ export default function QuoteEditor({ quoteId }) {
   const [deleteLineConfirmIndex, setDeleteLineConfirmIndex] = useState(null);
   const [deleteAttachmentConfirmId, setDeleteAttachmentConfirmId] = useState(null);
   const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
-  const [activeLineConfigIndex, setActiveLineConfigIndex] = useState(null);
-  const [activeLineConfigDraft, setActiveLineConfigDraft] = useState(null);
   const [hardwareRows, setHardwareRows] = useState([]);
   const [benchtopMaterialRows, setBenchtopMaterialRows] = useState([]);
   const [hingeModal, setHingeModal] = useState(null);
@@ -858,7 +854,7 @@ export default function QuoteEditor({ quoteId }) {
 
   const totals = useMemo(
     // form.labour_hours is the MANUAL base here (the "Hours" input); pass it as
-    // manual_labour_hours so the total = base + Σ line labour, never base×2.
+    // manual_labour_hours so the total = base + sum line labour, never basex2.
     () => calculateQuoteTotals(form.lines, form.gst_rate, { ...form, manual_labour_hours: form.labour_hours, business_defaults: businessDefaults }),
     [
       form.lines,
@@ -1131,7 +1127,6 @@ export default function QuoteEditor({ quoteId }) {
     const hasRequirements = hingeModal.hinge_holes;
     const patch = {
       hinge_holes: Boolean(hingeModal.hinge_holes),
-      hinge_supply: false,
       hinge_qty: hasRequirements ? hingeModal.hinge_qty : "",
     };
     if (hingeModal.lineIndex === editableLineIndex) {
@@ -1220,14 +1215,12 @@ export default function QuoteEditor({ quoteId }) {
         next.profile_type = "";
         next.profile = "";
         next.hinge_holes = false;
-        next.hinge_supply = false;
         next.hinge_qty = "";
         next.product_unit_cost_ex_gst = "";
         next.markup_percent = next.markup_percent ?? businessDefaults.markup_percent;
       }
       if (patch.product_type !== "Door") {
         next.hinge_holes = false;
-        next.hinge_supply = false;
         next.hinge_qty = "";
       }
       if (patch.product_type !== BASE_CABINET_TYPE) {
@@ -1264,7 +1257,6 @@ export default function QuoteEditor({ quoteId }) {
         next.profile_type = "";
         next.profile = "";
         next.hinge_holes = false;
-        next.hinge_supply = false;
         next.hinge_qty = "";
         next.unit_cost_mode = "manual";
         next.unit_cost_source_id = null;
@@ -1316,7 +1308,6 @@ export default function QuoteEditor({ quoteId }) {
         next.profile_type = "";
         next.profile = "";
         next.hinge_holes = false;
-        next.hinge_supply = false;
         next.hinge_qty = "";
         next.unit_cost_mode = rate > 0 ? "auto" : "manual";
         next.unit_cost_source_id = item.id;
@@ -1407,10 +1398,6 @@ export default function QuoteEditor({ quoteId }) {
       next.profile = "";
     }
 
-    if (Object.prototype.hasOwnProperty.call(patch, "hinge_holes")) {
-      next.hinge_supply = false;
-    }
-
     if (Object.prototype.hasOwnProperty.call(patch, "hinge_holes") && !next.hinge_holes) {
       next.hinge_qty = "";
     }
@@ -1443,51 +1430,6 @@ export default function QuoteEditor({ quoteId }) {
     setEditableLineDraft(form.lines[index] || emptyLineWithDefaults(businessDefaults));
     setEditableLineIndex(index);
     setActiveSection("items");
-  }
-
-  async function openLineConfig(index) {
-    const line = index === editableLineIndex && editableLineDraft ? editableLineDraft : form.lines[index];
-    if (!line) return;
-    setActiveLineConfigDraft(line);
-    setActiveLineConfigIndex(index);
-  }
-
-  function closeLineConfig() {
-    const lineIndex = activeLineConfigIndex;
-    setActiveLineConfigIndex(null);
-    setActiveLineConfigDraft(null);
-    if (lineIndex !== null && lineIndex === editableLineIndex) {
-      setEditableLineIndex(null);
-      setEditableLineDraft(null);
-    }
-  }
-
-  function shouldIgnoreLineRowClick(event) {
-    return Boolean(event.target?.closest?.('button, a, input, select, textarea, [role="button"], [data-line-row-ignore]'));
-  }
-
-  async function saveLineConfig() {
-    if (activeLineConfigIndex === null) return;
-    const lineIndex = activeLineConfigIndex;
-    const lineDraft = activeLineConfigDraft || form.lines[lineIndex];
-    const saved = await saveLineAtIndex(lineIndex, lineDraft);
-    if (!saved) return;
-    setEditableLineIndex(null);
-    setEditableLineDraft(null);
-    setActiveLineConfigIndex(null);
-    setActiveLineConfigDraft(null);
-  }
-
-  function updateLineConfigField(field, value) {
-    setActiveLineConfigDraft((current) => applyLineFieldPatch(current || emptyLineWithDefaults(businessDefaults), field, value));
-  }
-
-  function updateLineConfigProduct(patch) {
-    setActiveLineConfigDraft((current) => applyProductLinePatch(current || emptyLineWithDefaults(businessDefaults), patch));
-  }
-
-  function resetLineConfigUnitCost() {
-    setActiveLineConfigDraft((current) => applyCalculatedUnitCost({ ...(current || emptyLineWithDefaults(businessDefaults)), unit_cost_mode: "auto" }, { forceAuto: true }));
   }
 
   async function saveLine() {
@@ -1533,12 +1475,12 @@ export default function QuoteEditor({ quoteId }) {
     }
     const sourceLine = form.lines[index];
     if (!sourceLine) return;
-    // Drop design_item_id too — a manually duplicated line is a distinct
+    // Drop design_item_id too - a manually duplicated line is a distinct
     // line the user is deliberately creating, not something a design-tool
     // reimport should manage/replace alongside its original.
     const { id: _id, design_item_id: _designItemId, ...rest } = sourceLine;
     // A duplicated line must get its own cabinet_config row on save, not
-    // reuse the source cabinet's — otherwise saving the duplicate's config
+    // reuse the source cabinet's - otherwise saving the duplicate's config
     // upserts with the original cabinet's primary key, which already
     // belongs to a different line and fails to save.
     const nextLine = {
@@ -1723,8 +1665,8 @@ export default function QuoteEditor({ quoteId }) {
       const response = await fetch(`/api/admin/quotes/${quoteId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // form.labour_hours is the MANUAL base — persist it as manual_labour_hours.
-        // The server derives labour_hours (base + Σ line labour) on recalc.
+        // form.labour_hours is the MANUAL base - persist it as manual_labour_hours.
+        // The server derives labour_hours (base + sum line labour) on recalc.
         body: JSON.stringify({ ...nextForm, manual_labour_hours: nextForm.labour_hours }),
       });
       const payload = await response.json();
@@ -2174,6 +2116,30 @@ export default function QuoteEditor({ quoteId }) {
 
   function renderItems() {
     const td = 'px-2 py-[7px] border-b border-[#edf4eb] align-top text-[#1a1a18]'
+    const stickyCellBg = (isEditable) => (isEditable ? '#f3faf6' : '#f7f5ee')
+    const stickyHeaderClass = (index) => {
+      const base = 'sticky top-0 z-20 bg-[#f5f8f4] border-b border-[#dbd8cc] px-2 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap select-none'
+      if (index === 0) return `${base} left-0 z-40`
+      if (index === 1) return `${base} z-40 border-r border-[#c4caba] shadow-[8px_0_14px_rgba(15,22,31,0.08)]`
+      if (index === QUOTE_COL_DEFAULTS.length - 1) return `${base} right-0 z-40 border-l border-[#c4caba] shadow-[-8px_0_14px_rgba(15,22,31,0.1)]`
+      return `${base} relative overflow-visible`
+    }
+    const stickyHeaderStyle = (index) => {
+      if (index === 1) return { left: colWidths[0] || QUOTE_COL_DEFAULTS[0] }
+      return undefined
+    }
+    const stickyCellClass = (index, isEditable) => {
+      if (index === 0) return `${td} sticky left-0 z-20`
+      if (index === 1) return `${td} sticky z-20 border-r border-[#cfd5c4] shadow-[8px_0_14px_rgba(15,22,31,0.06)]`
+      if (index === QUOTE_COL_DEFAULTS.length - 1) return `${td} sticky right-0 z-20 border-l border-[#cfd5c4] shadow-[-8px_0_14px_rgba(15,22,31,0.1)]`
+      return td
+    }
+    const stickyCellStyle = (index, isEditable) => {
+      if (index === 0) return { backgroundColor: stickyCellBg(isEditable) }
+      if (index === 1) return { left: colWidths[0] || QUOTE_COL_DEFAULTS[0], backgroundColor: stickyCellBg(isEditable) }
+      if (index === QUOTE_COL_DEFAULTS.length - 1) return { backgroundColor: stickyCellBg(isEditable) }
+      return undefined
+    }
     const v1 = 'text-[12px] font-medium text-[#1a1a18] leading-[1.25] block'
     const v2 = 'text-[11px] text-[#5a5a52] leading-[1.25] block mt-[1px]'
     const v3 = 'text-[10px] text-[#8b8a81] leading-[1.25] block mt-[1px]'
@@ -2208,10 +2174,11 @@ export default function QuoteEditor({ quoteId }) {
               </colgroup>
               <thead>
                 <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                  {['', '#', 'Type', 'Material', 'Supplier', 'Finish', 'Colour', 'Thickness', 'H mm', 'W mm', 'Qty', 'Unit price', 'Total', ''].map((h, i) => (
+                  {['', '#', 'Type', 'Item / material', 'Supplier', 'Finish', 'Colour', 'Thickness', 'H mm', 'W mm', 'Qty', 'Unit cost', 'Markup', 'Edge profile', 'Profile type', 'Front profile', 'Hinge drill', 'Hinge qty', 'Unit price', 'Total', 'Actions'].map((h, i) => (
                     <th
                       key={i}
-                      className="sticky top-0 z-20 bg-[#f5f8f4] border-b border-[#dbd8cc] px-2 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap relative select-none overflow-visible"
+                      className={stickyHeaderClass(i)}
+                      style={stickyHeaderStyle(i)}
                     >
                       {h}
                       {RESIZE_HANDLE_INDICES.has(i) && (
@@ -2237,13 +2204,25 @@ export default function QuoteEditor({ quoteId }) {
                     isHardware,
                     isBenchtop,
                     isBaseCabinet,
+                    showEdges,
+                    showProfiles,
+                    edgeOptions,
+                    hingesApplicable,
                   } = lineViewModel(line)
                   const isBaseCabinetEditable = isEditable && isBaseCabinet
                   const isLineSaving = savingLineIndex === index
                   const hasLineNote = Boolean(line.notes || line.client_note)
                   const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id
+                  const profileTypeOptions = profileTypesForSelection(line.material, line.thickness)
+                  const profileNameOptions = profileNamesForSelection(line.profile_type, line.material, line.thickness).map((profile) => ({
+                    name: profile,
+                    label: profile,
+                    meta: line.profile_type || "Profile",
+                    src: profileOptionSrc(line.profile_type, profile),
+                  }))
+                  const canResetUnitCost = !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
                   const hintText = isBaseCabinetEditable
-                    ? 'Base cabinet — dimensions configured in the Base Cabinets tab'
+                    ? 'Base cabinet - dimensions configured in the Base Cabinets tab'
                     : 'Edge, profile and hinge config open in modals'
                   void hintText
 
@@ -2254,16 +2233,11 @@ export default function QuoteEditor({ quoteId }) {
                           isEditable
                             ? 'bg-[#fafffe] shadow-[inset_3px_0_0_#6b9e61]'
                             : 'hover:bg-[#f5f8f4]'
-                        } ${!isEditable ? 'cursor-pointer' : ''} ${isLineSaving ? 'opacity-60' : ''}`}
-                        onClick={(event) => {
-                          if (isEditable) return;
-                          if (shouldIgnoreLineRowClick(event)) return;
-                          runLineAction(() => openLineConfig(index));
-                        }}
+                        } ${isLineSaving ? 'opacity-60' : ''}`}
                       >
 
                         {/* Arrows */}
-                        <td className={td}>
+                        <td className={stickyCellClass(0, isEditable)} style={stickyCellStyle(0, isEditable)}>
                           {canMoveLines && (
                             <div className="flex flex-col gap-[1px] items-center">
                               <button
@@ -2272,20 +2246,20 @@ export default function QuoteEditor({ quoteId }) {
                                 disabled={index === 0}
                                 className="w-[14px] h-[11px] flex items-center justify-center text-[#c5cdd8] hover:text-[#5a5a52] disabled:opacity-30 text-[9px] leading-none"
                                 aria-label={`Move line ${index + 1} up`}
-                              >▲</button>
+                              >^</button>
                               <button
                                 type="button"
                                 onClick={() => moveLine(index, 1)}
                                 disabled={index === form.lines.length - 1}
                                 className="w-[14px] h-[11px] flex items-center justify-center text-[#c5cdd8] hover:text-[#5a5a52] disabled:opacity-30 text-[9px] leading-none"
                                 aria-label={`Move line ${index + 1} down`}
-                              >▼</button>
+                              >v</button>
                             </div>
                           )}
                         </td>
 
                         {/* # + note indicator */}
-                        <td className={td}>
+                        <td className={stickyCellClass(1, isEditable)} style={stickyCellStyle(1, isEditable)}>
                           <div className="flex justify-center">
                             <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[17px] h-[17px] rounded-[3px] flex items-center justify-center flex-shrink-0">
                               {index + 1}
@@ -2303,7 +2277,7 @@ export default function QuoteEditor({ quoteId }) {
                               onChange={option => updateProductLine(index, { product_type: option.value || option.name || option.label })}
                             />
                           ) : (
-                            <span className={v1}>{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">—</span>}</span>
+                            <span className={v1}>{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">-</span>}</span>
                           )}
                         </td>
 
@@ -2332,9 +2306,9 @@ export default function QuoteEditor({ quoteId }) {
                               onChange={option => updateProductLine(index, { material: option.name || option.label })}
                             />
                           ) : isHardware ? (
-                            <span className={v1}>{line.product_name || <span className="text-[#c5cdd8]">—</span>}</span>
+                            <span className={v1}>{line.product_name || <span className="text-[#c5cdd8]">-</span>}</span>
                           ) : (
-                            <span className={v1}>{line.material || <span className="text-[#c5cdd8]">—</span>}</span>
+                            <span className={v1}>{line.material || <span className="text-[#c5cdd8]">-</span>}</span>
                           )}
                         </td>
 
@@ -2351,13 +2325,13 @@ export default function QuoteEditor({ quoteId }) {
                               onChange={option => updateProductLine(index, { supplier_name: option.value || option.name || option.label })}
                             />
                           ) : (
-                            <span className={v1}>{line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || (line.material ? COLOUR_SUPPLIERS[0] : "") || <span className="text-[#c5cdd8]">—</span>}</span>
+                            <span className={v1}>{line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || (line.material ? COLOUR_SUPPLIERS[0] : "") || <span className="text-[#c5cdd8]">-</span>}</span>
                           )}
                         </td>
 
                         {/* Finish */}
                         <td className={td}>
-                          <span className={isHardware || isBenchtop ? naText : v2}>{isHardware || isBenchtop ? "N/A" : line.finish || <span className="text-[#c5cdd8]">—</span>}</span>
+                          <span className={isHardware || isBenchtop ? naText : v2}>{isHardware || isBenchtop ? "N/A" : line.finish || <span className="text-[#c5cdd8]">-</span>}</span>
                         </td>
 
                         {/* Colour */}
@@ -2371,14 +2345,14 @@ export default function QuoteEditor({ quoteId }) {
                               {colourSrc && (
                                 <img src={colourSrc} alt="" className="w-[10px] h-[10px] rounded-[2px] object-cover border border-[#dbd8cc] inline-block mr-[3px] align-middle" />
                               )}
-                              {line.colour || <span className="text-[#c5cdd8]">—</span>}
+                              {line.colour || <span className="text-[#c5cdd8]">-</span>}
                             </span>
                           )}
                         </td>
 
                         {/* Thickness */}
                         <td className={td}>
-                          <span className={isHardware || isBenchtop ? naText : v1}>{isHardware || isBenchtop ? "N/A" : line.thickness || <span className="text-[#c5cdd8]">—</span>}</span>
+                          <span className={isHardware || isBenchtop ? naText : v1}>{isHardware || isBenchtop ? "N/A" : line.thickness || <span className="text-[#c5cdd8]">-</span>}</span>
                         </td>
 
                         {/* H mm */}
@@ -2399,7 +2373,7 @@ export default function QuoteEditor({ quoteId }) {
                             <span className={naText}>Via cabinet</span>
                           ) : (
                             <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
-                              {line.height_mm || <span className="text-[#c5cdd8]">—</span>}
+                              {line.height_mm || <span className="text-[#c5cdd8]">-</span>}
                             </span>
                           )}
                         </td>
@@ -2422,7 +2396,7 @@ export default function QuoteEditor({ quoteId }) {
                             <span className={naText}>Via cabinet</span>
                           ) : (
                             <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
-                              {line.width_mm || <span className="text-[#c5cdd8]">—</span>}
+                              {line.width_mm || <span className="text-[#c5cdd8]">-</span>}
                             </span>
                           )}
                         </td>
@@ -2443,16 +2417,142 @@ export default function QuoteEditor({ quoteId }) {
                                   type="button"
                                   onClick={() => updateLine(index, 'qty', String(safeLineQty(line.qty) + 1))}
                                   className="p-0 border-0 bg-transparent leading-none text-[8px] text-[#a8c5a0] hover:text-[#2d5e28] cursor-pointer"
-                                >▲</button>
+                                >^</button>
                                 <button
                                   type="button"
                                   onClick={() => updateLine(index, 'qty', String(Math.max(1, safeLineQty(line.qty) - 1)))}
                                   className="p-0 border-0 bg-transparent leading-none text-[8px] text-[#a8c5a0] hover:text-[#2d5e28] cursor-pointer"
-                                >▼</button>
+                                >v</button>
                               </div>
                             </div>
                           ) : (
                             <span className="text-[12px] font-medium text-[#1a1a18]">{line.qty || 1}</span>
+                          )}
+                        </td>
+
+                        {/* Unit price */}
+                        <td className={td}>
+                          {isEditable && !isBaseCabinetEditable ? (
+                            <div>
+                              <div className="flex h-[22px] items-center overflow-hidden rounded-[3px] border border-[#a8c5a0] bg-white focus-within:border-[#6b9e61]">
+                                <span className="flex h-full items-center border-r border-[#a8c5a0] bg-[#f5f8f4] px-[5px] text-[10px] text-[#8b8a81]">$</span>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0.00"
+                                  value={line.product_unit_cost_ex_gst}
+                                  onChange={e => updateLine(index, 'product_unit_cost_ex_gst', e.target.value)}
+                                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-[5px] text-[10px] font-mono text-[#1a1a18] focus:outline-none"
+                                />
+                              </div>
+                              {canResetUnitCost && (
+                                <button type="button" onClick={() => resetLineUnitCost(index)} className="mt-[3px] block text-[10px] font-medium text-[#2d5e28] hover:underline">
+                                  Reset auto
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">{formatMoney(line.product_unit_cost_ex_gst || calculated.product_unit_cost_ex_gst || 0, form.currency)}</span>
+                          )}
+                        </td>
+
+                        {/* Markup */}
+                        <td className={td}>
+                          {isEditable && !isBaseCabinetEditable ? (
+                            <div className="flex h-[22px] items-center overflow-hidden rounded-[3px] border border-[#a8c5a0] bg-white focus-within:border-[#6b9e61]">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={line.markup_percent}
+                                onChange={e => updateLine(index, 'markup_percent', sanitizeNonNegativeDecimalInput(e.target.value))}
+                                className="h-full min-w-0 flex-1 border-0 bg-transparent px-[5px] text-[10px] font-mono text-[#1a1a18] focus:outline-none"
+                              />
+                              <span className="flex h-full items-center border-l border-[#a8c5a0] bg-[#f5f8f4] px-[5px] text-[10px] text-[#8b8a81]">%</span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">{line.markup_percent ?? businessDefaults.markup_percent}%</span>
+                          )}
+                        </td>
+
+                        {/* Edge profile */}
+                        <td className={td}>
+                          {isEditable && showEdges && !isBaseCabinetEditable ? (
+                            <QuoteImageCombobox
+                              className={quoteStyles.profileNameCombo}
+                              placeholder="Edge profile"
+                              value={line.edge_mould}
+                              options={edgeOptions}
+                              onChange={option => updateProductLine(index, { edge_mould: option.name || option.label })}
+                            />
+                          ) : (
+                            <span className={showEdges && !isBaseCabinet ? v1 : naText}>{showEdges && !isBaseCabinet ? line.edge_mould || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
+                          )}
+                        </td>
+
+                        {/* Profile type */}
+                        <td className={td}>
+                          {isEditable && showProfiles && !isBaseCabinetEditable ? (
+                            <select
+                              className="h-[22px] w-full rounded-[3px] border border-[#a8c5a0] bg-white px-[5px] text-[10px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
+                              value={line.profile_type}
+                              onChange={e => updateProductLine(index, { profile_type: e.target.value })}
+                            >
+                              <option value="">Select type</option>
+                              {profileTypeOptions.map((type) => <option key={type}>{type}</option>)}
+                            </select>
+                          ) : (
+                            <span className={showProfiles && !isBaseCabinet ? v1 : naText}>{showProfiles && !isBaseCabinet ? line.profile_type || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
+                          )}
+                        </td>
+
+                        {/* Front profile */}
+                        <td className={td}>
+                          {isEditable && showProfiles && !isBaseCabinetEditable ? (
+                            <QuoteImageCombobox
+                              className={quoteStyles.profileNameCombo}
+                              disabled={!line.profile_type}
+                              placeholder={line.profile_type ? "Front profile" : "Pick type first"}
+                              value={line.profile}
+                              options={profileNameOptions}
+                              onChange={option => updateProductLine(index, { profile: option.name || option.label })}
+                            />
+                          ) : (
+                            <span className={showProfiles && !isBaseCabinet ? v1 : naText}>{showProfiles && !isBaseCabinet ? line.profile || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
+                          )}
+                        </td>
+
+                        {/* Hinge drill */}
+                        <td className={td}>
+                          {isEditable && hingesApplicable && !isBaseCabinetEditable ? (
+                            <label className="inline-flex h-[22px] items-center gap-2 text-[11px] text-[#1a1a18]">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(line.hinge_holes)}
+                                onChange={e => updateProductLine(index, { hinge_holes: e.target.checked })}
+                              />
+                              Drill
+                            </label>
+                          ) : (
+                            <span className={hingesApplicable && !isBaseCabinet ? v1 : naText}>{hingesApplicable && !isBaseCabinet ? (line.hinge_holes ? "Yes" : "No") : "N/A"}</span>
+                          )}
+                        </td>
+
+                        {/* Hinge qty */}
+                        <td className={td}>
+                          {isEditable && hingesApplicable && !isBaseCabinetEditable ? (
+                            <select
+                              className="h-[22px] w-full rounded-[3px] border border-[#a8c5a0] bg-white px-[5px] text-[10px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]"
+                              value={line.hinge_qty || ""}
+                              onChange={e => updateProductLine(index, { hinge_qty: e.target.value })}
+                              disabled={!line.hinge_holes}
+                            >
+                              <option value="">Select</option>
+                              <option>2 hinges</option>
+                              <option>3 hinges</option>
+                              <option>4 hinges</option>
+                            </select>
+                          ) : (
+                            <span className={hingesApplicable && !isBaseCabinet ? v1 : naText}>{hingesApplicable && !isBaseCabinet ? line.hinge_qty || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
                           )}
                         </td>
 
@@ -2471,19 +2571,9 @@ export default function QuoteEditor({ quoteId }) {
                         </td>
 
                         {/* Actions */}
-                        <td className={td}>
+                        <td className={stickyCellClass(QUOTE_COL_DEFAULTS.length - 1, isEditable)} style={stickyCellStyle(QUOTE_COL_DEFAULTS.length - 1, isEditable)}>
                           {isEditable ? (
                             <div className="flex items-center justify-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => runLineAction(() => openLineConfig(index))}
-                                disabled={isLineSaving}
-                                aria-label={`Configure quote line ${index + 1}`}
-                                title="Configure line"
-                                className="inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[#dbd8cc] bg-white text-[#8b8a81] transition-colors hover:bg-[#f5f8f4] hover:text-[#1a1a18] disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <IconSettings size={13} />
-                              </button>
                               <button
                                 type="button"
                                 onClick={() => runLineAction(saveLine)}
@@ -2509,6 +2599,16 @@ export default function QuoteEditor({ quoteId }) {
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 type="button"
+                                onClick={() => runLineAction(() => editLine(index))}
+                                disabled={isLineSaving || savingLineIndex !== null}
+                                aria-label={`Edit quote line ${index + 1}`}
+                                title="Edit"
+                                className="inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[#dbd8cc] bg-white text-[#8b8a81] transition-colors hover:bg-[#f5f8f4] hover:text-[#1a1a18] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <IconEdit size={13} />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => runLineAction(() => openLineNoteModal(index))}
                                 disabled={isLineSaving || savingLineIndex !== null}
                                 title={hasLineNote ? [
@@ -2529,22 +2629,31 @@ export default function QuoteEditor({ quoteId }) {
                                   )}
                                 </span>
                               </button>
-                              <ActionMenu label={`Open actions for quote line ${index + 1}`} size="xs" disabled={isLineSaving || savingLineIndex !== null}>
-                                <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => runLineAction(() => editLine(index))}>
-                                  Edit
-                                </ActionMenuItem>
-                                <ActionMenuItem icon={<IconCopy size={14} />} onClick={() => runLineAction(() => duplicateLine(index))}>
-                                  Duplicate
-                                </ActionMenuItem>
-                                <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" onClick={() => setDeleteLineConfirmIndex(index)}>
-                                  Delete
-                                </ActionMenuItem>
-                              </ActionMenu>
+                              <button
+                                type="button"
+                                onClick={() => runLineAction(() => duplicateLine(index))}
+                                disabled={isLineSaving || savingLineIndex !== null}
+                                aria-label={`Duplicate quote line ${index + 1}`}
+                                title="Duplicate"
+                                className="inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[#dbd8cc] bg-white text-[#8b8a81] transition-colors hover:bg-[#f5f8f4] hover:text-[#1a1a18] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <IconCopy size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteLineConfirmIndex(index)}
+                                disabled={isLineSaving || savingLineIndex !== null}
+                                aria-label={`Delete quote line ${index + 1}`}
+                                title="Delete"
+                                className="inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[#f0c7c3] bg-white text-[#b42318] transition-colors hover:bg-[#fef2f2] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <IconTrash size={13} />
+                              </button>
                             </div>
                           )}
                         </td>
                       </tr>
-                      {/* Notes no longer render as inline rows — a note icon in
+                      {/* Notes no longer render as inline rows - a note icon in
                           the # cell signals a note and opens the note modal. */}
                     </React.Fragment>
                   )
@@ -2552,7 +2661,7 @@ export default function QuoteEditor({ quoteId }) {
 
                 {form.lines.length === 0 && (
                   <tr>
-                    <td colSpan={14} className="py-10 text-center">
+                    <td colSpan={21} className="py-10 text-center">
                       <p className="text-[13px] font-medium text-[#1a1a18] mb-1">No line items yet</p>
                       <p className="text-[11px] text-[#8b8a81] mb-3">Add your first line to start building this quote.</p>
                       <button
@@ -2631,16 +2740,16 @@ export default function QuoteEditor({ quoteId }) {
                   </div>
                 </div>
                 <div className="flex flex-col gap-[4px] text-[12px] text-[#5a5a52]">
-                  {(line.material || line.thickness) && <span>{[line.material, line.thickness].filter(Boolean).join(' · ')}</span>}
+                  {(line.material || line.thickness) && <span>{[line.material, line.thickness].filter(Boolean).join(' - ')}</span>}
                   {(line.finish || line.colour) && (
                     <span className="flex items-center gap-1">
                       {colourSrc && <img src={colourSrc} alt="" className="w-[10px] h-[10px] rounded-[2px] object-cover border border-[#dbd8cc] flex-shrink-0" />}
-                      {[line.finish, line.colour].filter(Boolean).join(' · ')}
+                      {[line.finish, line.colour].filter(Boolean).join(' - ')}
                     </span>
                   )}
-                  {(line.width_mm || line.height_mm) && <span className="font-mono text-[11px]">{line.width_mm || '—'} × {line.height_mm || '—'} mm</span>}
+                  {(line.width_mm || line.height_mm) && <span className="font-mono text-[11px]">{line.width_mm || '-'} x {line.height_mm || '-'} mm</span>}
                   <div className="flex items-center justify-between mt-1 pt-1 border-t border-[#f5f5f4]">
-                    <span>Qty {line.qty || 1} · {formatMoney(calculated.unit_price_ex_gst, form.currency)} ea</span>
+                    <span>Qty {line.qty || 1} - {formatMoney(calculated.unit_price_ex_gst, form.currency)} ea</span>
                     <span className="font-semibold text-[#1a1a18] font-mono">{formatMoney(calculated.line_total_ex_gst, form.currency)}</span>
                   </div>
                 </div>
@@ -2893,7 +3002,7 @@ export default function QuoteEditor({ quoteId }) {
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-medium text-[#1a1a18] truncate">{attachment.file_name}</p>
                     <p className={tw.muted}>
-                      {attachment.file_type || "File"} · {formatFileSize(attachment.file_size)} · {attachment.created_at ? new Date(attachment.created_at).toLocaleDateString("en-AU") : "-"}
+                      {attachment.file_type || "File"} - {formatFileSize(attachment.file_size)} - {attachment.created_at ? new Date(attachment.created_at).toLocaleDateString("en-AU") : "-"}
                     </p>
                   </div>
                   <div className="flex-shrink-0">
@@ -2927,29 +3036,6 @@ export default function QuoteEditor({ quoteId }) {
 
   const activeLabel = sections.find((section) => section.key === activeSection)?.label || "Information & Contacts";
   const activeCabinetLine = activeCabinetLineIndex !== null ? form.lines[activeCabinetLineIndex] : null;
-  const activeLineConfig = activeLineConfigIndex !== null
-    ? (activeLineConfigDraft || form.lines[activeLineConfigIndex])
-    : null;
-  const activeLineConfigView = activeLineConfig ? lineViewModel(activeLineConfig) : null;
-  const activeLineConfigIsBaseCabinet = activeLineConfig ? isBaseCabinetLine(activeLineConfig) : false;
-  const activeLineConfigCanResetUnitCost = Boolean(
-    activeLineConfig &&
-    !activeLineConfigIsBaseCabinet &&
-    activeLineConfig.unit_cost_mode === "manual" &&
-    Number(activeLineConfig.calculated_unit_cost_ex_gst || 0) > 0
-  );
-  const activeLineConfigProfileTypes = activeLineConfig
-    ? profileTypesForSelection(activeLineConfig.material, activeLineConfig.thickness)
-    : [];
-  const activeLineConfigProfileNames = activeLineConfig
-    ? profileNamesForSelection(activeLineConfig.profile_type, activeLineConfig.material, activeLineConfig.thickness)
-    : [];
-  const activeLineConfigProfileOptions = activeLineConfigProfileNames.map((profile) => ({
-    name: profile,
-    label: profile,
-    meta: activeLineConfig?.profile_type || "Profile",
-    src: profileOptionSrc(activeLineConfig?.profile_type, profile),
-  }));
   const profileModalTypes = profileModal
     ? profileTypesForSelection(profileModal.material, profileModal.thickness)
     : [];
@@ -2984,7 +3070,7 @@ export default function QuoteEditor({ quoteId }) {
           <div className="px-4 py-4 border-b border-[#edf4eb]">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">Quote</p>
             <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{form.quote_number || "Draft quote"}</p>
-            <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Quotes</Link>
+            <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">{"<- Quotes"}</Link>
           </div>
           <div className="px-3 py-3 border-b border-[#edf4eb] flex flex-col gap-2">
             {publicUrl ? (
@@ -3027,7 +3113,7 @@ export default function QuoteEditor({ quoteId }) {
               <div className="px-4 py-4 bg-white border-b border-[#edf4eb]">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[1px]">Quote</p>
                 <p className="text-[15px] font-semibold text-[#1a1a18]">{form.quote_number || "Draft quote"}</p>
-                <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Quotes</Link>
+                <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">{"<- Quotes"}</Link>
               </div>
               <div className="px-4 py-3 bg-white border-b border-[#edf4eb] flex flex-wrap gap-2">
                 {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] flex items-center">View public</a>}
@@ -3042,7 +3128,7 @@ export default function QuoteEditor({ quoteId }) {
                   className="w-full flex items-center justify-between px-4 py-[14px] text-[14px] font-medium text-[#1a1a18] bg-white border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors"
                 >
                   {section.label}
-                  <span className="text-[#c5cdd8]">›</span>
+                  <span className="text-[#c5cdd8]">&gt;</span>
                 </button>
               ))}
             </div>
@@ -3055,7 +3141,7 @@ export default function QuoteEditor({ quoteId }) {
                   className="w-[32px] h-[32px] flex items-center justify-center text-[#5a5a52] hover:text-[#1a1a18] transition-colors -ml-1"
                   aria-label="Back to sections"
                 >
-                  ←
+                  {"<-"}
                 </button>
                 <span className="text-[15px] font-semibold text-[#1a1a18]">
                   {sections.find((s) => s.key === activeSection)?.label}
@@ -3162,7 +3248,7 @@ export default function QuoteEditor({ quoteId }) {
           </div>
           {!form.customer_email ? (
             <div className="mx-1 px-3 py-2 bg-[#fffbeb] border border-[#fcd34d] rounded-[6px] text-[12px] text-[#92400e] flex items-center gap-2">
-              <span>⚠</span>
+              <span>!</span>
               <span>Add a customer email before sending this quote.</span>
             </div>
           ) : null}
@@ -3224,315 +3310,6 @@ export default function QuoteEditor({ quoteId }) {
           if (attachment) deleteAttachment(attachment);
         }}
       />
-      {activeLineConfig && activeLineConfigIndex !== null && typeof document !== "undefined" ? createPortal(
-        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="quote-line-config-title">
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default bg-[rgba(15,22,31,0.28)]"
-            aria-label="Close line config"
-            onClick={closeLineConfig}
-          />
-          <aside className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col border-l border-[#dbd8cc] bg-white shadow-[-16px_0_38px_rgba(15,22,31,0.16)]">
-            <div className="flex flex-shrink-0 items-start justify-between border-b border-[#edf4eb] px-5 py-4">
-              <div>
-                <h2 id="quote-line-config-title" className="text-[16px] font-semibold leading-snug text-[#1a1a18]">
-                  Line {activeLineConfigIndex + 1} editor
-                </h2>
-                <p className="mt-1 text-[12px] text-[#6f6d64]">
-                  Full line item settings
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeLineConfig}
-                aria-label="Close"
-                className="flex h-[28px] w-[28px] flex-shrink-0 items-center justify-center rounded-[6px] text-[#8b8a81] transition-colors hover:bg-[#edf4eb] hover:text-[#1a1a18]"
-              >
-                <IconX size={15} />
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              <div className="grid gap-4">
-                <label className={styles.fieldLabel}>
-                  Type
-                  <QuoteTileCombobox
-                    compact={false}
-                    placeholder="Select type"
-                    value={displayProductType(activeLineConfig.product_type)}
-                    options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
-                    onChange={option => updateLineConfigProduct({ product_type: option.value || option.name || option.label })}
-                  />
-                </label>
-
-                {activeLineConfigView?.isHardware ? (
-                  <label className={styles.fieldLabel}>
-                    Hardware item
-                    <QuoteImageCombobox
-                      placeholder="Select hardware"
-                      value={activeLineConfig.unit_cost_source_id || ""}
-                      displayValue={activeLineConfig.product_name || ""}
-                      options={hardwareOptions}
-                      onChange={option => updateLineConfigProduct({ hardware_catalogue_id: option.id || option.value })}
-                    />
-                  </label>
-                ) : activeLineConfigView?.isBenchtop ? (
-                  <label className={styles.fieldLabel}>
-                    Benchtop material
-                    <QuoteTileCombobox
-                      compact={false}
-                      placeholder="Select material"
-                      value={activeLineConfig.unit_cost_source_id || activeLineConfig.material}
-                      options={benchtopMaterialOptions}
-                      onChange={option => updateLineConfigProduct({ benchtop_material_id: option.id || option.value })}
-                    />
-                  </label>
-                ) : (
-                  <label className={styles.fieldLabel}>
-                    Material
-                    <QuoteTileCombobox
-                      compact={false}
-                      placeholder="Select material"
-                      value={activeLineConfig.material}
-                      options={(activeLineConfigView?.materialOptions || MATERIAL_OPTIONS).map(m => ({ label: m, name: m, meta: 'Material' }))}
-                      onChange={option => updateLineConfigProduct({ material: option.name || option.label })}
-                    />
-                  </label>
-                )}
-
-                <label className={styles.fieldLabel}>
-                  Supplier
-                  <QuoteTileCombobox
-                    compact={false}
-                    disabled={activeLineConfigView?.isHardware || activeLineConfigView?.isBenchtop || !activeLineConfig.material || activeLineConfigIsBaseCabinet}
-                    placeholder="Supplier"
-                    value={COLOUR_SUPPLIERS.includes(activeLineConfig.supplier_name) ? activeLineConfig.supplier_name : COLOUR_SUPPLIERS[0]}
-                    options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
-                    onChange={option => updateLineConfigProduct({ supplier_name: option.value || option.name || option.label })}
-                  />
-                </label>
-
-                <label className={styles.fieldLabel}>
-                  Colour
-                  <QuoteColourCombobox
-                    compact={false}
-                    disabled={activeLineConfigView?.isHardware || activeLineConfigView?.isBenchtop || activeLineConfigIsBaseCabinet}
-                    line={activeLineConfig}
-                    onChange={patch => updateLineConfigProduct(patch)}
-                  />
-                </label>
-
-                <label className={styles.fieldLabel}>
-                  Finish
-                  <input className={styles.fieldInput} value={activeLineConfig.finish || ""} disabled readOnly placeholder="Selected from colour" />
-                </label>
-
-                <label className={styles.fieldLabel}>
-                  Thickness
-                  <input className={styles.fieldInput} value={activeLineConfig.thickness || ""} disabled readOnly placeholder="Selected from colour" />
-                </label>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <label className={styles.fieldLabel}>
-                    Height mm
-                    <input
-                      className={styles.fieldInput}
-                      type="text"
-                      inputMode="numeric"
-                      value={activeLineConfig.height_mm}
-                      onChange={(event) => updateLineConfigField("height_mm", sanitizeIntegerInput(event.target.value))}
-                      disabled={activeLineConfigIsBaseCabinet}
-                      placeholder={activeLineConfigIsBaseCabinet ? "Via cabinet" : "mm"}
-                    />
-                  </label>
-                  <label className={styles.fieldLabel}>
-                    Width mm
-                    <input
-                      className={styles.fieldInput}
-                      type="text"
-                      inputMode="numeric"
-                      value={activeLineConfig.width_mm}
-                      onChange={(event) => updateLineConfigField("width_mm", sanitizeIntegerInput(event.target.value))}
-                      disabled={activeLineConfigIsBaseCabinet}
-                      placeholder={activeLineConfigIsBaseCabinet ? "Via cabinet" : "mm"}
-                    />
-                  </label>
-                </div>
-
-                <label className={styles.fieldLabel}>
-                  Quantity
-                  <input
-                    className={styles.fieldInput}
-                    type="text"
-                    inputMode="numeric"
-                    value={activeLineConfig.qty}
-                    onChange={(event) => updateLineConfigField("qty", sanitizeIntegerInput(event.target.value))}
-                  />
-                </label>
-
-                <div className="border-t border-[#edf4eb] pt-4">
-                  <label className={styles.fieldLabel}>
-                    Edge profile
-                    {activeLineConfigView?.showEdges && !activeLineConfigIsBaseCabinet ? (
-                      <QuoteImageCombobox
-                        className={quoteStyles.profileNameCombo}
-                        placeholder="Select edge profile"
-                        value={activeLineConfig.edge_mould}
-                        options={activeLineConfigView.edgeOptions}
-                        onChange={(option) => updateLineConfigProduct({ edge_mould: option.name || option.label })}
-                      />
-                    ) : (
-                      <input className={styles.fieldInput} value="Not applicable" disabled readOnly />
-                    )}
-                  </label>
-                </div>
-
-                <label className={styles.fieldLabel}>
-                  Front profile type
-                  {activeLineConfigView?.showProfiles && !activeLineConfigIsBaseCabinet ? (
-                    <select
-                      className={styles.fieldInput}
-                      value={activeLineConfig.profile_type}
-                      onChange={(event) => updateLineConfigProduct({ profile_type: event.target.value })}
-                    >
-                      <option value="">Select profile type</option>
-                      {activeLineConfigProfileTypes.map((type) => <option key={type}>{type}</option>)}
-                    </select>
-                  ) : (
-                    <input className={styles.fieldInput} value="Not applicable" disabled readOnly />
-                  )}
-                </label>
-
-                <label className={styles.fieldLabel}>
-                  Front profile
-                  {activeLineConfigView?.showProfiles && !activeLineConfigIsBaseCabinet ? (
-                    <QuoteImageCombobox
-                      className={quoteStyles.profileNameCombo}
-                      disabled={!activeLineConfig.profile_type}
-                      placeholder={activeLineConfig.profile_type ? "Select front profile" : "Select profile type first"}
-                      value={activeLineConfig.profile}
-                      options={activeLineConfigProfileOptions}
-                      onChange={(option) => updateLineConfigProduct({ profile: option.name || option.label })}
-                    />
-                  ) : (
-                    <input className={styles.fieldInput} value="Not applicable" disabled readOnly />
-                  )}
-                </label>
-
-                {activeLineConfigView?.hingesApplicable && !activeLineConfigIsBaseCabinet && (
-                  <div className={quoteStyles.hingeConfigForm}>
-                    <label className={quoteStyles.hingeConfigToggle}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(activeLineConfig.hinge_holes)}
-                        onChange={(event) => updateLineConfigProduct({ hinge_holes: event.target.checked })}
-                      />
-                      <span>
-                        <strong>Hinge drilling required</strong>
-                        <small>Add hinge hole drilling to this door line.</small>
-                      </span>
-                    </label>
-                  </div>
-                )}
-
-                <label className={styles.fieldLabel}>
-                  Hinge quantity
-                  {activeLineConfigView?.hingesApplicable && !activeLineConfigIsBaseCabinet ? (
-                    <select
-                      className={styles.fieldInput}
-                      value={activeLineConfig.hinge_qty || ""}
-                      onChange={(event) => updateLineConfigProduct({ hinge_qty: event.target.value })}
-                      disabled={!activeLineConfig.hinge_holes}
-                    >
-                      <option value="">Please select hinge quantity...</option>
-                      <option>2 hinges</option>
-                      <option>3 hinges</option>
-                      <option>4 hinges</option>
-                    </select>
-                  ) : (
-                    <input className={styles.fieldInput} value="Not applicable" disabled readOnly />
-                  )}
-                </label>
-
-                <div className="grid gap-4 border-t border-[#edf4eb] pt-4">
-                  <label className={styles.fieldLabel}>
-                    Unit cost
-                    {activeLineConfigIsBaseCabinet ? (
-                      <input className={styles.fieldInput} value={formatMoney(activeLineConfig.product_unit_cost_ex_gst || 0, form.currency)} disabled readOnly />
-                    ) : (
-                      <div>
-                        <div className="flex h-[38px] items-center overflow-hidden rounded-[6px] border border-[#dbd8cc] bg-white focus-within:border-[#6b9e61]">
-                          <span className="flex h-full items-center border-r border-[#dbd8cc] bg-[#f5f8f4] px-3 text-[13px] text-[#8b8a81]">$</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            value={activeLineConfig.product_unit_cost_ex_gst}
-                            onChange={(event) => updateLineConfigField("product_unit_cost_ex_gst", event.target.value)}
-                            className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-[13px] text-[#1a1a18] focus:outline-none"
-                          />
-                        </div>
-                        {activeLineConfigCanResetUnitCost && (
-                          <button
-                            type="button"
-                            onClick={resetLineConfigUnitCost}
-                            className="mt-2 text-[12px] font-medium text-[#2d5e28] hover:underline"
-                          >
-                            Reset to {formatMoney(activeLineConfig.calculated_unit_cost_ex_gst, form.currency)}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </label>
-
-                  <label className={styles.fieldLabel}>
-                    Markup %
-                    {activeLineConfigIsBaseCabinet ? (
-                      <input className={styles.fieldInput} value={`${activeLineConfig.markup_percent ?? businessDefaults.markup_percent}%`} disabled readOnly />
-                    ) : (
-                      <div className="flex h-[38px] items-center overflow-hidden rounded-[6px] border border-[#dbd8cc] bg-white focus-within:border-[#6b9e61]">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={activeLineConfig.markup_percent}
-                          onChange={(event) => updateLineConfigField("markup_percent", sanitizeNonNegativeDecimalInput(event.target.value))}
-                          className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-[13px] text-[#1a1a18] focus:outline-none"
-                        />
-                        <span className="flex h-full items-center border-l border-[#dbd8cc] bg-[#f5f8f4] px-3 text-[13px] text-[#8b8a81]">%</span>
-                      </div>
-                    )}
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 border-t border-[#edf4eb] pt-4">
-                  <div>
-                    <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Unit price</span>
-                    <span className="mt-1 block font-mono text-[14px] font-semibold text-[#1a1a18]">
-                      {formatMoney(activeLineConfigView?.calculated.unit_price_ex_gst || 0, form.currency)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Total</span>
-                    <span className="mt-1 block font-mono text-[14px] font-semibold text-[#1a1a18]">
-                      {formatMoney(activeLineConfigView?.calculated.line_total_ex_gst || 0, form.currency)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-shrink-0 flex-col gap-2 border-t border-[#edf4eb] px-5 py-4 sm:flex-row sm:justify-end">
-              <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={closeLineConfig} disabled={savingLineIndex !== null}>
-                Close
-              </button>
-              <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={saveLineConfig} disabled={savingLineIndex !== null}>
-                {savingLineIndex === activeLineConfigIndex ? "Saving..." : "Save line"}
-              </button>
-            </div>
-          </aside>
-        </div>,
-        document.body
-      ) : null}
       {lineNoteModal && (
         <Modal
           open={true}
@@ -3562,7 +3339,7 @@ export default function QuoteEditor({ quoteId }) {
             />
           </label>
           <label className={styles.fieldLabel} style={{ marginTop: 12 }}>
-            Internal note (admin only — production, mitres, hinges, runners)
+            Internal note (admin only - production, mitres, hinges, runners)
             <textarea
               className={styles.textareaInput}
               rows={4}
@@ -3684,7 +3461,7 @@ export default function QuoteEditor({ quoteId }) {
                   onClick={() => { setEditableLineIndex(null); setEditableLineDraft(null) }}
                   aria-label="Go back"
                   className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0"
-                >←</button>
+                >{"<-"}</button>
                 <span className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
                   {isBaseCabinetEditable ? `Base cabinet ${idx + 1}` : `Edit line ${idx + 1}`}
                 </span>
@@ -3819,7 +3596,7 @@ export default function QuoteEditor({ quoteId }) {
                             className="inline-flex items-center gap-2 text-[13px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[6px] px-3 h-[44px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
                           >
                             <span>{hasProfileConfig(line) ? profileConfigLines(line)[0] : 'Configure profile'}</span>
-                            <span>↗</span>
+                            <span>open</span>
                           </button>
                         </div>
                       )}
@@ -3830,7 +3607,7 @@ export default function QuoteEditor({ quoteId }) {
                             className="inline-flex items-center gap-2 text-[13px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[6px] px-3 h-[44px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
                           >
                             <span>{hasHingeConfig(line) ? `Drill: ${line.hinge_holes ? 'yes' : 'no'}` : 'Configure drilling'}</span>
-                            <span>↗</span>
+                            <span>open</span>
                           </button>
                         </div>
                       )}
@@ -3896,3 +3673,5 @@ export default function QuoteEditor({ quoteId }) {
     </>
   );
 }
+
+

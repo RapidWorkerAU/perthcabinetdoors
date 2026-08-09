@@ -985,7 +985,7 @@ export default function OrderDetail({ orderId }) {
             <table className={tw.table}>
               <thead>
                 <tr>
-                  {["#","Type","Material / colour","Size","Qty","Edge","Drill?","Supply?","Hinge qty","Unit cost","Markup","Unit price","Total ex GST"].map(h => (
+                  {["#","Type","Material / colour","Size","Qty","Edge","Drill?","Hinge qty","Unit cost","Markup","Unit price","Total ex GST"].map(h => (
                     <th key={h} className={`${tw.th} md:sticky md:top-0 md:z-10`}>{h}</th>
                   ))}
                 </tr>
@@ -1003,8 +1003,7 @@ export default function OrderDetail({ orderId }) {
                       <td className={tw.td}>{line.qty || 1}</td>
                       <td className={tw.td}>{lineValue(line.edge_mould)}</td>
                       <td className={tw.td}>{hingesApplicable ? (line.hinge_holes ? "Yes" : "No") : "N/A"}</td>
-                      <td className={tw.td}>{hingesApplicable ? (line.hinge_supply ? "Yes" : "No") : "N/A"}</td>
-                      <td className={tw.td}>{hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</td>
+                      <td className={tw.td}>{hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</td>
                       <td className={tw.td + " " + tw.mono}>{formatMoney(line.product_unit_cost_ex_gst || 0, quoteCurrency)}</td>
                       <td className={tw.td + " " + tw.mono}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</td>
                       <td className={tw.td + " " + tw.mono}>{formatMoney(line.unit_price_ex_gst || 0, quoteCurrency)}</td>

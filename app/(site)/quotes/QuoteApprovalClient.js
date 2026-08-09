@@ -323,8 +323,7 @@ export default function QuoteApprovalClient() {
                       <td>
                         <div className={styles.quoteItemDetailStack}>
                           <span>Drill: {hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</span>
-                          <span>Supply: {hingesApplicable ? line.hinge_supply ? "Yes" : "No" : "N/A"}</span>
-                          <span>Qty: {hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</span>
+                          <span>Qty: {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</span>
                         </div>
                       </td>
                       <td>{formatMoney(line.unit_price_ex_gst, quote.currency)}</td>
@@ -394,10 +393,7 @@ export default function QuoteApprovalClient() {
                         <span className={hingesApplicable && line.hinge_holes ? styles.quoteItemYes : styles.quoteItemNo}>
                           {hingesApplicable && line.hinge_holes ? "Yes" : hingesApplicable ? "No" : "N/A"} drill holes
                         </span>
-                        <span className={hingesApplicable && line.hinge_supply ? styles.quoteItemYes : styles.quoteItemNo}>
-                          {hingesApplicable && line.hinge_supply ? "Yes" : hingesApplicable ? "No" : "N/A"} supply hinges
-                        </span>
-                        <span>Hinge qty: {hingesApplicable && (line.hinge_supply || line.hinge_holes) ? lineValue(line.hinge_qty) : "N/A"}</span>
+                        <span>Hinge qty: {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</span>
                       </div>
                       {clientNote ? (
                         <div className={styles.quoteLineClientNote}>
