@@ -1,7 +1,17 @@
 import { requireAdminApiContext } from "@/lib/admin-api";
 
 const TABLE = "pcd_hardware";
-const TYPES = new Set(["handle", "hinge", "drawer_runner"]);
+const TYPES = new Set([
+  "handle",
+  "hinge",
+  "drawer_runner",
+  "push_to_open",
+  "cutlery_tray",
+  "wardrobe_hanging_rail",
+  "slide_out_bin",
+  "bi_fold_door",
+  "cabinet_inserts",
+]);
 
 function cleanText(value) {
   return String(value || "").trim();

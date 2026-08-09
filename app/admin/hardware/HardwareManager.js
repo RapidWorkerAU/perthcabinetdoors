@@ -16,6 +16,12 @@ const HARDWARE_TYPES = [
   { value: "handle", label: "Handle" },
   { value: "hinge", label: "Hinge" },
   { value: "drawer_runner", label: "Drawer runner" },
+  { value: "push_to_open", label: "Push-to-Open" },
+  { value: "cutlery_tray", label: "Cutlery Tray" },
+  { value: "wardrobe_hanging_rail", label: "Wardrobe Hanging Rail" },
+  { value: "slide_out_bin", label: "Slide Out Bin" },
+  { value: "bi_fold_door", label: "Bi-fold Door" },
+  { value: "cabinet_inserts", label: "Cabinet Inserts" },
 ];
 
 const EMPTY_DRAFT = {
@@ -60,6 +66,12 @@ function isFieldApplicable(type, field) {
   if (type === "handle") return ["width_mm", "height_mm", "depth_mm", "length_mm", "hole_spacing_mm", "projection_mm"].includes(field);
   if (type === "hinge") return ["width_mm", "height_mm", "depth_mm", "projection_mm"].includes(field);
   if (type === "drawer_runner") return ["length_mm", "height_mm", "depth_mm"].includes(field);
+  if (type === "push_to_open") return ["depth_mm", "length_mm", "projection_mm"].includes(field);
+  if (type === "cutlery_tray") return ["width_mm", "height_mm", "depth_mm", "length_mm"].includes(field);
+  if (type === "wardrobe_hanging_rail") return ["length_mm", "width_mm", "depth_mm"].includes(field);
+  if (type === "slide_out_bin") return ["width_mm", "height_mm", "depth_mm"].includes(field);
+  if (type === "bi_fold_door") return ["width_mm", "height_mm", "depth_mm"].includes(field);
+  if (type === "cabinet_inserts") return ["width_mm", "height_mm", "depth_mm", "length_mm"].includes(field);
   return true;
 }
 

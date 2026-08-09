@@ -121,6 +121,20 @@ function hardwareOptionLabel(item) {
   return [item.brand, item.name, item.sku ? `(${item.sku})` : ""].filter(Boolean).join(" ");
 }
 
+function hardwareTypeLabel(type) {
+  return {
+    handle: "Handle",
+    hinge: "Hinge",
+    drawer_runner: "Drawer runner",
+    push_to_open: "Push-to-Open",
+    cutlery_tray: "Cutlery Tray",
+    wardrobe_hanging_rail: "Wardrobe Hanging Rail",
+    slide_out_bin: "Slide Out Bin",
+    bi_fold_door: "Bi-fold Door",
+    cabinet_inserts: "Cabinet Inserts",
+  }[type] || "Hardware";
+}
+
 function hardwareOptionsFromRows(rows = []) {
   return rows
     .filter((item) => item?.is_active !== false)
@@ -129,7 +143,7 @@ function hardwareOptionsFromRows(rows = []) {
       value: item.id,
       name: hardwareOptionLabel(item),
       label: hardwareOptionLabel(item),
-      meta: item.type === "drawer_runner" ? "Drawer runner" : item.type === "hinge" ? "Hinge" : "Handle",
+      meta: hardwareTypeLabel(item.type),
       src: item.image_url || "",
       item,
     }));
