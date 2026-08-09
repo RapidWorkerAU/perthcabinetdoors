@@ -559,7 +559,7 @@ export default function RequestQuoteFormClient() {
 
         <div className={styles.quoteCard}>
           <span className={styles.sectionLabel}>Contact us directly</span>
-          <div className={styles.quoteInfoRow}><span>Phone</span><strong><a href="tel:0408906784">0408 906 784</a></strong><small>Best for urgent enquiries</small></div>
+          <div className={styles.quoteInfoRow}><span>Phone</span><strong><a href="tel:0437750990">0437 750 990</a></strong><small>Best for urgent enquiries</small></div>
           <div className={styles.quoteInfoRow}><span>Email</span><strong><a href="mailto:sales@perthcabinetdoors.com.au">sales@perthcabinetdoors.com.au</a></strong></div>
           <div className={styles.quoteInfoRow}><span>Response time</span><strong>Within 1-3 business days</strong></div>
         </div>
@@ -786,9 +786,8 @@ export default function RequestQuoteFormClient() {
       </div>
 
       <button className={styles.submitBtn} disabled={submitting} type="submit">{submitting ? "Sending..." : "Send Quote Request"}</button>
-      <p className={styles.submitNote}>We will come back within 1-3 business days. For urgent enquiries call <a href="tel:0408906784">0408 906 784</a>.</p>
+      <p className={styles.submitNote}>We will come back within 1-3 business days. For urgent enquiries call <a href="tel:0437750990">0437 750 990</a>.</p>
       {status ? <p className={`${styles.formStatus} ${status.type === "error" ? styles.formStatusError : ""}`}>{status.message}</p> : null}
     </form>
   );
 }
-

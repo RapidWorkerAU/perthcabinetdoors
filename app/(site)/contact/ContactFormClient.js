@@ -129,7 +129,7 @@ export default function ContactFormClient() {
       </div>
 
       <button className={styles.submitBtn} type="submit" disabled={submitting}>{submitting ? "Sending..." : "Send Message"}</button>
-      <p className={styles.submitNote}>We will come back to you within one business day. For urgent enquiries, call <a href="tel:0408906784">0408 906 784</a>.</p>
+      <p className={styles.submitNote}>We will come back to you within one business day. For urgent enquiries, call <a href="tel:0437750990">0437 750 990</a>.</p>
       {status ? <p className={`${styles.formStatus} ${status.type === "error" ? styles.formStatusError : ""}`}>{status.message}</p> : null}
     </form>
   );

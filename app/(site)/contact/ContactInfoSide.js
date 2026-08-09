@@ -35,7 +35,7 @@ export default function ContactInfoSide({ compact = false }) {
           <div className={styles.contactIcon}><PhoneIcon /></div>
           <div>
             <div className={styles.contactInfoLabel}>Phone</div>
-            <div className={styles.contactInfoValue}><a href="tel:0408906784">0408 906 784</a></div>
+            <div className={styles.contactInfoValue}><a href="tel:0437750990">0437 750 990</a></div>
             <div className={styles.contactInfoSub}>Best for urgent enquiries</div>
           </div>
         </div>

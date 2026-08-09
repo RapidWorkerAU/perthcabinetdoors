@@ -11,7 +11,7 @@ export default function PublicFooter({ className, separator = "dot" }: PublicFoo
       <p>Copyright 2026 Perth Cabinet Doors. All rights reserved.</p>
       <p>
         Perth, Western Australia{divider}
-        <a href="tel:0408906784">0408 906 784</a>
+        <a href="tel:0437750990">0437 750 990</a>
         {divider}
         <a href="mailto:sales@perthcabinetdoors.com.au">sales@perthcabinetdoors.com.au</a>
       </p>

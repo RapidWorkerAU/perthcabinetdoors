@@ -473,7 +473,7 @@ export default function ProductDetailClient({
 
             <div className={styles.ctaGroup}>
               <PublicButton href="/request-quote" className={styles.btnPrimary}>Get a free quote</PublicButton>
-              <PublicButton href="tel:0408906784" className={styles.btnSecondary}>Call us - 0408 906 784</PublicButton>
+              <PublicButton href="tel:0437750990" className={styles.btnSecondary}>Call us - 0437 750 990</PublicButton>
             </div>
             <p className={styles.ctaNote}>We will come back to you promptly with a quote based on your exact measurements and chosen finish.</p>
 

@@ -14,7 +14,7 @@ const FIELDS = [
 
 const GROUPS = ["Labour", "Pricing", "Hardware fees"];
 const inputClass = "h-[36px] w-[110px] rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-right font-mono text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]";
-const textareaClass = "min-h-[132px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] leading-relaxed text-[#1a1a18] outline-none focus:border-[#6b9e61]";
+const textareaClass = "min-h-[132px] w-full resize-y rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] leading-relaxed text-[#1a1a18] outline-none focus:border-[#6b9e61]";
 
 export default function BusinessDefaultsManager() {
   const { toast } = useToast();

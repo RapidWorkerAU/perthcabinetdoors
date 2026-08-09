@@ -1580,7 +1580,7 @@ export default function ProductEditorForm({
 
                   <div className={productClass("productPreviewCtaGroup")}>
                     <span>{ctaLabel || "Get a free quote"}</span>
-                    <span>Call us - 0408 906 784</span>
+                    <span>Call us - 0437 750 990</span>
                     {renderEditButton("settings", "Edit CTA/SEO")}
                   </div>
                   <p className={productClass("productPreviewCtaNote")}>

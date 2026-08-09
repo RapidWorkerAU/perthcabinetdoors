@@ -425,7 +425,7 @@ const tw = {
   cardBody: "px-4 py-4",
   fieldLabel: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
   fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
-  textarea: "w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-none",
+  textarea: "min-h-[90px] w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-y",
   grid2: "grid grid-cols-1 md:grid-cols-2 gap-3",
   grid3: "grid grid-cols-2 md:grid-cols-3 gap-3",
   wide: "md:col-span-2",

@@ -443,7 +443,7 @@ export default function HardwareManager() {
             </label>
             <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52] md:col-span-2">
               Description
-              <textarea className="min-h-[84px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]" value={draft.description} onChange={(event) => updateDraft("description", event.target.value)} />
+              <textarea className="min-h-[84px] w-full resize-y rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]" value={draft.description} onChange={(event) => updateDraft("description", event.target.value)} />
             </label>
             <label className="flex cursor-pointer items-center gap-2 text-[13px] font-normal text-[#1a1a18] md:col-span-2">
               <input type="checkbox" checked={draft.is_active} onChange={(event) => updateDraft("is_active", event.target.checked)} className="accent-[#6b9e61]" />

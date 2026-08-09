@@ -991,6 +991,11 @@
 
 .fieldInput:focus { outline: none; border-color: var(--dt-green, #1a2e20); }
 
+.fieldInput:is(textarea) {
+  min-height: 80px;
+  resize: vertical;
+}
+
 .fieldTextarea {
   padding: 6px 8px;
   border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
