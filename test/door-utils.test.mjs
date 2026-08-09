@@ -9,8 +9,9 @@ import assert from "node:assert/strict";
 import {
   FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM,
   doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm,
+  frontSizingWidthMm, finishedSidePanelDepthMm, finishedTopPanelDepthMm, computeDrawerSizes,
   computeDoorSizesForConfig, computeDrawerSizesForConfig,
-  computeCornerDoorLeaves, formatHingeNote,
+  computeCornerDoorLeaves, formatHingeNote, scaleDrawerHeightsMm,
 } from "../lib/pcd-door-utils.js";
 
 test("finger-pull gap: an untouched field means the default, not zero", () => {
@@ -97,6 +98,11 @@ test("drawers: fronts are shorter than their openings", () => {
   assert.equal(g[0].height, 220, "finger-pull replaces the reveal");
 });
 
+test("drawer elevation scales placeholder heights before drawing finger gaps", () => {
+  assert.deepEqual(scaleDrawerHeightsMm([1], 1, 600), [600]);
+  assert.equal(drawerGapMm({ gap_enabled: true, gap_mm: 20 }), 20);
+});
+
 test("corner door: one reveal across both leaves, and hinges billed", () => {
   const corner = {
     item_type: "corner_base_cabinet", wall: "top", secondary_wall: "right",
@@ -121,6 +127,31 @@ test("blind corner: the front spans the opening, not the carcass", () => {
   // Every other type is unaffected.
   assert.equal(frontWidthMm({ item_type: "base_cabinet", width_mm: 900 }), 900);
   assert.equal(frontWidthMm({ ...blind, blind_width_mm: null }), 900);
+});
+
+test("finished side panel front mode controls front and side panel sizing", () => {
+  const item = {
+    item_type: "wall_cabinet",
+    front_type: "drawers",
+    width_mm: 600,
+    height_mm: 300,
+    depth_mm: 500,
+    end_panel_left: true,
+    end_panel_right: true,
+    finish_panel_style: { thickness_mm: 18 },
+    drawer_style: { thickness_mm: 20 },
+  };
+
+  assert.equal(frontSizingWidthMm(item), 636, "default fronts cover both side-panel edges");
+  assert.equal(computeDrawerSizes(item)[0].width, 633, "front cut width includes side panels minus reveal");
+  assert.equal(finishedSidePanelDepthMm(item), 500, "cover mode side panels stop at carcass front");
+  assert.equal(finishedTopPanelDepthMm(item), 520, "top panel covers the front thickness");
+
+  const inset = { ...item, front_panel_mode: "inset_between_side_panels" };
+  assert.equal(frontSizingWidthMm(inset), 600, "inset fronts stay inside the side panels");
+  assert.equal(computeDrawerSizes(inset)[0].width, 597);
+  assert.equal(finishedSidePanelDepthMm(inset), 520, "inset side panels project forward by front thickness");
+  assert.equal(finishedTopPanelDepthMm(inset), 520, "top panel still covers the front thickness");
 });
 
 function computeDoorSizes_width(item) {

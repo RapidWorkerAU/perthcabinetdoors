@@ -16,7 +16,9 @@ import { computeCutList } from "../../../../lib/pcd-cut-list";
 import { computeAllKickboardRuns, isCornerType } from "../../../../lib/pcd-kickboard-utils";
 import { computeAllBackPanelRuns, splitBackPanelWidths } from "../../../../lib/pcd-backpanel-utils";
 import { computeAllBottomPanelRuns } from "../../../../lib/pcd-bottompanel-utils";
+import { computeAllTopPanelRuns } from "../../../../lib/pcd-toppanel-utils";
 import { computeAllFillerPanelRuns, fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
+import { finishedTopPanelDepthMm } from "../../../../lib/pcd-door-utils";
 
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "bookcase"];
 
@@ -257,6 +259,36 @@ function BottomPanelRunItem({ run, runId, openItems, toggleItem }) {
   );
 }
 
+function TopPanelRunItem({ run, runId, openItems, toggleItem }) {
+  const totalWidth = run.segments.reduce((sum, s) => sum + s.length, 0);
+  const firstItem  = run.segments[0]?.item;
+  const qty        = firstItem?.top_panel_qty || 1;
+  const panelD     = finishedTopPanelDepthMm(firstItem) || Number(firstItem?.depth_mm) || 0;
+  const widths     = splitBackPanelWidths(totalWidth, qty);
+  return (
+    <RunItem runId={runId} dot="#a855f7" tag="run" openItems={openItems} toggleItem={toggleItem}
+      title={`Top Panel ${WALL_SHORT[run.wall] || run.wall}`}>
+      {run.segments.map((seg) => (
+        <div key={seg.item.id} className={styles.cutListRow}>
+          <span className={styles.cutListMatDot} style={{ background: "#a855f7" }} />
+          <span className={styles.cutListDim}>{seg.length} <span className={styles.cutListAxis}>(W)</span></span>
+          <span className={styles.cutListName}>{itemDisplayLabel(seg.item)}</span>
+        </div>
+      ))}
+      {widths.map((w, i) => (
+        <div key={`panel-${i}`} className={styles.cutListRow}
+          style={i === 0 ? { marginTop: 5, borderTop: "1px solid rgba(168,85,247,0.2)", paddingTop: 5 } : undefined}>
+          <span className={styles.cutListMatDot} style={{ background: "#a855f7" }} />
+          <span className={styles.cutListDim} style={{ color: "rgba(168,85,247,0.9)" }}>
+            {w} <span className={styles.cutListAxis}>(W)</span>{" Ã— "}{panelD} <span className={styles.cutListAxis}>(D)</span>
+          </span>
+          <span className={styles.cutListName}>Panel {i + 1} of {widths.length}</span>
+        </div>
+      ))}
+    </RunItem>
+  );
+}
+
 // The whole-room cutting list: every item's cut list, then the shared
 // continuous runs. Everything starts expanded (it's a dedicated window meant to
 // be read in full); each block can be collapsed.
@@ -267,22 +299,25 @@ export function RoomCutList({ room, items = [] }) {
   const bpRuns = computeAllBackPanelRuns(roomItems);
   const fpRuns = computeAllFillerPanelRuns(roomItems);
   const upRuns = computeAllBottomPanelRuns(roomItems);
+  const tpRuns = computeAllTopPanelRuns(roomItems);
 
   const kbId = (run) => `kb-${room.id}-${run.wall}-${run.segments[0]?.item?.id}-${run.segments[0]?.leg}`;
   const bpId = (run) => `bp-${room.id}-${run.wall}-${run.segments[0]?.item?.id}`;
   const fpId = (run) => `fp-${room.id}-${run.wall}-${run.segments[0]?.item?.id}`;
   const upId = (run) => `up-${room.id}-${run.wall}-${run.segments[0]?.item?.id}`;
+  const tpId = (run) => `tp-${room.id}-${run.wall}-${run.segments[0]?.item?.id}`;
 
   // Start with every block open.
   const [openItems, setOpenItems] = useState(() => new Set([
     ...roomItems.map((i) => i.id),
-    ...kbRuns.map(kbId), ...bpRuns.map(bpId), ...fpRuns.map(fpId), ...upRuns.map(upId),
+    ...kbRuns.map(kbId), ...bpRuns.map(bpId), ...fpRuns.map(fpId), ...upRuns.map(upId), ...tpRuns.map(tpId),
   ]));
   const toggleItem = (id, e) => {
     e?.stopPropagation();
     setOpenItems((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -326,6 +361,7 @@ export function RoomCutList({ room, items = [] }) {
       {bpRuns.map((run) => <BackPanelRunItem key={bpId(run)} run={run} runId={bpId(run)} openItems={openItems} toggleItem={toggleItem} />)}
       {fpRuns.map((run) => <FillerPanelRunItem key={fpId(run)} run={run} runId={fpId(run)} openItems={openItems} toggleItem={toggleItem} room={room} allItems={roomItems} />)}
       {upRuns.map((run) => <BottomPanelRunItem key={upId(run)} run={run} runId={upId(run)} openItems={openItems} toggleItem={toggleItem} />)}
+      {tpRuns.map((run) => <TopPanelRunItem key={tpId(run)} run={run} runId={tpId(run)} openItems={openItems} toggleItem={toggleItem} />)}
     </div>
   );
 }

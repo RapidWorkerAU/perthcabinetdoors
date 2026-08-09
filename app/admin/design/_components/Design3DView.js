@@ -36,7 +36,8 @@ import {
   isCornerType,
   isCornerShaped,
 } from "../../../../lib/pcd-kickboard-utils";
-import { finishPanelVerticalSpanMm } from "../../../../lib/pcd-finishpanel-utils";
+import { endPanelSpanMm, finishPanelVerticalSpanMm } from "../../../../lib/pcd-finishpanel-utils";
+import { topPanelSideExtensionMm, topPanelThicknessMm } from "../../../../lib/pcd-toppanel-utils";
 import { shelfRailConfig, CLEAT_THICKNESS_MM } from "../../../../lib/pcd-shelf-rail-utils";
 import {
   computeBenchtopRun,
@@ -49,7 +50,7 @@ import {
   benchtopRunWaterfallEnds,
 } from "../../../../lib/pcd-benchtop-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, openBaySections, bayShelfHeightsMm } from "../../../../lib/pcd-door-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, openBaySections, bayShelfHeightsMm, frontPanelMode, frontPanelThicknessMm, FRONT_PANEL_MODE_INSET, FRONT_PANEL_MODE_OVER } from "../../../../lib/pcd-door-utils";
 
 const M = 1000; // mm → metres
 
@@ -73,7 +74,7 @@ const ITEM_COLORS = {
   brick_corner_pantry: "#a0522d",
 };
 const BENCHTOP_COLOR = "#787066";
-const CUTOUT_COLOR = "#1c1917";
+const REVEAL_SHADOW_COLOR = "#3a332c";
 const KICKBOARD_COLOR = "#292524";
 const FILLER_COLOR = "#cbd5c0";
 const FRONT_LINE_COLOR = "#0f172a";
@@ -1147,6 +1148,7 @@ function EndPanelMesh({ item, room, W, D }) {
   // (panel_to_floor) and up to the ceiling (panel_to_ceiling).
   const { bottomMm, topMm } = finishPanelVerticalSpanMm(item, room?.height_mm);
   const t = Number(item.finish_panel_style?.thickness_mm) || 18;
+  const frontProjection = frontPanelMode(item) === FRONT_PANEL_MODE_INSET ? frontPanelThicknessMm(item) : 0;
 
   const edges = [];
   if (isCornerType(item)) {
@@ -1159,14 +1161,14 @@ function EndPanelMesh({ item, room, W, D }) {
       (legWall === "top" || legWall === "bottom")
         ? (cornerWall === "left" ? "right" : "left")
         : (cornerWall === "top" ? "bottom" : "top");
-    if (item.end_panel_left && legs[0]) edges.push(edgeBoardRect(legs[0].rect, outerEdge(legs[0].wall, item.secondary_wall), t));
-    if (item.end_panel_right && legs[1]) edges.push(edgeBoardRect(legs[1].rect, outerEdge(legs[1].wall, item.wall), t));
+    if (item.end_panel_left && legs[0]) edges.push(extendFront(edgeBoardRect(legs[0].rect, outerEdge(legs[0].wall, item.secondary_wall), t), legs[0].wall, frontProjection));
+    if (item.end_panel_right && legs[1]) edges.push(extendFront(edgeBoardRect(legs[1].rect, outerEdge(legs[1].wall, item.wall), t), legs[1].wall, frontProjection));
   } else {
     const { leftEdge, rightEdge } = panelSideEdges(item);
     const rect = cabinetLegs(item, W, D)[0]?.rect;
     if (!rect) return null;
-    if (item.end_panel_left) edges.push(edgeBoardRect(rect, leftEdge, t));
-    if (item.end_panel_right) edges.push(edgeBoardRect(rect, rightEdge, t));
+    if (item.end_panel_left) edges.push(extendFront(edgeBoardRect(rect, leftEdge, t), item.wall, frontProjection));
+    if (item.end_panel_right) edges.push(extendFront(edgeBoardRect(rect, rightEdge, t), item.wall, frontProjection));
   }
   return (
     <>
@@ -1228,6 +1230,41 @@ function UndersidePanelMesh({ item, W, D }) {
     <>
       {cabinetLegs(item, W, D).map((leg, i) => {
         const box = boxFromRect(leg.rect, bottomMm - t, bottomMm);
+        return (
+          <mesh key={i} position={box.position}>
+            <boxGeometry args={box.size} />
+            <PanelMaterial src={src} color={color} roughness={0.6} />
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
+// Finished TOP panel — an applied board sitting over a wall cabinet. If the
+// cabinet has finished side panels, the top footprint extends over them too.
+function TopPanelMesh({ item, W, D }) {
+  const src = usePanelSrc(item, "top");
+  const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
+  if (!item.has_top_panel || item.item_type !== "wall_cabinet") return null;
+  const t = topPanelThicknessMm(item);
+  if (t <= 0) return null;
+  const [, topMm] = cabinetVerticalSpanMm(item);
+  return (
+    <>
+      {cabinetLegs(item, W, D).map((leg, i) => {
+        const { lowT, highT } = topPanelSideExtensionMm(item, leg.wall);
+        const rect = { ...leg.rect };
+        if (leg.wall === "top" || leg.wall === "bottom") {
+          rect.x -= lowT;
+          rect.w += lowT + highT;
+        } else {
+          rect.y -= lowT;
+          rect.h += lowT + highT;
+        }
+        const hasFront = ["doors", "drawers", "mixed"].includes(item.front_type || "none");
+        const topRect = extendFront(rect, leg.wall, hasFront ? frontPanelThicknessMm(item) : 0);
+        const box = boxFromRect(topRect, topMm, topMm + t);
         return (
           <mesh key={i} position={box.position}>
             <boxGeometry args={box.size} />
@@ -1370,16 +1407,18 @@ function frontGroups(item, W, D) {
   const basis = leg && faceBasis(leg);
   if (!basis) return [];
   const fullAlong = basis.alongAxis === "x" ? leg.rect.w : leg.rect.h;
+  const overlaySpan = frontPanelMode(item) === FRONT_PANEL_MODE_OVER ? endPanelSpanMm(item, leg.wall) : { lowT: 0, highT: 0 };
   // A blind corner's door only covers the accessible part, opposite the blind
   // zone. blind_side is viewer-terms; the bottom/left walls mirror the along
   // axis, so map through that flip to land the opening on the right end.
-  const doorAlong = item.item_type === "blind_corner_cabinet" ? frontWidthMm(item) : fullAlong;
-  let alongStart = 0;
+  const doorAlongBase = item.item_type === "blind_corner_cabinet" ? frontWidthMm(item) : fullAlong;
+  const doorAlong = doorAlongBase + overlaySpan.lowT + overlaySpan.highT;
+  let alongStart = -overlaySpan.lowT;
   if (item.item_type === "blind_corner_cabinet") {
     const flipped = leg.wall === "bottom" || leg.wall === "left";
     const blindLeft = (item.blind_side || "left") === "left";
     const doorHigh = blindLeft ? !flipped : flipped;
-    alongStart = doorHigh ? Math.max(0, fullAlong - doorAlong) : 0;
+    alongStart = (doorHigh ? Math.max(0, fullAlong - doorAlongBase) : 0) - overlaySpan.lowT;
   }
 
   const cells = [];
@@ -1603,7 +1642,9 @@ function BrickPantryDoor({ item, W, D }) {
 function RevealBacking({ basis, cell }) {
   const aC = (cell.a0 + cell.a1) / 2;
   const vC = (cell.v0 + cell.v1) / 2;
-  const depth = Math.max(DOOR_PANEL_THICKNESS - 0.004, 0.002);
+  // Keep this as a shallow shadow plane. If it is almost as thick as the
+  // drawer/door slab it reads from oblique angles as a solid black board.
+  const depth = 0.004;
   const position = facePoint(basis, aC, vC, depth / 2);
   const aLen = Math.max((cell.a1 - cell.a0) / M, 0.001);
   const vLen = Math.max((cell.v1 - cell.v0) / M, 0.001);
@@ -1613,7 +1654,7 @@ function RevealBacking({ basis, cell }) {
   return (
     <mesh position={position}>
       <boxGeometry args={size} />
-      <meshStandardMaterial color={CUTOUT_COLOR} roughness={0.95} />
+      <meshStandardMaterial color={REVEAL_SHADOW_COLOR} roughness={0.95} />
     </mesh>
   );
 }
@@ -2141,6 +2182,7 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
                   <EndPanelMesh item={item} room={room} W={W} D={D} />
                   <SideFillerMesh item={item} room={room} W={W} D={D} />
                   <UndersidePanelMesh item={item} W={W} D={D} />
+                  <TopPanelMesh item={item} W={W} D={D} />
                   <BackPanelMesh item={item} W={W} D={D} />
                   <BenchtopMesh item={item} items={placed} W={W} D={D} />
                   <ShelfMesh item={item} W={W} D={D} />

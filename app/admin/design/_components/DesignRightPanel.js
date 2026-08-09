@@ -15,6 +15,7 @@ import {
 } from "../../../../lib/quote-form-data";
 import { computeBackPanelRun } from "../../../../lib/pcd-backpanel-utils";
 import { computeBottomPanelRun } from "../../../../lib/pcd-bottompanel-utils";
+import { computeTopPanelRun } from "../../../../lib/pcd-toppanel-utils";
 import { fillerPanelGapMm, computeFillerPanelRun } from "../../../../lib/pcd-fillerpanel-utils";
 import { getAbsPos, itemDepthMm } from "./DesignCanvas";
 import { CABINET_MOUNT_MM, computeKickboardRun, isCornerType } from "../../../../lib/pcd-kickboard-utils";
@@ -1317,6 +1318,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
       : draft.end_panel_right ? "right end" : "",
     draft.has_back_panel || draft.back_panel_wall1 || draft.back_panel_wall2 ? "finished back" : "",
     draft.has_bottom_panel ? "underside" : "",
+    draft.has_top_panel ? "top" : "",
   ].filter(Boolean).join(" · ") || "none";
 
   summary.benchtop = draft.has_benchtop
@@ -1461,9 +1463,10 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // section. A corner cabinet with doors counts as having doors.
   const frontHasDoors   = draft.front_type === "doors" || (draft.front_type === "mixed" && sectionsAnyDoors);
   const frontHasDrawers = draft.front_type === "drawers" || (draft.front_type === "mixed" && sectionsAnyDrawers);
+  const showFrontPanelMode = (frontHasDoors || frontHasDrawers) && (draft.end_panel_left || draft.end_panel_right);
   // Count of enabled applied panels — the summary for the "Add-on panels" group.
   const addonsOnCount = [
-    draft.has_kickboard, draft.has_filler_panel, draft.has_bottom_panel, draft.has_back_panel,
+    draft.has_kickboard, draft.has_filler_panel, draft.has_bottom_panel, draft.has_top_panel, draft.has_back_panel,
     draft.end_panel_left, draft.end_panel_right, draft.side_filler_left, draft.side_filler_right,
     draft.back_panel_wall1, draft.back_panel_wall2,
   ].filter(Boolean).length;
@@ -1984,6 +1987,40 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     );
   };
 
+  const renderTopPanelDetail = () => {
+    if (!draft.has_top_panel) return <PanelOffHint />;
+    const isContinuous = (draft.top_panel_span ?? "continuous") === "continuous";
+    const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
+    const run = isContinuous ? computeTopPanelRun(draft, liveItems) : null;
+    const isFirstInRun = !run || run.firstItemId === draft.id;
+    const firstItem = run && !isFirstInRun ? liveItems.find((i) => i.id === run.firstItemId) : null;
+    return (
+      <div className={styles.fieldGroup}>
+        <label className={styles.fieldLabel}>Spanning style
+          <select className={styles.fieldSelect} value={draft.top_panel_span ?? "continuous"} onChange={(e) => setNow("top_panel_span", e.target.value)}>
+            <option value="continuous">Continuous (spans across adjacent cabinets)</option>
+            <option value="individual">Individual (one panel, this cabinet only)</option>
+          </select>
+        </label>
+        {isContinuous && (isFirstInRun ? (
+          <label className={styles.fieldLabel}>Panel count {run && run.count > 1 ? `(run of ${run.count} cabinets)` : ""}
+            <input className={styles.fieldInput} type="number" min="1" value={draft.top_panel_qty ?? 1} onChange={(e) => set("top_panel_qty", e.target.value)} />
+          </label>
+        ) : (
+          <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+            Continuous top-panel run ({run.count} cabinets) â€” panel count is set on{" "}
+            <button type="button" onClick={() => onSelectItem?.(run.firstItemId)} style={runLinkStyle}>{firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}</button>.
+          </p>
+        ))}
+        {(draft.end_panel_left || draft.end_panel_right) && (
+          <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+            Top panel width includes the finished side panel thickness on any selected side.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const renderEndBackDetail = () => {
     const anyPanel = draft.end_panel_left || draft.end_panel_right || draft.has_back_panel;
     if (!draft.has_back_panel && !anyPanel) return <PanelOffHint />;
@@ -2115,6 +2152,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     panelGroups.push({ id: "filler", label: "Filler panel", toggles: [{ key: "has_filler_panel", label: "Include filler panel (to ceiling)" }], detail: renderFillerDetail });
   }
   if (draft.item_type === "wall_cabinet") {
+    panelGroups.push({ id: "top-panel", label: "Top panel", toggles: [{ key: "has_top_panel", label: "Finished top panel" }], detail: renderTopPanelDetail });
     panelGroups.push({ id: "underside", label: "Underside panel", toggles: [{ key: "has_bottom_panel", label: "Finished underside panel" }], detail: renderUndersideDetail });
     panelGroups.push({ id: "side-panels", label: "Side panels", toggles: [
       { key: "end_panel_left", label: "Left side panel" },
@@ -2397,6 +2435,8 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 renderOverridePicker("filler_panel_style", "Filler", "Matches the doors on a doored cabinet, otherwise the carcass.")}
               {draft.item_type === "wall_cabinet" && draft.has_bottom_panel &&
                 renderOverridePicker("bottom_panel_style", "Underside", "Matches the carcass by default.")}
+              {draft.item_type === "wall_cabinet" && draft.has_top_panel &&
+                renderOverridePicker("top_panel_style", "Top panel", "Matches the finished side panels by default.")}
               {draft.has_back_panel &&
                 renderOverridePicker("back_panel_style", "Back panel", "Matches the carcass by default.")}
               {(draft.end_panel_left || draft.end_panel_right || draft.has_back_panel) && renderFinishPanelMaterial()}
@@ -2425,6 +2465,18 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               ))}
             </div>
             {draft.front_type === "mixed" && !isCorner && renderBaySidebarList()}
+            {showFrontPanelMode && (
+              <label className={styles.fieldLabel}>Front position at side panels
+                <select
+                  className={styles.fieldSelect}
+                  value={draft.front_panel_mode || "over_side_panels"}
+                  onChange={(e) => setNow("front_panel_mode", e.target.value)}
+                >
+                  <option value="over_side_panels">Fronts cover side-panel edges</option>
+                  <option value="inset_between_side_panels">Fronts sit between side panels</option>
+                </select>
+              </label>
+            )}
             {((draft.front_type && draft.front_type !== "none") || isCorner) && (
               <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10 }} onClick={() => { setFrontPart(frontParts[0]?.id || null); setOpenWin("front"); }}>
                 {draft.front_type === "mixed" && !isCorner ? "Edit bay layout →" : "Edit door / drawer layout →"}

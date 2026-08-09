@@ -55,7 +55,7 @@ function frontCounts(item) {
 
 function hasFinishedPanels(item) {
   return Boolean(item.end_panel_left || item.end_panel_right || item.has_back_panel ||
-    item.has_bottom_panel || item.back_panel_wall1 || item.back_panel_wall2);
+    item.has_bottom_panel || item.has_top_panel || item.back_panel_wall1 || item.back_panel_wall2);
 }
 
 // The individually-importable parts of a cabinet, in display order. Only the

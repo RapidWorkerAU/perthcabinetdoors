@@ -11,6 +11,7 @@ import {
   ORDER_PRODUCTION_STAGES,
   ORDER_STATUSES,
 } from "../../../../lib/pcd-quote-utils";
+import { canRefreshPaymentRequest, canRequestPayment, hasPaymentRequest } from "../../../../lib/pcd-payment-requests";
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
@@ -375,8 +376,8 @@ export default function OrderDetail({ orderId }) {
     fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
     primaryBtn: "h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors",
     secondaryBtn: "h-[34px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
-    smBtn: "h-[26px] px-3 text-[11px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
-    dangerBtn: "h-[26px] px-3 text-[11px] font-medium rounded-[6px] border border-[#fca5a5] bg-white text-[#991b1b] hover:bg-[#fef2f2] disabled:opacity-50 transition-colors",
+    smBtn: "inline-flex h-[26px] items-center justify-center px-3 text-[11px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
+    dangerBtn: "inline-flex h-[26px] items-center justify-center px-3 text-[11px] font-medium rounded-[6px] border border-[#fca5a5] bg-white text-[#991b1b] hover:bg-[#fef2f2] disabled:opacity-50 transition-colors",
     muted: "text-[11px] text-[#8b8a81]",
     mono: "font-mono",
     pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border",
@@ -653,7 +654,14 @@ export default function OrderDetail({ orderId }) {
           ),
         };
       });
-      toast({ title: payload.emailSent ? "Payment request sent to customer." : `Payment request created. Email is not configured, use this link: ${payload.checkoutUrl}`, variant: "success" });
+      toast({
+        title: payload.refreshed
+          ? `Fresh payment link created: ${payload.checkoutUrl}`
+          : payload.emailSent
+            ? "Payment request sent to customer."
+            : `Payment request created. Email is not configured, use this link: ${payload.checkoutUrl}`,
+        variant: "success",
+      });
     } catch (error) {
       toast({ title: error?.message || "Could not request payment.", variant: "error" });
     } finally {
@@ -769,13 +777,7 @@ export default function OrderDetail({ orderId }) {
   }
 
   function paymentHasRequest(payment) {
-    return Boolean(
-      payment?.request_status ||
-      payment?.requested_at ||
-      payment?.request_url ||
-      payment?.stripe_checkout_session_id ||
-      payment?.stripe_payment_intent_id
-    );
+    return hasPaymentRequest(payment);
   }
 
   function canDeletePaymentLine(payment) {
@@ -783,11 +785,15 @@ export default function OrderDetail({ orderId }) {
   }
 
   function canRequestPaymentLine(payment) {
-    return !payment?.is_paid && !paymentHasRequest(payment) && Number(payment?.amount || 0) > 0;
+    return canRequestPayment(payment);
   }
 
   function canEditPaymentFinancialFields(payment) {
     return !payment?.is_paid && !paymentHasRequest(payment);
+  }
+
+  function canRefreshPaymentLine(payment) {
+    return canRefreshPaymentRequest(payment);
   }
 
   function paymentStatusText(payment) {
@@ -1541,6 +1547,7 @@ export default function OrderDetail({ orderId }) {
                     const hasRequest = paymentHasRequest(payment);
                     const canEditFinancialFields = canEditPaymentFinancialFields(payment);
                     const canDelete = canDeletePaymentLine(payment);
+                    const canRefresh = canRefreshPaymentLine(payment);
                     return (
                       <tr key={payment.id}>
                         <td className={tw.td}>
@@ -1625,6 +1632,16 @@ export default function OrderDetail({ orderId }) {
                             {!payment.is_paid && hasRequest && payment.request_url ? (
                               <a className={tw.smBtn} href={payment.request_url} target="_blank" rel="noopener noreferrer">Payment link</a>
                             ) : null}
+                            {canRefresh && (
+                              <button
+                                type="button"
+                                className={tw.smBtn}
+                                disabled={isSaving}
+                                onClick={() => requestPayment(payment)}
+                              >
+                                Refresh link
+                              </button>
+                            )}
                             {canRequestPaymentLine(payment) && (
                               <button
                                 type="button"
@@ -1676,6 +1693,7 @@ export default function OrderDetail({ orderId }) {
               const hasRequest = paymentHasRequest(payment);
               const canEditFinancialFields = canEditPaymentFinancialFields(payment);
               const canDelete = canDeletePaymentLine(payment);
+              const canRefresh = canRefreshPaymentLine(payment);
               return (
                 <article key={payment.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
@@ -1730,6 +1748,9 @@ export default function OrderDetail({ orderId }) {
                     {!payment.is_paid && hasRequest && payment.request_url ? (
                       <a className={tw.smBtn} href={payment.request_url} target="_blank" rel="noopener noreferrer">Payment link</a>
                     ) : null}
+                    {canRefresh && (
+                      <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => requestPayment(payment)}>Refresh link</button>
+                    )}
                     {canRequestPaymentLine(payment) && (
                       <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => setPaymentRequestModal({
                         payment,

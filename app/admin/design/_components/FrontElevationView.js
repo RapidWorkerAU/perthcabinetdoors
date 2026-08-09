@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import styles from "../design.module.css";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm, bayTypeForRow, mixedBaySections } from "../../../../lib/pcd-door-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, bayTypeForRow, mixedBaySections, scaleDrawerHeightsMm, frontPanelMode, FRONT_PANEL_MODE_OVER } from "../../../../lib/pcd-door-utils";
 import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { kickboardOffsetMm, kickboardHeightMm, kickboardIsInset, wallSpanMm, CABINET_MOUNT_MM, cabinetVerticalSpanMm, isCornerType, isCornerShaped } from "../../../../lib/pcd-kickboard-utils";
 import { shelfRailConfig } from "../../../../lib/pcd-shelf-rail-utils";
@@ -16,6 +16,7 @@ import {
   bottomPanelThicknessMm,
   finishPanelVerticalSpanMm,
 } from "../../../../lib/pcd-finishpanel-utils";
+import { topPanelThicknessMm } from "../../../../lib/pcd-toppanel-utils";
 import PinchZoom from "./PinchZoom";
 import dynamic from "next/dynamic";
 
@@ -443,9 +444,12 @@ function ApplianceMock({ x, y, w, h, appliance }) {
   );
 }
 
-function DrawerBank({ x, y, w, h, cfg, fill }) {
-  const rawHeights = Array.isArray(cfg.heights_mm) && cfg.heights_mm.length ? cfg.heights_mm : [1];
-  const totalMm = rawHeights.reduce((s, v) => s + (Number(v) || 0), 0) || 1;
+function DrawerBank({ x, y, w, h, heightMm, cfg, fill }) {
+  const targetHeightMm = Math.max(1, Number(heightMm) || 0);
+  const storedHeights = Array.isArray(cfg.heights_mm) && cfg.heights_mm.length ? cfg.heights_mm : [targetHeightMm];
+  const storedTotalMm = storedHeights.reduce((s, v) => s + (Number(v) || 0), 0) || targetHeightMm;
+  const rawHeights = scaleDrawerHeightsMm(storedHeights, storedTotalMm, targetHeightMm);
+  const totalMm = rawHeights.reduce((s, v) => s + (Number(v) || 0), 0) || targetHeightMm;
   const pxPerMm = h / totalMm;
   const gapMm = drawerGapMm(cfg);
   const frontHeightsMm = computeDrawerFrontHeights(rawHeights, gapMm > 0, gapMm, frontRevealMm(cfg));
@@ -1349,6 +1353,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const svgH   = hMm * scale;
             const svgY   = floor - (mountH + kbMm + hMm) * scale;
             const T      = Math.max((item.carcass_thickness_mm || 16) * scale, 1.5);
+            const frontCanCoverSides = !isCorner && ["doors", "drawers", "mixed"].includes(item.front_type || "none") && frontPanelMode(item) === FRONT_PANEL_MODE_OVER;
+            const frontEndSpan = frontCanCoverSides ? endPanelElevationSpanMm(item) : { lowT: 0, highT: 0 };
+            const frontSvgX = svgX - frontEndSpan.lowT * scale;
+            const frontSvgW = svgW + (frontEndSpan.lowT + frontEndSpan.highT) * scale;
             const isSelected = item.id === selectedId;
             const isDragging = drag?.itemId === item.id;
             const shelves    = getShelfPositions(item);
@@ -1745,15 +1753,15 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                         const ry = svgY + r * dH;
                         if (bayType === "appliance") {
                           const appliance = (cfg.bays && cfg.bays[r] && cfg.bays[r].appliance) || "oven";
-                          return <ApplianceMock key={r} x={svgX} y={ry} w={svgW} h={dH} appliance={appliance} fill={fill} />;
+                          return <ApplianceMock key={r} x={frontSvgX} y={ry} w={frontSvgW} h={dH} appliance={appliance} fill={fill} />;
                         }
                         if (bayType === "open") {
                           return (
                             <g key={r} style={{ pointerEvents: "none" }}>
-                              <rect x={svgX} y={ry} width={svgW} height={dH}
+                              <rect x={frontSvgX} y={ry} width={frontSvgW} height={dH}
                                 fill="none" stroke={fill} strokeWidth={0.6} strokeDasharray="4 3" strokeOpacity={0.4} />
                               {svgW > 30 && dH > 14 && (
-                                <text x={svgX + svgW / 2} y={ry + dH / 2}
+                                <text x={frontSvgX + frontSvgW / 2} y={ry + dH / 2}
                                   textAnchor="middle" dominantBaseline="middle"
                                   fontSize={7} fill={fill} fillOpacity={0.45} letterSpacing={0.5}>
                                   OPEN
@@ -1762,7 +1770,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                             </g>
                           );
                         }
-                        return <DoorRowWithGap key={r} x={svgX} y={ry} w={svgW} h={dH} cfg={cfg} fill={fill} scale={scale} floor={floor} />;
+                        return <DoorRowWithGap key={r} x={frontSvgX} y={ry} w={frontSvgW} h={dH} cfg={cfg} fill={fill} scale={scale} floor={floor} />;
                       })}
                     </>
                   );
@@ -1772,7 +1780,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     finger-pull reveal between them if configured. No swing/
                     hinge visuals since drawers don't hinge. */}
                 {!isCorner && item.front_type === "drawers" && svgW > 20 && svgH > 20 && (
-                  <DrawerBank x={svgX} y={svgY} w={svgW} h={svgH} cfg={item.drawer_config || {}} fill={fill} />
+                  <DrawerBank x={frontSvgX} y={svgY} w={frontSvgW} h={svgH} heightMm={item.height_mm} cfg={item.drawer_config || {}} fill={fill} />
                 )}
 
                 {/* Mixed door+drawer front — stack each section's own bank
@@ -1794,7 +1802,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                         cursorMm += Number(sec.height_mm) || 0;
                         if (secH <= 0) return null;
                         return sec.type === "appliance" ? (
-                          <ApplianceMock key={idx} x={svgX} y={secY} w={svgW} h={secH} appliance={sec.appliance || "oven"} fill={fill} />
+                          <ApplianceMock key={idx} x={frontSvgX} y={secY} w={frontSvgW} h={secH} appliance={sec.appliance || "oven"} fill={fill} />
                         ) : sec.type === "open" ? (() => {
                           // An open bay carries its own shelves, and they drag
                           // exactly like a normal cabinet shelf — just clamped
@@ -1810,7 +1818,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                           const carcassFloorY = svgY + svgH;
                           return (
                             <g key={idx}>
-                              <rect x={svgX} y={secY} width={svgW} height={secH}
+                              <rect x={frontSvgX} y={secY} width={frontSvgW} height={secH}
                                 fill="none" stroke={fill} strokeWidth={0.6} strokeDasharray="4 3" strokeOpacity={0.4}
                                 style={{ pointerEvents: "none" }} />
                               {heights.map((hMmAbs, j) => {
@@ -1842,7 +1850,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                                 );
                               })}
                               {svgW > 30 && secH > 14 && heights.length === 0 && (
-                                <text x={svgX + svgW / 2} y={secY + secH / 2}
+                                <text x={frontSvgX + frontSvgW / 2} y={secY + secH / 2}
                                   textAnchor="middle" dominantBaseline="middle"
                                   fontSize={7} fill={fill} fillOpacity={0.45} letterSpacing={0.5}
                                   style={{ pointerEvents: "none" }}>
@@ -1852,16 +1860,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                             </g>
                           );
                         })() : sec.type === "drawers" ? (
-                          <DrawerBank key={idx} x={svgX} y={secY} w={svgW} h={secH} cfg={sec.drawer || {}} fill={fill} />
+                          <DrawerBank key={idx} x={frontSvgX} y={secY} w={frontSvgW} h={secH} heightMm={sec.height_mm} cfg={sec.drawer || {}} fill={fill} />
                         ) : (
-                          <DoorRowWithGap key={idx} x={svgX} y={secY} w={svgW} h={secH} cfg={sec.door || {}} fill={fill} scale={scale} floor={floor} />
+                          <DoorRowWithGap key={idx} x={frontSvgX} y={secY} w={frontSvgW} h={secH} cfg={sec.door || {}} fill={fill} scale={scale} floor={floor} />
                         );
                       })}
                       {/* Section boundary lines */}
                       {sections.slice(0, -1).map((_, idx) => {
                         const y2 = svgY + sections.slice(0, idx + 1).reduce((s, sec) => s + (Number(sec.height_mm) || 0), 0) * pxPerMm;
                         return (
-                          <line key={`sec-${idx}`} x1={svgX} y1={y2} x2={svgX + svgW} y2={y2}
+                          <line key={`sec-${idx}`} x1={frontSvgX} y1={y2} x2={frontSvgX + frontSvgW} y2={y2}
                             stroke={fill} strokeWidth={1} strokeOpacity={0.5} style={{ pointerEvents: "none" }} />
                         );
                       })}
@@ -2087,6 +2095,24 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   return (
                     <rect x={svgX} y={svgY + svgH} width={svgW} height={t}
                       fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
+                  );
+                })()}
+
+                {/* Top panel — wall cabinets only. Sits ABOVE the carcass and
+                    extends over any finished side panels in elevation. */}
+                {topPanelThicknessMm(item) > 0 && (() => {
+                  const t = Math.max(topPanelThicknessMm(item) * scale, 1.5);
+                  const { lowT, highT } = endPanelElevationSpanMm(item);
+                  return (
+                    <rect
+                      x={svgX - lowT * scale}
+                      y={svgY - t}
+                      width={svgW + (lowT + highT) * scale}
+                      height={t}
+                      fill="#a855f7"
+                      fillOpacity={0.9}
+                      style={{ pointerEvents: "none" }}
+                    />
                   );
                 })()}
 

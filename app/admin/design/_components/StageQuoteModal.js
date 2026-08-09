@@ -22,7 +22,7 @@ const PART_LABELS = {
   drawers: "Drawers",
   kickboard: "Kickboard",
   filler: "Filler panel",
-  panels: "End / back / benchtop panels",
+  panels: "Finished panels / benchtop",
   include: "Include",
 };
 

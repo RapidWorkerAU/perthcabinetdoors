@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
+import { hasPaymentRequest } from "../../../../../../../../lib/pcd-payment-requests";
 import { createCheckoutSession, siteUrl } from "../../../../../../../../lib/pcd-stripe";
 import { paymentTypeLabel } from "../../../../../../../../lib/pcd-payment-notifications";
 
@@ -33,16 +34,6 @@ async function assertPaymentWithinOrderTotal(supabase, orderId, paymentId, amoun
   if (otherTotal + Number(amount || 0) > total + 0.001) {
     throw new Error(`This request would exceed the order total. Remaining available amount is ${formatMoney(Math.max(total - otherTotal, 0))}.`);
   }
-}
-
-function hasPaymentRequest(payment) {
-  return Boolean(
-    payment?.request_status ||
-    payment?.requested_at ||
-    payment?.request_url ||
-    payment?.stripe_checkout_session_id ||
-    payment?.stripe_payment_intent_id
-  );
 }
 
 function defaultEmailMessage(order) {
@@ -109,12 +100,12 @@ export async function POST(request, { params }) {
       .maybeSingle();
     if (paymentError || !payment) throw paymentError || new Error("Payment line not found.");
     if (payment.is_paid) throw new Error("This payment line is already paid.");
-    if (hasPaymentRequest(payment)) throw new Error("A payment request has already been sent for this line.");
     if (Number(payment.amount || 0) <= 0) throw new Error("Payment amount must be greater than zero.");
 
     const order = payment.pcd_orders;
     if (!order?.customer_email) throw new Error("The order needs a customer email before requesting payment.");
     await assertPaymentWithinOrderTotal(context.supabase, orderId, paymentId, payment.amount);
+    const isRefresh = hasPaymentRequest(payment);
 
     const baseUrl = siteUrl(request.url);
     const session = await createCheckoutSession({
@@ -152,7 +143,7 @@ export async function POST(request, { params }) {
     const emailSubject = subject || `Payment request - ${order.order_number || "Perth Cabinet Doors"}`;
 
     let emailSent = false;
-    if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
+    if (!isRefresh && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
@@ -168,13 +159,13 @@ export async function POST(request, { params }) {
       order_id: orderId,
       quote_id: order.quote_id || null,
       actor_type: "admin",
-      action_type: "payment_requested",
-      title: "Payment requested",
+      action_type: isRefresh ? "payment_request_refreshed" : "payment_requested",
+      title: isRefresh ? "Payment request link refreshed" : "Payment requested",
       description: `${paymentTypeLabel(updatedPayment.payment_type)} - ${formatMoney(updatedPayment.amount)}`,
       metadata: { payment_id: paymentId, stripe_checkout_session_id: session.id, emailSent },
     });
 
-    return Response.json({ ok: true, payment: updatedPayment, checkoutUrl: session.url, emailSent });
+    return Response.json({ ok: true, payment: updatedPayment, checkoutUrl: session.url, emailSent, refreshed: isRefresh });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not request payment." }, { status: 500 });
   }

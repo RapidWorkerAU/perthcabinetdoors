@@ -6,7 +6,7 @@ import { islandVirtualWall, isCornerType, isCornerShaped } from "../../../../lib
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
 import { endPanelSpanMm, finishPanelThicknessMm } from "../../../../lib/pcd-finishpanel-utils";
 import { benchtopDepthMm, benchtopCutouts, benchtopWaterfallSides, benchtopThicknessMm } from "../../../../lib/pcd-benchtop-utils";
-import { bayTypeForRow } from "../../../../lib/pcd-door-utils";
+import { bayTypeForRow, frontPanelMode, frontPanelThicknessMm, FRONT_PANEL_MODE_INSET } from "../../../../lib/pcd-door-utils";
 // The room-space maths lives in lib/pcd-plan-geometry.js. This file keeps only
 // what's genuinely about drawing: SVG rects, polygons, scale.
 import {
@@ -150,6 +150,17 @@ function outerEdgeStripRect(rect, edge, t) {
     case "left":   return { x: x - t,     y,         w: t, h };
     case "right":  return { x: x + w,     y,         w: t, h };
     default:       return null;
+  }
+}
+
+function extendFrontRect(rect, wall, delta) {
+  if (!rect || delta <= 0) return rect;
+  switch (wall) {
+    case "top":    return { ...rect, h: rect.h + delta };
+    case "bottom": return { ...rect, y: rect.y - delta, h: rect.h + delta };
+    case "left":   return { ...rect, w: rect.w + delta };
+    case "right":  return { ...rect, x: rect.x - delta, w: rect.w + delta };
+    default:       return rect;
   }
 }
 
@@ -674,11 +685,12 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
       {!isCorner && (item.end_panel_left || item.end_panel_right) && (() => {
         const { leftEdge, rightEdge } = panelSideEdges(item);
         const t = Math.max(finishPanelThicknessMm(item) * lay.scale, 1.5);
+        const frontProjection = frontPanelMode(item) === FRONT_PANEL_MODE_INSET ? frontPanelThicknessMm(item) * lay.scale : 0;
         const edges = [];
         if (item.end_panel_left)  edges.push({ edge: leftEdge,  key: "left" });
         if (item.end_panel_right) edges.push({ edge: rightEdge, key: "right" });
         return edges.map(({ edge, key }) => {
-          const s = outerEdgeStripRect(rect, edge, t);
+          const s = extendFrontRect(outerEdgeStripRect(rect, edge, t), item.wall, frontProjection);
           if (!s) return null;
           return (
             <rect
@@ -757,18 +769,19 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
           end. Matches the 3D EndPanelMesh corner branch and the quote. */}
       {isCorner && (item.end_panel_left || item.end_panel_right) && (() => {
         const t = Math.max(finishPanelThicknessMm(item) * lay.scale, 1.5);
+        const frontProjection = frontPanelMode(item) === FRONT_PANEL_MODE_INSET ? frontPanelThicknessMm(item) * lay.scale : 0;
         const outerEdge = (legWall, cornerWall) =>
           (legWall === "top" || legWall === "bottom")
             ? (cornerWall === "left" ? "right" : "left")
             : (cornerWall === "top" ? "bottom" : "top");
         const strips = [];
         if (item.end_panel_left) {
-          const s = outerEdgeStripRect(rect, outerEdge(item.wall, item.secondary_wall), t);
+          const s = extendFrontRect(outerEdgeStripRect(rect, outerEdge(item.wall, item.secondary_wall), t), item.wall, frontProjection);
           if (s) strips.push({ ...s, key: "end1" });
         }
         if (item.end_panel_right && item.secondary_wall && item.secondary_wall !== item.wall) {
           const secRect = cornerSecondaryRect(item, rect, lay);
-          const s = secRect ? outerEdgeStripRect(secRect, outerEdge(item.secondary_wall, item.wall), t) : null;
+          const s = secRect ? extendFrontRect(outerEdgeStripRect(secRect, outerEdge(item.secondary_wall, item.wall), t), item.secondary_wall, frontProjection) : null;
           if (s) strips.push({ ...s, key: "end2" });
         }
         return strips.map(({ key, x: sx, y: sy, w: sw, h: sh }) => (

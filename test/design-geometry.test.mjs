@@ -14,6 +14,10 @@ import {
   finishPanelThicknessMm, endPanelSpanMm, endPanelElevationSpanMm,
   backPanelDepthMm, bottomPanelThicknessMm,
 } from "../lib/pcd-finishpanel-utils.js";
+import {
+  topPanelThicknessMm,
+  topPanelWidthMm,
+} from "../lib/pcd-toppanel-utils.js";
 
 const ROOM = { width_mm: 4000, depth_mm: 3000 };
 const island = (rotation) => ({
@@ -91,6 +95,20 @@ test("applied panels add to the cabinet, they don't eat into it", () => {
   const [bottom, top] = cabinetVerticalSpanMm(under);
   assert.deepEqual([bottom, top], [1400, 2120], "the carcass itself is unmoved");
   assert.equal(bottom - bottomPanelThicknessMm(under), 1382, "the panel hangs below it");
+});
+
+test("wall cabinet top panels span over finished side panels", () => {
+  const wallCab = {
+    item_type: "wall_cabinet", wall: "top",
+    width_mm: 600, height_mm: 280, depth_mm: 500, mount_height_mm: 520,
+    has_top_panel: true,
+    finish_panel_style: { thickness_mm: 18 },
+  };
+
+  assert.equal(topPanelThicknessMm(wallCab), 18);
+  assert.equal(topPanelWidthMm(wallCab, "top"), 600, "no finished sides");
+  assert.equal(topPanelWidthMm({ ...wallCab, end_panel_left: true }, "top"), 618, "one side");
+  assert.equal(topPanelWidthMm({ ...wallCab, end_panel_left: true, end_panel_right: true }, "top"), 636, "both sides");
 });
 
 test("the plan flips the end-panel axis; the elevation must not", () => {

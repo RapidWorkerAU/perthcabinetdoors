@@ -125,6 +125,7 @@ export function collectMatchOptions(allItems, draft) {
     add(`${prefix}filler`, it.filler_panel_style);
     add(`${prefix}kickboard`, it.kickboard_style);
     add(`${prefix}underside`, it.bottom_panel_style);
+    add(`${prefix}top panel`, it.top_panel_style);
     add(`${prefix}back panel`, it.back_panel_style);
     add(`${prefix}benchtop`, it.benchtop_colour_style);
   };

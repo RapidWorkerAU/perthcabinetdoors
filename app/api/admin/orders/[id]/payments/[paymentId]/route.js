@@ -1,17 +1,8 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
+import { hasPaymentRequest } from "../../../../../../../lib/pcd-payment-requests";
 import { describeChanges, logOrderActivity } from "../../../../../../../lib/pcd-activity-log";
 
 const PAYMENT_TYPES = new Set(["deposit", "progress", "final", "other"]);
-
-function hasPaymentRequest(payment) {
-  return Boolean(
-    payment?.request_status ||
-    payment?.requested_at ||
-    payment?.request_url ||
-    payment?.stripe_checkout_session_id ||
-    payment?.stripe_payment_intent_id
-  );
-}
 
 function canDeletePayment(payment) {
   return Boolean(payment) && !payment.is_paid && !hasPaymentRequest(payment);

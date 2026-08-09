@@ -88,8 +88,8 @@ const frontStyle = (item) =>
 // Cabinets that can use the multi-bay ("mixed") front in the public tool.
 const CAN_BAYS = new Set(["tall_cabinet", "base_cabinet"]);
 
-// Whether the cabinet has any finished side/back/underside panel switched on.
-const hasFinishPanels = (item) => Boolean(item?.end_panel_left || item?.end_panel_right || item?.has_back_panel || item?.has_bottom_panel || item?.has_filler_panel);
+// Whether the cabinet has any finished side/back/top/underside panel switched on.
+const hasFinishPanels = (item) => Boolean(item?.end_panel_left || item?.end_panel_right || item?.has_back_panel || item?.has_bottom_panel || item?.has_top_panel || item?.has_filler_panel);
 // "Open" = no doors or drawers (front_type "none"), so the interior + shelves show.
 const isOpenFront = (item) => (item?.front_type || "none") === "none" && !isShelf(item);
 
@@ -879,8 +879,8 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
     ? "That's a wide span for a shelf. We'll add a support when we work up your quote — no need to change anything."
     : null;
 
-  const anyFinishPanel = item.end_panel_left || item.end_panel_right || item.has_back_panel || item.has_bottom_panel || item.has_filler_panel;
-  const panelCount = [item.has_kickboard, item.end_panel_left, item.end_panel_right, item.has_back_panel, item.has_bottom_panel, item.has_filler_panel].filter(Boolean).length;
+  const anyFinishPanel = item.end_panel_left || item.end_panel_right || item.has_back_panel || item.has_bottom_panel || item.has_top_panel || item.has_filler_panel;
+  const panelCount = [item.has_kickboard, item.end_panel_left, item.end_panel_right, item.has_back_panel, item.has_bottom_panel, item.has_top_panel, item.has_filler_panel].filter(Boolean).length;
   const sizeSummary = shelfRail
     ? `${item.width_mm || "?"} span · ${item.depth_mm || "?"} deep · ${shelfTopMm(item)} high`
     : panel
@@ -1145,6 +1145,7 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
           {(item.item_type === "base_cabinet" || item.item_type === "tall_cabinet") && (
             <Toggle label="Finished back panel" checked={item.has_back_panel} onChange={(v) => set({ has_back_panel: v })} />
           )}
+          {wall && <Toggle label="Top panel" checked={item.has_top_panel} onChange={(v) => set({ has_top_panel: v })} />}
           {wall && <Toggle label="Underside panel" checked={item.has_bottom_panel} onChange={(v) => set({ has_bottom_panel: v })} />}
           {FILLER_PANEL_TYPES.has(item.item_type) && <Toggle label="Top filler panel" checked={item.has_filler_panel} onChange={(v) => set({ has_filler_panel: v })} />}
           {anyFinishPanel && (floor || wall) && (

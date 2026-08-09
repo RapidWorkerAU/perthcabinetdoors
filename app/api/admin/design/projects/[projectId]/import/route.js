@@ -6,8 +6,9 @@ import { calculateCabinetTotals, normalizeCabinetConfig } from "../../../../../.
 import { computeKickboardRun, kickboardIsInset, isCornerType } from "../../../../../../../lib/pcd-kickboard-utils";
 import { computeBackPanelRun, splitBackPanelWidths, backPanelSegment } from "../../../../../../../lib/pcd-backpanel-utils";
 import { computeBottomPanelRun, bottomPanelSegment } from "../../../../../../../lib/pcd-bottompanel-utils";
+import { computeTopPanelRun, topPanelSegment, topPanelWidthMm } from "../../../../../../../lib/pcd-toppanel-utils";
 import { computeFillerPanelRun, fillerPanelSegment, fillerPanelGapMm } from "../../../../../../../lib/pcd-fillerpanel-utils";
-import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote, frontWidthMm, bayShelfCount, bayShelfHeightsMm } from "../../../../../../../lib/pcd-door-utils";
+import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote, frontSizingWidthMm, finishedSidePanelDepthMm, finishedTopPanelDepthMm, bayShelfCount, bayShelfHeightsMm } from "../../../../../../../lib/pcd-door-utils";
 import { runnerLabel, runnerUnitCost } from "../../../../../../../lib/pcd-drawer-utils";
 import { materialLabelForType } from "../../../../../../../lib/pcd-colour-library";
 import { finishPanelVerticalSpanMm } from "../../../../../../../lib/pcd-finishpanel-utils";
@@ -110,6 +111,11 @@ function sharedRunPanels(item, selectedCabinetItems, room) {
       isContinuous(item.bottom_panel_span) &&
       computeBottomPanelRun(item, selectedCabinetItems).count > 1) {
     shared.push("underside panel");
+  }
+  if (item.has_top_panel && item.item_type === "wall_cabinet" &&
+      isContinuous(item.top_panel_span) &&
+      computeTopPanelRun(item, selectedCabinetItems).count > 1) {
+    shared.push("top panel");
   }
   return shared;
 }
@@ -481,9 +487,9 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeD
   const scopeNote = cabinetIncluded
     ? ""
     : "Door/drawer supply only — base cabinet is out of scope for this quote.";
-  // frontWidthMm, not width_mm: a blind corner's fronts only span the part
-  // that isn't dead space behind the return cabinet.
-  const widthMm = frontWidthMm(item);
+  // frontSizingWidthMm, not width_mm: blind corners only span their accessible
+  // opening, and overlay fronts may cover finished side-panel edges.
+  const widthMm = frontSizingWidthMm(item);
 
   const lines = [];
   sections.forEach((sec, idx) => {
@@ -725,6 +731,54 @@ function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
   return lines;
 }
 
+function topPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
+  if (!item.has_top_panel || item.item_type !== "wall_cabinet") return [];
+
+  const lines = [];
+  const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
+  const depthMm = finishedTopPanelDepthMm(item) || item.depth_mm || 600;
+  const board = finishPanelBoard(item);
+
+  function pushPanel(name, widthMm, qty = perCabinetQty(item)) {
+    lines.push({
+      product_type: "Panel",
+      product_name: name,
+      description: traceLabel ? `${name} — ${traceLabel}` : name,
+      notes: "Finished top panel.",
+      width_mm: widthMm,
+      height_mm: depthMm,
+      qty,
+      material: board.material,
+      supplier_name: board.supplier_name,
+      finish: board.finish,
+      colour: board.colour,
+      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
+      unit_cost_per_sqm_ex_gst: board.rate,
+      unit_cost_mode: "auto",
+    });
+  }
+
+  const span = item.top_panel_span || "continuous";
+  if (span === "continuous") {
+    const run = computeTopPanelRun(item, selectedCabinetItems);
+    if (run.count <= 1 || run.firstItemId === item.id) {
+      const widths = splitBackPanelWidths(run.totalWidth, item.top_panel_qty || 1);
+      widths.forEach((w, i) =>
+        pushPanel(
+          widths.length > 1 ? `Top Panel ${i + 1} of ${widths.length}` : "Top Panel",
+          w,
+          runAwareQty(item, run.count)
+        )
+      );
+    }
+  } else {
+    const seg = topPanelSegment(item);
+    pushPanel("Top Panel", seg?.length || topPanelWidthMm(item) || item.width_mm || 600);
+  }
+
+  return lines;
+}
+
 // End & back panels — mirrors the left panel's cut-list logic (see
 // lib/pcd-backpanel-utils.js). Only base_cabinet/tall_cabinet get these —
 // a corner cabinet's "back" isn't a single well-defined side, and wall
@@ -753,13 +807,14 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
   if (isWall) {
     if (!item.end_panel_left && !item.end_panel_right) return [];
     const sideH = finishPanelVerticalSpanMm(item, room?.height_mm).heightMm;
+    const sideD = finishedSidePanelDepthMm(item) || item.depth_mm || 600;
     const board = finishPanelBoard(item);
     const pushSide = (name) => lines.push({
       product_type: "Panel",
       product_name: name,
       description: traceLabel ? `${name} — ${traceLabel}` : name,
       notes: "Finished panel.",
-      width_mm: item.depth_mm || 600,
+      width_mm: sideD,
       height_mm: sideH,
       qty: perCabinetQty(item),
       material: board.material,
@@ -804,8 +859,9 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
     });
   }
 
-  if (item.end_panel_left)  pushPanel("End Panel (Left)", item.depth_mm || 600);
-  if (item.end_panel_right) pushPanel("End Panel (Right)", item.depth_mm || 600);
+  const sideD = finishedSidePanelDepthMm(item) || item.depth_mm || 600;
+  if (item.end_panel_left)  pushPanel("End Panel (Left)", sideD);
+  if (item.end_panel_right) pushPanel("End Panel (Right)", sideD);
 
   if (item.has_back_panel) {
     const span = item.back_panel_span || "continuous";
@@ -1071,7 +1127,7 @@ function hingeCountForCabinet(item) {
   }
   if (item.front_type === "mixed") {
     const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
-    const widthMm = frontWidthMm(item);
+    const widthMm = frontSizingWidthMm(item);
     let total = 0;
     for (const sec of sections) {
       if (sec.type === "doors") {
@@ -1363,6 +1419,7 @@ function generateImportLines({ importableItems, selections, selectedCabinetItems
       if (sel.filler)    add("filler", fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, items));
       if (sel.panels) {
         add("panels", bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName));
+        add("panels", topPanelLinesForCabinet(item, selectedCabinetItems, roomName));
         add("panels", endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room));
         add("panels", cornerBackPanelLinesForCabinet(item, roomName, room));
         add("panels", sideFillerLinesForCabinet(item, roomName, room));
