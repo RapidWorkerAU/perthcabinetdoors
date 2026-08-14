@@ -7,6 +7,11 @@ const __dirname = path.dirname(__filename);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // A build and a running dev server both write to .next, and on Windows they
+  // corrupt each other: the build fails collecting page data for whichever page
+  // the dev server happened to be rewriting. Set PCD_DIST_DIR to build into a
+  // separate folder and leave the dev server's .next alone.
+  ...(process.env.PCD_DIST_DIR ? { distDir: process.env.PCD_DIST_DIR } : {}),
   outputFileTracingRoot: __dirname,
   pageExtensions: ["js", "jsx", "ts", "tsx"],
   // three.js and the react-three ecosystem ship as ESM that Next's dev webpack

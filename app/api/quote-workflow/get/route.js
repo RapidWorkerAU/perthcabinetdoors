@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
+import { prefillDetails } from "../../../../lib/pcd-contact-details";
 
 export async function GET(request) {
   try {
@@ -44,6 +45,20 @@ export async function GET(request) {
       .eq("quote_id", quote.id);
     const configsByLineId = new Map((cabinetConfigs || []).map((config) => [config.line_item_id, config]));
 
+    // The details the customer must confirm before accepting. Read from the
+    // customer record first, because that is the one we keep current, falling
+    // back to the snapshot stored on the quote itself. Only these six fields
+    // are exposed: the rest of a customer row is none of the browser's business.
+    let customer = null;
+    if (quote.customer_id) {
+      const { data } = await supabase
+        .from("pcd_customers")
+        .select("name,email,phone,site_address,site_street,site_suburb,site_postcode")
+        .eq("id", quote.customer_id)
+        .maybeSingle();
+      customer = data || null;
+    }
+
     return Response.json({
       ok: true,
       quote: {
@@ -53,6 +68,7 @@ export async function GET(request) {
           cabinet_config: configsByLineId.get(line.id) || null,
         })),
       },
+      details: prefillDetails({ customer, quote }),
     });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not load quote." }, { status: 500 });

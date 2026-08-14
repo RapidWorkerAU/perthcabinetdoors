@@ -25,9 +25,9 @@ export default function HomePage() {
             <em className="landing-hero-tagline">Ready to Fit. Ready to Ship.</em>
           </h1>
           <p>
-            Perth&apos;s affordable cabinet door specialist. Order ready-made doors pre-drilled and hinged,
-            choose from an extensive range of Polytec colours and finishes, and upgrade your IKEA or
-            Kaboodle kitchen with less waste and less downtime.
+            Refresh your kitchen without replacing the cabinets. Doors, drawer fronts and panels made to
+            measure in Polytec, Laminex and Formica, pre-drilled and hinged to suit IKEA, Kaboodle or your
+            existing cabinetry - and new cabinets built to match wherever you need them.
           </p>
           <div className="landing-actions">
             <PublicButton href="/request-quote" className="landing-button landing-button-primary">
@@ -35,9 +35,6 @@ export default function HomePage() {
             </PublicButton>
             <PublicButton href="#how-it-works" className="landing-button landing-button-secondary">
               See How It Works
-            </PublicButton>
-            <PublicButton href="/products" className="landing-button landing-button-secondary">
-              View Products
             </PublicButton>
           </div>
           <p className="landing-hero-trust">
@@ -48,7 +45,7 @@ export default function HomePage() {
 
       <section className="landing-trust" aria-label="Service highlights">
         <div><span />Pre-drilled and hinged to your specs</div>
-        <div><span />Polytec specialists</div>
+        <div><span />Polytec, Laminex &amp; Formica</div>
         <div><span />Flat-rate Perth metro delivery</div>
         <div><span />IKEA and Kaboodle compatible</div>
         <div><span />Bespoke cabinetry available</div>
@@ -100,8 +97,8 @@ export default function HomePage() {
               <p>Step 02</p>
               <h3>Choose Your Finish</h3>
               <span>
-                Select from Polytec colours and profiles. If you prefer Laminex or Formica, get in touch
-                and we can advise what is possible.
+                Select from over 100 colours across Polytec, Laminex and Formica, plus our door profiles
+                and edge details. We post samples free anywhere in Perth metro.
               </span>
             </article>
             <article>
@@ -126,16 +123,16 @@ export default function HomePage() {
       <section className="landing-section" id="materials">
         <p className="landing-label">Materials &amp; Finishes</p>
         <h2>
-          Polytec Specialists. <em>Laminex and Formica Available on Request.</em>
+          Polytec, Laminex &amp; Formica. <em>All Made to Measure in Perth.</em>
         </h2>
         <p className="landing-lead">
-          We specialise in Polytec surfaces because they suit durable, made-to-order cabinet doors and
-          panels. For customers looking for Laminex or Formica ranges, we can discuss availability and
-          project suitability.
+          Three of Australia&apos;s major decorative surface ranges, all supplied and finished in our own
+          workshop. Every colour below is available as a door, a drawer front or a panel, so a whole
+          kitchen matches - including the pieces IKEA and Kaboodle do not make.
         </p>
         <div className="landing-card-grid">
           <article>
-            <strong>Our Speciality</strong>
+            <strong>Our Deepest Range</strong>
             <h3>Polytec</h3>
             <p>
               Contemporary colours in matte, gloss and textured finishes. Polytec thermolaminate is ideal
@@ -143,19 +140,19 @@ export default function HomePage() {
             </p>
           </article>
           <article>
-            <strong>Available on Request</strong>
+            <strong>Colour &amp; Timber Looks</strong>
             <h3>Laminex</h3>
             <p>
-              A trusted Australian surface range with strong colour and timber-look options. Ask us about
-              the finish you have in mind.
+              A trusted Australian surface range with strong colour and timber-look options, including its
+              stone and concrete-look finishes.
             </p>
           </article>
           <article>
-            <strong>Available on Request</strong>
+            <strong>Something Less Common</strong>
             <h3>Formica</h3>
             <p>
-              Decorative surfaces with unique colours, patterns and stone-look finishes for selected
-              projects.
+              Decorative surfaces with distinctive colours, patterns and stone-look finishes for projects
+              that want something you will not see next door.
             </p>
           </article>
         </div>
@@ -262,9 +259,14 @@ export default function HomePage() {
           Tell us what you need and we will come back with a free, no-obligation quote. From a single
           replacement door to a full custom fitout, we can help.
         </p>
-        <PublicButton href="/request-quote" className="landing-button landing-button-primary">
-          Get a Free Quote
-        </PublicButton>
+        <div className="landing-cta-actions">
+          <PublicButton href="/request-quote" className="landing-button landing-button-primary">
+            Get a Free Quote
+          </PublicButton>
+          <PublicButton href="/start" className="landing-button landing-button-secondary">
+            See Our Services
+          </PublicButton>
+        </div>
         <span>Flat-rate shipping across Perth metro - No minimum order - Expert advice from our team</span>
       </PublicSection>
 

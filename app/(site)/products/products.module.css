@@ -263,18 +263,15 @@
   white-space: nowrap;
 }
 
+/* Arrow, chip and right padding come from .pcdSelect in frontend.css. */
 .sortWrap select {
-  appearance: none;
-  background: #fff;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236a6a62' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-position: right 10px center;
-  background-repeat: no-repeat;
+  background-color: #fff;
   border: 1px solid #dbd8cc;
   border-radius: 4px;
   color: #1a1a18;
-  cursor: pointer;
   font-size: 13px;
-  padding: 7px 28px 7px 12px;
+  padding: 7px 12px;
+  padding-right: 40px;
 }
 
 .productGrid {
@@ -496,7 +493,7 @@
     padding: 28px 24px 64px;
   }
 
-  /* Replaced by the "Filters" button + full-screen modal below — the
+  /* Replaced by the "Filters" button + full-screen modal below, the
      stacked checkbox list above the grid was hard to scan on a phone. */
   .sidebar {
     display: none;
@@ -550,7 +547,7 @@
 
   /* This used to try to lay filter checkboxes out 2-per-row, but
      .filterGroup (the real parent) was never a flex/grid container, so
-     the sizing had no effect — all that visibly landed was
+     the sizing had no effect, all that visibly landed was
      justify-content: center, which centred the checkbox+label in each
      full-width row instead of the normal left-aligned list. Filters now
      live in a full-screen modal with plenty of width, so a plain

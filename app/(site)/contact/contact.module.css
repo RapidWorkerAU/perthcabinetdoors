@@ -249,7 +249,9 @@
 .field select,
 .field textarea {
   appearance: none;
-  background: #fff;
+  /* background-color, never the shorthand: the shorthand resets
+     background-image and would wipe the .pcdSelect arrow. */
+  background-color: #fff;
   border: 1px solid #dbd8cc;
   border-radius: 4px;
   color: #1a1a18;
@@ -263,17 +265,24 @@
 .quoteWrap .field input,
 .quoteWrap .field select,
 .quoteWrap .field textarea {
-  background: #faf9f6;
+  background-color: #faf9f6;
   font-size: 13px;
   padding: 10px 12px;
 }
 
+/* The arrow and the chip behind it come from .pcdSelect in frontend.css, so
+   every dropdown on the site matches. Two things stay here: the tint the chip
+   has to blend into, and the right padding, because the shared input rule above
+   sets the padding shorthand and would otherwise win and let text run under the
+   arrow. */
 .field select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236a6a62' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-position: right 14px center;
-  background-repeat: no-repeat;
-  cursor: pointer;
-  padding-right: 36px;
+  --pcdSelectChip: #ffffff;
+  padding-right: 40px;
+}
+
+.quoteWrap .field select {
+  --pcdSelectChip: #faf9f6;
+  padding-right: 40px;
 }
 
 .field input:focus,
@@ -788,6 +797,30 @@
   margin-bottom: 16px;
 }
 
+/* Shown when line items have arrived from the site-wide quote list, so it is
+   obvious where they came from and that they can still be edited. */
+.importedNote {
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 4px;
+  color: #3a3a34;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0 0 14px;
+  padding: 13px 16px;
+}
+
+.importedError {
+  background: #fdf7e4;
+  border: 1px solid #dcbf55;
+  border-radius: 4px;
+  color: #7a6420;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0 0 14px;
+  padding: 13px 16px;
+}
+
 .productTableBar {
   align-items: center;
   background: #1c2b1e;
@@ -1007,7 +1040,9 @@
 .inlineSize input,
 .inlineHinges select {
   appearance: none;
-  background: #fff;
+  /* background-color, never the shorthand: it resets background-image and
+     would wipe the .pcdSelect arrow. */
+  background-color: #fff;
   border: 1px solid #b8d8b4;
   border-radius: 3px;
   color: #1a1a18;
@@ -1015,6 +1050,7 @@
   font-size: 12px;
   height: 30px;
   padding: 5px 7px;
+  padding-right: 26px;
   width: 100%;
 }
 
@@ -1065,7 +1101,8 @@
 .inlineHinges select {
   font-size: 11px;
   height: 26px;
-  padding: 3px 18px 3px 6px;
+  padding: 3px 6px;
+  padding-right: 26px;
 }
 
 .productActions {
@@ -1342,7 +1379,8 @@
   font-size: 14px;
   height: auto;
   min-height: 46px;
-  padding: 11px 36px 11px 14px;
+  padding: 11px 14px;
+  padding-right: 40px;
   transition: border-color 0.15s;
   width: 100%;
 }

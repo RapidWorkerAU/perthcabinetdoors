@@ -179,6 +179,7 @@ export async function POST(_request, { params }) {
         installation_cost_ex_gst: 0,
         painting_cost_ex_gst: 0,
         glass_cost_ex_gst: 0,
+        removal_cost_ex_gst: 0,
         other_cost_ex_gst: 0,
         markup_percent: totals.markup_percent,
         markup_amount_ex_gst: totals.markup_amount_ex_gst,

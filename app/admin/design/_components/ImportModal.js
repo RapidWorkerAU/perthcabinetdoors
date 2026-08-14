@@ -3,6 +3,8 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { addressColumns, addressFromRecord } from "../../../../lib/pcd-contact-details";
+import AddressFields from "../../../../components/admin/AddressFields";
 import styles from "../design.module.css";
 import { Dropdown } from "@/components/ui/Dropdown";
 
@@ -95,6 +97,9 @@ const EMPTY_CREATE_FORM = {
   customer_email: "",
   customer_phone: "",
   site_address:   "",
+  site_street:    "",
+  site_suburb:    "",
+  site_postcode:  "",
   project_name:   "",
   notes:          "",
 };
@@ -274,7 +279,7 @@ export default function ImportModal({ projectId, items: allItems, rooms, onClose
           customer_name:  name,
           customer_email: email || null,
           customer_phone: phone || null,
-          site_address:   createForm.site_address.trim() || null,
+          ...addressColumns(addressFromRecord(createForm)),
           project_name:   createForm.project_name.trim() || null,
           notes:          createForm.notes.trim() || null,
           lines: [],
@@ -409,14 +414,13 @@ export default function ImportModal({ projectId, items: allItems, rooms, onClose
                 </p>
 
                 <div className={styles.fieldRow}>
-                  <label className={styles.modalFieldLabel}>
-                    Site address
-                    <input
-                      className={styles.fieldInput}
-                      value={createForm.site_address}
-                      onChange={(e) => updateCreateForm("site_address", e.target.value)}
-                    />
-                  </label>
+                  <AddressFields
+                    value={{ street: createForm.site_street, suburb: createForm.site_suburb, postcode: createForm.site_postcode }}
+                    onChange={(key, value) => updateCreateForm(`site_${key}`, value)}
+                    labelClassName={styles.modalFieldLabel}
+                    inputClassName={styles.fieldInput}
+                    streetClassName=""
+                  />
                   <label className={styles.modalFieldLabel}>
                     Project name
                     <input

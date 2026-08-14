@@ -355,7 +355,8 @@
   min-height: 40px;
   border: 1px solid #dbd8cc;
   border-radius: 2px;
-  background: #ffffff;
+  /* background-color, never the shorthand: it would wipe the .pcdSelect arrow. */
+  background-color: #ffffff;
   color: #1a1a18;
   padding: 8px 10px;
   font: inherit;

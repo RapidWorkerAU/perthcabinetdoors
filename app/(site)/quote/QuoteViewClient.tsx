@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import PcdLoader from "@/components/public/PcdLoader";
 import PortalModal from "@/components/PortalModal";
 import modalStyles from "@/components/PortalModal.module.css";
 import { getQuoteFileTypeLabel } from "@/lib/quote/fileTypeLabel";
@@ -140,7 +141,13 @@ export default function QuoteViewClient() {
     return (
       <div className="qb-panel">
         <div className="qb-panel-header">Quote</div>
-        <div className="qb-panel-body text-sm text-slate-700">Loading your quote...</div>
+        <div className="qb-panel-body">
+          <PcdLoader
+            variant="panel"
+            label="Loading your quote"
+            steps={["Finding your quote", "Loading the details", "Almost there"]}
+          />
+        </div>
       </div>
     );
   }
@@ -276,7 +283,7 @@ export default function QuoteViewClient() {
                           aria-expanded={isOpen}
                           aria-label="Toggle milestone breakdown"
                         >
-                          {isOpen ? "–" : "+"}
+                          {isOpen ? "−" : "+"}
                         </button>
                       </td>
                       <td data-label="Product name">

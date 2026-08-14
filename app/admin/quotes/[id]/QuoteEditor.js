@@ -4,9 +4,11 @@ import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
+import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { COLOUR_SUPPLIERS, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney } from "../../../../lib/pcd-quote-utils";
+import AddressFields from "../../../../components/admin/AddressFields";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
 import {
   edgeProfilesForMaterial,
@@ -69,7 +71,12 @@ const emptyLine = {
   unit_cost_source_label: "",
   unit_cost_per_sqm_ex_gst: 0,
   calculated_unit_cost_ex_gst: 0,
-  markup_percent: DEFAULT_BUSINESS_DEFAULTS.markup_percent,
+  // Blank, not the built-in 40%. Seeding the constant here stamped 40% onto any
+  // line built before the business-defaults fetch came back, and the "fill the
+  // blanks from defaults" pass then skipped it because 40 is not blank — so the
+  // markup on the settings screen never reached the line. Blank means "inherit",
+  // and both this component and the server's calculateQuoteLine resolve it.
+  markup_percent: "",
   notes: "",
   client_note: "",
 };
@@ -93,6 +100,9 @@ const emptyForm = {
   customer_email: "",
   customer_phone: "",
   site_address: "",
+  site_street: "",
+  site_suburb: "",
+  site_postcode: "",
   project_name: "",
   currency: DEFAULT_BUSINESS_DEFAULTS.currency,
   gst_rate: DEFAULT_BUSINESS_DEFAULTS.gst_rate,
@@ -103,6 +113,7 @@ const emptyForm = {
   installation_cost_ex_gst: "",
   painting_cost_ex_gst: "",
   glass_cost_ex_gst: "",
+  removal_cost_ex_gst: "",
   other_cost_ex_gst: 0,
   markup_percent: 0,
   markup_amount_ex_gst: 0,
@@ -123,8 +134,20 @@ const emptyCustomerForm = {
   email: "",
   phone: "",
   site_address: "",
+  site_street: "",
+  site_suburb: "",
+  site_postcode: "",
   notes: "",
 };
+
+// pcd_quotes.worker_hourly_rate is `not null default 0`, so a quote that never
+// captured a rate loads as 0 rather than blank — and `0 ?? ""` is 0, so the
+// "fill blanks from business defaults" pass below skipped it and the quote
+// priced its labour at nothing. Treat a zero rate as blank on load: nobody
+// deliberately quotes a $0/hour worker.
+function hourlyRateForForm(value) {
+  return Number(value) > 0 ? value : "";
+}
 
 function lineFromQuoteLine(line) {
   return {
@@ -172,15 +195,16 @@ function formFromQuote(quote) {
     customer_name: quote.customer_name || "",
     customer_email: quote.customer_email || "",
     customer_phone: quote.customer_phone || "",
-    site_address: quote.site_address || "",
+    ...addressColumns(addressFromRecord(quote)),
     project_name: quote.project_name || "",
     labour_hours: quote.manual_labour_hours ?? quote.labour_hours ?? "",
-    worker_hourly_rate: quote.worker_hourly_rate ?? "",
+    worker_hourly_rate: hourlyRateForForm(quote.worker_hourly_rate),
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
     installation_cost_ex_gst: quote.installation_cost_ex_gst ?? "",
     painting_cost_ex_gst: quote.painting_cost_ex_gst ?? "",
     glass_cost_ex_gst: quote.glass_cost_ex_gst ?? "",
+    removal_cost_ex_gst: quote.removal_cost_ex_gst ?? "",
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
     markup_amount_ex_gst: quote.markup_amount_ex_gst ?? 0,
@@ -207,15 +231,16 @@ function mergeQuoteIntoForm(current, quote) {
     customer_name: quote.customer_name || "",
     customer_email: quote.customer_email || "",
     customer_phone: quote.customer_phone || "",
-    site_address: quote.site_address || "",
+    ...addressColumns(addressFromRecord(quote)),
     project_name: quote.project_name || "",
     labour_hours: quote.manual_labour_hours ?? quote.labour_hours ?? "",
-    worker_hourly_rate: quote.worker_hourly_rate ?? "",
+    worker_hourly_rate: hourlyRateForForm(quote.worker_hourly_rate),
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
     installation_cost_ex_gst: quote.installation_cost_ex_gst ?? "",
     painting_cost_ex_gst: quote.painting_cost_ex_gst ?? "",
     glass_cost_ex_gst: quote.glass_cost_ex_gst ?? "",
+    removal_cost_ex_gst: quote.removal_cost_ex_gst ?? "",
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
     markup_amount_ex_gst: quote.markup_amount_ex_gst ?? 0,
@@ -818,6 +843,7 @@ export default function QuoteEditor({ quoteId }) {
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isGeneratingCabinetPdf, setIsGeneratingCabinetPdf] = useState(false);
+  const [isAttachingQuotePdf, setIsAttachingQuotePdf] = useState(false);
   const [isGeneratingQuotePdf, setIsGeneratingQuotePdf] = useState(false);
   const { toast } = useToast();
   const [publishEmail, setPublishEmail] = useState(null);
@@ -880,6 +906,7 @@ export default function QuoteEditor({ quoteId }) {
       form.installation_cost_ex_gst,
       form.painting_cost_ex_gst,
       form.glass_cost_ex_gst,
+      form.removal_cost_ex_gst,
       businessDefaults,
     ]
   );
@@ -959,6 +986,34 @@ export default function QuoteEditor({ quoteId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteId]);
 
+  // Filling the form's blank fields from the business defaults used to happen
+  // inside loadBusinessDefaults, which raced loadQuote: both fire on mount, and
+  // whenever the quote landed second it replaced the form wholesale and threw
+  // the freshly-applied defaults away. Doing it here instead means it runs once
+  // both the defaults and the quote are in hand, in either order.
+  useEffect(() => {
+    const oldHardcodedTerms =
+      "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.";
+    const isBlank = (value) => value === "" || value === null || value === undefined;
+
+    setForm((current) => ({
+      ...current,
+      currency: isBlank(current.currency) ? businessDefaults.currency : current.currency,
+      gst_rate: isBlank(current.gst_rate) ? businessDefaults.gst_rate : current.gst_rate,
+      worker_hourly_rate: isBlank(current.worker_hourly_rate)
+        ? businessDefaults.worker_hourly_rate
+        : current.worker_hourly_rate,
+      terms:
+        !current.terms || current.terms === oldHardcodedTerms
+          ? businessDefaults.quote_terms || ""
+          : current.terms,
+      lines: (current.lines || []).map((line) =>
+        isBlank(line.markup_percent) ? { ...line, markup_percent: businessDefaults.markup_percent } : line
+      ),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessDefaults, form.id]);
+
   useEffect(() => {
     let cancelled = false;
     async function loadHardwareRows() {
@@ -1015,35 +1070,7 @@ export default function QuoteEditor({ quoteId }) {
       const response = await fetch("/api/admin/business-defaults", { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.ok) return;
-      const nextDefaults = { ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults };
-      setBusinessDefaults(nextDefaults);
-      const oldHardcodedTerms = "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.";
-      setForm((current) => ({
-        ...current,
-        currency:
-          current.currency === "" || current.currency === null || current.currency === undefined
-            ? nextDefaults.currency
-            : current.currency,
-        gst_rate:
-          current.gst_rate === "" || current.gst_rate === null || current.gst_rate === undefined
-            ? nextDefaults.gst_rate
-            : current.gst_rate,
-        worker_hourly_rate:
-          current.worker_hourly_rate === "" || current.worker_hourly_rate === null || current.worker_hourly_rate === undefined
-            ? nextDefaults.worker_hourly_rate
-            : current.worker_hourly_rate,
-        terms:
-          !current.terms || current.terms === oldHardcodedTerms
-            ? nextDefaults.quote_terms || ""
-            : current.terms,
-        lines: (current.lines || []).map((line) => ({
-          ...line,
-          markup_percent:
-            line.markup_percent === "" || line.markup_percent === null || line.markup_percent === undefined
-              ? nextDefaults.markup_percent
-              : line.markup_percent,
-        })),
-      }));
+      setBusinessDefaults({ ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults });
     } catch {
       // Business defaults are optional; built-in defaults remain available.
     }
@@ -1067,7 +1094,9 @@ export default function QuoteEditor({ quoteId }) {
       customer_name: customer.name || "",
       customer_email: customer.email || "",
       customer_phone: customer.phone || "",
-      site_address: customer.site_address || current.site_address || "",
+      ...addressColumns(
+        addressIsEmpty(addressFromRecord(customer)) ? addressFromRecord(current) : addressFromRecord(customer)
+      ),
     }));
   }
 
@@ -1077,7 +1106,7 @@ export default function QuoteEditor({ quoteId }) {
       name: form.customer_name || "",
       email: form.customer_email || "",
       phone: form.customer_phone || "",
-      site_address: form.site_address || "",
+      ...addressColumns(addressFromRecord(form)),
     });
     setIsCustomerModalOpen(true);
   }
@@ -1681,7 +1710,14 @@ export default function QuoteEditor({ quoteId }) {
         headers: { "Content-Type": "application/json" },
         // form.labour_hours is the MANUAL base - persist it as manual_labour_hours.
         // The server derives labour_hours (base + sum line labour) on recalc.
-        body: JSON.stringify({ ...nextForm, manual_labour_hours: nextForm.labour_hours }),
+        // The three boxes are what was typed. site_address is rebuilt from
+        // them on the way out so the one-liner every existing screen and the
+        // PDF still read can never disagree with the parts.
+        body: JSON.stringify({
+          ...nextForm,
+          ...addressColumns(addressFromRecord(nextForm)),
+          manual_labour_hours: nextForm.labour_hours,
+        }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -1800,6 +1836,15 @@ export default function QuoteEditor({ quoteId }) {
           : `Quote published. Resend is not configured, so use this link: ${payload.viewUrl}`,
         variant: "success",
       });
+      // The quote still went out, so this is a warning rather than a failure.
+      // Said out loud all the same: the customer's copy is not in Attachments
+      // and someone has to generate it by hand.
+      if (payload.pdfAttached === false) {
+        toast({
+          title: payload.pdfError || "The quote PDF could not be attached. Generate it from Attachments.",
+          variant: "error",
+        });
+      }
       await loadQuote();
     } catch (error) {
       toast({ title: error?.message || "Could not publish quote.", variant: "error" });
@@ -1818,7 +1863,7 @@ export default function QuoteEditor({ quoteId }) {
       const response = await fetch("/api/admin/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(customerForm),
+        body: JSON.stringify({ ...customerForm, ...addressColumns(addressFromRecord(customerForm)) }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -1832,7 +1877,7 @@ export default function QuoteEditor({ quoteId }) {
         customer_name: payload.customer.name || "",
         customer_email: payload.customer.email || "",
         customer_phone: payload.customer.phone || "",
-        site_address: payload.customer.site_address || "",
+        ...addressColumns(addressFromRecord(payload.customer)),
       }));
       setIsCustomerModalOpen(false);
       toast({ title: "Customer saved. Save the quote to keep it attached.", variant: "success" });
@@ -1902,6 +1947,26 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+
+  // Sending the quote does this on its own. The button is for a quote sent
+  // before that existed, or a send where the attachment failed.
+  async function generateQuotePdfAttachment() {
+    setIsAttachingQuotePdf(true);
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/quote-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not generate the quote PDF.");
+      await loadQuote();
+      toast({ title: "Quote PDF generated and attached.", variant: "success" });
+    } catch (error) {
+      toast({ title: error?.message || "Could not generate the quote PDF.", variant: "error" });
+    } finally {
+      setIsAttachingQuotePdf(false);
+    }
+  }
 
   async function generateCabinetDrawingsAttachment() {
     setIsGeneratingCabinetPdf(true);
@@ -1995,10 +2060,10 @@ export default function QuoteEditor({ quoteId }) {
                 Contact phone
                 <input className={tw.fieldInput} value={form.customer_phone} onChange={e => updateForm("customer_phone", e.target.value)} />
               </label>
-              <label className={tw.fieldLabel}>
-                Site / delivery address
-                <input className={tw.fieldInput} value={form.site_address} onChange={e => updateForm("site_address", e.target.value)} />
-              </label>
+              <AddressFields
+                value={{ street: form.site_street, suburb: form.site_suburb, postcode: form.site_postcode }}
+                onChange={(key, value) => updateForm(`site_${key}`, value)}
+              />
             </div>
             <div className={tw.saveBar}>
               <button type="submit" className={tw.primaryBtn} disabled={isSaving || isLoading}>
@@ -2854,6 +2919,7 @@ export default function QuoteEditor({ quoteId }) {
                   ["Consumables ex GST", "installation_cost_ex_gst"],
                   ["Painting cost ex GST", "painting_cost_ex_gst"],
                   ["Glass cost ex GST", "glass_cost_ex_gst"],
+                  ["Door removal / disposal ex GST", "removal_cost_ex_gst"],
                 ].map(([label, field]) => (
                   <label key={field} className={tw.fieldLabel}>
                     {label}
@@ -2880,6 +2946,7 @@ export default function QuoteEditor({ quoteId }) {
             ["Consumables", totals.installation_cost_ex_gst],
             ["Painting", totals.painting_cost_ex_gst],
             ["Glass", totals.glass_cost_ex_gst],
+            ["Door removal / disposal", totals.removal_cost_ex_gst],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between items-center py-[6px] border-b border-[#edf4eb] text-[12px]">
               <span className="text-[#5a5a52]">{label}</span>
@@ -2920,13 +2987,14 @@ export default function QuoteEditor({ quoteId }) {
       {
         label: "Logistics and consumables",
         desc: "Travel, delivery, small materials, and specialist quote-level costs",
-        total: (totals.travel_cost_ex_gst || 0) + (totals.delivery_cost_ex_gst || 0) + (totals.installation_cost_ex_gst || 0) + (totals.painting_cost_ex_gst || 0) + (totals.glass_cost_ex_gst || 0),
+        total: (totals.travel_cost_ex_gst || 0) + (totals.delivery_cost_ex_gst || 0) + (totals.installation_cost_ex_gst || 0) + (totals.painting_cost_ex_gst || 0) + (totals.glass_cost_ex_gst || 0) + (totals.removal_cost_ex_gst || 0),
         rows: [
           ["Travel", totals.travel_cost_ex_gst],
           ["Delivery", totals.delivery_cost_ex_gst],
           ["Consumables", totals.installation_cost_ex_gst],
           ["Painting", totals.painting_cost_ex_gst],
           ["Glass", totals.glass_cost_ex_gst],
+          ["Door removal / disposal", totals.removal_cost_ex_gst],
         ],
       },
     ];
@@ -2982,9 +3050,14 @@ export default function QuoteEditor({ quoteId }) {
       <div className={tw.card}>
         <div className={tw.cardHeader}>
           <span className={tw.cardTitle}>Files and attachments</span>
-          <button type="button" className={tw.smBtn} onClick={generateCabinetDrawingsAttachment} disabled={isGeneratingCabinetPdf || isUploading}>
-            {isGeneratingCabinetPdf ? "Generating..." : "Generate cabinet PDF"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" className={tw.smBtn} onClick={generateQuotePdfAttachment} disabled={isAttachingQuotePdf || isGeneratingCabinetPdf || isUploading}>
+              {isAttachingQuotePdf ? "Generating..." : "Generate quote PDF"}
+            </button>
+            <button type="button" className={tw.smBtn} onClick={generateCabinetDrawingsAttachment} disabled={isGeneratingCabinetPdf || isAttachingQuotePdf || isUploading}>
+              {isGeneratingCabinetPdf ? "Generating..." : "Generate cabinet PDF"}
+            </button>
+          </div>
         </div>
         <div className={tw.cardBody}>
           {/* Upload area */}
@@ -3290,7 +3363,13 @@ export default function QuoteEditor({ quoteId }) {
             <input className={styles.fieldInput} placeholder="Company name" value={customerForm.company_name} onChange={(event) => updateCustomerForm("company_name", event.target.value)} />
             <input className={styles.fieldInput} placeholder="Email" type="email" value={customerForm.email} onChange={(event) => updateCustomerForm("email", event.target.value)} />
             <input className={styles.fieldInput} placeholder="Phone" value={customerForm.phone} onChange={(event) => updateCustomerForm("phone", event.target.value)} />
-            <input className={`${styles.fieldInput} ${styles.fieldWide}`} placeholder="Site / delivery address" value={customerForm.site_address} onChange={(event) => updateCustomerForm("site_address", event.target.value)} />
+            <AddressFields
+              value={{ street: customerForm.site_street, suburb: customerForm.site_suburb, postcode: customerForm.site_postcode }}
+              onChange={(key, value) => updateCustomerForm(`site_${key}`, value)}
+              labelClassName={styles.fieldLabel}
+              inputClassName={styles.fieldInput}
+              streetClassName={styles.fieldWide}
+            />
             <textarea className={`${styles.textareaInput} ${styles.fieldWide}`} placeholder="Notes" value={customerForm.notes} onChange={(event) => updateCustomerForm("notes", event.target.value)} />
           </div>
         </Modal>

@@ -1,5 +1,5 @@
 ﻿import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
-import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, GST_RATE, roundMoney } from "../../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, GST_RATE, inheritWhenZero, roundMoney } from "../../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable, profileTypesForSelection, profileNamesForSelection } from "../../../../../lib/quote-form-data";
 
 export async function quoteIdFromParams(params) {
@@ -171,26 +171,32 @@ function quoteTotalsPatch(totals) {
     installation_cost_ex_gst: totals.installation_cost_ex_gst,
     painting_cost_ex_gst: totals.painting_cost_ex_gst,
     glass_cost_ex_gst: totals.glass_cost_ex_gst,
+    removal_cost_ex_gst: totals.removal_cost_ex_gst,
     other_cost_ex_gst: totals.other_cost_ex_gst,
     markup_percent: totals.markup_percent,
     markup_amount_ex_gst: totals.markup_amount_ex_gst,
   };
 }
 
-function quoteTotalsPatchWithNewLine(quote, line) {
+function quoteTotalsPatchWithNewLine(quote, line, businessDefaults = DEFAULT_BUSINESS_DEFAULTS) {
   const gstRate = dbNumber(quote.gst_rate, GST_RATE);
   const materialCostExGst = roundMoney(dbNumber(quote.material_cost_ex_gst) + dbNumber(line.material_cost_ex_gst));
   const labourHours = roundMoney(dbNumber(quote.labour_hours) + dbNumber(line.labour_hours));
-  const workerHourlyRate = dbNumber(quote.worker_hourly_rate, DEFAULT_BUSINESS_DEFAULTS.worker_hourly_rate);
+  // Was falling back to the hard-coded DEFAULT_BUSINESS_DEFAULTS rate rather
+  // than the configured one, and a stored 0 (the column default) beat both — so
+  // adding a line to a quote costed its labour at $0. Same rule as
+  // calculateQuoteTotals: zero means "inherit".
+  const workerHourlyRate = inheritWhenZero(quote.worker_hourly_rate, businessDefaults.worker_hourly_rate);
   const labourCostExGst = roundMoney(labourHours * workerHourlyRate);
   const travelCostExGst = dbNumber(quote.travel_cost_ex_gst);
   const deliveryCostExGst = dbNumber(quote.delivery_cost_ex_gst);
   const installationCostExGst = dbNumber(quote.installation_cost_ex_gst);
   const paintingCostExGst = dbNumber(quote.painting_cost_ex_gst);
   const glassCostExGst = dbNumber(quote.glass_cost_ex_gst);
+  const removalCostExGst = dbNumber(quote.removal_cost_ex_gst);
   const otherCostExGst = 0;
   const subtotalExGst = roundMoney(
-    materialCostExGst + labourCostExGst + travelCostExGst + deliveryCostExGst + installationCostExGst + paintingCostExGst + glassCostExGst + otherCostExGst
+    materialCostExGst + labourCostExGst + travelCostExGst + deliveryCostExGst + installationCostExGst + paintingCostExGst + glassCostExGst + removalCostExGst + otherCostExGst
   );
   const gstAmount = roundMoney(subtotalExGst * gstRate);
 
@@ -207,6 +213,7 @@ function quoteTotalsPatchWithNewLine(quote, line) {
     installation_cost_ex_gst: installationCostExGst,
     painting_cost_ex_gst: paintingCostExGst,
     glass_cost_ex_gst: glassCostExGst,
+    removal_cost_ex_gst: removalCostExGst,
     other_cost_ex_gst: otherCostExGst,
     markup_percent: 0,
     markup_amount_ex_gst: roundMoney(dbNumber(quote.markup_amount_ex_gst) + dbNumber(line.markup_amount_ex_gst)),
@@ -224,9 +231,9 @@ async function loadQuote(supabase, quoteId) {
   return quote;
 }
 
-async function addLineToQuoteTotals(supabase, quoteId, line) {
+async function addLineToQuoteTotals(supabase, quoteId, line, businessDefaults) {
   const quote = await loadQuote(supabase, quoteId);
-  const totalsPatch = quoteTotalsPatchWithNewLine(quote, line);
+  const totalsPatch = quoteTotalsPatchWithNewLine(quote, line, businessDefaults);
   const { data: savedQuote, error } = await supabase
     .from("pcd_quotes")
     .update(totalsPatch)
@@ -306,7 +313,7 @@ export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id
 
   const quote = lineId
     ? await recalculateQuoteTotals(supabase, quoteId, businessDefaults)
-    : await addLineToQuoteTotals(supabase, quoteId, calculatedLine);
+    : await addLineToQuoteTotals(supabase, quoteId, calculatedLine, businessDefaults);
   const savedLine = await lineWithConfig(supabase, result.data);
 
   return { quote, line: savedLine };

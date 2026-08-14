@@ -1,6 +1,8 @@
+import { notFound } from "next/navigation";
 import ProductsLibraryClient from "./ProductsLibraryClient";
 import PublicSiteNav from "../PublicSiteNav";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
+import { PRODUCTS_ENABLED } from "../../../lib/pcd-site-flags";
 import { normalizeProducts, PRODUCTS } from "./product-data";
 
 export const metadata = {
@@ -42,6 +44,10 @@ async function loadProducts() {
 }
 
 export default async function ProductsPage() {
+  // Switched off site-wide, see lib/pcd-site-flags.js. The page, its loader
+  // and its styles are untouched; flip the flag to bring it back.
+  if (!PRODUCTS_ENABLED) notFound();
+
   const products = await loadProducts();
 
   return (

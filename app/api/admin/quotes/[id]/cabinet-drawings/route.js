@@ -1,46 +1,10 @@
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
+import { cleanFilePart, loadQuoteForPdf } from "../../../../../../lib/pcd-quote-pdf-attachment";
 import { generateCabinetDrawingsPdf } from "../../../../../../lib/pcd-cabinet-pdf";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
   return resolved?.id;
-}
-
-function cleanFilePart(value, fallback) {
-  return String(value || fallback)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "") || fallback;
-}
-
-async function loadQuoteForCabinetPdf(supabase, quoteId) {
-  const { data: quote, error: quoteError } = await supabase
-    .from("pcd_quotes")
-    .select("*")
-    .eq("id", quoteId)
-    .single();
-  if (quoteError) throw quoteError;
-
-  const [
-    { data: lines, error: linesError },
-    { data: cabinetConfigs, error: configsError },
-  ] = await Promise.all([
-    supabase.from("pcd_quote_line_items").select("*").eq("quote_id", quoteId).order("sort_order", { ascending: true }),
-    supabase.from("pcd_cabinet_configs").select("*").eq("quote_id", quoteId),
-  ]);
-
-  if (linesError) throw linesError;
-  if (configsError) throw configsError;
-
-  const configsByLineId = new Map((cabinetConfigs || []).map((config) => [config.line_item_id, config]));
-  return {
-    quote,
-    lines: (lines || []).map((line) => ({
-      ...line,
-      cabinet_config: configsByLineId.get(line.id) || null,
-    })),
-  };
 }
 
 async function replaceExistingGeneratedPdf(supabase, quoteId) {
@@ -70,7 +34,7 @@ export async function POST(_request, { params }) {
 
   try {
     const quoteId = await quoteIdFromParams(params);
-    const { quote, lines } = await loadQuoteForCabinetPdf(context.supabase, quoteId);
+    const { quote, lines } = await loadQuoteForPdf(context.supabase, quoteId);
     const pdfBuffer = generateCabinetDrawingsPdf({ quote, lines });
     const quoteNumber = cleanFilePart(quote.quote_number, "quote");
     const fileName = `cabinet-drawings-${quoteNumber}.pdf`;

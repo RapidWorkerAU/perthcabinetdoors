@@ -1,0 +1,295 @@
+.scrim {
+  background: rgba(17, 27, 19, 0.42);
+  inset: 0;
+  position: fixed;
+  z-index: 90;
+}
+
+.drawer {
+  background: #ffffff;
+  border-left: 1px solid #dbd8cc;
+  bottom: 0;
+  box-shadow: -18px 0 44px rgba(17, 27, 19, 0.18);
+  display: flex;
+  flex-direction: column;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: min(400px, 92vw);
+  z-index: 91;
+}
+
+.head {
+  align-items: flex-start;
+  border-bottom: 1px solid #dbd8cc;
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 22px 16px;
+}
+
+.head h2 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 21px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.head span {
+  color: #8b8a81;
+  display: block;
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+
+.close {
+  background: none;
+  border: 0;
+  color: #8b8a81;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.close:hover {
+  color: #1a1a18;
+}
+
+.items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 22px;
+}
+
+.empty {
+  color: #8b8a81;
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 16px 0;
+}
+
+.item {
+  border-bottom: 1px solid rgba(26, 26, 24, 0.09);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  padding: 14px 0;
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.itemFigure {
+  align-items: center;
+  display: flex;
+  height: 52px;
+  justify-content: center;
+}
+
+.itemSvg {
+  height: 100%;
+  width: 100%;
+}
+
+.customMark {
+  align-items: center;
+  background: #f8f4ef;
+  border: 1px dashed #dbd8cc;
+  border-radius: 3px;
+  color: #6b9e61;
+  display: flex;
+  font-size: 18px;
+  font-weight: 700;
+  height: 46px;
+  justify-content: center;
+  width: 40px;
+}
+
+.itemBody strong {
+  color: #1a1a18;
+  display: block;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.itemBody em {
+  color: #8b8a81;
+  display: block;
+  font-size: 11.5px;
+  font-style: normal;
+  line-height: 1.5;
+  margin-top: 3px;
+}
+
+.quoteFlag {
+  background: #fdf7e4;
+  border: 1px solid #dcbf55;
+  border-radius: 2px;
+  color: #7a6420;
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 6px;
+  padding: 2px 6px;
+}
+
+.itemSide {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qty {
+  align-items: center;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  display: flex;
+}
+
+.qty button {
+  background: none;
+  border: 0;
+  color: #5a5a52;
+  cursor: pointer;
+  font-size: 14px;
+  height: 26px;
+  width: 24px;
+}
+
+.qty button:hover {
+  background: #f0ede4;
+  color: #1a1a18;
+}
+
+.qty b {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  min-width: 18px;
+  text-align: center;
+}
+
+.remove {
+  background: none;
+  border: 0;
+  color: #8b8a81;
+  cursor: pointer;
+  font-size: 11.5px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.remove:hover {
+  color: #b42318;
+}
+
+.foot {
+  border-top: 1px solid #dbd8cc;
+  padding: 16px 22px 20px;
+}
+
+.button {
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-block;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  padding: 12px 22px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.buttonPrimary {
+  background: #6b9e61;
+  color: #0d140e;
+}
+
+.buttonPrimary:hover {
+  background: #7ab070;
+}
+
+.buttonFull {
+  display: block;
+  margin-top: 12px;
+  width: 100%;
+}
+
+.saveButton {
+  background: none;
+  border: 0;
+  color: #4a7a42;
+  cursor: pointer;
+  display: block;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  margin: 12px auto 0;
+  text-decoration: underline;
+}
+
+.saveButton:disabled {
+  color: #8b8a81;
+  cursor: default;
+}
+
+.saveError {
+  color: #b42318;
+  font-size: 11.5px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+.saveBox {
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 4px;
+  margin-top: 12px;
+  padding: 14px 16px;
+}
+
+.saveBox b {
+  display: block;
+  font-size: 13px;
+}
+
+.saveBox p {
+  color: #5a5a52;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 5px 0 10px;
+}
+
+.saveRow {
+  display: flex;
+  gap: 7px;
+}
+
+.saveRow input {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: #3a3a34;
+  flex: 1;
+  font: 400 11.5px Arial, "Helvetica Neue", Helvetica, sans-serif;
+  min-width: 0;
+  padding: 8px 9px;
+}
+
+.saveRow button {
+  background: #1c2b1e;
+  border: 0;
+  border-radius: 3px;
+  color: #f0ede4;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: 700 12px Arial, "Helvetica Neue", Helvetica, sans-serif;
+  padding: 8px 14px;
+}
+

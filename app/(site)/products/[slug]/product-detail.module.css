@@ -272,7 +272,7 @@
   color: #a8c5a0;
 }
 
-/* Mobile-only stand-in for .finishTabs (thickness / finish / profile type) —
+/* Mobile-only stand-in for .finishTabs (thickness / finish / profile type) , 
    hidden on desktop, swapped in below 720px. A native select is a more
    compact, standard pattern for a plain text choice on a phone than a row
    of tab buttons that has to wrap; the colour/profile/edge image tiles
@@ -972,7 +972,7 @@
   }
 
   /* Thickness / finish / profile type switch from tab buttons to a native
-     select below this width — see .mobileSelect above. */
+     select below this width, see .mobileSelect above. */
   .finishTabs {
     display: none;
   }
@@ -1007,8 +1007,8 @@
      in favour of the .mobileSelect dropdown, so it no longer needs a
      mobile layout here. This block used to re-declare
      "display: flex" for .finishTabs at this narrower breakpoint too,
-     which — since it comes after the 720px rule in the cascade and both
-     apply at once on a phone — was silently overriding the hide and
+     which, since it comes after the 720px rule in the cascade and both
+     apply at once on a phone, was silently overriding the hide and
      showing the tab buttons AND the dropdown at the same time. */
   .detailBadges {
     align-items: stretch;
@@ -1027,7 +1027,7 @@
   }
 
   /* .viewerToggle stays a 3-column grid (not the 2-per-row flex-wrap
-     .finishTab uses) deliberately — it has no gap between segments by
+     .finishTab uses) deliberately, it has no gap between segments by
      design (a connected segmented control, divided by border-right only),
      so putting it through the same flex-grow 2-up treatment as .finishTab
      closed that simulated gap to zero: the first two segments ended up
@@ -1041,12 +1041,12 @@
     padding: 8px 4px;
   }
 
-  /* .colourSwatches is display:flex (flex-wrap), not grid — swatches are a
+  /* .colourSwatches is display:flex (flex-wrap), not grid, swatches are a
      fixed 44x44 with a real 10px gap, so they already wrap naturally with
      visible spacing; no column count to force here. */
 
   /* .profileSwatches/.edgeProfileList deliberately NOT collapsed to 1
-     column here — they used to be, which not only wasted most of the row
+     column here, they used to be, which not only wasted most of the row
      width on every tile (a 70px-tall image in a ~350px-wide box) but also
      silently undid the working 2-column layout set at 720px below, since
      this rule comes later in the cascade and both apply on a phone.

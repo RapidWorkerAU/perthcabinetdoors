@@ -218,11 +218,10 @@
 }
 
 .roomSectionHeader:hover { background: rgba(255,255,255,0.04); }
-.roomSectionHeader:hover .roomEditBtn { opacity: 1; }
 
 .roomSectionHeaderActive { background: rgba(255,255,255,0.06); }
 
-/* Edit room button — hidden until hover */
+/* Edit room button — always visible in the room header, brighter on hover */
 .roomEditBtn {
   display: flex;
   align-items: center;
@@ -236,13 +235,13 @@
   font-size: 12px;
   cursor: pointer;
   border-radius: 3px;
-  opacity: 0;
+  opacity: 0.75;
   padding: 0;
   transition: opacity var(--dt-transition, 150ms ease), background var(--dt-transition, 150ms ease), color var(--dt-transition, 150ms ease);
 }
-.roomEditBtn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
+.roomEditBtn:hover { opacity: 1; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
 
-/* Room delete button — appears on hover next to edit button */
+/* Room delete button — sits next to the edit button, dimmer until hovered */
 .roomDeleteBtn {
   display: flex;
   align-items: center;
@@ -257,11 +256,10 @@
   font-size: 11px;
   cursor: pointer;
   border-radius: 3px;
-  opacity: 0;
+  opacity: 0.6;
   transition: opacity var(--dt-transition, 150ms ease), background var(--dt-transition, 150ms ease), color var(--dt-transition, 150ms ease);
 }
-.roomSectionHeader:hover .roomDeleteBtn { opacity: 1; }
-.roomDeleteBtn:hover { background: rgba(220,50,50,0.15); color: rgba(255,100,100,0.9); }
+.roomDeleteBtn:hover { opacity: 1; background: rgba(220,50,50,0.15); color: rgba(255,100,100,0.9); }
 .roomDeleteBtnConfirm { background: rgba(220,50,50,0.2) !important; color: #f87171 !important; opacity: 1 !important; font-size: 10px; }
 
 /* Item delete button inside cut list */

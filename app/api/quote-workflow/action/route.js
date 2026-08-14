@@ -2,8 +2,31 @@ import { createOrderFromQuote } from "../../../../lib/pcd-order-from-quote";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { createCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
+import { upsertCustomerByEmail } from "../../../../lib/pcd-customer-utils";
+import {
+  DETAIL_FIELDS,
+  formatSiteAddress,
+  normaliseDetails,
+  validateDetails,
+} from "../../../../lib/pcd-contact-details";
 
 const allowedActions = new Set(["approved", "rejected"]);
+
+// The address and contact details, written onto the quote so the order created
+// from it inherits them. createOrderFromQuote copies these across, so the quote
+// has to be updated BEFORE the order is made or the job still reaches the run
+// with nothing on it.
+function customerColumns(details) {
+  return {
+    customer_name: details.name,
+    customer_email: details.email,
+    customer_phone: details.mobile,
+    site_address: formatSiteAddress(details),
+    site_street: details.street,
+    site_suburb: details.suburb,
+    site_postcode: details.postcode,
+  };
+}
 
 function depositAmountForQuote(quote) {
   if (!quote.deposit_required) return 0;
@@ -50,7 +73,67 @@ export async function POST(request) {
 
     const now = new Date().toISOString();
     let orderId = null;
+    let details = null;
+
     if (action === "approved") {
+      // ACCEPTANCE REQUIRES A DELIVERABLE ADDRESS. Checked here and not only in
+      // the browser, because a client-side check is a suggestion. Rejection is
+      // deliberately not gated: someone declining should not have to hand over
+      // their address first.
+      details = normaliseDetails(payload.details || {});
+      const invalid = validateDetails(details);
+      if (Object.keys(invalid).length) {
+        return Response.json(
+          {
+            ok: false,
+            error: "We need your contact and delivery details before this quote can be accepted.",
+            fieldErrors: invalid,
+            missing: DETAIL_FIELDS.filter((f) => invalid[f.key]).map((f) => f.label),
+          },
+          { status: 422 }
+        );
+      }
+
+      // Onto the quote first: the order is built from it moments later.
+      const { error: detailsError } = await supabase
+        .from("pcd_quotes")
+        .update(customerColumns(details))
+        .eq("id", quote.id);
+      if (detailsError) throw detailsError;
+      Object.assign(quote, customerColumns(details));
+
+      // And onto the customer record, so the next quote for this person is
+      // pre-filled and we never have to ask again. Matched on email through the
+      // shared upsert, so this can never create a second record for them.
+      try {
+        const customer = await upsertCustomerByEmail(supabase, {
+          name: details.name,
+          email: details.email,
+          phone: details.mobile,
+          site_address: formatSiteAddress(details),
+        });
+        if (customer?.id) {
+          await supabase
+            .from("pcd_customers")
+            .update({
+              site_address: formatSiteAddress(details),
+              site_street: details.street,
+              site_suburb: details.suburb,
+              site_postcode: details.postcode,
+              phone: details.mobile,
+            })
+            .eq("id", customer.id);
+          if (!quote.customer_id) {
+            await supabase.from("pcd_quotes").update({ customer_id: customer.id }).eq("id", quote.id);
+            quote.customer_id = customer.id;
+          }
+        }
+      } catch {
+        // The acceptance is the important part and the details are already on
+        // the quote and therefore on the order. A failure to also file them
+        // against the customer must not block the customer's acceptance.
+      }
+
       orderId = await createOrderFromQuote(supabase, quote, { markAcceptedAt: !quote.deposit_required });
       const depositAmount = depositAmountForQuote(quote);
       if (quote.deposit_required && depositAmount > 0) {

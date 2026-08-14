@@ -2,6 +2,7 @@
 import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
+import { addressColumns } from "../../../../lib/pcd-contact-details";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
 
@@ -54,7 +55,7 @@ export async function POST(request) {
       customer_name: quoteRequest.customer_name,
       customer_email: quoteRequest.customer_email,
       customer_phone: quoteRequest.customer_phone,
-      site_address: quoteRequest.delivery_suburb,
+      ...addressColumns({ suburb: quoteRequest.delivery_suburb }),
     };
     const customerId = await resolveQuoteCustomer(context.supabase, customerPayload);
     const businessDefaults = await getBusinessDefaults(context.supabase);
@@ -70,7 +71,12 @@ export async function POST(request) {
         customer_name: quoteRequest.customer_name,
         customer_email: quoteRequest.customer_email,
         customer_phone: quoteRequest.customer_phone,
-        site_address: quoteRequest.delivery_suburb,
+        // The request form asks for a delivery suburb and nothing else, which
+        // is the right question at that stage. It lands in the suburb column,
+        // not the address one: "Subiaco" on its own used to read as the whole
+        // street address, and the street and postcode are then asked for once
+        // in the quote editor rather than guessed at here.
+        ...addressColumns({ suburb: quoteRequest.delivery_suburb }),
         project_name: quoteRequest.cabinet_brand,
         currency: businessDefaults.currency,
         gst_rate: businessDefaults.gst_rate,

@@ -385,6 +385,37 @@
   display: none;
 }
 
+/* Quote Items stops at five rows and scrolls inside itself, so a long quote
+   does not push the totals and the Approve button off the bottom of the page.
+   The max-height is set inline from the measured rows; this only supplies the
+   scrolling and the edge that shows there is more below.
+
+   overflow-x is stated as well as overflow-y: setting one axis to auto forces
+   a `visible` on the other axis to compute as auto anyway, and the desktop
+   wrapper sets overflow-x: visible. Saying both keeps it from being a surprise. */
+.quoteItemsCapped,
+.quoteViewCard .quoteItemsCapped {
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid #e0d6c6;
+}
+
+/* The header has to stay put once the rows start moving under it, otherwise
+   five rows in you are reading unlabelled columns. It already carries its own
+   background, so nothing shows through. */
+.quoteItemsCapped thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.quoteItemsScrollNote {
+  color: #7c725f;
+  font-size: 0.76rem;
+  margin: 8px 0 0;
+}
+
 .quoteViewCard .quoteItemsPublicTable th {
   border-top: 1px solid #d8cbb8;
   border-bottom: 1px solid #d8cbb8;
@@ -1432,4 +1463,95 @@
   .quoteViewCard .table {
     min-width: 720px;
   }
+}
+
+/* ── details required before acceptance ──────────────────────────────────────
+   The Quote Summary has always printed a dash where we hold no address or
+   mobile, which is how jobs reached the delivery run with nowhere to go. The
+   dash is now the fix: it becomes an Add button that opens the fields inline,
+   in the place the customer can already see something is missing. */
+
+/* Nothing announces the gap at the top of the page. A tile that blocks
+   acceptance is marked, the button it blocks carries the sentence, and the two
+   share a colour so the connection is obvious when the customer scrolls back up.
+   In this card the tiles are flat label-and-value pairs with no box of their
+   own, so the marker is the label and the Add pill turning red rather than a
+   panel appearing. Matches .quoteViewCard .summaryItem span for specificity,
+   which sets the label colour these have to beat. */
+.quoteViewCard .summaryItemMissing > span,
+.summaryItemMissing > span {
+  color: #a3372c;
+}
+
+/* The Add button replaces the dash, so it has to sit on the same baseline as a
+   value would and not look like a form control dropped into a summary. */
+.detailAdd {
+  border: 1px solid #d9847a;
+  border-radius: 20px;
+  background: #fbe6e3;
+  color: #9c3126;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 3px 11px;
+}
+.detailAdd:hover { background: #f7d6d1; border-color: #c96a5e; }
+
+.detailEdit {
+  border: 0;
+  background: none;
+  color: #5d6675;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  margin-left: 8px;
+  padding: 0;
+  text-decoration: underline;
+}
+.detailEdit:hover { color: #181d27; }
+
+/* The field, in the tile, in place of the value. Stacked because the address
+   puts three of them in a column the width of one summary tile. */
+.detailFields {
+  display: grid;
+  gap: 6px;
+}
+.detailInput {
+  border: 1px solid rgba(24, 29, 39, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #181d27;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 7px 9px;
+  width: 100%;
+}
+.detailInput:focus {
+  border-color: #181d27;
+  outline: 2px solid rgba(24, 29, 39, 0.12);
+  outline-offset: 1px;
+}
+.inputError { border-color: #d9847a; background: #fffaf9; }
+.detailError {
+  color: #a3372c;
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 600;
+  margin-top: 3px;
+}
+
+/* Said once, next to the button it disables. */
+.acceptBlocked {
+  border: 1px solid #d9847a;
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: #fdf4f3;
+  color: #9c3126;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0;
+  padding: 10px 13px;
 }

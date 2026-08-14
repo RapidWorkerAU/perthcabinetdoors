@@ -1,10 +1,10 @@
 "use client";
 
-// The full-width bar across the top of the design tool — the SAME bar in the
+// The full-width bar across the top of the design tool, the SAME bar in the
 // admin tool and the public planner. It carries the view switch (Plan /
 // Elevation / 3D), the wall buttons (shown only in Elevation), and the colours
-// on/off button. Everything else — the project name on the left, and each
-// tool's own action buttons on the right — is passed in as `left` / `right`, so
+// on/off button. Everything else, the project name on the left, and each
+// tool's own action buttons on the right, is passed in as `left` / `right`, so
 // the admin can show Import / Stage Quote / Export etc. and the public tool can
 // show Send to PCD / Save, while the middle stays identical.
 
@@ -12,9 +12,12 @@ export const BAR_HEIGHT = 52;
 
 const C = { bar: "#2a2b28", text: "#f3f1ea", active: "rgba(255,255,255,0.16)", edge: "rgba(255,255,255,0.28)" };
 
-// A button styled for the dark bar — exported so each tool's own buttons in the
+// A button styled for the dark bar, exported so each tool's own buttons in the
 // left/right slots match.
-export const barButton = { padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.edge}`, background: "transparent", color: C.text, cursor: "pointer", font: "inherit", fontSize: 13, whiteSpace: "nowrap" };
+// backgroundColor, not the `background` shorthand. This object is spread into
+// the planner's view <select>, and the shorthand resets background-image, which
+// silently deleted that dropdown's arrow.
+export const barButton = { padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.edge}`, backgroundColor: "transparent", color: C.text, cursor: "pointer", font: "inherit", fontSize: 13, whiteSpace: "nowrap" };
 
 function Segmented({ value, options, onChange }) {
   return (

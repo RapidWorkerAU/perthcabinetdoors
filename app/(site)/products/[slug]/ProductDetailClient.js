@@ -54,13 +54,11 @@ export default function ProductDetailClient({
   const [activeProfileType, setActiveProfileType] = useState("");
   const [activeProfile, setActiveProfile] = useState(0);
   const [activeEdge, setActiveEdge] = useState(0);
-  // Which tile group is currently open in the full-screen viewer, if any —
+  // Which tile group is currently open in the full-screen viewer, if any , 
   // small swatch/tile images (44px colour squares especially) are too
   // small to judge accurately on a phone, so tapping one opens it larger
   // with prev/next to browse the rest of that group without closing.
   const [lightboxType, setLightboxType] = useState(null); // "colour" | "profile" | "edge" | null
-  const [enquiryStatus, setEnquiryStatus] = useState("");
-  const [isSendingEnquiry, setIsSendingEnquiry] = useState(false);
   const [enquiryErrors, setEnquiryErrors] = useState({});
   const showThicknessPicker = availableThicknesses.length > 1;
   const selectedFinish = colourFamily.groups[activeFinish] || colourFamily.groups[0] || { label: "", colours: [] };
@@ -116,7 +114,7 @@ export default function ProductDetailClient({
   }
 
   // The lightbox always browses whatever the *current* group/filters are
-  // (e.g. the active finish's colours, or the active profile type's names) —
+  // (e.g. the active finish's colours, or the active profile type's names) , 
   // it's a bigger view of the same grid on screen, not a separate list.
   function lightboxItems() {
     if (lightboxType === "colour") {
@@ -159,70 +157,6 @@ export default function ProductDetailClient({
     if (type === "edge") setActiveEdge(index);
   }
 
-  async function submitProductEnquiry(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    setEnquiryStatus("");
-
-    const formData = new FormData(form);
-    const nextErrors = {};
-    if (!String(formData.get("width") || "").trim()) nextErrors.width = "Please enter a width.";
-    if (!String(formData.get("height") || "").trim()) nextErrors.height = "Please enter a height.";
-    if (!String(formData.get("name") || "").trim()) nextErrors.name = "Please enter your name.";
-    const contactValue = String(formData.get("contact") || "").trim();
-    if (!contactValue) nextErrors.contact = "Please enter your email address.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactValue)) nextErrors.contact = "Please enter a valid email address.";
-    if (hasColourOptions && !selectedColour) nextErrors.colour = "Please choose a colour from the options above.";
-
-    if (Object.keys(nextErrors).length) {
-      setEnquiryErrors(nextErrors);
-      return;
-    }
-    setEnquiryErrors({});
-    setIsSendingEnquiry(true);
-
-    const width = Number(formData.get("width") || 0) || undefined;
-    const height = Number(formData.get("height") || 0) || undefined;
-    const qty = Number(formData.get("qty") || 1) || 1;
-
-    try {
-      const response = await fetch("/api/quote-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source: "product_detail",
-          productId: product.id,
-          productName: product.name,
-          customerName: String(formData.get("name") || ""),
-          customerEmail: String(formData.get("contact") || "").trim(),
-          customerPhone: "",
-          deliverySuburb: String(formData.get("deliverySuburb") || ""),
-          notes: String(formData.get("notes") || ""),
-          lines: [
-            {
-              productType: product.typeLabel,
-              productName: product.name,
-              material: product.materialLabel,
-              thickness: selectedThickness,
-              width,
-              height,
-              qty,
-              finish: selectedColour ? selectedFinish.label : "",
-              colour: selectedColour ? selectedColour.name : "",
-            },
-          ],
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not send enquiry.");
-      form.reset();
-      setEnquiryStatus("Thanks. Your quote request has been sent.");
-    } catch (error) {
-      setEnquiryStatus(error?.message || "Could not send enquiry.");
-    } finally {
-      setIsSendingEnquiry(false);
-    }
-  }
 
   return (
     <main className={styles.page}>
@@ -511,54 +445,21 @@ export default function ProductDetailClient({
             </div>
           </div>
 
+          {/* The per-product enquiry form used to live here. It was a fourth way
+              into pcd_quote_requests with its own fields to keep in step with
+              the real one, so it now points at /request-quote instead - the
+              single place a quote request is built and sent. */}
           <div className={styles.sectionCard}>
-            <div className={styles.sectionCardHeader}>Enquire about a custom size</div>
-            <form className={styles.sectionCardBody} onSubmit={submitProductEnquiry}>
-              <p className={styles.enquiryIntro}>Need a size not listed above, or want a firm quote? Fill in your details and we will get back to you promptly.</p>
-              <div className={styles.fieldRow}>
-                <label className={styles.field}>
-                  Width (mm)
-                  <input name="width" type="number" placeholder="e.g. 600" className={enquiryErrors.width ? styles.fieldInputError : ""} />
-                  {enquiryErrors.width ? <span className={styles.fieldError}>{enquiryErrors.width}</span> : null}
-                </label>
-                <label className={styles.field}>
-                  Height (mm)
-                  <input name="height" type="number" placeholder="e.g. 900" className={enquiryErrors.height ? styles.fieldInputError : ""} />
-                  {enquiryErrors.height ? <span className={styles.fieldError}>{enquiryErrors.height}</span> : null}
-                </label>
-              </div>
-              <div className={styles.fieldRow}>
-                <label className={styles.field}>Quantity<input name="qty" type="number" min="1" placeholder="e.g. 6" /></label>
-                <div className={styles.field}>
-                  Colour / finish
-                  <input
-                    type="text"
-                    value={selectedColour ? `${selectedFinish.label} - ${selectedColour.name}` : "Select a colour above"}
-                    readOnly
-                    disabled
-                    className={enquiryErrors.colour ? styles.fieldInputError : ""}
-                  />
-                  <small>Pick your colour using the swatches above - this updates automatically.</small>
-                  {enquiryErrors.colour ? <span className={styles.fieldError}>{enquiryErrors.colour}</span> : null}
-                </div>
-              </div>
-              <div className={styles.fieldRow}>
-                <label className={styles.field}>
-                  Your name
-                  <input name="name" type="text" placeholder="First and last name" className={enquiryErrors.name ? styles.fieldInputError : ""} />
-                  {enquiryErrors.name ? <span className={styles.fieldError}>{enquiryErrors.name}</span> : null}
-                </label>
-                <label className={styles.field}>
-                  Email
-                  <input name="contact" type="email" required placeholder="you@example.com" className={enquiryErrors.contact ? styles.fieldInputError : ""} />
-                  {enquiryErrors.contact ? <span className={styles.fieldError}>{enquiryErrors.contact}</span> : null}
-                </label>
-              </div>
-              <label className={`${styles.field} ${styles.fieldFull}`}>Delivery suburb<input name="deliverySuburb" type="text" placeholder="e.g. Subiaco" /></label>
-              <label className={`${styles.field} ${styles.fieldFull}`}>Anything else?<textarea name="notes" placeholder="e.g. compatible cabinet range, hinge requirements, delivery suburb..." /></label>
-              <button className={styles.submitBtn} type="submit" disabled={isSendingEnquiry}>{isSendingEnquiry ? "Sending..." : "Send enquiry"}</button>
-              {enquiryStatus ? <p className={styles.enquiryIntro}>{enquiryStatus}</p> : null}
-            </form>
+            <div className={styles.sectionCardHeader}>Want a firm quote?</div>
+            <div className={styles.sectionCardBody}>
+              <p className={styles.enquiryIntro}>
+                Need a size that is not listed above, or want this priced alongside the rest of your job?
+                Build your list on the quote request form and we will come back to you with a firm price.
+              </p>
+              <Link className={styles.submitBtn} href="/request-quote">
+                Request a quote
+              </Link>
+            </div>
           </div>
         </section>
 

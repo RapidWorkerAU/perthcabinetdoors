@@ -8,7 +8,6 @@ function isBypassedPath(pathname) {
     pathname.startsWith("/admin") ||
     pathname.startsWith("/api/admin") ||
     pathname === "/api/colour-library" ||
-    pathname === "/api/quote" ||
     pathname === "/api/quote-config" ||
     pathname === "/api/quote-requests" ||
     pathname.startsWith("/api/quote-workflow") ||

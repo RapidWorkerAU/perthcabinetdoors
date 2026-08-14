@@ -30,12 +30,19 @@ interface Attention {
   pendingPayments: AttentionItem[]
 }
 
-type FinancialRow = { id: string; monthKey: string | null; amount: number }
+type FinancialRow = { id: string; monthKey: string | null; amount: number; unknown?: boolean }
 
 interface FinancialData {
-  orders:     FinancialRow[]
-  deposits:   FinancialRow[]
-  sentQuotes: FinancialRow[]
+  // True when a query behind these figures failed. A failed query returns no
+  // rows, which renders as a confident $0, and nobody doubts a total.
+  loadFailed?:    boolean
+  orders:         FinancialRow[]
+  deposits:       FinancialRow[]
+  sentQuotes:     FinancialRow[]
+  // Profit, ex GST. Markup plus labour on the quote behind each order, and on
+  // each quote still out with a customer. See lib/pcd-quote-profit.js.
+  orderProfit:    FinancialRow[]
+  pipelineProfit: FinancialRow[]
   years:      number[]
   currentMonth: string
   currentYear:  number
@@ -194,8 +201,18 @@ function FinancialSummaryPanel({ financial }: { financial: FinancialData }) {
     confirmedOrders: sumFinancialRows(financial.orders, selectedMonthKey),
     receivedDeposits: sumFinancialRows(financial.deposits, selectedMonthKey),
     sentQuotePipeline: sumFinancialRows(financial.sentQuotes, selectedMonthKey),
+    orderProfit: sumFinancialRows(financial.orderProfit || [], selectedMonthKey),
+    pipelineProfit: sumFinancialRows(financial.pipelineProfit || [], selectedMonthKey),
   }), [financial, selectedMonthKey])
   const totalOpportunity = totals.confirmedOrders + totals.sentQuotePipeline
+
+  // Orders in this month with no quote behind them contribute revenue but no
+  // profit, so the profit figure is low by an unknown amount. Said out loud
+  // rather than left to look like a complete number.
+  const ordersWithoutSplit = useMemo(
+    () => (financial.orderProfit || []).filter(row => row.monthKey === selectedMonthKey && row.unknown).length,
+    [financial.orderProfit, selectedMonthKey]
+  )
 
   return (
     <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
@@ -232,19 +249,44 @@ function FinancialSummaryPanel({ financial }: { financial: FinancialData }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#edf4eb]">
+      {/* Six cells over two rows of three. Each row reads revenue first, then
+          what is left of it: orders and their profit above, pipeline and its
+          potential profit below. The profit cells are tinted so they are not
+          mistaken for another revenue figure at a glance. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#edf4eb]">
         {([
-          { label: 'Confirmed order total', value: totals.confirmedOrders },
-          { label: 'Received deposits', value: totals.receivedDeposits },
-          { label: 'Sent quote pipeline', value: totals.sentQuotePipeline },
-          { label: 'Total confirmed + pipeline', value: totalOpportunity },
+          { label: 'Confirmed order total', value: totals.confirmedOrders, profit: false },
+          { label: 'Received deposits', value: totals.receivedDeposits, profit: false },
+          { label: 'Profit on confirmed orders', value: totals.orderProfit, profit: true },
+          { label: 'Sent quote pipeline', value: totals.sentQuotePipeline, profit: false },
+          { label: 'Potential profit in pipeline', value: totals.pipelineProfit, profit: true },
+          { label: 'Total confirmed + pipeline', value: totalOpportunity, profit: false },
         ] as const).map(item => (
-          <div key={item.label} className="px-4 py-4">
-            <div className="text-[19px] font-medium font-mono leading-none text-[#1a1a18]">{formatMoney(item.value)}</div>
-            <div className="mt-[6px] text-[11px] text-[#8b8a81]">{item.label}</div>
+          <div key={item.label} className={`px-4 py-4 ${item.profit ? 'bg-[#f5fff5]' : ''}`}>
+            <div className={`text-[19px] font-medium font-mono leading-none ${item.profit ? 'text-[#2d5e28]' : 'text-[#1a1a18]'}`}>
+              {formatMoney(item.value)}
+            </div>
+            <div className="mt-[6px] text-[11px] text-[#8b8a81]">
+              {item.label}
+              {item.profit && <span className="ml-1 text-[#a8a79c]">ex GST</span>}
+            </div>
           </div>
         ))}
       </div>
+
+      {financial.loadFailed && (
+        <p className="border-t border-[#f0c9c4] bg-[#fdf4f3] px-4 py-[10px] text-[11px] font-semibold text-[#9c3126]">
+          These figures could not be loaded, so they are not zero, they are unknown. Refresh, and if it persists the
+          dashboard query is failing.
+        </p>
+      )}
+
+      {!financial.loadFailed && ordersWithoutSplit > 0 && (
+        <p className="border-t border-[#edf4eb] px-4 py-[10px] text-[11px] text-[#8b8a81]">
+          {ordersWithoutSplit} order{ordersWithoutSplit === 1 ? '' : 's'} this month {ordersWithoutSplit === 1 ? 'has' : 'have'} no
+          quote behind {ordersWithoutSplit === 1 ? 'it' : 'them'}, so profit on {ordersWithoutSplit === 1 ? 'it' : 'them'} is not counted.
+        </p>
+      )}
     </div>
   )
 }

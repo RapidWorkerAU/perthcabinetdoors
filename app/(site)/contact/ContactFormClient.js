@@ -112,7 +112,7 @@ export default function ContactFormClient() {
       <div className={styles.fieldFull}>
         <div className={styles.field}>
           <label htmlFor="topic">What is your enquiry about?</label>
-          <select id="topic" name="topic" defaultValue="" className={errors.topic ? styles.fieldInputError : ""}>
+          <select id="topic" name="topic" defaultValue="" className={`pcdSelect ${errors.topic ? styles.fieldInputError : ""}`}>
             <option value="" disabled>Select a topic</option>
             {TOPICS.map((topic) => <option key={topic}>{topic}</option>)}
           </select>

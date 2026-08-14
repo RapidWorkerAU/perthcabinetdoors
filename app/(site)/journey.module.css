@@ -1,0 +1,1131 @@
+/* Shared styles for the "what are you working with" journey pages:
+   /start, /ikea-kaboodle, /kitchen-refresh and /bespoke. Kept in one module so
+   the three destination pages cannot drift apart visually - they are read as a
+   set, one after the other, and any difference between them reads as a bug. */
+
+.page {
+  background: #faf9f6;
+  color: #1a1a18;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.page * {
+  box-sizing: border-box;
+}
+
+.wrap {
+  margin: 0 auto;
+  max-width: 1100px;
+  padding: 0 40px;
+}
+
+.section {
+  padding: 64px 0;
+}
+
+.sectionTight {
+  padding: 48px 0 0;
+}
+
+/* ---------- headers ---------- */
+
+/* Light page header, matching /products and /contact. Used by all four journey
+   pages, so someone moving between them reads one site rather than four. It
+   replaced a dark hero: stacked under the dark site nav that was a lot of
+   green before any content, and it pushed the thing the customer came to do
+   below the fold. */
+.pageHeader {
+  background: #f0ede4;
+  border-bottom: 1px solid #dbd8cc;
+  padding: 40px 0 36px;
+}
+
+.pageHeader h1 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1.15;
+  margin: 0 0 8px;
+  text-wrap: balance;
+}
+
+.pageHeader p {
+  color: #5a5a52;
+  font-size: 15px;
+  line-height: 1.7;
+  margin: 0;
+  max-width: 640px;
+}
+
+.pageHeaderCrumb {
+  color: #8a8a80;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  margin-bottom: 12px;
+}
+
+.pageHeaderCrumb a {
+  color: #6b9e61;
+  text-decoration: none;
+}
+
+.pageHeaderCrumb a:hover {
+  text-decoration: underline;
+}
+
+/* /kitchen-refresh and /bespoke carry their CTAs in the header, so the buttons
+   need a little more room from the copy above them than they had in the hero. */
+.pageHeader .actions {
+  margin-top: 22px;
+}
+
+.pageHeader .note a {
+  color: #4a7a42;
+}
+
+.label {
+  color: #6b9e61;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  margin: 0 0 14px;
+  text-transform: uppercase;
+}
+
+.labelLight {
+  color: #a8c5a0;
+}
+
+.section h2,
+.dark h2,
+.cta h2 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 400;
+  line-height: 1.15;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+
+.section h2 em,
+.dark h2 em,
+.cta h2 em {
+  color: #4a7a42;
+  font-style: italic;
+}
+
+.dark h2,
+.cta h2 {
+  color: #f0ede4;
+}
+
+.dark h2 em,
+.cta h2 em {
+  color: #a8c5a0;
+}
+
+.lead {
+  color: #4a4a42;
+  font-size: 17px;
+  line-height: 1.7;
+  margin: 14px 0 0;
+  max-width: 68ch;
+}
+
+.leadLight {
+  color: #9daf99;
+}
+
+.note {
+  color: #8b8a81;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 16px 0 0;
+}
+
+.noteLight {
+  color: #6f8a6b;
+}
+
+/* ---------- buttons ---------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.button {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  padding: 14px 26px;
+  text-decoration: none;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.button svg {
+  flex: 0 0 auto;
+  transition: transform 0.15s;
+}
+
+.button:hover svg,
+.button:focus-visible svg {
+  transform: translateX(3px);
+}
+
+.buttonPrimary {
+  background: #6b9e61;
+  color: #0d140e;
+}
+
+.buttonPrimary:hover,
+.buttonPrimary:focus-visible {
+  background: #7ab070;
+}
+
+.buttonOutlineLight {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #f0ede4;
+}
+
+.buttonOutlineLight:hover,
+.buttonOutlineLight:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.buttonOutline {
+  border-color: #dbd8cc;
+  color: #1a1a18;
+}
+
+.buttonOutline:hover,
+.buttonOutline:focus-visible {
+  background: #f0ede4;
+}
+
+.buttonDark {
+  background: #1c2b1e;
+  color: #f0ede4;
+}
+
+.buttonDark:hover,
+.buttonDark:focus-visible {
+  background: #111b13;
+}
+
+/* ---------- the three-way chooser (/start) ---------- */
+
+.chooserGrid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 44px 0 0;
+}
+
+.choice {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.choice:hover,
+.choice:focus-visible {
+  border-color: #4a7a42;
+  box-shadow: 0 0 0 3px rgba(107, 158, 97, 0.12);
+}
+
+/* Real photography. The three CSS-drawn abstractions that used to sit here
+   read as placeholders rather than product - a customer scanning the chooser
+   saw three grey diagrams. object-fit lets one portrait and two landscape
+   photos share the same slot without distortion. */
+.choiceArt {
+  background: #f0ede4;
+  border-bottom: 1px solid #dbd8cc;
+  display: block;
+  height: 190px;
+  overflow: hidden;
+}
+
+.choiceArt img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+  width: 100%;
+}
+
+.choice:hover .choiceArt img,
+.choice:focus-visible .choiceArt img {
+  transform: scale(1.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choiceArt img {
+    transition: none;
+  }
+
+  .choice:hover .choiceArt img,
+  .choice:focus-visible .choiceArt img {
+    transform: none;
+  }
+}
+
+.choiceBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 24px 22px;
+}
+
+.kicker {
+  background: #edf4eb;
+  border-radius: 2px;
+  color: #4a7a42;
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.choiceBody h3 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 23px;
+  font-weight: 400;
+  line-height: 1.2;
+  margin: 14px 0 0;
+}
+
+.choiceBody p {
+  color: #5a5a52;
+  font-size: 14px;
+  line-height: 1.65;
+  margin: 12px 0 0;
+}
+
+.ticks {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+.ticks li {
+  color: #3a3a34;
+  font-size: 13px;
+  line-height: 1.5;
+  padding-left: 20px;
+  position: relative;
+}
+
+.ticks li::before {
+  color: #6b9e61;
+  content: "\2713";
+  font-weight: 700;
+  left: 0;
+  position: absolute;
+}
+
+.choiceGo {
+  align-items: center;
+  color: #1c2b1e;
+  display: flex;
+  font-size: 13.5px;
+  font-weight: 700;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.choiceGo svg {
+  color: #6b9e61;
+  flex: 0 0 auto;
+  transition: transform 0.15s;
+}
+
+.choice:hover .choiceGo svg,
+.choice:focus-visible .choiceGo svg {
+  transform: translateX(4px);
+}
+
+/* ---------- catch-all strip ---------- */
+
+.catchAll {
+  align-items: center;
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 4px;
+  color: inherit;
+  display: flex;
+  gap: 24px;
+  margin-top: 24px;
+  padding: 24px 26px;
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+
+.catchAll:hover,
+.catchAll:focus-visible {
+  background: #e2eddf;
+}
+
+.catchAll strong {
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.catchAll em {
+  color: #5a5a52;
+  display: block;
+  font-size: 14px;
+  font-style: normal;
+  line-height: 1.6;
+  margin-top: 8px;
+  max-width: 74ch;
+}
+
+.catchAllArrow {
+  color: #6b9e61;
+  flex: 0 0 auto;
+  font-size: 22px;
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+
+.catchAll:hover .catchAllArrow,
+.catchAll:focus-visible .catchAllArrow {
+  transform: translateX(4px);
+}
+
+/* ---------- reassurance row ---------- */
+
+.reassure {
+  background: #f0ede4;
+  border-top: 1px solid #dbd8cc;
+  margin-top: 56px;
+  padding: 36px 0;
+}
+
+.reassureGrid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.reassureGrid strong {
+  display: block;
+  font-size: 13.5px;
+}
+
+.reassureGrid span {
+  color: #5a5a52;
+  display: block;
+  font-size: 13px;
+  margin-top: 5px;
+}
+
+/* ---------- replaced / kept / added ---------- */
+
+.threeCol {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 32px;
+}
+
+.scopeCard {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  padding: 24px 22px;
+}
+
+.scopeReplace {
+  border-top: 3px solid #6b9e61;
+}
+
+.scopeKeep {
+  background: #f8f4ef;
+  border-top: 3px solid #8b8a81;
+}
+
+.scopeAdd {
+  border-top: 3px solid #1c2b1e;
+}
+
+.scopeCard strong {
+  border-bottom: 1px solid #dbd8cc;
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  font-weight: 400;
+  margin-bottom: 15px;
+  padding-bottom: 13px;
+}
+
+.scopeCard ul {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scopeCard li {
+  color: #3a3a34;
+  font-size: 13.5px;
+  padding-left: 18px;
+  position: relative;
+}
+
+.scopeCard li::before {
+  font-weight: 700;
+  left: 0;
+  position: absolute;
+}
+
+.scopeReplace li::before {
+  color: #6b9e61;
+  content: "\2713";
+}
+
+.scopeKeep li::before {
+  color: #8b8a81;
+  content: "\2022";
+}
+
+.scopeAdd li::before {
+  color: #1c2b1e;
+  content: "+";
+}
+
+.scopeText {
+  color: #5a5a52;
+  font-size: 13.5px;
+  line-height: 1.65;
+  margin: 0;
+}
+
+/* ---------- feature rows ----------
+   Copy one side, a visual the other. Replaced three identical outlined boxes
+   that each carried one dark button, same border, same fill, same button,
+   doing unrelated jobs, which read as a stack of adverts. */
+
+.feature {
+  align-items: center;
+  display: grid;
+  gap: 40px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.featureFlip > div:first-child {
+  order: 2;
+}
+
+.feature .lead {
+  margin-bottom: 0;
+}
+
+.featureVisual {
+  min-width: 0;
+}
+
+/* A white band between two cream ones, so two features in a row do not merge
+   into one long stretch of the same colour. */
+.sectionPanel {
+  background: #ffffff;
+  border-bottom: 1px solid #dbd8cc;
+  border-top: 1px solid #dbd8cc;
+}
+
+/* Stands in for a planner screenshot, drawn with the same elevation component
+   the configurator uses. */
+.plannerMock {
+  align-items: flex-end;
+  background: linear-gradient(180deg, #f4f1ea 0%, #e7e2d5 100%);
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 26px 22px;
+}
+
+.plannerCabinet {
+  height: 190px;
+  width: auto;
+}
+
+.colourStrip {
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(6, 1fr);
+  overflow: hidden;
+  padding: 2px;
+}
+
+.colourStrip span {
+  aspect-ratio: 1;
+  background: #dbd8cc;
+  display: block;
+}
+
+.pullNote a {
+  color: #4a7a42;
+}
+
+.pullNote {
+  background: #edf4eb;
+  border-left: 3px solid #6b9e61;
+  border-radius: 0 3px 3px 0;
+  color: #3a3a34;
+  font-size: 15px;
+  line-height: 1.7;
+  margin-top: 22px;
+  padding: 18px 22px;
+}
+
+/* ---------- dark band ---------- */
+
+.dark {
+  background: #1c2b1e;
+  padding: 64px 0;
+}
+
+.materialGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 34px;
+}
+
+.materialGrid article {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 24px 22px;
+}
+
+.materialGrid h3 {
+  color: #a8c5a0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 22px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.materialGrid p {
+  color: #9daf99;
+  font-size: 13.5px;
+  line-height: 1.65;
+  margin: 10px 0 0;
+}
+
+/* ---------- numbered process ---------- */
+
+.process {
+  counter-reset: step;
+  display: grid;
+  gap: 26px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  margin: 34px 0 0;
+  padding: 0;
+}
+
+.process li {
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  counter-increment: step;
+  padding-top: 16px;
+}
+
+.process li::before {
+  color: #a8c5a0;
+  content: counter(step, decimal-leading-zero);
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.process strong {
+  color: #f0ede4;
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.process span {
+  color: #9daf99;
+  display: block;
+  font-size: 13.5px;
+  line-height: 1.65;
+  margin-top: 8px;
+}
+
+/* ---------- colour + profile showcases ---------- */
+
+.finishTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 26px;
+}
+
+.finishTab {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 20px;
+  color: #1a1a18;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 17px;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+
+.finishTab:hover {
+  border-color: #6b9e61;
+}
+
+.finishTabActive {
+  background: #1c2b1e;
+  border-color: #1c2b1e;
+  color: #f0ede4;
+}
+
+.colourGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+  margin-top: 20px;
+}
+
+.colourTile {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.colourSwatch {
+  display: block;
+  height: 72px;
+}
+
+.colourBadge {
+  background: rgba(26, 26, 24, 0.82);
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 6px;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+}
+
+.colourName {
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 9px 10px;
+}
+
+.colourFinish {
+  color: #8b8a81;
+  display: block;
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.profileGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 32px;
+}
+
+.profileCard {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  padding: 20px;
+}
+
+.profileCard h3 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.profileCard > p {
+  color: #5a5a52;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 6px 0 0;
+}
+
+.profileSamples {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 12px;
+}
+
+/* Real profile photos are 738x960 portrait, so the samples sit as three
+   upright doors rather than three landscape strips. */
+.profileSampleImage {
+  aspect-ratio: 738 / 960;
+  background: #f0ede4;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  display: block;
+  flex: 1;
+  min-width: 0;
+  object-fit: cover;
+}
+
+.profileSample {
+  aspect-ratio: 738 / 960;
+  background: #f0ede4;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.profileSample::after {
+  background: #f8f4ef;
+  border: 1px solid #dbd8cc;
+  content: "";
+  inset: 8px;
+  position: absolute;
+}
+
+.sampleSoft::after {
+  border-radius: 6px;
+}
+
+.sampleMinimal::after {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid #dbd8cc;
+  inset: auto 8px 10px;
+}
+
+.sampleDetailed::after {
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 3px #f0ede4, inset 0 0 0 4px #dbd8cc;
+}
+
+.profileNames {
+  color: #8b8a81;
+  display: block;
+  font-size: 11.5px;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.edgeRow {
+  background: #f8f4ef;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  margin-top: 24px;
+  padding: 20px 22px;
+}
+
+.edgeRow strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.edgeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.edgeList span {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  color: #3a3a34;
+  font-size: 12.5px;
+  padding: 6px 12px;
+}
+
+/* ---------- rooms grid (bespoke) ---------- */
+
+.roomGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 32px;
+}
+
+.roomGrid article {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  padding: 20px;
+}
+
+.roomGrid h3 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.roomGrid p {
+  color: #5a5a52;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 7px 0 0;
+}
+
+/* ---------- cross-sell box ---------- */
+
+.crossSell {
+  align-items: center;
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  padding: 28px 30px;
+}
+
+.crossSell h3 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 23px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.crossSell p {
+  color: #5a5a52;
+  font-size: 14.5px;
+  line-height: 1.65;
+  margin: 10px 0 0;
+  max-width: 62ch;
+}
+
+.crossSell .button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* ---------- FAQ ---------- */
+
+.faq {
+  border-top: 1px solid #dbd8cc;
+  margin-top: 28px;
+}
+
+.faq details {
+  border-bottom: 1px solid #dbd8cc;
+}
+
+.faq summary {
+  cursor: pointer;
+  display: flex;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  gap: 20px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 18px 0;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::after {
+  color: #6b9e61;
+  content: "+";
+  flex: 0 0 auto;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-weight: 700;
+}
+
+.faq details[open] summary::after {
+  content: "\2212";
+}
+
+.faq p {
+  color: #5a5a52;
+  font-size: 14.5px;
+  line-height: 1.7;
+  margin: 0 0 20px;
+  max-width: 72ch;
+}
+
+/* ---------- closing CTA ---------- */
+
+.cta {
+  background: #111b13;
+  padding: 72px 0;
+  text-align: center;
+}
+
+.cta .lead {
+  margin: 16px auto 28px;
+}
+
+.cta .actions {
+  justify-content: center;
+}
+
+/* Matches .landing-footer in frontend.css and .siteFooter on the contact page.
+   This previously set only a max-width, so the two paragraphs fell back to
+   browser defaults, stacked, 16px, black, with the phone and email rendering
+   as blue underlined links. */
+.siteFooter {
+  align-items: center;
+  border-top: 1px solid #dbd8cc;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 1100px;
+  padding: 34px 40px;
+}
+
+.siteFooter p {
+  color: #7e7e75;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.siteFooter a {
+  color: #5c8a53;
+  text-decoration: none;
+}
+
+.siteFooter a:hover,
+.siteFooter a:focus-visible {
+  text-decoration: underline;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 980px) {
+  .wrap {
+    padding: 0 24px;
+  }
+
+  .chooserGrid,
+  .threeCol,
+  .materialGrid,
+  .process,
+  .profileGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .roomGrid,
+  .reassureGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Copy above the visual, always in that order, a flipped row would put the
+     picture before the words it belongs to once they stack. */
+  .feature {
+    gap: 24px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .featureFlip > div:first-child {
+    order: 0;
+  }
+
+  .siteFooter {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 28px 24px;
+  }
+}
+
+@media (max-width: 680px) {
+  .wrap {
+    padding: 0 18px;
+  }
+
+  .chooserGrid,
+  .threeCol,
+  .materialGrid,
+  .process,
+  .profileGrid,
+  .roomGrid,
+  .reassureGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .catchAll {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .catchAllArrow {
+    margin-left: 0;
+    align-self: flex-start;
+  }
+
+  .crossSell .button {
+    margin-left: 0;
+  }
+
+  .siteFooter {
+    padding: 22px 18px;
+  }
+
+  .siteFooter p,
+  .siteFooter a {
+    overflow-wrap: anywhere;
+  }
+}

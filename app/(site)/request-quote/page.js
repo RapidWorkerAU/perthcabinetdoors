@@ -21,7 +21,7 @@ export default function RequestQuotePage() {
               <Link href="/">Home</Link> &rsaquo; <Link href="/contact">Contact</Link> &rsaquo; Request a Quote
             </div>
             <h1>Request a <em>Free Quote</em></h1>
-            <p>Fill in your details, add each product to the table below, then submit. We will come back to you within 1-3 business days.</p>
+            <p>Every quote request comes through here, whichever way you got to it. Anything already on your list is below - add the rest, including custom cabinets and sizes our IKEA and Kaboodle tool does not cover, then submit. We will come back to you within 1-3 business days.</p>
           </div>
         </section>
 

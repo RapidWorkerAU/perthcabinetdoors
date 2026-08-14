@@ -9,6 +9,7 @@ import useDesignProgram from "./useDesignProgram";
 import DesignCanvas from "./DesignCanvas";
 import FrontElevationView from "./FrontElevationView";
 import PinchZoom from "./PinchZoom";
+import PcdLoader from "../../../../components/public/PcdLoader";
 import RoomsModal from "./mobile/RoomsModal";
 import CabinetModal from "./mobile/CabinetModal";
 import RoomPriceModal from "./mobile/RoomPriceModal";
@@ -19,11 +20,7 @@ import DesignPlanExportModal from "./DesignPlanExportModal";
 // viewer first opens the 3D tab, never on first paint.
 const Design3DView = dynamic(() => import("./Design3DView"), {
   ssr: false,
-  loading: () => (
-    <div className={mobile.emptyState}>
-      <span className={mobile.emptyHint}>Loading 3D view…</span>
-    </div>
-  ),
+  loading: () => <PcdLoader theme="dark" variant="panel" steps={["Loading the 3D view", "Almost there"]} label="Loading 3D view" />,
 });
 
 const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "bookcase"];
@@ -208,7 +205,15 @@ export default function DesignProgramMobile({ projectId }) {
   }
 
   if (loading) {
-    return <div className={mobile.mobileRoot}><div className={mobile.emptyState}><span className={mobile.emptyHint}>Loading…</span></div></div>;
+    return (
+      <div className={mobile.mobileRoot}>
+        <PcdLoader
+          theme="dark"
+          steps={["Opening your project", "Loading the room", "Placing your cabinets", "Almost there"]}
+          label="Loading design project"
+        />
+      </div>
+    );
   }
   if (error) {
     return (

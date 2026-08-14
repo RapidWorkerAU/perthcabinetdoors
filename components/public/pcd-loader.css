@@ -1,0 +1,163 @@
+/* ── the cabinet-build loader ────────────────────────────────────────────────
+   Lived in app/(site)/frontend.css, which the admin does not load. The admin
+   design tool needs the same loader on a dark background, and a second copy of
+   these rules would drift the moment either was touched, so they moved here and
+   PcdLoader.js imports them itself. Anywhere the component is used, styled.
+
+   NOTHING HERE LOOPS. Each part fades in once, when the percentage passes its
+   threshold, over 700ms. The first attempt ran a bright gradient band through
+   the letters on a repeat, which popped as it crossed each glyph and restarted
+   every time the number ticked. This has no repeating animation at all, so
+   there is nothing to flicker and nothing to restart.
+
+   ── LIGHT AND DARK ARE THE SAME LOADER ──────────────────────────────────────
+   Every colour is a token set on .pcdLoader, and the dark theme redefines the
+   tokens and nothing else. The animation, the thresholds, the geometry and the
+   timing are shared, so the two can never fall out of step.
+
+   The light tokens fall back to literals as well as reading the site's
+   variables, because the admin does not load frontend.css and would otherwise
+   render an invisible cabinet. */
+
+.pcdLoader {
+  /* light, the public site */
+  --pcdLoaderGround: var(--pcd-cream, #f6f3ec);
+  --pcdLoaderMark: var(--pcd-green, #1c2b1e);
+  --pcdLoaderCarcass: #ede8dc;
+  --pcdLoaderCarcassLine: #c4bda9;
+  --pcdLoaderFront: #fdfcfa;
+  --pcdLoaderFrontLine: #8f8a7c;
+  --pcdLoaderKick: #ded9cb;
+  --pcdLoaderSwing: var(--pcd-green-mid, #4b7a4f);
+  --pcdLoaderTrackBg: rgba(28, 43, 30, 0.1);
+  --pcdLoaderFillFrom: var(--pcd-green, #1c2b1e);
+  --pcdLoaderFillTo: var(--pcd-green-mid, #4b7a4f);
+  --pcdLoaderStepText: var(--pcd-muted, #6b6558);
+  --pcdLoaderPctText: var(--pcd-muted-light, #9a9384);
+
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Dark, the admin design tool. The cabinet has to read against a near-black
+   stage, so the parts invert: a carcass lighter than the ground it sits on,
+   fronts lighter again, and lines bright enough to survive at 2px. The greens
+   are lifted well past the site's, which disappear on dark. */
+.pcdLoader--dark {
+  /* Transparent, not a dark colour of its own. In the admin the loader always
+     sits inside a shell that has already painted the stage, and the desktop and
+     mobile shells are two different near-blacks (#0f1117 and #13171d). Naming
+     either here would paint the wrong black over one of them. */
+  --pcdLoaderGround: transparent;
+  --pcdLoaderMark: #e7e5e0;
+  --pcdLoaderCarcass: #34332f;
+  --pcdLoaderCarcassLine: #56544d;
+  --pcdLoaderFront: #46443e;
+  --pcdLoaderFrontLine: #8d8a80;
+  --pcdLoaderKick: #2a2926;
+  --pcdLoaderSwing: #8fce8a;
+  --pcdLoaderTrackBg: rgba(255, 255, 255, 0.1);
+  --pcdLoaderFillFrom: #6b9e61;
+  --pcdLoaderFillTo: #a8dda1;
+  --pcdLoaderStepText: rgba(255, 255, 255, 0.62);
+  --pcdLoaderPctText: rgba(255, 255, 255, 0.4);
+}
+
+.pcdLoaderInner {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  width: min(300px, 78%);
+}
+
+/* Static, never animated. It is here to sign the page, not to indicate work. */
+.pcdLoaderMark {
+  color: var(--pcdLoaderMark);
+  font-family: var(--pcd-font-display, "Montserrat", Arial, sans-serif);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  margin-bottom: 1.15em;
+  padding-left: 0.14em; /* balances the trailing letter-spacing */
+}
+
+.pcdLoaderBuild { display: block; height: auto; width: 100%; }
+
+.pcdBuildPart {
+  opacity: 0;
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.pcdBuildPart.is-on { opacity: 1; }
+/* The two solid boxes settle down into place. Lines and swing marks just fade,
+   since a sliding hairline reads as a glitch rather than a movement. */
+.pcdBuildRise { transform: translateY(9px); }
+.pcdBuildRise.is-on { transform: translateY(0); }
+
+.pcdBuildCarcass { fill: var(--pcdLoaderCarcass); stroke: var(--pcdLoaderCarcassLine); stroke-width: 2; }
+.pcdBuildFront { fill: var(--pcdLoaderFront); stroke: var(--pcdLoaderFrontLine); stroke-width: 2; }
+.pcdBuildKick { fill: var(--pcdLoaderKick); stroke: var(--pcdLoaderCarcassLine); stroke-width: 2; }
+.pcdBuildDetail { fill: none; stroke: var(--pcdLoaderFrontLine); stroke-width: 2; }
+.pcdBuildSwing { fill: none; stroke: var(--pcdLoaderSwing); stroke-dasharray: 4 3; stroke-width: 1.6; }
+
+.pcdLoaderTrack {
+  background: var(--pcdLoaderTrackBg);
+  border-radius: 999px;
+  display: block;
+  height: 3px;
+  margin-top: 1.5em;
+  overflow: hidden;
+  width: 100%;
+}
+.pcdLoaderFill {
+  background: linear-gradient(90deg, var(--pcdLoaderFillFrom) 0%, var(--pcdLoaderFillTo) 100%);
+  border-radius: 999px;
+  display: block;
+  height: 100%;
+  transition: width 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.pcdLoaderFoot {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 0.72em;
+  width: 100%;
+}
+.pcdLoaderStep {
+  color: var(--pcdLoaderStepText);
+  font-family: var(--pcd-font-ui, "Source Sans 3", Arial, sans-serif);
+  font-size: 12.5px;
+}
+.pcdLoaderPct {
+  color: var(--pcdLoaderPctText);
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Full page: the tool has not drawn anything yet, so this owns the screen. */
+.pcdLoader-page { background: var(--pcdLoaderGround); height: 100%; min-height: 60vh; }
+.pcdLoader-page .pcdLoaderInner { width: min(260px, 74%); }
+
+/* Panel: inside a stage that already has its own frame, so it stays quiet and
+   inherits whatever background is behind it. */
+.pcdLoader-panel { height: 100%; }
+.pcdLoader-panel .pcdLoaderInner { width: min(190px, 62%); }
+.pcdLoader-panel .pcdLoaderStep { font-size: 12px; }
+
+/* Inline: a small preview box, where the cabinet is most of what fits. */
+.pcdLoader-inline { height: 100%; min-height: 130px; }
+.pcdLoader-inline .pcdLoaderInner { width: min(120px, 58%); }
+.pcdLoader-inline .pcdLoaderTrack { height: 2px; margin-top: 1.1em; }
+.pcdLoader-inline .pcdLoaderFoot { justify-content: center; margin-top: 0.55em; }
+.pcdLoader-inline .pcdLoaderPct { display: none; }
+.pcdLoader-inline .pcdLoaderStep { font-size: 11.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pcdBuildPart { transition: none; }
+  .pcdBuildRise { transform: none; }
+  .pcdLoaderFill { transition: none; }
+}

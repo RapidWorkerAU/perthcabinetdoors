@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
+import { rowCapHeight } from "../../../lib/pcd-row-cap";
 import styles from "./quote-public.module.css";
+import {
+  ADDRESS_KEYS,
+  DETAIL_FIELDS,
+  formatSiteAddress,
+  validateDetails,
+} from "../../../lib/pcd-contact-details";
 
 function sortedLines(quote) {
   return [...(quote?.pcd_quote_line_items || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
@@ -132,6 +139,145 @@ function PreviewName({ src, label, onPreview }) {
   );
 }
 
+const DETAIL_INPUTS = {
+  name: { label: "Full name", type: "text", placeholder: "Sarah Jones", autoComplete: "name" },
+  email: { label: "Email", type: "email", placeholder: "sarah@example.com", autoComplete: "email" },
+  mobile: { label: "Mobile", type: "tel", placeholder: "0412 345 678", autoComplete: "tel" },
+  street: { label: "Street address", type: "text", placeholder: "14 Rokeby Road", autoComplete: "address-line1" },
+  suburb: { label: "Suburb", type: "text", placeholder: "Subiaco", autoComplete: "address-level2" },
+  postcode: { label: "Postcode", type: "text", placeholder: "6008", autoComplete: "postal-code", inputMode: "numeric" },
+};
+
+// Quote Items stops growing after this many rows and scrolls inside itself.
+// The page still scrolls; what it does not do is turn one section into an
+// endless run that buries the totals and the Approve button below it.
+const VISIBLE_ITEM_ROWS = 5;
+
+// Reads the real rows off the page and hands them to rowCapHeight. offsetHeight
+// is used rather than a bounding rect because it does not change as the box is
+// scrolled, so re-measuring a list that is already capped gives the same answer
+// instead of drifting.
+function useRowCap(itemCount, visibleRows) {
+  const [node, setNode] = useState(null);
+  const [maxHeight, setMaxHeight] = useState(null);
+  const ref = useCallback((element) => setNode(element), []);
+  const capped = itemCount > visibleRows;
+
+  useEffect(() => {
+    if (!node || !capped) {
+      setMaxHeight(null);
+      return undefined;
+    }
+
+    const rows = () => Array.from(node.querySelectorAll("[data-cap-row]"));
+
+    function measure() {
+      setMaxHeight(
+        rowCapHeight({
+          rowHeights: rows().map((row) => row.offsetHeight),
+          // A card list is a grid with a gap between cards; a table has none.
+          gap: Number.parseFloat(window.getComputedStyle(node).rowGap) || 0,
+          headHeight: node.querySelector("thead")?.offsetHeight || 0,
+          visibleRows,
+        })
+      );
+    }
+
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    // Row heights change when the window narrows and when a mobile card is
+    // opened, so the cap has to follow rather than being measured once.
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    rows().forEach((row) => observer.observe(row));
+    return () => observer.disconnect();
+  }, [node, capped, itemCount, visibleRows]);
+
+  return [ref, maxHeight];
+}
+
+// The four tiles that can be edited, in the order they read in the summary.
+const SUMMARY_TILES = [
+  { id: "name", label: "Customer", keys: ["name"], value: (d) => d.name },
+  { id: "email", label: "Email", keys: ["email"], value: (d) => d.email },
+  { id: "mobile", label: "Mobile", keys: ["mobile"], value: (d) => d.mobile },
+  { id: "address", label: "Site address", keys: ADDRESS_KEYS, value: formatSiteAddress },
+];
+
+// One tile of the Quote Summary, which edits itself.
+//
+// It reads as a summary value until the customer asks to change it, then the
+// value is replaced by its field or fields in place. Nothing opens below, no
+// panel, no save button: the value is live as it is typed, so leaving the tile
+// is the whole interaction. It folds back to a plain value once what is in it
+// is valid, which is also the signal that the field is done.
+//
+// The address is one tile with three fields because that is how an address is
+// missing: never the suburb on its own.
+function SummaryDetail({ label, keys, value, details, errors, touched, locked, isOpen, onOpen, onClose, onChange, onTouch }) {
+  const missing = keys.some((key) => errors[key]);
+  const valid = keys.every((key) => !errors[key]);
+
+  if (locked || !isOpen) {
+    return (
+      <div className={`${styles.summaryItem} ${missing && !locked ? styles.summaryItemMissing : ""}`}>
+        <span>{label}</span>
+        <strong>
+          {missing && !locked ? (
+            <button type="button" className={styles.detailAdd} onClick={onOpen}>
+              Add {label.toLowerCase()}
+            </button>
+          ) : (
+            <>
+              {value || "-"}
+              {!locked && value ? (
+                <button type="button" className={styles.detailEdit} onClick={onOpen}>Change</button>
+              ) : null}
+            </>
+          )}
+        </strong>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`${styles.summaryItem} ${missing ? styles.summaryItemMissing : ""}`}
+      // Focus moving between the address fields stays inside the tile, so only
+      // a move that actually leaves it counts as finishing.
+      onBlur={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        if (valid) onClose();
+      }}
+    >
+      <span>{label}</span>
+      <div className={styles.detailFields}>
+        {keys.map((key, index) => {
+          const field = DETAIL_INPUTS[key];
+          const showError = touched[key] && errors[key];
+          return (
+            <div key={key}>
+              <input
+                className={`${styles.detailInput} ${showError ? styles.inputError : ""}`}
+                type={field.type}
+                value={details[key] || ""}
+                placeholder={field.placeholder}
+                aria-label={field.label}
+                autoComplete={field.autoComplete}
+                inputMode={field.inputMode}
+                autoFocus={index === 0}
+                onChange={(event) => onChange(key, event.target.value)}
+                onBlur={() => onTouch(key)}
+              />
+              {showError ? <span className={styles.detailError}>{errors[key]}</span> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function QuoteApprovalClient() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code") || "";
@@ -145,9 +291,32 @@ export default function QuoteApprovalClient() {
   const [expandedMobileLineId, setExpandedMobileLineId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
   const [paymentAcknowledged, setPaymentAcknowledged] = useState(false);
+  // The details we must hold before this can be accepted. Pre-filled from the
+  // customer record by the get route, and edited in the summary panel where
+  // the customer can already see what is missing.
+  const [details, setDetails] = useState({});
+  // Which summary tile is currently a field rather than a value. One at a time,
+  // because there is nowhere for a second one to go.
+  const [openTile, setOpenTile] = useState(null);
+  const [touched, setTouched] = useState({});
+
+  const detailErrors = useMemo(() => validateDetails(details), [details]);
+  const detailsComplete = Object.keys(detailErrors).length === 0;
+  // The one thing the customer reads when they cannot accept. Named field by
+  // field rather than by tile, so "postcode" says which box is empty instead of
+  // asking again for an address that is otherwise already there.
+  const missingLabels = useMemo(
+    () => DETAIL_FIELDS.filter((field) => detailErrors[field.key]).map((field) => field.label),
+    [detailErrors]
+  );
 
   const lines = useMemo(() => sortedLines(quote), [quote]);
   const attachments = useMemo(() => sortedAttachments(quote), [quote]);
+  // The two renderings of the same lines each get their own cap, because a
+  // table row and a mobile card are nothing like the same height.
+  const [desktopItemsRef, desktopItemsMax] = useRowCap(lines.length, VISIBLE_ITEM_ROWS);
+  const [mobileItemsRef, mobileItemsMax] = useRowCap(lines.length, VISIBLE_ITEM_ROWS);
+  const itemsAreCapped = lines.length > VISIBLE_ITEM_ROWS;
   const isLocked = quote?.status === "approved" || quote?.status === "rejected";
   const productLineTotal = useMemo(() => {
     const lineSum = lines.reduce((sum, line) => sum + toNumber(line.line_total_ex_gst), 0);
@@ -167,6 +336,7 @@ export default function QuoteApprovalClient() {
     { label: "Consumables", description: "Small job materials such as glue, screws, and sundries.", amount: toNumber(quote?.installation_cost_ex_gst) },
     { label: "Painting", description: "Painting allowance for painted doors and drawer fronts.", amount: toNumber(quote?.painting_cost_ex_gst) },
     { label: "Glass", description: "Glass allowance for doors or panels with glass inserts.", amount: toNumber(quote?.glass_cost_ex_gst) },
+    { label: "Door removal and disposal", description: "Taking off your old doors and fronts and taking them away.", amount: toNumber(quote?.removal_cost_ex_gst) },
   ].filter((row) => row.always || row.amount > 0);
   const depositPercent = Number(quote?.deposit_percent || 0);
   const depositRequired = Boolean(quote?.deposit_required && depositPercent > 0);
@@ -188,6 +358,7 @@ export default function QuoteApprovalClient() {
           return;
         }
         setQuote(payload.quote);
+        setDetails(payload.details || {});
       } catch (error) {
         setMessage(error?.message || "We could not load this quote.");
       } finally {
@@ -212,13 +383,30 @@ export default function QuoteApprovalClient() {
       setMessage("Please acknowledge the payment requirement before approving this quote.");
       return;
     }
+    // Rejection is never gated on these; only acceptance. The Approve button is
+    // disabled while anything is missing, so this is the safety net rather than
+    // the normal path. It opens the first tile that is blocking, which is more
+    // use than a sentence saying something is.
+    if (action === "approved" && !detailsComplete) {
+      const blocking = SUMMARY_TILES.find((tile) => tile.keys.some((key) => detailErrors[key]));
+      if (blocking) setOpenTile(blocking.id);
+      setMessage("Please complete your contact and delivery details in the Quote Summary above.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       const response = await fetch("/api/quote-workflow/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, action, client_name: clientName.trim(), note: note.trim() || null }),
+        body: JSON.stringify({
+          code,
+          action,
+          client_name: clientName.trim(),
+          note: note.trim() || null,
+          // Only meaningful on approval; the route ignores them otherwise.
+          details: action === "approved" ? details : undefined,
+        }),
       });
       const payload = await readJsonResponse(response);
       if (!response.ok || !payload.ok) {
@@ -261,14 +449,33 @@ export default function QuoteApprovalClient() {
       <section className={styles.panel}>
         <div className={styles.panelHeader}>Quote Summary</div>
         <div className={styles.panelBody}>
+          {/* The summary has always printed a dash where we hold nothing, with
+              no way to fix it. Now that dash is the fix: an Add button that
+              turns the tile into its field. Nothing announces itself at the top
+              of the page; a tile that blocks acceptance is simply marked, and
+              the reason is stated once, next to the button it blocks. */}
           <div className={styles.quoteViewSummaryGrid}>
             <div className={styles.summaryItem}><span>Quote title</span><strong>{quote.title || "Cabinetry Quote"}</strong></div>
             <div className={styles.summaryItem}><span>Status</span><strong>{quote.status}</strong></div>
             <div className={styles.summaryItem}><span>Quote number</span><strong>{quote.quote_number}</strong></div>
-            <div className={styles.summaryItem}><span>Customer</span><strong>{quote.customer_name || "-"}</strong></div>
-            <div className={styles.summaryItem}><span>Email</span><strong>{quote.customer_email || "-"}</strong></div>
-            <div className={styles.summaryItem}><span>Mobile</span><strong>{quote.customer_phone || "-"}</strong></div>
-            <div className={styles.summaryItem}><span>Site address</span><strong>{quote.site_address || "-"}</strong></div>
+
+            {SUMMARY_TILES.map((tile) => (
+              <SummaryDetail
+                key={tile.id}
+                label={tile.label}
+                keys={tile.keys}
+                value={tile.value(details)}
+                details={details}
+                errors={detailErrors}
+                touched={touched}
+                locked={isLocked}
+                isOpen={openTile === tile.id}
+                onOpen={() => setOpenTile(tile.id)}
+                onClose={() => setOpenTile((current) => (current === tile.id ? null : current))}
+                onChange={(key, value) => setDetails((current) => ({ ...current, [key]: value }))}
+                onTouch={(key) => setTouched((current) => ({ ...current, [key]: true }))}
+              />
+            ))}
           </div>
         </div>
       </section>
@@ -276,7 +483,11 @@ export default function QuoteApprovalClient() {
       <section className={styles.panel}>
         <div className={styles.panelHeader}>Quote Items</div>
         <div className={styles.panelBody}>
-          <div className={`${styles.tableWrap} ${styles.quoteItemsDesktopTable}`}>
+          <div
+            ref={desktopItemsRef}
+            className={`${styles.tableWrap} ${styles.quoteItemsDesktopTable} ${desktopItemsMax ? styles.quoteItemsCapped : ""}`}
+            style={desktopItemsMax ? { maxHeight: desktopItemsMax } : undefined}
+          >
             <table className={`${styles.table} ${styles.quoteItemsPublicTable}`}>
               <thead>
                 <tr>
@@ -301,7 +512,7 @@ export default function QuoteApprovalClient() {
                   const profileSrc = showProfiles ? profileOptionSrc(line.profile_type, line.profile) : "";
                   const clientNote = String(line.client_note || "").trim();
                   return (
-                    <tr key={line.id || index}>
+                    <tr key={line.id || index} data-cap-row>
                       <td><span className={styles.quoteItemNumber}>{index + 1}</span></td>
                       <td><DetailStack line={line} /></td>
                       <td>
@@ -334,7 +545,11 @@ export default function QuoteApprovalClient() {
               </tbody>
             </table>
           </div>
-          <div className={styles.quoteItemsMobileList}>
+          <div
+            ref={mobileItemsRef}
+            className={`${styles.quoteItemsMobileList} ${mobileItemsMax ? styles.quoteItemsCapped : ""}`}
+            style={mobileItemsMax ? { maxHeight: mobileItemsMax } : undefined}
+          >
             {lines.map((line, index) => {
               const showProfiles = line.material === "Thermolaminate" && line.product_type !== "Panel" && line.product_type !== "Table top";
               const hingesApplicable = line.product_type === "Door";
@@ -345,7 +560,7 @@ export default function QuoteApprovalClient() {
               const isExpanded = expandedMobileLineId === lineKey;
               const clientNote = String(line.client_note || "").trim();
               return (
-                <article className={`${styles.quoteItemMobileCard} ${isExpanded ? styles.quoteItemMobileCardOpen : ""}`} key={lineKey}>
+                <article className={`${styles.quoteItemMobileCard} ${isExpanded ? styles.quoteItemMobileCardOpen : ""}`} key={lineKey} data-cap-row>
                   <button
                     type="button"
                     className={styles.quoteItemMobileHeader}
@@ -406,6 +621,13 @@ export default function QuoteApprovalClient() {
               );
             })}
           </div>
+          {/* Overlay scrollbars stay invisible until something is scrolled, so
+              a capped list needs to say out loud that there is more in it. */}
+          {itemsAreCapped ? (
+            <p className={styles.quoteItemsScrollNote}>
+              {lines.length} items. Scroll inside the list to see them all.
+            </p>
+          ) : null}
         </div>
       </section>
 
@@ -467,8 +689,24 @@ export default function QuoteApprovalClient() {
                   </span>
                 </label>
                 {message ? <p className={styles.message}>{message}</p> : null}
+                {/* The only place the block is announced, sitting against the
+                    button it disables. Marked rather than merely stated, so it
+                    is not read as one more line of small print, and matching
+                    the tiles it points at. Rejecting is unaffected: declining
+                    should not require an address. */}
+                {!detailsComplete ? (
+                  <p className={styles.acceptBlocked}>
+                    Add your {missingLabels.map((l) => l.toLowerCase()).join(", ")} in the Quote Summary above
+                    to accept. Rejecting this quote does not require them.
+                  </p>
+                ) : null}
                 <div className={styles.actions}>
-                  <button type="button" className={styles.button} onClick={() => submitAction("approved")} disabled={isSubmitting}>
+                  <button
+                    type="button"
+                    className={styles.button}
+                    onClick={() => submitAction("approved")}
+                    disabled={isSubmitting || !detailsComplete}
+                  >
                     Approve quote
                   </button>
                   <button type="button" className={styles.buttonDanger} onClick={() => submitAction("rejected")} disabled={isSubmitting}>

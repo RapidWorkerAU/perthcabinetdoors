@@ -272,7 +272,7 @@ function LaunchGate() {
             </label>
             <label>
               Topic
-              <select name="topic" defaultValue="General enquiry">
+              <select className="pcdSelect" name="topic" defaultValue="General enquiry">
                 {TOPICS.map((topic) => (
                   <option key={topic}>{topic}</option>
                 ))}

@@ -338,7 +338,7 @@ export default function ProjectViewClient({
                           aria-expanded={isOpen}
                           aria-label="Toggle milestones"
                         >
-                          {isOpen ? "–" : "+"}
+                          {isOpen ? "−" : "+"}
                         </button>
                       </td>
                       <td data-label="Deliverable">
@@ -640,7 +640,7 @@ export default function ProjectViewClient({
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 px-2 pt-3 text-xs text-slate-500">
               <span>
-                Showing {(logPage - 1) * LOG_PAGE_SIZE + 1}–
+                Showing {(logPage - 1) * LOG_PAGE_SIZE + 1} to{" "}
                 {Math.min(logPage * LOG_PAGE_SIZE, selectedEntries.length)} of{" "}
                 {selectedEntries.length} entries
               </span>

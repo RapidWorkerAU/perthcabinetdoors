@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { addressColumns, addressFromRecord } from "../../../../lib/pcd-contact-details";
+import AddressFields from "../../../../components/admin/AddressFields";
 import { useRouter } from "next/navigation";
 import { IconMessage } from "@tabler/icons-react";
 import {
@@ -456,6 +458,18 @@ export default function OrderDetail({ orderId }) {
 
   function updateOrderField(field, value) {
     setOrder((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  // All three parts and the joined one-liner move together on every keystroke.
+  // Setting one part on its own would be wrong for an order whose address is
+  // still only the one-liner: the other two boxes are showing values read out
+  // of that string, and writing a single structured column makes the reader
+  // switch to the structured columns, blanking the two nobody has typed in yet.
+  function updateOrderAddress(key, value) {
+    setOrder((current) => {
+      if (!current) return current;
+      return { ...current, ...addressColumns({ ...addressFromRecord(current), [key]: value }) };
+    });
   }
 
   async function saveOrder(fields) {
@@ -955,10 +969,15 @@ export default function OrderDetail({ orderId }) {
                 Phone
                 <input className={tw.fieldInput} value={order.customer_phone || ""} onChange={e => updateOrderField("customer_phone", e.target.value)} onBlur={e => saveOrder({ customer_phone: e.target.value })} />
               </label>
-              <label className={tw.fieldLabel}>
-                Site / delivery address
-                <input className={tw.fieldInput} value={order.site_address || ""} onChange={e => updateOrderField("site_address", e.target.value)} onBlur={e => saveOrder({ site_address: e.target.value })} />
-              </label>
+              {/* Saved as the three parts AND the joined one-liner. Writing
+                  only site_address here used to leave the suburb and postcode
+                  columns holding the address from before the edit, which is
+                  exactly the data a delivery run is planned from. */}
+              <AddressFields
+                value={addressFromRecord(order)}
+                onChange={updateOrderAddress}
+                onBlur={() => saveOrder(addressColumns(addressFromRecord(order)))}
+              />
             </div>
             <p className={tw.muted + " mt-3"}>Fields save automatically when you leave them.</p>
           </div>

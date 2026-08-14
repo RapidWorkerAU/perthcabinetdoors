@@ -97,7 +97,7 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
   }
 
   // Only counts as "active" once something has been narrowed from the
-  // default (everything selected) state — matches what "Reset all filters"
+  // default (everything selected) state, matches what "Reset all filters"
   // resets back to.
   const activeFilterCount =
     (DEFAULT_TYPES.length - types.length) + (ALL_MATERIALS.length - materials.length);
@@ -146,7 +146,7 @@ export default function ProductsLibraryClient({ products = PRODUCTS }) {
             <p className={styles.resultCount}>Showing <strong>{visibleProducts.length}</strong> products</p>
             <div className={styles.sortWrap}>
               <label htmlFor="sort">Sort by</label>
-              <select id="sort" value={sort} onChange={(event) => setSort(event.target.value)}>
+              <select className="pcdSelect" id="sort" value={sort} onChange={(event) => setSort(event.target.value)}>
                 <option value="default">Featured</option>
                 <option value="price-asc">Starting price: low to high</option>
                 <option value="price-desc">Starting price: high to low</option>

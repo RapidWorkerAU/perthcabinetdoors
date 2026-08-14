@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { clearList as clearQuoteList, entriesToQuoteLines, readQuoteList } from "@/lib/pcd-quote-list";
 import styles from "../contact/contact.module.css";
 import {
   CABINET_BRANDS,
@@ -261,7 +262,7 @@ function ColourControls({ item, onChange }) {
   return (
     <>
       <div className={styles.inlineField}>
-        <select
+        <select className="pcdSelect"
           disabled={!item.material || !item.thickness || !finishGroups.length}
           value={item.finish}
           onChange={(event) => chooseFinish(event.target.value)}
@@ -328,10 +329,75 @@ export default function RequestQuoteFormClient() {
   const [submitting, setSubmitting] = useState(false);
   const [colourAvailability, setColourAvailability] = useState(null);
   const [errors, setErrors] = useState({});
+  const [importedCount, setImportedCount] = useState(0);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState("");
 
   const savedCount = items.filter((item) => item.saved).length;
   const editingItem = items.find((item) => item.id === editingId) || null;
   const visibleItems = items.filter((item) => item.saved || hasLineValue(item));
+
+  // Anything built in the IKEA & Kaboodle configurator, or added as a custom
+  // item from the drawer, arrives here as ordinary saved line items - same
+  // fields, same editing, same submit. This is what stops the site carrying two
+  // item builders that cannot see each other. Runs once: after they land, the
+  // lines belong to this form, so re-importing on every render would duplicate
+  // them and fight anyone editing a row.
+  const importedRef = useRef(false);
+  useEffect(() => {
+    if (importedRef.current) return;
+    importedRef.current = true;
+
+    let cancelled = false;
+
+    function seed(entries) {
+      const incoming = entriesToQuoteLines(entries);
+      if (!incoming.length || cancelled) return;
+
+      setItems((current) => {
+        const seeded = incoming.map((line, index) => ({
+          ...emptyItem(`imported-${index + 1}`),
+          ...line,
+          saved: true,
+        }));
+        // Drop the blank starter row the form opens with, so an imported list
+        // does not begin with an empty line.
+        const existing = current.filter((item) => item.saved || hasLineValue(item));
+        return [...seeded, ...existing];
+      });
+      setNextId((current) => current + incoming.length);
+      setImportedCount(incoming.length);
+      clearQuoteList();
+    }
+
+    // ?list=CODE means they saved the list on another device and followed the
+    // link. That wins over whatever this browser happens to be holding.
+    const code = new URLSearchParams(window.location.search).get("list");
+    if (code) {
+      setRestoring(true);
+      fetch(`/api/quote-list/${encodeURIComponent(code)}`, { cache: "no-store" })
+        .then((response) => response.json())
+        .then((payload) => {
+          if (cancelled) return;
+          if (payload?.ok && Array.isArray(payload.entries) && payload.entries.length) seed(payload.entries);
+          else setRestoreError(payload?.error || "We could not find that list.");
+        })
+        .catch(() => {
+          if (!cancelled) setRestoreError("We could not load that list. Please try the link again.");
+        })
+        .finally(() => {
+          if (!cancelled) setRestoring(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    seed(readQuoteList());
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -549,7 +615,7 @@ export default function RequestQuoteFormClient() {
             <div className={styles.field}><label htmlFor="suburb">Delivery suburb</label><input id="suburb" name="suburb" type="text" placeholder="e.g. Subiaco" /></div>
             <div className={styles.field}>
               <label htmlFor="cabinetBrand">Cabinet brand</label>
-              <select id="cabinetBrand" name="cabinetBrand" defaultValue="">
+              <select className="pcdSelect" id="cabinetBrand" name="cabinetBrand" defaultValue="">
                 <option value="" disabled>Select if relevant</option>
                 {CABINET_BRANDS.map((brand) => <option key={brand}>{brand}</option>)}
               </select>
@@ -578,6 +644,14 @@ export default function RequestQuoteFormClient() {
       </div>
 
       <span className={styles.sectionLabel}>Products</span>
+      {restoring ? <p className={styles.importedNote}>Loading your saved list…</p> : null}
+      {restoreError ? <p className={styles.importedError}>{restoreError}</p> : null}
+      {importedCount ? (
+        <p className={styles.importedNote}>
+          {importedCount} {importedCount === 1 ? "line has" : "lines have"} come across from your list. Edit
+          or remove any of them below, and add anything else you need.
+        </p>
+      ) : null}
       <div className={styles.productTableWrap}>
         <div className={styles.productTableBar}>
           <span>Line items - {savedCount} added</span>
@@ -664,21 +738,21 @@ export default function RequestQuoteFormClient() {
               <div className={styles.productModalGrid}>
                 <div className={styles.field}>
                   <label>Type</label>
-                  <select value={editingItem.type} onChange={(event) => updateItem(editingItem.id, { type: event.target.value })}>
+                  <select className="pcdSelect" value={editingItem.type} onChange={(event) => updateItem(editingItem.id, { type: event.target.value })}>
                     <option value="" disabled>Type</option>
                     {PRODUCT_TYPES.map((type) => <option key={type}>{type}</option>)}
                   </select>
                 </div>
                 <div className={styles.field}>
                   <label>Material</label>
-                  <select value={editingItem.material} onChange={(event) => updateItem(editingItem.id, { material: event.target.value })}>
+                  <select className="pcdSelect" value={editingItem.material} onChange={(event) => updateItem(editingItem.id, { material: event.target.value })}>
                     <option value="" disabled>Material</option>
                     {materialOptions.map((material) => <option key={material}>{material}</option>)}
                   </select>
                 </div>
                 <div className={styles.field}>
                   <label>Thickness</label>
-                  <select disabled={!editingItem.material} value={editingItem.thickness} onChange={(event) => updateItem(editingItem.id, { thickness: event.target.value })}>
+                  <select className="pcdSelect" disabled={!editingItem.material} value={editingItem.thickness} onChange={(event) => updateItem(editingItem.id, { thickness: event.target.value })}>
                     <option value="" disabled>{editingItem.material ? "Thickness" : "Select material first"}</option>
                     {thicknessOptions.map((thickness) => <option key={thickness}>{thickness}</option>)}
                   </select>
@@ -717,7 +791,7 @@ export default function RequestQuoteFormClient() {
                 <div className={styles.field}>
                   <label>Profile type</label>
                   {showProfiles ? (
-                    <select value={editingItem.profileType} onChange={(event) => updateItem(editingItem.id, { profileType: event.target.value })}>
+                    <select className="pcdSelect" value={editingItem.profileType} onChange={(event) => updateItem(editingItem.id, { profileType: event.target.value })}>
                       <option value="">Profile type</option>
                       {profileTypes.map((type) => <option key={type}>{type}</option>)}
                     </select>
@@ -750,7 +824,7 @@ export default function RequestQuoteFormClient() {
                 <div className={styles.field}>
                   <label>Hinge quantity</label>
                   {hingesApplicable && (editingItem.hinges || editingItem.preDrill) ? (
-                    <select value={editingItem.hingeQty} onChange={(event) => updateItem(editingItem.id, { hingeQty: event.target.value })}>
+                    <select className="pcdSelect" value={editingItem.hingeQty} onChange={(event) => updateItem(editingItem.id, { hingeQty: event.target.value })}>
                       <option value="">Per door</option>
                       <option>2 hinges</option>
                       <option>3 hinges</option>

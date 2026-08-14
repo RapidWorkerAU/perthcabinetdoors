@@ -1,4 +1,5 @@
 import AdminShell from '../_components/AdminShell'
+import { orderProfitExGst, quoteProfitExGst } from '../../../lib/pcd-quote-profit'
 import { requireAdminSession } from '../../../lib/admin-guard'
 import { createSupabaseAdminClient } from '../../../lib/supabase/admin'
 import DashboardClient from './DashboardClient'
@@ -59,7 +60,7 @@ export default async function AdminDashboardPage() {
     { data: quoteRequestsData },
     { data: sentQuotesData },
     { data: pendingPaymentsData },
-    { data: financialOrdersData },
+    { data: financialOrdersData, error: financialOrdersError },
     { data: financialDepositsData },
     { data: financialSentQuotesData },
   ] = await Promise.all([
@@ -76,7 +77,7 @@ export default async function AdminDashboardPage() {
     supabase.from('pcd_order_payments').select('id, order_id, payment_type, amount, pcd_orders(order_number, customer_name, status)').eq('is_paid', false),
     supabase.from('pcd_orders').select('id, quote_id, status, total_inc_gst, accepted_at, created_at').neq('status', 'cancelled'),
     supabase.from('pcd_order_payments').select('id, amount, payment_type, is_paid, paid_at, created_at, pcd_orders(status)').eq('payment_type', 'deposit').eq('is_paid', true),
-    supabase.from('pcd_quotes').select('id, status, total_inc_gst, sent_at, updated_at, created_at, order_id').in('status', ['sent', 'viewed']).is('order_id', null),
+    supabase.from('pcd_quotes').select('id, status, total_inc_gst, sent_at, updated_at, created_at, order_id, markup_amount_ex_gst, labour_cost_ex_gst').in('status', ['sent', 'viewed']).is('order_id', null),
   ])
 
   const enquiries     = enquiriesData     || []
@@ -123,11 +124,40 @@ export default async function AdminDashboardPage() {
 
   const financialOrderQuoteIds = new Set((financialOrdersData || []).map(order => order.quote_id).filter(Boolean))
 
+  // The cost split lives on the quote, not the order: an order stores the
+  // totals it was accepted at but not what they were made of.
+  //
+  // Fetched as its own query rather than embedded. pcd_orders.quote_id and
+  // pcd_quotes.order_id are BOTH foreign keys between these two tables, so
+  // "pcd_quotes(...)" embedded from pcd_orders is ambiguous, and PostgREST
+  // answers an ambiguous embed with an error and no rows at all. That took the
+  // order totals down with it.
+  const orderQuoteIds = Array.from(financialOrderQuoteIds) as string[]
+  const { data: orderQuotesData, error: orderQuotesError } = orderQuoteIds.length
+    ? await supabase.from('pcd_quotes').select('id, markup_amount_ex_gst, labour_cost_ex_gst').in('id', orderQuoteIds)
+    : { data: [], error: null }
+  const quoteProfitById = new Map((orderQuotesData || []).map(quote => [quote.id, quote]))
+
   const financialOrders = (financialOrdersData || []).map(order => ({
     id: order.id,
     monthKey: monthKey(order.accepted_at || order.created_at),
     amount: Number(order.total_inc_gst || 0),
   })).filter(row => row.monthKey)
+
+  // Profit is the markup plus the labour, ex GST, taken from the quote behind
+  // the order. See lib/pcd-quote-profit.js for why those two and nothing else.
+  const financialOrderProfit = (financialOrdersData || []).map(order => {
+    const profit = orderProfitExGst({ pcd_quotes: quoteProfitById.get(order.quote_id) || null })
+    return {
+      id: order.id,
+      monthKey: monthKey(order.accepted_at || order.created_at),
+      amount: profit ?? 0,
+      // An order raised without a quote, or whose quote has since been deleted,
+      // has revenue but no split behind it. Counted here so the panel can say
+      // so rather than reporting a profit of nothing on real money.
+      unknown: profit === null,
+    }
+  }).filter(row => row.monthKey)
 
   const financialDeposits = ((financialDepositsData || []) as DepositPaymentRow[]).filter(payment => payment.pcd_orders?.status !== 'cancelled').map(payment => ({
     id: payment.id,
@@ -135,10 +165,18 @@ export default async function AdminDashboardPage() {
     amount: Number(payment.amount || 0),
   })).filter(row => row.monthKey)
 
-  const financialSentQuotes = (financialSentQuotesData || []).filter(quote => !financialOrderQuoteIds.has(quote.id)).map(quote => ({
+  const pipelineQuotes = (financialSentQuotesData || []).filter(quote => !financialOrderQuoteIds.has(quote.id))
+
+  const financialSentQuotes = pipelineQuotes.map(quote => ({
     id: quote.id,
     monthKey: monthKey(quote.sent_at || quote.updated_at || quote.created_at),
     amount: Number(quote.total_inc_gst || 0),
+  })).filter(row => row.monthKey)
+
+  const financialPipelineProfit = pipelineQuotes.map(quote => ({
+    id: quote.id,
+    monthKey: monthKey(quote.sent_at || quote.updated_at || quote.created_at),
+    amount: quoteProfitExGst(quote),
   })).filter(row => row.monthKey)
 
   const years = Array.from(new Set([
@@ -148,10 +186,18 @@ export default async function AdminDashboardPage() {
     ...financialSentQuotes.map(row => Number(row.monthKey!.slice(0, 4))),
   ])).filter(Boolean).sort((a, b) => b - a)
 
+  // A query that fails comes back with no rows, which renders as a confident
+  // $0. That is worse than an error: nobody doubts a total. Passed through so
+  // the panel says the figures could not be loaded instead.
+  const financialError = Boolean(financialOrdersError || orderQuotesError)
+
   const financial = {
+    loadFailed: financialError,
     orders: financialOrders,
     deposits: financialDeposits,
     sentQuotes: financialSentQuotes,
+    orderProfit: financialOrderProfit,
+    pipelineProfit: financialPipelineProfit,
     years,
     currentMonth: String(new Date().getMonth() + 1).padStart(2, '0'),
     currentYear: new Date().getFullYear(),

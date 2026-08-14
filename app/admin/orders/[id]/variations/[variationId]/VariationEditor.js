@@ -176,7 +176,9 @@ function emptyLine() {
     unit_cost_per_sqm_ex_gst: 0,
     calculated_unit_cost_ex_gst: 0,
     product_unit_cost_ex_gst: "",
-    markup_percent: DEFAULT_BUSINESS_DEFAULTS.markup_percent,
+    // Blank means "inherit the configured markup". Seeding the built-in 40%
+    // here stamped it onto any line started before the defaults fetch resolved.
+    markup_percent: "",
     notes: "",
   };
 }

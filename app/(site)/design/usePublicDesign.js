@@ -1,6 +1,6 @@
 "use client";
 
-// The public planner's "brain" — the no-login counterpart to the admin
+// The public planner's "brain", the no-login counterpart to the admin
 // useDesignProgram hook. Same shape (project / one room / items / selection /
 // colour map), but it talks to the PUBLIC /api/public/design routes scoped by an
 // anonymous session code, and bootstraps that session on mount (resume from the
@@ -62,7 +62,7 @@ async function fetchCarcassDefault() {
 }
 
 // A floating shelf carries its own finish, and a fridge space / window /
-// doorway is a reference to what's already in the room — nothing is made, so
+// doorway is a reference to what's already in the room, nothing is made, so
 // none of them should be handed the project's carcass colour.
 const NO_CARCASS_DEFAULT = new Set(["floating_shelf", "appliance", "window", "door_opening"]);
 
@@ -142,7 +142,7 @@ export default function usePublicDesign() {
         if (existing) {
           const res = await fetch(`/api/public/design/${encodeURIComponent(existing)}`);
           if (res.ok) { const data = await res.json(); if (data.ok) { applyLoad(data); return; } }
-          // stale/invalid code — fall through to a fresh session
+          // stale/invalid code, fall through to a fresh session
         }
         await startFresh();
       } catch (err) {
@@ -275,7 +275,7 @@ export default function usePublicDesign() {
       });
       return await res.json();
     } catch {
-      return { ok: false, error: "Could not send — please check your connection and try again." };
+      return { ok: false, error: "Could not send. Please check your connection and try again." };
     }
   }
 

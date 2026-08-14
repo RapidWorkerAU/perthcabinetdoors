@@ -1,6 +1,7 @@
 ﻿import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
+import { attachQuotePdf } from "../../../../../../lib/pcd-quote-pdf-attachment";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -129,6 +130,24 @@ export async function POST(request, { params }) {
       .eq("id", id);
     if (updateError) throw updateError;
 
+    // The customer's copy of the quote, filed against the quote so it shows in
+    // the Attachments section of the viewer they are about to be linked to.
+    // Built after the status update so the PDF carries the sent quote, and
+    // without the cabinet drawings, which are a workshop drawing set.
+    //
+    // A failure here must not stop the send. The link in the email is the
+    // quote; a missing PDF is the behaviour we had before, whereas a failed
+    // send after the status is already "sent" leaves a quote the customer was
+    // never told about. Reported back so the editor can say so.
+    let pdfAttached = false;
+    let pdfError = null;
+    try {
+      await attachQuotePdf(context.supabase, id, { includeCabinetDrawings: false });
+      pdfAttached = true;
+    } catch (attachmentError) {
+      pdfError = attachmentError?.message || "Could not attach the quote PDF.";
+    }
+
     await logOrderActivity(context.supabase, {
       order_id: quote.order_id || null,
       quote_id: quote.id,
@@ -156,7 +175,7 @@ export async function POST(request, { params }) {
       emailSent = true;
     }
 
-    return Response.json({ ok: true, emailSent, viewUrl });
+    return Response.json({ ok: true, emailSent, viewUrl, pdfAttached, pdfError });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not send quote." }, { status: 500 });
   }

@@ -17,16 +17,13 @@ import CutListModal from "./CutListModal";
 import { RoomCutList } from "./CutListView";
 import useDesignProgram from "./useDesignProgram";
 import PinchZoom from "./PinchZoom";
+import PcdLoader from "../../../../components/public/PcdLoader";
 
 // three.js is heavy and only needed once the 3D view is opened, so it's split
 // out of the initial bundle and never server-rendered (r3f is client-only).
 const Design3DView = dynamic(() => import("./Design3DView"), {
   ssr: false,
-  loading: () => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#78716c", fontSize: 13 }}>
-      Loading 3D view…
-    </div>
-  ),
+  loading: () => <PcdLoader theme="dark" variant="panel" steps={["Loading the 3D view", "Almost there"]} label="Loading 3D view" />,
 });
 
 // One row in the "Quote & Export" kebab menu — dark, full-width, hover-lit.
@@ -91,7 +88,11 @@ export default function DesignProgram({ projectId }) {
   if (loading) {
     return (
       <div className={styles.designShell}>
-        <div className={styles.loadingScreen}>Loading design project…</div>
+        <PcdLoader
+          theme="dark"
+          steps={["Opening your project", "Loading the room", "Placing your cabinets", "Almost there"]}
+          label="Loading design project"
+        />
       </div>
     );
   }

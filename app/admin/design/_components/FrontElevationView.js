@@ -397,13 +397,70 @@ function DoorRowWithGap({ x, y, w, h, cfg, fill, scale, floor }) {
 // actually reads as an oven / microwave / cooktop rather than line-art over the
 // cabinet colour (which used to show through). Stainless body, black glass,
 // control strip + handle — its own palette, independent of the cabinet finish.
+const APPLIANCE_LABEL = {
+  microwave: "MW",
+  cooktop: "HOB",
+  fridge: "FRIDGE",
+  freezer: "FREEZER",
+  dishwasher: "DW",
+  washing_machine: "WASHER",
+  rangehood: "RANGEHOOD",
+  other: "APPLIANCE",
+};
+
 function ApplianceMock({ x, y, w, h, appliance }) {
   if (w <= 0 || h <= 0) return null;
-  const label = appliance === "microwave" ? "MW" : appliance === "cooktop" ? "HOB" : "OVEN";
+  const label = APPLIANCE_LABEL[appliance] || "OVEN";
   const steel = "#c7ccd2", glass = "#1b1c1f", ctrl = "#2c2f34", metal = "#8a9099";
   return (
     <g style={{ pointerEvents: "none" }}>
-      {appliance === "cooktop" ? (
+      {appliance === "fridge" || appliance === "freezer" ? (
+        // Fridge: steel body, a fridge-over-freezer split, and the two vertical
+        // handles either side of it, which is what makes it read as a fridge at
+        // a glance rather than as a tall grey box.
+        <>
+          <rect x={x} y={y} width={w} height={h} fill={steel} rx={2} />
+          <line x1={x} y1={y + h * 0.64} x2={x + w} y2={y + h * 0.64} stroke={metal} strokeWidth={1.5} />
+          {w > 16 && (
+            <>
+              <rect x={x + w * 0.78} y={y + h * 0.16} width={Math.max(2, w * 0.06)} height={h * 0.4}
+                fill={ctrl} rx={1.5} />
+              <rect x={x + w * 0.78} y={y + h * 0.72} width={Math.max(2, w * 0.06)} height={h * 0.18}
+                fill={ctrl} rx={1.5} />
+            </>
+          )}
+        </>
+      ) : appliance === "washing_machine" ? (
+        // Washer: steel body, control strip, round door.
+        <>
+          <rect x={x} y={y} width={w} height={h} fill={steel} rx={2} />
+          <rect x={x} y={y} width={w} height={h * 0.18} fill={ctrl} rx={2} />
+          <circle cx={x + w / 2} cy={y + h * 0.6} r={Math.min(w, h) * 0.26} fill={glass} />
+          <circle cx={x + w / 2} cy={y + h * 0.6} r={Math.min(w, h) * 0.18} fill="#2a2c30" />
+        </>
+      ) : appliance === "dishwasher" ? (
+        // Dishwasher: steel front, control strip and a full-width handle.
+        <>
+          <rect x={x} y={y} width={w} height={h} fill={steel} rx={2} />
+          <rect x={x} y={y} width={w} height={h * 0.16} fill={ctrl} rx={2} />
+          <rect x={x + w * 0.12} y={y + h * 0.26} width={w * 0.76} height={Math.max(1.5, h * 0.07)}
+            fill={metal} rx={1.5} />
+        </>
+      ) : appliance === "rangehood" ? (
+        // Rangehood: flue above a canopy that flares out to the cooktop, the
+        // same shape the catalogue tile draws.
+        <>
+          <rect x={x + w * 0.38} y={y} width={w * 0.24} height={h * 0.5} fill={steel} />
+          <polygon
+            points={`${x},${y + h} ${x + w},${y + h} ${x + w * 0.78},${y + h * 0.45} ${x + w * 0.22},${y + h * 0.45}`}
+            fill={steel}
+          />
+          <rect x={x} y={y + h - Math.max(1.5, h * 0.1)} width={w} height={Math.max(1.5, h * 0.1)} fill={metal} />
+        </>
+      ) : appliance === "other" ? (
+        // Anything else: a plain appliance box, deliberately featureless.
+        <rect x={x} y={y} width={w} height={h} fill={steel} rx={2} />
+      ) : appliance === "cooktop" ? (
         // Cooktop: black glass with four burner rings.
         <>
           <rect x={x} y={y} width={w} height={h} fill="#232326" rx={2} />
@@ -1468,6 +1525,17 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     <line x1={svgX} y1={svgY + svgH / 2} x2={svgX + svgW} y2={svgY + svgH / 2} stroke={fill} strokeWidth={1} strokeOpacity={0.6} />
                     <line x1={svgX + svgW / 2} y1={svgY} x2={svgX + svgW / 2} y2={svgY + svgH} stroke={fill} strokeWidth={1} strokeOpacity={0.6} />
                   </g>
+                )}
+                {/* A standalone appliance, drawn as the appliance it is. It used
+                    to fall through every branch here and render as a plain
+                    tinted box with a label, so a fridge on the elevation looked
+                    like an obstruction. Same component and palette the oven bays
+                    inside a cabinet use, so the two always match. */}
+                {item.item_type === "appliance" && svgW > 4 && svgH > 4 && (
+                  <ApplianceMock
+                    x={svgX} y={svgY} w={svgW} h={svgH}
+                    appliance={item.appliance_kind || "fridge"}
+                  />
                 )}
                 {/* Doorway — an inset panel outline with a handle dot. */}
                 {isDoorway && svgW > 8 && svgH > 8 && (

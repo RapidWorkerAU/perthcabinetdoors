@@ -11,6 +11,7 @@ import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/Admin
 import { AdminPageHeader } from '@/components/ui/AdminPageHeader'
 import { BulkActionBar } from '@/components/ui/BulkActionBar'
 import { StatusPill } from '@/components/ui/StatusPill'
+import { ADDRESS_FIELDS, addressColumns, addressFromRecord } from '../../../lib/pcd-contact-details';
 import { useToast } from '@/components/ui/Toast'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 
@@ -20,7 +21,10 @@ interface Customer {
   company_name?: string
   email?:        string
   phone?:        string
-  site_address?: string
+  site_address?:  string
+  site_street?:   string
+  site_suburb?:   string
+  site_postcode?: string
   notes?:        string
   is_active?:    boolean
   updated_at?:   string
@@ -33,7 +37,10 @@ interface CustomerForm {
   company_name:  string
   email:         string
   phone:         string
-  site_address:  string
+  site_address:   string
+  site_street:    string
+  site_suburb:    string
+  site_postcode:  string
   notes:         string
   is_active:     boolean
 }
@@ -44,7 +51,10 @@ const emptyForm: CustomerForm = {
   company_name: '',
   email:        '',
   phone:        '',
-  site_address: '',
+  site_address:  '',
+  site_street:   '',
+  site_suburb:   '',
+  site_postcode: '',
   notes:        '',
   is_active:    true,
 }
@@ -62,7 +72,7 @@ function formFromCustomer(customer: Customer): CustomerForm {
     company_name: customer.company_name || '',
     email:        customer.email        || '',
     phone:        customer.phone        || '',
-    site_address: customer.site_address || '',
+    ...addressColumns(addressFromRecord(customer)),
     notes:        customer.notes        || '',
     is_active:    customer.is_active    ?? true,
   }
@@ -111,6 +121,16 @@ export default function CustomersManager() {
 
   function updateForm(field: keyof CustomerForm, value: string | boolean) {
     setForm(current => ({ ...current, [field]: value }))
+  }
+
+  // The three parts and the joined one-liner move together. Everything that
+  // reads a customer address still reads site_address, so a screen that wrote
+  // only the parts would show the old address everywhere else.
+  function updateAddress(key: string, value: string) {
+    setForm(current => ({
+      ...current,
+      ...addressColumns({ ...addressFromRecord(current), [key]: value }),
+    }))
   }
 
   function openNewCustomerModal() {
@@ -377,7 +397,19 @@ export default function CustomersManager() {
           <Input label="Company" value={form.company_name} onChange={event => updateForm('company_name', event.target.value)} optional />
           <Input label="Email" type="email" value={form.email} onChange={event => updateForm('email', event.target.value)} optional />
           <Input label="Phone" value={form.phone} onChange={event => updateForm('phone', event.target.value)} optional />
-          <Input label="Site / delivery address" value={form.site_address} onChange={event => updateForm('site_address', event.target.value)} optional containerClassName="md:col-span-2" />
+          {ADDRESS_FIELDS.map(field => (
+            <Input
+              key={field.key}
+              label={field.label}
+              placeholder={field.placeholder}
+              autoComplete={field.autoComplete}
+              inputMode={field.inputMode}
+              value={(form as unknown as Record<string, string>)[`site_${field.key}`] || ''}
+              onChange={event => updateAddress(field.key, event.target.value)}
+              optional
+              containerClassName={field.key === 'street' ? 'md:col-span-2' : undefined}
+            />
+          ))}
           <Textarea label="Notes" value={form.notes} onChange={event => updateForm('notes', event.target.value)} optional containerClassName="md:col-span-2" rows={3} />
           <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#1a1a18] md:col-span-2">
             <input

@@ -2,8 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney } from "../../../lib/pcd-quote-utils";
+import AddressFields from "../../../components/admin/AddressFields";
+import { addressColumns, addressFromRecord } from "../../../lib/pcd-contact-details";
 import styles from "../admin-content.module.css";
 import { useToast } from "@/components/ui/Toast";
+
+// Quotes saved while the terms were hard-coded carry this exact string. Treat
+// it as "never customised" so they pick up whatever is set in Business
+// Defaults, instead of being stuck on wording nobody chose.
+const LEGACY_HARDCODED_TERMS =
+  "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.";
 
 const emptyLine = {
   product_name: "",
@@ -17,12 +25,16 @@ const emptyLine = {
   qty: 1,
   product_unit_cost_ex_gst: "",
   labour_hours: "",
-  worker_hourly_rate: DEFAULT_BUSINESS_DEFAULTS.worker_hourly_rate,
+  // Blank so the configured defaults fill these in — see the note on
+  // emptyLine.markup_percent in QuoteEditor. Seeding the built-in constants
+  // here meant a line created before the defaults fetch resolved kept 40% and
+  // $85/hr no matter what the settings screen said.
+  worker_hourly_rate: "",
   travel_cost_ex_gst: "",
   delivery_cost_ex_gst: "",
   installation_cost_ex_gst: "",
   other_cost_ex_gst: "",
-  markup_percent: DEFAULT_BUSINESS_DEFAULTS.markup_percent,
+  markup_percent: "",
   notes: "",
 };
 
@@ -36,11 +48,18 @@ const emptyForm = {
   customer_email: "",
   customer_phone: "",
   site_address: "",
+  site_street: "",
+  site_suburb: "",
+  site_postcode: "",
   project_name: "",
   currency: DEFAULT_BUSINESS_DEFAULTS.currency,
   gst_rate: DEFAULT_BUSINESS_DEFAULTS.gst_rate,
   notes: "",
-  terms: "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.",
+  // Left blank on purpose. This used to hold a hard-coded copy of the old terms
+  // wording, and because the API only falls back to the configured quote_terms
+  // when the payload's terms are empty, a quote started here always shipped the
+  // hard-coded text and the terms set in Business Defaults were never used.
+  terms: "",
   lines: [{ ...emptyLine }],
 };
 
@@ -72,7 +91,7 @@ function formFromQuote(quote, defaults = DEFAULT_BUSINESS_DEFAULTS) {
     customer_name: quote.customer_name || "",
     customer_email: quote.customer_email || "",
     customer_phone: quote.customer_phone || "",
-    site_address: quote.site_address || "",
+    ...addressColumns(addressFromRecord(quote)),
     project_name: quote.project_name || "",
     notes: quote.notes || "",
     terms: quote.terms || emptyForm.terms,
@@ -142,6 +161,10 @@ export default function QuotesManager() {
           current.gst_rate === "" || current.gst_rate === null || current.gst_rate === undefined
             ? nextDefaults.gst_rate
             : current.gst_rate,
+        terms:
+          !current.terms || current.terms === LEGACY_HARDCODED_TERMS
+            ? nextDefaults.quote_terms || ""
+            : current.terms,
         lines: current.lines.map((line) => ({
           ...line,
           worker_hourly_rate:
@@ -192,7 +215,7 @@ export default function QuotesManager() {
       const response = await fetch(endpoint, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ...addressColumns(addressFromRecord(form)) }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -300,10 +323,13 @@ export default function QuotesManager() {
               Phone
               <input className={styles.fieldInput} value={form.customer_phone} onChange={(event) => updateForm("customer_phone", event.target.value)} />
             </label>
-            <label className={styles.fieldLabel}>
-              Site / delivery address
-              <input className={styles.fieldInput} value={form.site_address} onChange={(event) => updateForm("site_address", event.target.value)} />
-            </label>
+            <AddressFields
+              value={{ street: form.site_street, suburb: form.site_suburb, postcode: form.site_postcode }}
+              onChange={(key, value) => updateForm(`site_${key}`, value)}
+              labelClassName={styles.fieldLabel}
+              inputClassName={styles.fieldInput}
+              streetClassName=""
+            />
           </div>
         </section>
 

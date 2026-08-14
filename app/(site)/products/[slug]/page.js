@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import PublicSiteNav from "../../PublicSiteNav";
+import { PRODUCTS_ENABLED } from "../../../../lib/pcd-site-flags";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 import {
   getProductBySlug,
@@ -85,6 +86,9 @@ export async function generateMetadata({ params }) {
 }
 
 export default async function ProductDetailPage({ params }) {
+  // Switched off site-wide, see lib/pcd-site-flags.js.
+  if (!PRODUCTS_ENABLED) notFound();
+
   const { slug } = await params;
   const { product, relatedProducts } = await loadProductBySlug(slug);
 

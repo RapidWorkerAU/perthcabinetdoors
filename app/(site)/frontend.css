@@ -227,11 +227,38 @@ a {
   color: #f0ede4;
 }
 
-.public-site-nav-quote {
-  border: 1px solid rgba(240, 237, 228, 0.36);
+/* The two nav buttons share their box metrics from here so they line up
+   exactly. They used to be set separately (10px/15px against 11px/18px, one
+   with a background tint and one without), which left them almost - but not
+   quite - the same size. */
+.public-site-nav-quote,
+.public-site-nav-list {
+  align-items: center;
+  border: 1px solid transparent;
   border-radius: 2px;
-  padding: 11px 18px;
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 16px;
   text-align: center;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+/* The primary action, and the only filled thing in the bar. This matches
+   .public-site-mobile-menu-quote, which was already a solid button - the
+   desktop bar just never got the same treatment, so the main call to action
+   sat in the same outline as everything around it. */
+.public-site-nav-quote {
+  background: #a8c5a0;
+  border-color: #a8c5a0;
+  color: #07130a;
+}
+
+.public-site-nav-quote:hover {
+  background: #b9d3b2;
+  border-color: #b9d3b2;
 }
 
 .public-site-nav-actions {
@@ -241,9 +268,176 @@ a {
   justify-content: flex-end;
 }
 
+/* Quote-list button. Only rendered once something is on the list, so the nav is
+   unchanged for a first-time visitor.
+
+   Deliberately the quiet one of the pair: an outline against the solid Get a
+   Quote beside it. The colour is set explicitly rather than inherited, because
+   .public-site-nav sets no colour of its own and `inherit` reached all the way
+   up to the body's near black ink, rendering dark-on-dark against the green
+   bar. Box metrics come from the shared rule above. */
+.public-site-nav-list {
+  background: transparent;
+  border-color: rgba(240, 237, 228, 0.32);
+  color: #f0ede4;
+  cursor: pointer;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-site-nav-list:hover {
+  background: rgba(240, 237, 228, 0.08);
+  border-color: rgba(240, 237, 228, 0.58);
+}
+
+/* Inherits the button's cream rather than carrying its own green. The icon, the
+   badge and the Get a Quote button were three different colours in about 200
+   pixels of bar. */
+.public-site-nav-list svg {
+  flex: 0 0 auto;
+  opacity: 0.72;
+}
+
+/* A true circle at one digit, stretching to a pill at two or more. It had no
+   height of its own before, so it sat as a squat lozenge. Uses the same accent
+   as the Get a Quote button rather than a second, darker green. */
+.public-site-nav-list b,
+.public-site-mobile-menu-list b {
+  align-items: center;
+  background: #a8c5a0;
+  border-radius: 999px;
+  color: #07130a;
+  display: inline-flex;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  height: 18px;
+  justify-content: center;
+  letter-spacing: 0;
+  min-width: 18px;
+  padding: 0 5px;
+}
+
+/* Floating list button. The header badge is the primary way in, but the
+   configurator is a long page and someone six doors deep should not have to
+   scroll back to the top to check what they have added. Only rendered when the
+   list has something in it, and hidden while the drawer or mobile menu is open.
+   Sits below the drawer's z-index so it can never overlap its own panel. */
+.public-site-list-fab {
+  align-items: center;
+  background: #1c2b1e;
+  border: 1px solid rgba(240, 237, 228, 0.18);
+  border-radius: 50%;
+  bottom: 24px;
+  box-shadow: 0 10px 26px rgba(17, 27, 19, 0.34);
+  color: #f0ede4;
+  cursor: pointer;
+  display: flex;
+  height: 58px;
+  justify-content: center;
+  position: fixed;
+  right: 24px;
+  transition: background-color 0.15s, transform 0.15s;
+  width: 58px;
+  z-index: 80;
+  animation: pcd-fab-in 0.22s ease-out;
+}
+
+.public-site-list-fab:hover {
+  background: #263a29;
+  transform: translateY(-2px);
+}
+
+.public-site-list-fab b {
+  align-items: center;
+  /* Same accent as the header badge - they are the same count. */
+  background: #a8c5a0;
+  border: 2px solid #1c2b1e;
+  border-radius: 11px;
+  color: #07130a;
+  display: flex;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  height: 22px;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 5px;
+  position: absolute;
+  right: -4px;
+  top: -4px;
+}
+
+@keyframes pcd-fab-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-site-list-fab {
+    animation: none;
+  }
+
+  .public-site-list-fab:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .public-site-list-fab {
+    bottom: 16px;
+    height: 54px;
+    right: 16px;
+    width: 54px;
+  }
+}
+
+/* The mobile menu panel is near-black, so this needs the same light treatment
+   as .public-site-mobile-menu-login / -quote beside it. */
+.public-site-mobile-menu-list {
+  align-items: center;
+  background: rgba(240, 237, 228, 0.06);
+  border: 1px solid rgba(240, 237, 228, 0.32);
+  border-radius: 2px;
+  color: #f0ede4;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  letter-spacing: 0.08em;
+  padding: 13px 18px;
+  text-transform: uppercase;
+  width: 100%;
+}
+
+.public-site-mobile-menu-list svg {
+  flex: 0 0 auto;
+  opacity: 0.72;
+}
+
+/* A staff door, not a customer action. Dimmer than the nav links so it reads as
+   the least important thing in the bar rather than competing with the two
+   buttons it sits beside. */
 .public-site-nav-login {
-  color: rgba(240, 237, 228, 0.78);
-  padding: 11px 0;
+  color: rgba(240, 237, 228, 0.55);
+  padding: 11px 4px;
+  transition: color 0.15s;
+}
+
+.public-site-nav-login:hover {
+  color: #f0ede4;
 }
 
 .public-site-nav-menu-button {
@@ -693,6 +887,245 @@ a {
   margin: 0;
 }
 
+/* Cabinet elevations (components/public/CabinetElevation.js). Global rather
+   than a CSS module because the same drawing appears in the configurator, the
+   quote-list drawer and the quote form, and they must not drift. */
+.pcdElevCarcass,
+.pcdElevFront,
+.pcdElevPull,
+.pcdElevSwing {
+  vector-effect: non-scaling-stroke;
+}
+
+.pcdElevCarcass {
+  fill: #ede8dc;
+  stroke: #c4bda9;
+  stroke-width: 1;
+}
+
+.pcdElevFront {
+  fill: #fdfcfa;
+  stroke: #8f8a7c;
+  stroke-width: 1;
+}
+
+.pcdElevPull {
+  stroke: #5a5a52;
+  stroke-linecap: round;
+  stroke-width: 1.6;
+}
+
+.pcdElevSwing {
+  stroke: #6b9e61;
+  stroke-dasharray: 3 2.5;
+  stroke-width: 1;
+}
+
+/* The elevation thumbnail on a card in the planner's "what should we quote?"
+   picker. preserveAspectRatio letterboxes the drawing, so filling the box is
+   safe: a tall pantry and a wide shelf both stay to scale. */
+.pcdDesignPartFigure {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── select ──────────────────────────────────────────────────────────────────
+   One dropdown treatment for the whole public site.
+
+   There were six of them before this. Some drew a chevron 14px from the edge,
+   some 10px, and several used the browser's native arrow, which on Windows sits
+   hard against the border. On a narrow control that looks like a mistake, and a
+   long option would run straight into the arrow and fight it.
+
+   TWO BACKGROUND LAYERS do the work. A solid chip fills the right end of the
+   control, and the chevron is drawn on top of it. The text box stops short of
+   that chip (padding-right), so a long option is clipped with an ellipsis
+   before it can ever reach the arrow, and the chip is opaque, so there is
+   always something solid between the two. Text can slide under it; it can never
+   compete with it.
+
+   --pcdSelectChip is the chip colour and MUST match the control's own
+   background, or the chip shows as a block. It defaults to white; anything on a
+   tinted background sets it. */
+.pcdSelect {
+  --pcdSelectChip: #ffffff;
+  appearance: none;
+  -webkit-appearance: none;
+  /* !important on all four: an inline `background` shorthand inherited from a
+     shared style object would otherwise reset every one of them to its initial
+     value and leave the control with no arrow at all. */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236a6a62' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+    linear-gradient(var(--pcdSelectChip), var(--pcdSelectChip)) !important;
+  background-position: right 15px center, right 1px center !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: 11px 7px, 40px calc(100% - 2px) !important;
+  cursor: pointer;
+  overflow: hidden;
+  padding-right: 40px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The chip stops 1px short of the edge so it never paints over the border. */
+
+/* Narrow controls, where a 40px chip would leave no room for the value. */
+.pcdSelect--compact {
+  background-position: right 9px center, right 1px center !important;
+  background-size: 10px 6px, 26px calc(100% - 2px) !important;
+  padding-right: 26px;
+}
+
+/* On a dark bar. The chevron is redrawn light rather than tinted, because a
+   filter would soften it. */
+.pcdSelect--dark {
+  --pcdSelectChip: #3d3e3b;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23f3f1ea' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+    linear-gradient(var(--pcdSelectChip), var(--pcdSelectChip)) !important;
+}
+
+/* A tinted field, e.g. the review form's #faf9f6 inputs. */
+.pcdSelect--tinted { --pcdSelectChip: #faf9f6; }
+
+/* ── the cabinet-build loader ────────────────────────────────────────────────
+   Moved to components/public/pcd-loader.css, which PcdLoader.js imports
+   itself. The admin design tool needs the same loader on a dark background and
+   does not load this stylesheet, so the rules live with the component and are
+   themed by token rather than copied. Do not add loader rules back here. */
+
+/* ── planner "Review and send" ───────────────────────────────────────────────
+   The second step of Send to PCD, built to read as the same document as
+   /request-quote. Values below are lifted from contact.module.css (the
+   stylesheet that form uses) rather than approximated, so the two stay
+   recognisably one form: the 1.2fr/1fr/1fr top strip, the #1c2b1e table bar,
+   the 22px round row numbers, the #a8c5a0 submit. Prefixed pcdRq so nothing
+   here can collide with the module's own hashed class names. */
+.pcdRq { background: #f7f6f1; padding: 20px; min-height: 100%; }
+.pcdRqLabel { color: #6b9e61; display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; margin-bottom: 14px; text-transform: uppercase; }
+.pcdRqTop { display: grid; gap: 16px; grid-template-columns: 1.2fr 1fr 1fr; margin-bottom: 24px; }
+.pcdRqCard { background: #fff; border: 1px solid #dbd8cc; border-radius: 6px; padding: 20px; }
+.pcdRqCardDark { background: #1c2b1e; border-radius: 6px; padding: 20px; }
+.pcdRqCardDark .pcdRqLabel { color: #a8c5a0; }
+.pcdRqGrid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; margin-bottom: 10px; }
+.pcdRqGrid:last-child { margin-bottom: 0; }
+.pcdRqField { display: flex; flex-direction: column; gap: 6px; }
+.pcdRqField label { color: #6a6a62; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.pcdRqField input,
+.pcdRqField textarea {
+  appearance: none;
+  background: #faf9f6;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  color: #1a1a18;
+  font: inherit;
+  font-size: 13px;
+  padding: 10px 12px;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.pcdRqField input:focus,
+.pcdRqField textarea:focus { border-color: #6b9e61; box-shadow: 0 0 0 3px rgba(107, 158, 97, 0.12); outline: none; }
+.pcdRqField textarea { line-height: 1.6; min-height: 96px; resize: vertical; }
+.pcdRqField input:disabled { color: #6a6a62; cursor: default; }
+.pcdRqInputError { border-color: #e07060 !important; }
+.pcdRqErr { color: #9b2d20; font-size: 12px; font-weight: 600; margin: 0 0 10px; text-align: center; }
+
+.pcdRqInfoRow { border-bottom: 1px solid #edeae0; display: flex; flex-direction: column; padding: 9px 0; }
+.pcdRqInfoRow:first-of-type { padding-top: 0; }
+.pcdRqInfoRow:last-child { border-bottom: none; padding-bottom: 0; }
+.pcdRqInfoRow span { color: #9a9a90; font-size: 10px; }
+.pcdRqInfoRow strong { color: #1a1a18; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.pcdRqInfoRow a { color: inherit; text-decoration: none; }
+.pcdRqInfoRow small { color: #8a8a80; font-size: 11px; }
+.pcdRqPromise { align-items: flex-start; color: #dfe7dc; display: flex; font-size: 12.5px; gap: 9px; line-height: 1.5; margin-bottom: 9px; }
+.pcdRqPromise:last-child { margin-bottom: 0; }
+.pcdRqDot { background: #6b9e61; border-radius: 50%; flex-shrink: 0; height: 5px; margin-top: 7px; width: 5px; }
+
+.pcdRqFromDesign {
+  align-items: center;
+  background: #edf4eb;
+  border: 1px solid #c0d9b8;
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+}
+.pcdRqFromDesign p { color: #3f6a38; flex: 1; font-size: 12.5px; line-height: 1.5; margin: 0; min-width: 220px; }
+.pcdRqFromDesign strong { color: #2c5226; }
+
+.pcdRqTableWrap { background: #fff; border: 1px solid #dbd8cc; border-radius: 6px; margin-bottom: 16px; }
+.pcdRqBar { align-items: center; background: #1c2b1e; border-radius: 6px 6px 0 0; display: flex; gap: 10px; justify-content: space-between; padding: 11px 16px; }
+.pcdRqBar span { color: #a8c5a0; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.pcdRqBarBtn { background: #a8c5a0; border: none; border-radius: 3px; color: #1c2b1e; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; min-height: 36px; padding: 6px 14px; }
+.pcdRqBarBtn:hover { background: #94b48b; }
+
+.pcdRqHead,
+.pcdRqRow { display: grid; grid-template-columns: minmax(150px, 1.15fr) minmax(140px, 1fr) minmax(105px, 0.75fr) minmax(180px, 1.2fr) 58px 92px; }
+.pcdRqHead { background: #f5f3ee; border-bottom: 2px solid #dbd8cc; color: #8a8a80; font-size: 10px; font-weight: 700; letter-spacing: 0.07em; min-height: 36px; text-transform: uppercase; }
+.pcdRqHead > div,
+.pcdRqRow > div { align-items: center; display: flex; min-width: 0; padding: 10px 14px; }
+.pcdRqRow { border-bottom: 1px solid #edeae0; color: #1a1a18; font-size: 13px; min-height: 54px; }
+.pcdRqRow:last-child { border-bottom: none; }
+/* A row we cannot quote yet. Marked rather than merely listed below, so the
+   sentence blocking the send points at something findable. Same red as the
+   quote acceptance gate, which blocks for the same kind of reason. */
+.pcdRqRowNeeds { background: #fdf4f3; box-shadow: inset 3px 0 0 #d9847a; }
+.pcdRqRowNeeds .pcdRqNA { color: #a3372c; font-weight: 600; }
+
+.pcdRqBlocked {
+  background: #fdf4f3;
+  border: 1px solid #d9847a;
+  border-left-width: 3px;
+  border-radius: 10px;
+  color: #9c3126;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+  padding: 12px 15px;
+}
+.pcdRqBlocked strong { display: block; font-size: 13.5px; margin-bottom: 5px; }
+.pcdRqBlocked ul { margin: 0 0 6px; padding-left: 18px; }
+.pcdRqBlocked li { margin-bottom: 2px; }
+.pcdRqBlocked p { margin: 0; color: #a85a4f; font-size: 12.5px; }
+.pcdRqRow > div:not(:first-child) { color: #6a6a62; }
+.pcdRqRow strong { font-weight: 600; }
+.pcdRqNum { align-items: center; background: #1c2b1e; border-radius: 50%; color: #a8c5a0; display: inline-flex; flex-shrink: 0; font-size: 10px; font-weight: 700; height: 22px; justify-content: center; margin-right: 10px; width: 22px; }
+.pcdRqFrom { color: #8a8a80; display: block; font-size: 10.5px; font-weight: 400; margin-top: 1px; }
+.pcdRqMono { font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace; font-size: 12px; font-variant-numeric: tabular-nums; }
+.pcdRqNA { color: #c0bdb5; font-size: 12px; font-style: italic; }
+.pcdRqSwatch { border: 1px solid rgba(0, 0, 0, 0.16); border-radius: 3px; flex-shrink: 0; height: 15px; margin-right: 8px; width: 15px; }
+.pcdRqActions { align-items: center; display: flex; gap: 4px; justify-content: flex-end; }
+.pcdRqDel { background: none; border: none; border-radius: 3px; color: #aaa; cursor: pointer; font: inherit; font-size: 16px; line-height: 1; padding: 3px 6px; }
+.pcdRqDel:hover { background: #fbeceb; color: #c0392b; }
+.pcdRqEmpty { color: #6a6a62; display: flex; flex-direction: column; font-size: 13px; gap: 4px; padding: 22px 16px; }
+.pcdRqEmpty strong { color: #1a1a18; font-weight: 600; }
+
+.pcdRqBottom { display: grid; gap: 16px; grid-template-columns: 1fr 260px; margin-bottom: 18px; }
+.pcdRqTip { background: #f0ede4; border: 1px solid #dbd8cc; border-radius: 6px; padding: 20px; }
+.pcdRqTip p { color: #5a5a52; font-size: 13px; line-height: 1.6; margin: 0 0 10px; }
+.pcdRqTip p:last-child { margin-bottom: 0; }
+.pcdRqSubmit { background: #a8c5a0; border: none; border-radius: 2px; color: #1c2b1e; cursor: pointer; font: inherit; font-size: 15px; font-weight: 700; letter-spacing: 0.04em; padding: 16px 24px; width: 100%; }
+.pcdRqSubmit:hover { background: #91b389; }
+.pcdRqSubmit:disabled { cursor: not-allowed; opacity: 0.6; }
+.pcdRqNote { color: #9a9a90; font-size: 12px; line-height: 1.5; margin: 8px 0 0; text-align: center; }
+
+/* One column, and the table becomes stacked cards, the same fallback the
+   quote request form uses on a phone. */
+@media (max-width: 900px) {
+  .pcdRqTop,
+  .pcdRqBottom,
+  .pcdRqGrid { grid-template-columns: 1fr; }
+  .pcdRqHead { display: none; }
+  .pcdRqRow { border-bottom: 8px solid #f7f6f1; grid-template-columns: 1fr; }
+  .pcdRqRow > div { padding: 4px 14px; }
+  .pcdRqRow > div:first-child { padding-top: 12px; }
+  .pcdRqActions { justify-content: flex-start; padding-bottom: 12px; }
+}
+
 .landing-style-section {
   border-top: 1px solid #dbd8cc;
   padding-top: 64px;
@@ -771,6 +1204,15 @@ a {
   font-size: 16px;
   margin: 0 auto 34px;
   max-width: 560px;
+}
+
+/* Two buttons now, so they need a row of their own, the section is centred
+   text, and inline-block buttons would sit flush against each other. */
+.landing-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
 }
 
 .landing-cta span {

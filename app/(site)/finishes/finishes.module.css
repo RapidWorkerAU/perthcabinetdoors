@@ -1,0 +1,470 @@
+.browser {
+  min-width: 0;
+}
+
+/* ---------- tabs ---------- */
+
+/* The rule under the tabs is an inset shadow rather than a border, and the tabs
+   no longer pull themselves down over it with a negative margin.
+
+   The old version had `border-bottom` here and `margin-bottom: -1px` on each
+   tab, so the active tab's underline could sit on top of the rule. That 1px of
+   overhang put the tab's border box 1px below the container's content box,
+   which is enough to overflow it. And because `overflow-x: auto` was set with
+   no `overflow-y`, the spec computes the visible axis to `auto` as well, so a
+   vertical scrollbar appeared next to a single row of tabs.
+
+   An inset shadow draws the same 1px line without taking part in layout, and
+   the tabs paint over it where they sit, so the active underline still covers
+   the rule with nothing hanging outside the box. overflow-y is pinned to hidden
+   regardless, so the pair can never drift apart again. */
+.tabs {
+  box-shadow: inset 0 -1px 0 #dbd8cc;
+  display: flex;
+  gap: 2px;
+  margin-bottom: 22px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tab {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #5a5a52;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px 18px;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: #1a1a18;
+}
+
+.tabActive {
+  border-bottom-color: #1c2b1e;
+  color: #1a1a18;
+}
+
+.tab em {
+  color: #8b8a81;
+  font-size: 11.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  margin-left: 7px;
+}
+
+.tabActive em {
+  color: #4a7a42;
+}
+
+/* ---------- filters ----------
+   Selects rather than pills. There are 17 finish ranges, and a pill row wrapped
+   to three lines before it showed anything. */
+
+.filters {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field span {
+  color: #8b8a81;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.field select,
+.field input {
+  /* background-color, never the shorthand: it would wipe the .pcdSelect arrow. */
+  background-color: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: #1a1a18;
+  font: 400 13.5px Arial, "Helvetica Neue", Helvetica, sans-serif;
+  min-width: 200px;
+  padding: 10px 12px;
+}
+
+.field select:focus,
+.field input:focus {
+  border-color: #6b9e61;
+  outline: none;
+}
+
+.fieldSearch {
+  flex: 1;
+  min-width: 220px;
+}
+
+.fieldSearch input {
+  width: 100%;
+}
+
+.resultBar {
+  align-items: center;
+  border-top: 1px solid #dbd8cc;
+  color: #5a5a52;
+  display: flex;
+  font-size: 12.5px;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-top: 12px;
+}
+
+.clear {
+  background: none;
+  border: 0;
+  color: #4a7a42;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.familyNote {
+  background: #edf4eb;
+  border-left: 3px solid #6b9e61;
+  border-radius: 0 3px 3px 0;
+  color: #3a3a34;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+}
+
+/* ---------- grid ---------- */
+
+.grid {
+  display: grid;
+  gap: 12px;
+}
+
+.colours {
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+}
+
+.profiles {
+  grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+}
+
+.edges {
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+}
+
+.empty {
+  color: #8b8a81;
+  font-size: 13.5px;
+  grid-column: 1 / -1;
+  line-height: 1.65;
+  margin: 0;
+  padding: 34px 0;
+  text-align: center;
+}
+
+.tile {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  font-family: inherit;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  transition: border-color 0.15s, transform 0.12s;
+  width: 100%;
+}
+
+.tile:hover {
+  border-color: #6b9e61;
+  transform: translateY(-2px);
+}
+
+.thumb {
+  display: block;
+  position: relative;
+}
+
+.thumb img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+/* Colours are flat tiles, profiles are portrait door shots, edges are wide
+   section drawings, each wants its own proportion. */
+.thumb_colours {
+  height: 82px;
+}
+
+.thumb_profiles {
+  aspect-ratio: 738 / 960;
+}
+
+.thumb_edges {
+  aspect-ratio: 4 / 3;
+  background: #f8f4ef;
+}
+
+.thumb_edges img {
+  object-fit: contain;
+  padding: 8px;
+}
+
+.noImage {
+  align-items: center;
+  background: #f8f4ef;
+  color: #8b8a81;
+  display: flex;
+  font-size: 11px;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
+.badge {
+  background: rgba(26, 26, 24, 0.82);
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  padding: 3px 6px;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+}
+
+.zoom {
+  align-items: center;
+  background: rgba(17, 27, 19, 0.34);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  opacity: 0;
+  position: absolute;
+  transition: opacity 0.15s;
+}
+
+.tile:hover .zoom,
+.tile:focus-visible .zoom {
+  opacity: 1;
+}
+
+.zoom span {
+  background: #ffffff;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
+}
+
+.tileName {
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 9px 10px;
+}
+
+.tileName em {
+  color: #8b8a81;
+  display: block;
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: 0.05em;
+  margin-top: 3px;
+  text-transform: uppercase;
+}
+
+.moreWrap {
+  margin-top: 22px;
+  text-align: center;
+}
+
+.more {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: #1a1a18;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  padding: 12px 24px;
+}
+
+.more:hover {
+  background: #f0ede4;
+  border-color: #6b9e61;
+}
+
+/* ---------- lightbox ---------- */
+
+.lightbox {
+  align-items: center;
+  background: rgba(12, 18, 13, 0.92);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 40px 70px;
+  position: fixed;
+  z-index: 95;
+}
+
+.lbClose {
+  background: none;
+  border: 0;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 32px;
+  line-height: 1;
+  padding: 4px 10px;
+  position: absolute;
+  right: 18px;
+  top: 14px;
+}
+
+.lbNav {
+  background: none;
+  border: 0;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 44px;
+  line-height: 1;
+  opacity: 0.72;
+  padding: 10px 16px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.lbNav:hover {
+  opacity: 1;
+}
+
+.lbPrev {
+  left: 10px;
+}
+
+.lbNext {
+  right: 10px;
+}
+
+.lbFigure {
+  margin: 0;
+  max-width: 560px;
+  text-align: center;
+  width: 100%;
+}
+
+.lbImage {
+  align-items: center;
+  background: #f0ede4;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lbImage img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.lbImage_colours {
+  aspect-ratio: 4 / 3;
+}
+
+.lbImage_profiles {
+  aspect-ratio: 738 / 960;
+  margin: 0 auto;
+  max-height: 62vh;
+  width: auto;
+}
+
+.lbImage_profiles img {
+  object-fit: contain;
+}
+
+.lbImage_edges {
+  aspect-ratio: 4 / 3;
+  background: #ffffff;
+}
+
+.lbImage_edges img {
+  object-fit: contain;
+  padding: 20px;
+}
+
+.lbFigure figcaption {
+  color: #ffffff;
+  margin-top: 16px;
+}
+
+.lbFigure b {
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24px;
+  font-weight: 400;
+}
+
+.lbFigure span {
+  color: rgba(255, 255, 255, 0.72);
+  display: block;
+  font-size: 13px;
+  margin-top: 5px;
+}
+
+.lbFigure em {
+  color: rgba(255, 255, 255, 0.45);
+  display: block;
+  font-size: 11.5px;
+  font-style: normal;
+  margin-top: 10px;
+}
+
+@media (max-width: 680px) {
+  .field select,
+  .field input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .field {
+    flex: 1 1 100%;
+  }
+
+  .lightbox {
+    padding: 20px 14px;
+  }
+
+  .lbNav {
+    font-size: 32px;
+    padding: 6px 8px;
+  }
+
+  .lbFigure em {
+    display: none;
+  }
+}

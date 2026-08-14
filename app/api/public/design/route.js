@@ -17,7 +17,7 @@ export async function POST(request) {
     const code = generateSessionCode();
     const { data: project, error: projectError } = await supabase
       .from("pcd_design_projects")
-      .insert({ name: "My kitchen design", status: "draft", is_public: true, access_code: code })
+      .insert({ name: "My design", status: "draft", is_public: true, access_code: code })
       .select("*")
       .single();
     if (projectError) throw projectError;
@@ -25,7 +25,7 @@ export async function POST(request) {
     const room = clampRoom(body?.room || {});
     const { data: roomRow, error: roomError } = await supabase
       .from("pcd_design_rooms")
-      .insert({ design_project_id: project.id, name: "Kitchen", sort_order: 0, ...room })
+      .insert({ design_project_id: project.id, name: "Room", sort_order: 0, ...room })
       .select("*")
       .single();
     if (roomError) throw roomError;

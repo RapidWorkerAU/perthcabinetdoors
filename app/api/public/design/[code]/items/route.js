@@ -11,6 +11,7 @@ import {
   stripForbiddenItemFields,
 } from "../../../../../../lib/pcd-public-design";
 import { applyMaterialDefaults, buildItemRow } from "../../../../../../lib/pcd-design-item-io";
+import { resolveIkeaPreset } from "../../../../../../lib/pcd-ikea-presets";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,23 @@ export async function POST(request, { params }) {
 
     const clean = stripForbiddenItemFields(payload);
     clean.room_id = room?.id || null;
+
+    // A standard-size prop resolves its own box here rather than trusting the
+    // sizes the browser sent, so "locked" means locked and not merely greyed
+    // out on screen. An unknown ref is refused outright: it would otherwise
+    // create an item that quietly drops out of the quote.
+    if (clean.preset_ref) {
+      const preset = resolveIkeaPreset(clean.preset_ref);
+      if (!preset) {
+        return Response.json({ ok: false, error: "That isn't a size we recognise." }, { status: 422 });
+      }
+      clean.item_type = preset.item_type;
+      clean.width_mm = preset.width_mm;
+      clean.height_mm = preset.height_mm;
+      clean.depth_mm = preset.depth_mm;
+      clean.label = preset.label;
+    }
+
     const defaulted = applyMaterialDefaults(clean, project.material_defaults);
 
     const { data, error } = await supabase

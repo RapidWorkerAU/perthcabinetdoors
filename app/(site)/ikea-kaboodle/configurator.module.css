@@ -1,0 +1,1088 @@
+/* Two-panel configurator: accordion steps left, live preview and running list
+   pinned right. Collapses to a single column, list first, on narrow screens. */
+
+.configurator {
+  align-items: start;
+  display: grid;
+  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) 330px;
+}
+
+.steps {
+  min-width: 0;
+}
+
+/* ---------- steps ---------- */
+
+.step {
+  border-top: 1px solid #dbd8cc;
+}
+
+.step:last-of-type {
+  border-bottom: 1px solid #dbd8cc;
+}
+
+.stepHead {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  gap: 14px;
+  padding: 18px 4px;
+  text-align: left;
+  width: 100%;
+}
+
+.stepHead:disabled {
+  cursor: default;
+}
+
+.stepLocked .stepHead {
+  opacity: 0.42;
+}
+
+.stepNumber {
+  background: #dbd8cc;
+  border-radius: 50%;
+  color: #5a5a52;
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  height: 30px;
+  line-height: 30px;
+  text-align: center;
+  transition: background-color 0.15s, color 0.15s;
+  width: 30px;
+}
+
+.step:not(.stepLocked) .stepNumber {
+  background: #1c2b1e;
+  color: #f0ede4;
+}
+
+.stepTitle {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.stepSummary {
+  color: #4a7a42;
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 700;
+  margin-left: auto;
+  max-width: 36%;
+  text-align: right;
+}
+
+.stepToggle {
+  color: #8b8a81;
+  flex: 0 0 auto;
+  font-size: 17px;
+  font-weight: 700;
+  margin-left: auto;
+  width: 16px;
+}
+
+.stepSummary + .stepToggle {
+  margin-left: 12px;
+}
+
+.stepBody {
+  padding: 0 4px 24px 44px;
+}
+
+.stepNote {
+  color: #8b8a81;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 14px 0 0;
+}
+
+/* ---------- generic tiles ---------- */
+
+.tileGrid {
+  display: grid;
+  gap: 11px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.tile {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 15px 16px;
+  text-align: left;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.tile:hover {
+  border-color: #6b9e61;
+}
+
+.tileActive {
+  background: #edf4eb;
+  border-color: #1c2b1e;
+  box-shadow: 0 0 0 1px #1c2b1e;
+}
+
+.tile strong {
+  display: block;
+  font-size: 14.5px;
+}
+
+.tile span {
+  color: #5a5a52;
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* ---------- cabinet sizes ---------- */
+
+.cabinetGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.groupTitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.groupTitle em {
+  color: #8b8a81;
+  display: block;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  margin-top: 3px;
+}
+
+.cabinetRow {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+  margin-top: 11px;
+}
+
+.cabinet {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 12px 13px;
+  text-align: left;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.cabinet:hover {
+  border-color: #6b9e61;
+}
+
+.cabinetActive {
+  background: #edf4eb;
+  border-color: #1c2b1e;
+  box-shadow: 0 0 0 1px #1c2b1e;
+}
+
+.cabinet strong {
+  display: block;
+  font-size: 14px;
+}
+
+.cabinet span {
+  color: #8b8a81;
+  display: block;
+  font-size: 11.5px;
+  margin-top: 3px;
+}
+
+/* ---------- front layouts ---------- */
+
+.layoutGrid {
+  display: grid;
+  gap: 11px;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+}
+
+.layout {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 13px;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+
+.layout:hover {
+  border-color: #6b9e61;
+}
+
+.layoutActive {
+  border-color: #1c2b1e;
+  box-shadow: 0 0 0 1px #1c2b1e;
+}
+
+/* Fixed-height stage so every tile lines up, with the drawing inside taking the
+   cabinet's own proportions, a pantry reads tall and narrow, a base cabinet
+   square-ish. */
+.layoutFigure {
+  align-items: center;
+  display: flex;
+  height: 92px;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+/* The elevation itself. Sized by the viewBox, so no aspect-ratio juggling in
+   CSS, preserveAspectRatio centres it and the true cabinet proportions come
+   through. Every stroke is non-scaling so it stays a hairline at any size. */
+.layoutSvg {
+  height: 100%;
+  width: 100%;
+}
+
+.layoutSvg line,
+.layoutSvg rect {
+  vector-effect: non-scaling-stroke;
+}
+
+.svgCarcass {
+  fill: #ede8dc;
+  stroke: #c4bda9;
+  stroke-width: 1;
+}
+
+.svgFront {
+  fill: #fdfcfa;
+  stroke: #8f8a7c;
+  stroke-width: 1;
+}
+
+/* Short pull across the middle of a drawer front, as in the design tool. */
+.svgPull {
+  stroke: #5a5a52;
+  stroke-linecap: round;
+  stroke-width: 1.6;
+}
+
+/* Door-swing symbol: dashed lines converging on the opening edge. */
+.svgSwing {
+  stroke: #6b9e61;
+  stroke-dasharray: 3 2.5;
+  stroke-width: 1;
+}
+
+.layout strong {
+  display: block;
+  font-size: 13.5px;
+}
+
+.layout span {
+  color: #8b8a81;
+  display: block;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
+
+/* ---------- chips ---------- */
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.chip {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 20px;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 15px;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+
+.chip:hover {
+  border-color: #6b9e61;
+}
+
+.chipActive {
+  background: #1c2b1e;
+  border-color: #1c2b1e;
+  color: #f0ede4;
+}
+
+.chip em {
+  font-size: 11px;
+  font-style: normal;
+  margin-left: 5px;
+  opacity: 0.65;
+}
+
+/* ---------- finish filter (grouped multi-select) ---------- */
+
+.filterRow {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.filterWrap {
+  position: relative;
+}
+
+.filterButton {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 220px;
+  padding: 11px 14px;
+  transition: border-color 0.15s;
+}
+
+.filterButton:hover,
+.filterButtonOpen {
+  border-color: #6b9e61;
+}
+
+.filterCaret {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid #5a5a52;
+  flex: 0 0 auto;
+}
+
+.filterPanel {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  box-shadow: 0 16px 30px rgba(28, 43, 30, 0.14);
+  left: 0;
+  max-height: 320px;
+  min-width: 260px;
+  overflow-y: auto;
+  padding: 8px;
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 20;
+}
+
+.filterGroup + .filterGroup {
+  border-top: 1px solid #dbd8cc;
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+.filterGroupTitle {
+  color: #8b8a81;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 6px 0 4px;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.filterOption {
+  align-items: center;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+  padding: 7px 8px;
+}
+
+.filterOption:hover {
+  background: #f8f4ef;
+}
+
+.filterOption input {
+  accent-color: #6b9e61;
+  cursor: pointer;
+  flex: 0 0 auto;
+  height: 15px;
+  margin: 0;
+  width: 15px;
+}
+
+.filterOption span {
+  flex: 1;
+}
+
+.filterOption em {
+  color: #8b8a81;
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.filterClear {
+  background: none;
+  border: 0;
+  color: #4a7a42;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.filterHint {
+  color: #8b8a81;
+  font-size: 12.5px;
+}
+
+/* ---------- colours ---------- */
+
+.colourGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.colour {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+
+.colour:hover {
+  border-color: #6b9e61;
+}
+
+.colourActive {
+  border-color: #1c2b1e;
+  box-shadow: 0 0 0 2px #1c2b1e;
+}
+
+.colourSwatch {
+  display: block;
+  height: 62px;
+}
+
+.colourBadge {
+  background: rgba(26, 26, 24, 0.82);
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 6px;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+}
+
+.colourName {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.3;
+  padding: 8px 9px;
+}
+
+.colourName em {
+  color: #8b8a81;
+  display: block;
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+/* ---------- profiles ---------- */
+
+/* 97 portrait tiles would run to several screens, so the grid scrolls inside
+   the step instead of stretching the page. Same for the colour grid, which can
+   carry 250+ swatches for decorative board. */
+.profileGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+  max-height: 560px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.profile {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 10px;
+  position: relative;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+
+.profile:hover {
+  border-color: #6b9e61;
+}
+
+.profileActive {
+  border-color: #1c2b1e;
+  box-shadow: 0 0 0 2px #1c2b1e;
+}
+
+/* Portrait, matching the 738x960 profile photos, so the door reads the way it
+   hangs rather than being letterboxed into a landscape box. */
+.profileDrawing {
+  align-items: center;
+  aspect-ratio: 738 / 960;
+  background: #f0ede4;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.profileImage {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.profileFace {
+  background: #f8f4ef;
+  border: 1px solid #dbd8cc;
+  height: 66%;
+  width: 66%;
+}
+
+.faceMinimal {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid #dbd8cc;
+  height: 66%;
+}
+
+.faceSoft {
+  border-radius: 7px;
+}
+
+.faceSharp {
+  box-shadow: inset 0 0 0 3px #f0ede4, inset 0 0 0 4px #dbd8cc;
+}
+
+.faceDetailed {
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 4px #f0ede4, inset 0 0 0 5px #dbd8cc;
+}
+
+.faceFluted {
+  background: repeating-linear-gradient(90deg, #f8f4ef 0 4px, #f0ede4 4px 7px);
+}
+
+.profileTier {
+  background: #1c2b1e;
+  border-radius: 2px;
+  color: #f0ede4;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 4px 6px;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+}
+
+.profile strong {
+  display: block;
+  font-size: 13px;
+}
+
+.profile > span:last-child {
+  color: #8b8a81;
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ---------- add row ---------- */
+
+.addRow {
+  align-items: center;
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 18px 20px;
+}
+
+.addRow > div:first-child strong {
+  display: block;
+  font-size: 14.5px;
+}
+
+.addRow > div:first-child span {
+  color: #5a5a52;
+  display: block;
+  font-size: 12.5px;
+  margin-top: 4px;
+}
+
+/* The confirmation state after something is added. Deeper green than the
+   normal add row so it reads as "that worked" rather than as another prompt. */
+.addedRow {
+  background: #dff0da;
+  border-color: #6b9e61;
+}
+
+.addedRow strong::before {
+  color: #4a7a42;
+  content: "\2713";
+  font-weight: 700;
+  margin-right: 7px;
+}
+
+.addedRow .button {
+  margin-left: auto;
+}
+
+.startOver {
+  background: none;
+  border: 0;
+  color: #8b8a81;
+  cursor: pointer;
+  display: block;
+  font-family: inherit;
+  font-size: 12.5px;
+  margin: 14px auto 0;
+  padding: 4px;
+  text-decoration: underline;
+}
+
+.startOver:hover {
+  color: #1a1a18;
+}
+
+.quantity {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  display: flex;
+  margin-left: auto;
+}
+
+.quantity button {
+  background: none;
+  border: 0;
+  color: #5a5a52;
+  cursor: pointer;
+  font-size: 16px;
+  height: 38px;
+  width: 34px;
+}
+
+.quantity button:hover {
+  background: #f0ede4;
+  color: #1a1a18;
+}
+
+.quantity input {
+  background: none;
+  border: 0;
+  color: #1a1a18;
+  font-family: inherit;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  height: 38px;
+  text-align: center;
+  width: 44px;
+}
+
+/* ---------- right panel ---------- */
+
+.panel {
+  position: sticky;
+  top: 20px;
+}
+
+.preview {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  margin-bottom: 14px;
+  padding: 18px;
+}
+
+/* The 3D viewport. Same engine as the design tool, but one cabinet and
+   rotate-only controls. */
+.previewStage {
+  align-items: center;
+  background: linear-gradient(180deg, #f4f1ea 0%, #e7e2d5 100%);
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  display: flex;
+  height: 230px;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  /* Stops a drag on the model scrolling the page on a touch screen. */
+  touch-action: none;
+}
+
+.previewEmpty {
+  color: #8b8a81;
+  font-size: 12.5px;
+  margin: 0;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.previewHint {
+  bottom: 8px;
+  color: #8b8a81;
+  font-size: 10.5px;
+  left: 10px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  position: absolute;
+  text-transform: uppercase;
+}
+
+.previewMeta {
+  color: #5a5a52;
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 12px 0 0;
+}
+
+.previewNote {
+  border-top: 1px solid rgba(26, 26, 24, 0.09);
+  color: #8b8a81;
+  font-size: 11.5px;
+  line-height: 1.55;
+  margin: 10px 0 0;
+  padding-top: 10px;
+}
+
+.listBox {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  box-shadow: 0 16px 30px rgba(28, 43, 30, 0.08);
+  padding: 18px;
+}
+
+.listHead {
+  align-items: baseline;
+  border-bottom: 1px solid #dbd8cc;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 11px;
+}
+
+.listHead h3 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.listHead span {
+  color: #8b8a81;
+  font-size: 12px;
+}
+
+.listItems {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.listEmpty {
+  color: #8b8a81;
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.listItem {
+  align-items: start;
+  display: grid;
+  font-size: 12.5px;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.listItem strong {
+  display: block;
+  font-weight: 400;
+}
+
+.listItem em {
+  color: #8b8a81;
+  display: block;
+  font-size: 11px;
+  font-style: normal;
+  margin-top: 2px;
+}
+
+.listItem button {
+  background: none;
+  border: 0;
+  color: #8b8a81;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+}
+
+.listItem button:hover {
+  color: #6b9e61;
+}
+
+.listAmount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.listQuote {
+  background: #fdf7e4;
+  border: 1px solid #dcbf55;
+  border-radius: 2px;
+  color: #7a6420;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  white-space: nowrap;
+}
+
+.listTotal {
+  align-items: baseline;
+  border-top: 1px solid #dbd8cc;
+  display: flex;
+  font-size: 13px;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.listTotal strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.listNote {
+  border-top: 1px solid #dbd8cc;
+  color: #8b8a81;
+  font-size: 11.5px;
+  line-height: 1.55;
+  margin: 12px 0 0;
+  padding-top: 12px;
+}
+
+/* ---------- extras ---------- */
+
+.extras {
+  border-top: 1px solid rgba(26, 26, 24, 0.1);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.customToggle {
+  background: none;
+  border: 1px dashed #dbd8cc;
+  border-radius: 3px;
+  color: #1c2b1e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 12px;
+  text-align: center;
+  transition: border-color 0.15s, background-color 0.15s;
+  width: 100%;
+}
+
+.customToggle:hover {
+  background: #edf4eb;
+  border-color: #6b9e61;
+}
+
+.customForm {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 10px;
+}
+
+.customForm input,
+.customForm select {
+  background-color: #faf9f6;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: #1a1a18;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 9px 10px;
+  padding-right: 40px;
+  width: 100%;
+}
+
+.customForm select {
+  grid-column: 1 / -1;
+}
+
+.extrasNote {
+  color: #8b8a81;
+  font-size: 11.5px;
+  line-height: 1.5;
+  margin: 9px 0 0;
+}
+
+/* ---------- buttons ---------- */
+
+.button {
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-block;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px 22px;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.buttonPrimary {
+  background: #6b9e61;
+  color: #0d140e;
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  background: #7ab070;
+}
+
+.buttonPrimary:disabled {
+  background: #dbd8cc;
+  color: #8b8a81;
+  cursor: not-allowed;
+}
+
+.buttonOutline {
+  background: none;
+  border-color: #dbd8cc;
+  color: #1a1a18;
+}
+
+.buttonOutline:hover {
+  background: #f0ede4;
+}
+
+.buttonFull {
+  display: block;
+  margin-top: 12px;
+  width: 100%;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 1020px) {
+  .configurator {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The panel used to be pulled above the steps here, with the preview hidden
+     to save room. Both were right when the preview was a flat colour swatch and
+     the list had nowhere else to live. Neither is now: the 3D preview is the
+     point of the page, and the list is always reachable from the header badge
+     and the floating button. So on a narrow screen it reads steps first, then
+     the preview and list underneath - the first screen is something to do,
+     rather than two empty boxes. */
+  .panel {
+    position: static;
+  }
+
+  .previewStage {
+    height: 200px;
+  }
+}
+
+@media (max-width: 680px) {
+  .stepBody {
+    padding-left: 4px;
+  }
+
+  .stepTitle {
+    font-size: 18px;
+  }
+
+  .stepSummary {
+    max-width: 30%;
+  }
+
+  .addRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .quantity {
+    margin-left: 0;
+  }
+}
