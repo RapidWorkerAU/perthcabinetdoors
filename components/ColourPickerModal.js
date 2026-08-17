@@ -6,7 +6,14 @@
 // left-rail filters narrow them down. Cost is read-only, straight from the
 // library — it is never edited in the design tool.
 //   • mode="public": Brand → Finish → Search. Click a swatch to pick it.
-//     Returns { material, finish, colour, supplier, src }.
+//     Returns { material, finish, colour, supplier, src, thickness_mm,
+//     colour_library_id }. The customer never chooses a thickness — the caller
+//     passes wantThicknessMm for the part being finished (a door is 18mm, a
+//     carcass 16mm) and the tile resolves to real stock in that thickness. It
+//     used to return no thickness at all, which left every line on a design
+//     request blank in the Thickness column; board prices are held per finish
+//     AND thickness, so those lines could never be priced.
+//     No cost is ever returned to a public visitor.
 //   • mode="admin": Match → Search → Brand → Material → Thickness → Finish, with
 //     the tile's cost shown read-only. Pick a tile, then Save.
 //     Returns { material, finish, colour, thickness_mm, cost_per_sqm }.
@@ -89,7 +96,7 @@ function FlatGrid({ value, onPick }) {
   );
 }
 
-export default function ColourPickerModal({ mode = "public", value, matchOptions = [], title = "colour", thicknessDefault = 16, showCost = true, onPick, onClose, allowFlat = false, flatValue = null, onPickFlat = null, canReset = false, onClear = null, notice = null, onlyThicknessMm = null }) {
+export default function ColourPickerModal({ mode = "public", value, matchOptions = [], title = "colour", thicknessDefault = 16, showCost = true, onPick, onClose, allowFlat = false, flatValue = null, onPickFlat = null, canReset = false, onClear = null, notice = null, onlyThicknessMm = null, wantThicknessMm = 0 }) {
   const admin = mode === "admin";
   const narrow = useNarrow();
   const [allItems, setItems] = useState(ITEMS_CACHE);
@@ -133,7 +140,7 @@ export default function ColourPickerModal({ mode = "public", value, matchOptions
         </div>
       : admin
         ? <AdminBody items={items} value={value} matchOptions={matchOptions} thicknessDefault={thicknessDefault} showCost={showCost} onPick={onPick} onClose={onClose} allowFlat={allowFlat} flatValue={flatValue} onPickFlat={onPickFlat} canReset={canReset} onClear={onClear} narrow={narrow} />
-        : <PublicBody items={items} value={value} onPick={onPick} narrow={narrow} />;
+        : <PublicBody items={items} value={value} onPick={onPick} narrow={narrow} wantThicknessMm={wantThicknessMm} />;
 
   return createPortal(
     <>
@@ -182,17 +189,31 @@ function SwatchGrid({ colours, isSelected, onClick, showThickness, showCost, emp
   );
 }
 
-// ── Public mode ── deduped to one tile per colour (thickness/cost irrelevant).
-function PublicBody({ items, value, onPick, narrow = false }) {
+// ── Public mode ── one tile per colour, thickness resolved for them.
+//
+// The customer picks a colour, not a board. But every library row IS a specific
+// thickness with its own price, so the tile has to stand for a real one: the
+// caller says what the part needs (wantThicknessMm) and the dedupe prefers that
+// thickness, falling back to whatever that colour is stocked in. Without this
+// the pick carried no thickness at all and the line could never be priced.
+function PublicBody({ items, value, onPick, narrow = false, wantThicknessMm = 0 }) {
   const [brand, setBrand] = useState(value?.supplier || "all");
   const [finish, setFinish] = useState("all");
   const [search, setSearch] = useState("");
 
   const deduped = useMemo(() => {
-    const seen = new Set(); const out = [];
-    for (const it of items) { const k = `${it.supplier}|${it.finish}|${it.colour}`.toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(it); }
-    return out;
-  }, [items]);
+    const want = Number(wantThicknessMm) || 0;
+    const byColour = new Map();
+    for (const it of items) {
+      const key = `${it.supplier}|${it.finish}|${it.colour}`.toLowerCase();
+      const held = byColour.get(key);
+      if (!held) { byColour.set(key, it); continue; }
+      // Prefer the wanted thickness; otherwise keep the first, which is already
+      // in the library's own sort order.
+      if (want && it.thicknessMm === want && held.thicknessMm !== want) byColour.set(key, it);
+    }
+    return [...byColour.values()];
+  }, [items, wantThicknessMm]);
   const suppliers = useMemo(() => sortBrands(distinct(deduped, "supplier")), [deduped]);
   const finishes = useMemo(() => distinct(deduped.filter((c) => brand === "all" || c.supplier === brand), "finish").sort((a, b) => a.localeCompare(b)), [deduped, brand]);
   const colours = useMemo(() => {
@@ -211,7 +232,18 @@ function PublicBody({ items, value, onPick, narrow = false }) {
       <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: 18 }}>
         <SwatchGrid colours={colours} empty="No colours match — try a different finish or clear the search."
           isSelected={(c) => value && value.colour === c.colour && (value.finish || "") === (c.finish || "")}
-          onClick={(c) => onPick({ material: c.material, finish: c.finish, colour: c.colour, supplier: c.supplier, src: c.src })} />
+          onClick={(c) => onPick({
+            material: c.material,
+            finish: c.finish,
+            colour: c.colour,
+            supplier: c.supplier,
+            src: c.src,
+            // The board behind the swatch. Identifiers only — no cost ever goes
+            // to a public visitor, and the server strips cost fields from
+            // anything one submits anyway.
+            thickness_mm: c.thicknessMm || null,
+            colour_library_id: c.id || null,
+          })} />
       </div>
     </div>
   );

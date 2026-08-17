@@ -32,6 +32,11 @@ interface LineItem {
   hinge_holes?:   boolean
   hinge_supply?:  boolean
   hinge_qty?:     number
+  notes?:         string
+  // The colour library row the customer picked, and its brand. Carried so the
+  // conversion can price the line exactly instead of matching on a colour name.
+  colour_library_id?: string | null
+  supplier_name?:     string | null
 }
 
 interface QuoteRequest {
@@ -185,7 +190,8 @@ function QuoteRequestPreviewModal({
                     </td>
                   </tr>
                 ) : lineItems.map((line, i) => (
-                  <tr key={line.id || i} className="border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4] transition-colors">
+                  <React.Fragment key={line.id || i}>
+                  <tr className={`hover:bg-[#f5f8f4] transition-colors ${line.notes ? '' : 'border-b border-[#edf4eb]'}`}>
                     <td className="px-2 py-[7px] text-[#8b8a81] text-[11px]">{i + 1}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap font-medium">{cleanValue(line.product_type || line.product_name)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.material)}</td>
@@ -212,6 +218,18 @@ function QuoteRequestPreviewModal({
                       </div>
                     </td>
                   </tr>
+                  {/* The note becomes the line's description on the quote, and
+                      for a design it is the brief someone configures from, so
+                      it belongs here rather than only in the database. */}
+                  {line.notes ? (
+                    <tr className="border-b border-[#edf4eb] last:border-b-0">
+                      <td />
+                      <td colSpan={10} className="px-2 pb-[8px] pt-0 text-[11px] leading-relaxed text-[#5a5a52]">
+                        {line.notes}
+                      </td>
+                    </tr>
+                  ) : null}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -292,6 +310,14 @@ export default function QuoteRequestsManager() {
     })
     const payload = await res.json()
     if (res.ok && payload.ok) {
+      // Lines are priced from the colour library during the conversion. Say so
+      // when some could not be matched, so nothing sits at $0 unnoticed.
+      if (payload.unpricedCount > 0) {
+        toast({
+          title: `${payload.unpricedCount} of ${payload.lineCount} lines could not be matched to a library colour. Check the cost on those lines.`,
+          variant: 'error',
+        })
+      }
       router.push(`/admin/quotes/${payload.quoteId}`)
     } else {
       toast({ title: payload.error || 'Could not convert quote request.', variant: 'error' })

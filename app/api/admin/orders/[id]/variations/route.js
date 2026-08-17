@@ -4,7 +4,8 @@ import {
   makeVariationAccessCode,
   makeVariationNumber,
 } from "../../../../../../lib/pcd-order-variations";
-import { GST_RATE, roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
+import { getBusinessDefaults } from "../../../../../../lib/pcd-business-defaults";
+import { roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
 
 async function orderIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -24,6 +25,13 @@ export async function POST(_request, { params }) {
       .maybeSingle();
     if (orderError || !order) throw orderError || new Error("Order not found.");
 
+    // A variation is a priced document that goes to a customer, so it follows
+    // the same settings a quote does. This file used to read no business
+    // defaults at all: it hardcoded the currency, the GST rate and the terms,
+    // so a business that changed its GST rate got correct quotes and wrong
+    // variations, and its variation wording could not be changed anywhere.
+    const businessDefaults = await getBusinessDefaults(context.supabase);
+
     const { data: variation, error } = await context.supabase
       .from("pcd_order_variations")
       .insert({
@@ -35,14 +43,14 @@ export async function POST(_request, { params }) {
         customer_email: order.customer_email,
         customer_phone: order.customer_phone,
         site_address: order.site_address,
-        currency: "AUD",
-        gst_rate: GST_RATE,
+        currency: businessDefaults.currency,
+        gst_rate: businessDefaults.gst_rate,
         revised_order_total_inc_gst: order.total_inc_gst,
         deposit_required: Boolean(order.deposit_required),
         deposit_percent: order.deposit_required && toNumber(order.deposit_amount) && toNumber(order.total_inc_gst)
           ? Math.min(100, roundMoney((toNumber(order.deposit_amount) / toNumber(order.total_inc_gst)) * 100))
           : 50,
-        terms: "This variation changes the accepted order scope. Work proceeds only after approval and any required payment is received.",
+        terms: businessDefaults.variation_terms || null,
       })
       .select("*, pcd_order_variation_lines(*)")
       .single();

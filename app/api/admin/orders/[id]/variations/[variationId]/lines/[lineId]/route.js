@@ -1,5 +1,12 @@
 import { requireAdminApiContext } from "../../../../../../../../../lib/admin-api";
 import { isVariationFinal, recalcVariation, variationLineDelta, VARIATION_LINE_ACTIONS } from "../../../../../../../../../lib/pcd-order-variations";
+import {
+  JOB_COST_ACTION,
+  jobCostChangeLabel,
+  jobCostType,
+  orderJobCostAmount,
+  orderLabourParts,
+} from "../../../../../../../../../lib/pcd-order-costs";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../../../lib/pcd-business-defaults";
 
@@ -94,6 +101,13 @@ function originalItemSnapshot(sourceLine) {
   };
 }
 
+async function loadOrder(supabase, orderId) {
+  const { data, error } = await supabase.from("pcd_orders").select("*").eq("id", orderId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Order not found.");
+  return data;
+}
+
 async function existingOrderLine(supabase, orderId, itemId) {
   if (!itemId) return null;
   const { data, error } = await supabase
@@ -117,11 +131,71 @@ async function assertEditable(supabase, orderId, variationId) {
   if (isVariationFinal(data.status)) throw new Error("Finalised variations cannot be edited.");
 }
 
-function updatesFromPayload(payload, before, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null) {
+// A job cost line is rebuilt from scratch on every edit rather than patched
+// field by field. It has only three inputs (which cost, the revised figure, and
+// the rate for labour), and the original figure has to be re-read from the order
+// each time anyway, so merging a partial patch would only create ways for the
+// "currently" figure and the proposed one to come from different moments.
+function jobCostUpdates(payload, before, order) {
+  const key = payload.cost_type || before.cost_type;
+  const type = jobCostType(key);
+  if (!type) throw new Error("Choose which job cost this line changes.");
+
+  const current = orderJobCostAmount(order, type.key);
+  const updates = {
+    action: JOB_COST_ACTION,
+    cost_type: type.key,
+    order_line_item_id: null,
+    original_line_total_ex_gst: current,
+    markup_percent: 0,
+    notes: Object.prototype.hasOwnProperty.call(payload, "notes")
+      ? cleanText(payload.notes)
+      : before.notes ?? null,
+  };
+
+  if (type.hours) {
+    const { rate } = orderLabourParts(order);
+    const hours = Math.max(0, toNumber(
+      Object.prototype.hasOwnProperty.call(payload, "qty") ? payload.qty : before.qty
+    ));
+    const hourlyRate = toNumber(
+      Object.prototype.hasOwnProperty.call(payload, "product_unit_cost_ex_gst")
+        ? payload.product_unit_cost_ex_gst
+        : before.product_unit_cost_ex_gst
+    ) || rate;
+    if (hourlyRate <= 0) {
+      throw new Error("This order has no hourly rate on it, so labour cannot be priced. Enter an hourly rate for this line.");
+    }
+    updates.qty = hours;
+    updates.product_unit_cost_ex_gst = hourlyRate;
+    updates.proposed_line_total_ex_gst = roundMoney(hours * hourlyRate);
+  } else {
+    updates.qty = 1;
+    updates.product_unit_cost_ex_gst = 0;
+    updates.proposed_line_total_ex_gst = roundMoney(toNumber(
+      Object.prototype.hasOwnProperty.call(payload, "proposed_line_total_ex_gst")
+        ? payload.proposed_line_total_ex_gst
+        : before.proposed_line_total_ex_gst
+    ));
+  }
+
+  updates.title = cleanText(payload.title) || jobCostChangeLabel(type.key, updates.proposed_line_total_ex_gst - current);
+  updates.description = cleanText(payload.description) || type.label;
+  updates.line_total_ex_gst = variationLineDelta({ ...before, ...updates });
+  return updates;
+}
+
+function updatesFromPayload(payload, before, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null, order = null) {
+  const nextAction = payload.action || before.action;
+  if (nextAction === JOB_COST_ACTION) return jobCostUpdates(payload, before, order);
+
   const updates = {};
   if (Object.prototype.hasOwnProperty.call(payload, "action")) {
     if (!VARIATION_LINE_ACTIONS.includes(payload.action)) throw new Error("Invalid variation line action.");
     updates.action = payload.action;
+    // Moving a line off a job cost has to clear the cost type, or the database
+    // constraint that keeps the two in step rejects the update.
+    if (before.action === JOB_COST_ACTION) updates.cost_type = null;
   }
   [
     "order_line_item_id",
@@ -260,8 +334,9 @@ export async function PATCH(request, { params }) {
     }
     const businessDefaults = await getBusinessDefaults(context.supabase);
     const pricingSource = await boardPricingSource(context.supabase, payload.unit_cost_source_id);
+    const order = nextAction === JOB_COST_ACTION ? await loadOrder(context.supabase, orderId) : null;
 
-    const updates = updatesFromPayload(payload, before, sourceLine, businessDefaults, pricingSource);
+    const updates = updatesFromPayload(payload, before, sourceLine, businessDefaults, pricingSource, order);
     let { data: line, error } = await context.supabase
       .from("pcd_order_variation_lines")
       .update(updates)

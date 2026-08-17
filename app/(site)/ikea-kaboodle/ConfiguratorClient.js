@@ -453,6 +453,10 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
       thickness,
       finish: colour.finish,
       colour: colour.name,
+      // The exact library row behind the swatch, so the quote request that this
+      // list eventually becomes can be priced without anyone re-picking it.
+      colourLibraryId: colour.id || "",
+      supplierName: colour.supplier || "",
       profileType: profile ? profile.type : "",
       profile: profile ? profile.name : "",
       // 0 means this line goes on the list as "Quote" - a profiled front, or a

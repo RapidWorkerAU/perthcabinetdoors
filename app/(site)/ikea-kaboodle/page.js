@@ -47,7 +47,11 @@ async function loadColours() {
     const { data, error } = await supabase
       .from("pcd_colour_library")
       .select(
-        "name,finish_type,thickness,image_url,material_type,supplier_name,sort_order," +
+        // `id` is the library row behind the tile. It is carried through the
+        // quote list and the request form so the back end can price the line
+        // off the exact board, rather than re-matching on a colour name that
+        // two suppliers can share. It is an identifier, not a cost.
+        "id,name,finish_type,thickness,image_url,material_type,supplier_name,sort_order," +
           // Cost columns are read here and turned into a customer-facing rate
           // below. They never leave the server.
           "cost_per_sqm_ex_gst,cost_per_board_ex_gst,preferred_board_width_mm,preferred_board_height_mm"
@@ -67,6 +71,7 @@ async function loadColours() {
       if (seen.has(key)) return;
       seen.add(key);
       rows.push({
+        id: row.id,
         material,
         finish: row.finish_type,
         name: row.name,

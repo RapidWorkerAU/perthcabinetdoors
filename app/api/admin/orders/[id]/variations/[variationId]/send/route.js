@@ -1,7 +1,9 @@
 import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
-import { formatMoney } from "../../../../../../../../lib/pcd-quote-utils";
+import { formatMoney, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
+import { JOB_COST_ACTION, orderJobCostAmount } from "../../../../../../../../lib/pcd-order-costs";
+import { recalcVariation, variationLineDelta } from "../../../../../../../../lib/pcd-order-variations";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -43,6 +45,38 @@ function isBoardVariationLine(line) {
 function hasMissingBoardPricing(line) {
   if (!["add", "change"].includes(line.action) || !isBoardVariationLine(line)) return false;
   return Number(line.unit_cost_per_sqm_ex_gst || 0) <= 0 || Number(line.product_unit_cost_ex_gst || 0) <= 0;
+}
+
+/**
+ * Re-measure every job cost line against the order as it stands now, and
+ * recalculate the variation if anything moved.
+ *
+ * Two variations can be open at once. Approve and apply the first and the
+ * second is still holding the figures it read when it was drafted, so its
+ * "currently" column would show a number that is no longer true and its price
+ * would be the difference from the wrong starting point. Doing this at send is
+ * the last moment before the customer sees it.
+ */
+async function refreshJobCostBaselines(supabase, variationId, lines, order) {
+  if (!order) return;
+  const jobCostLines = (lines || []).filter((line) => line.action === JOB_COST_ACTION);
+  if (!jobCostLines.length) return;
+
+  let changed = false;
+  for (const line of jobCostLines) {
+    const current = orderJobCostAmount(order, line.cost_type);
+    if (roundMoney(toNumber(line.original_line_total_ex_gst)) === roundMoney(current)) continue;
+    const next = { ...line, original_line_total_ex_gst: current };
+    const { error } = await supabase
+      .from("pcd_order_variation_lines")
+      .update({ original_line_total_ex_gst: current, line_total_ex_gst: variationLineDelta(next) })
+      .eq("id", line.id)
+      .eq("variation_id", variationId);
+    if (error) throw error;
+    changed = true;
+  }
+
+  if (changed) await recalcVariation(supabase, variationId);
 }
 
 function variationEmailHtml({ variation, order, viewUrl, message, includePrice }) {
@@ -111,6 +145,14 @@ export async function POST(request, { params }) {
         error: `The variation line "${unpricedLine.title || unpricedLine.product_type || "Variation item"}" uses a board without an uploaded price. Add the board cost or edit the line before sending.`,
       }, { status: 400 });
     }
+
+    // A job cost line stores what that cost was on the order when the line was
+    // written. If another variation has been applied since, that figure is out
+    // of date, and it is the "currently" number the customer is about to be
+    // shown. Re-measured against the order as it stands right now, at the last
+    // moment before the document leaves. Without this, a second variation
+    // drafted alongside a first would quote a before-figure that was never true.
+    await refreshJobCostBaselines(context.supabase, variationId, variationLines, variation.pcd_orders);
 
     const viewUrl = `${origin}/variations/view?code=${encodeURIComponent(variation.access_code)}`;
     const emailSubject = String(payload.subject || `${variation.variation_number} - ${variation.pcd_orders?.order_number || "Order"} variation`).trim();

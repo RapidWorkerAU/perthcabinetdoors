@@ -7,7 +7,6 @@ import AddressFields from "../../../../components/admin/AddressFields";
 import { useRouter } from "next/navigation";
 import { IconMessage } from "@tabler/icons-react";
 import {
-  DEFAULT_BUSINESS_DEFAULTS,
   formatItemSpecs,
   formatMoney,
   ORDER_LINE_STATUSES,
@@ -1127,7 +1126,16 @@ export default function OrderDetail({ orderId }) {
                       <td className={tw.td}>{hingesApplicable ? (line.hinge_holes ? "Yes" : "No") : "N/A"}</td>
                       <td className={tw.td}>{hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</td>
                       <td className={tw.td + " " + tw.mono}>{formatMoney(line.product_unit_cost_ex_gst || 0, quoteCurrency)}</td>
-                      <td className={tw.td + " " + tw.mono}>{line.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent}%</td>
+                      {/* The markup this line was actually quoted at. It used to
+                          print the built-in 40% whenever the line had none,
+                          which read as fact: this screen never loads business
+                          defaults, so that number was neither the line's nor
+                          the configured one. A dash says "not recorded". */}
+                      <td className={tw.td + " " + tw.mono}>
+                        {line.markup_percent === null || line.markup_percent === undefined
+                          ? "-"
+                          : `${line.markup_percent}%`}
+                      </td>
                       <td className={tw.td + " " + tw.mono}>{formatMoney(line.unit_price_ex_gst || 0, quoteCurrency)}</td>
                       <td className={tw.tdLast + " " + tw.mono + " font-semibold"}>{formatMoney(line.line_total_ex_gst || 0, quoteCurrency)}</td>
                     </tr>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
+import { JOB_COST_ACTION, jobCostType } from "../../../lib/pcd-order-costs";
 import PcdLoader from "@/components/public/PcdLoader";
 import styles from "../quotes/quote-public.module.css";
 
@@ -19,7 +20,44 @@ function actionLabel(value) {
   if (value === "change") return "Change";
   if (value === "remove") return "Remove";
   if (value === "price_adjustment") return "Adjustment";
+  if (value === JOB_COST_ACTION) return "Job cost";
   return titleCase(value);
+}
+
+/**
+ * A job cost, shown the way the customer already reads the rest of this table:
+ * what it is on the order now on the left, what it becomes on the right.
+ *
+ * Labour is spelled out in hours as well as money, because "42 hrs becoming 48
+ * hrs" is a sentence somebody can check against what happened on their job,
+ * where a bare dollar figure is not.
+ */
+function JobCostSpec({ line, side, currency }) {
+  const type = jobCostType(line.cost_type);
+  const isHours = Boolean(type?.hours);
+  const rate = toNumber(line.product_unit_cost_ex_gst);
+  const current = toNumber(line.original_line_total_ex_gst);
+  const proposed = toNumber(line.proposed_line_total_ex_gst);
+  const amount = side === "current" ? current : proposed;
+
+  const rows = [];
+  if (isHours && rate > 0) {
+    // The current hours are implied by the current money and the rate, so they
+    // are derived rather than stored twice and able to disagree.
+    const hours = side === "current" ? (current > 0 ? current / rate : 0) : toNumber(line.qty);
+    rows.push(`${hours.toFixed(1)} hrs at ${formatMoney(rate, currency)} per hour`);
+  }
+  rows.push(`${formatMoney(amount, currency)} ex GST`);
+
+  return (
+    <div className={styles.variationChangeSpec}>
+      <span>{side === "current" ? "Currently" : "Revised to"}</span>
+      <strong>{type?.customer || "Job cost"}</strong>
+      {rows.map((row) => (
+        <small key={row}>{row}</small>
+      ))}
+    </div>
+  );
 }
 
 function itemTitle(item) {
@@ -248,21 +286,29 @@ export default function VariationApprovalClient() {
                     <td>{index + 1}</td>
                     <td>{actionLabel(line.action)}</td>
                     <td>
-                      <ChangeSpec
-                        label="Changed from"
-                        item={line.action === "add" || line.action === "price_adjustment" ? null : line.original_order_item}
-                        fallback={line.action === "add" ? "New item" : "Original item"}
-                        currency={variation.currency}
-                      />
+                      {line.action === JOB_COST_ACTION ? (
+                        <JobCostSpec line={line} side="current" currency={variation.currency} />
+                      ) : (
+                        <ChangeSpec
+                          label="Changed from"
+                          item={line.action === "add" || line.action === "price_adjustment" ? null : line.original_order_item}
+                          fallback={line.action === "add" ? "New item" : "Original item"}
+                          currency={variation.currency}
+                        />
+                      )}
                     </td>
                     <td>
-                      <ChangeSpec
-                        label="Changed to"
-                        item={line.action === "remove" ? null : proposedItemFromLine(line)}
-                        fallback={line.action === "remove" ? "Removed from order" : "Adjustment"}
-                        currency={variation.currency}
-                        totalField="proposed_line_total_ex_gst"
-                      />
+                      {line.action === JOB_COST_ACTION ? (
+                        <JobCostSpec line={line} side="proposed" currency={variation.currency} />
+                      ) : (
+                        <ChangeSpec
+                          label="Changed to"
+                          item={line.action === "remove" ? null : proposedItemFromLine(line)}
+                          fallback={line.action === "remove" ? "Removed from order" : "Adjustment"}
+                          currency={variation.currency}
+                          totalField="proposed_line_total_ex_gst"
+                        />
+                      )}
                     </td>
                     <td>{formatMoney(line.line_total_ex_gst, variation.currency)}</td>
                     <td>{line.notes || "-"}</td>

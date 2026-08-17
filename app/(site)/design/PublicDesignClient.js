@@ -395,7 +395,22 @@ export default function PublicDesignClient() {
     const item = d.selectedItem;
     if (!item) return;
     const mfc = { material: sel.material, finish: sel.finish, colour: sel.colour };
-    const mfcS = { ...mfc, supplier: sel.supplier }; // supplier kept in the jsonb so the chooser re-opens on the right brand
+    // supplier kept in the jsonb so the chooser re-opens on the right brand.
+    // thickness_mm and colour_library_id say WHICH board this is: a colour name
+    // on its own cannot be priced, because the library holds a price per finish
+    // and thickness, and the same colour name exists under more than one brand.
+    // Costs are never carried here — the server resolves those at quote time.
+    const mfcS = {
+      ...mfc,
+      supplier: sel.supplier,
+      thickness_mm: sel.thickness_mm || null,
+      colour_library_id: sel.colour_library_id || null,
+    };
+    // A carcass, a standalone panel or a shelf keeps its finish in the item's
+    // own columns rather than a style blob, so there is nowhere to put the
+    // library id. It does not need one: the thickness lives on the item
+    // (carcass_thickness_mm, panel_thickness_mm), so material plus thickness
+    // plus finish plus colour is enough to price it.
     if (colourTarget === "body") d.updateItem(item.id, mfc);
     else if (colourTarget === "shelf") d.updateItem(item.id, { shelf_material: sel.material, shelf_finish: sel.finish, shelf_colour: sel.colour });
     else if (colourTarget === "kickboard") d.updateItem(item.id, { kickboard_style: mfcS });
@@ -406,6 +421,27 @@ export default function PublicDesignClient() {
     else d.updateItem(item.id, { front_type: "doors", door_style: { ...(item.door_style || {}), ...mfcS } });
     setColourModalOpen(false);
   }
+
+  // Which board the surface they are colouring is actually made from. The
+  // customer is never asked; this only decides which real library row the
+  // colour tile stands for, so the piece can be priced. Matches the thicknesses
+  // the admin design tool defaults to for the same surfaces.
+  const wantThicknessMm = (() => {
+    const item = d.selectedItem;
+    if (!item) return 0;
+    if (colourTarget === "shelf") return Number(item.shelf_thickness_mm) || 16;
+    if (colourTarget === "kickboard") return Number(item.kickboard_thickness_mm) || 16;
+    if (colourTarget === "panels") return 18;
+    // A benchtop is a slab priced from the benchtop materials list, not a board
+    // out of the colour library, so no thickness is pinned.
+    if (colourTarget === "benchtop") return 0;
+    if (colourTarget === "body") {
+      if (isPanel(item)) return Number(item.panel_thickness_mm) || 18;
+      if (isShelf(item) || isShelfRail(item)) return Number(item.carcass_thickness_mm) || 18;
+      return Number(item.carcass_thickness_mm) || 16;
+    }
+    return 18; // doors and drawer fronts
+  })();
 
   const colourValue = (() => {
     const item = d.selectedItem;
@@ -644,7 +680,7 @@ export default function PublicDesignClient() {
       )}
 
       {colourModalOpen && d.selectedItem && (
-        <PublicColourModal surfaceLabel={surfaceLabel} value={colourValue} onPick={applyColour} onClose={() => setColourModalOpen(false)} />
+        <PublicColourModal surfaceLabel={surfaceLabel} value={colourValue} onPick={applyColour} onClose={() => setColourModalOpen(false)} wantThicknessMm={wantThicknessMm} />
       )}
 
       {propColourOpen && d.selectedItem && (

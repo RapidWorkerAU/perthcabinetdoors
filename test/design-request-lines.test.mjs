@@ -352,3 +352,84 @@ test("a whole mixed design converts with every line fitting the editor", () => {
     if (line.productType !== "Door") assert.ok(!line.hingeHoles && !line.hingeQty);
   }
 });
+
+// ── Every piece must carry a thickness, or it can never be priced ─────────────
+//
+// The public colour picker deliberately never asked the customer for a
+// thickness, so it wrote none into the style. boardFields read the style and
+// nothing else, so EVERY line from a design arrived with the Thickness column
+// blank. Board prices in the colour library are held per finish AND thickness,
+// so a blank there is not cosmetic: the line cannot be matched to a price at
+// all, and it lands on the quote at $0.
+//
+// The picker now records the thickness it resolved. These lock the fallback
+// that covers designs saved before it did.
+
+// Same cabinet, but with the styles a pre-fix design would have saved: colour
+// and finish, no thickness_mm anywhere.
+const styleWithoutThickness = { material: "decorative board", finish: "Woodmatt", colour: "Bottega Oak" };
+
+test("a front with no thickness on its style still gets the board it is made from", () => {
+  const item = { ...baseDoors, door_style: styleWithoutThickness };
+  const lines = requestLinesForItem(item, ["doors"], CTX);
+
+  assert.ok(lines.length > 0);
+  for (const line of lines) {
+    assert.equal(line.thickness, "18mm", "a door is an 18mm board");
+  }
+});
+
+test("a finished panel falls back to its own board, not the door's", () => {
+  const item = { ...baseDoors, door_style: styleWithoutThickness, finish_panel_style: styleWithoutThickness };
+  const panels = requestLinesForItem(item, ["endpanels"], CTX);
+
+  assert.ok(panels.length > 0);
+  for (const line of panels) assert.equal(line.thickness, "18mm");
+});
+
+test("a kickboard is priced off its own thinner board, not the door's 18mm", () => {
+  const item = { ...baseDoors, door_style: styleWithoutThickness, kickboard_thickness_mm: 16 };
+  const [kick] = requestLinesForItem(item, ["kickboard"], CTX);
+
+  assert.equal(kick.thickness, "16mm");
+});
+
+test("a thickness the customer's pick DID record still wins over the fallback", () => {
+  const item = { ...baseDoors, door_style: { ...styleWithoutThickness, thickness_mm: 21 } };
+  const lines = requestLinesForItem(item, ["doors"], CTX);
+
+  for (const line of lines) assert.equal(line.thickness, "21mm");
+});
+
+test("the colour library row the customer picked is carried onto the line", () => {
+  // This is what lets the conversion price the piece off the exact board rather
+  // than re-matching on a colour name two suppliers can share.
+  const item = {
+    ...baseDoors,
+    door_style: { ...styleWithoutThickness, colour_library_id: "lib-row-7", supplier: "Laminex" },
+  };
+  const lines = requestLinesForItem(item, ["doors"], CTX);
+
+  for (const line of lines) {
+    assert.equal(line.colourLibraryId, "lib-row-7");
+    assert.equal(line.supplierName, "Laminex");
+  }
+});
+
+test("every non cabinet line from a whole design carries a thickness", () => {
+  // Styles stripped of thickness_mm throughout, the shape a design saved before
+  // the picker recorded one would have.
+  const strip = (item) => ({
+    ...item,
+    door_style: item.door_style ? { ...item.door_style, thickness_mm: undefined } : item.door_style,
+    drawer_style: item.drawer_style ? { ...item.drawer_style, thickness_mm: undefined } : item.drawer_style,
+  });
+  const q = quotableItems([baseDoors, baseDrawers, paxProp].map(strip));
+  const selection = buildPreset(q, "everything");
+  const lines = q.flatMap((item) => requestLinesForItem(item, selectedPartKeys(selection, item), CTX));
+
+  for (const line of lines) {
+    if (line.productType === "base_cabinet") continue;
+    assert.match(String(line.thickness), /^\d+mm$/, `${line.productName}: no thickness, so it cannot be priced`);
+  }
+});

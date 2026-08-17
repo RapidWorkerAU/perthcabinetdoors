@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createSupabaseBrowserClient } from '../../../lib/supabase/client'
 import { getAllowedAdminEmailClient } from '../../../lib/admin-access'
@@ -60,9 +60,40 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     step:   '0.5',
     hint:   'Per hinge hole, ex GST. Supplied hinges are added as separate hardware line items.',
   },
+  // These three were priced into every quote with a drawer in it but existed
+  // only as constants in the code, with no column and nothing on this screen.
+  {
+    group:  'Hardware fees',
+    key:    'runner_unit_cost_standard_ex_gst',
+    label:  'Runner, standard',
+    prefix: '$',
+    step:   '0.5',
+    hint:   'Per drawer, ex GST. One runner pair per drawer.',
+  },
+  {
+    group:  'Hardware fees',
+    key:    'runner_unit_cost_soft_close_undermount_ex_gst',
+    label:  'Runner, soft close undermount',
+    prefix: '$',
+    step:   '0.5',
+    hint:   'Per drawer, ex GST.',
+  },
+  {
+    group:  'Hardware fees',
+    key:    'runner_unit_cost_soft_close_side_ex_gst',
+    label:  'Runner, soft close side mount',
+    prefix: '$',
+    step:   '0.5',
+    hint:   'Per drawer, ex GST.',
+  },
 ]
 
 const DEFAULTS_GROUPS = ['Labour', 'Pricing', 'Hardware fees']
+
+// Fields where zero is not a real answer. A $0 hourly rate prices the labour on
+// every quote in the system at nothing, and it is far too easy to leave a box
+// empty and save.
+const DEFAULTS_MUST_BE_POSITIVE = new Set(['worker_hourly_rate'])
 
 const LAUNCH_TEXT_FIELDS: [string, string, string?][] = [
   ['statusPill', 'Status pill'],
@@ -195,6 +226,13 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
   const [defaults,         setDefaults]         = useState<Defaults>(DEFAULT_BUSINESS_DEFAULTS as Defaults)
   const [defaultsFeedback, setDefaultsFeedback] = useState('')
   const [defaultsBusy,     setDefaultsBusy]     = useState(false)
+  // Whether the saved settings actually arrived. This screen used to start from
+  // the built-in constants and swallow a failed load, so a settings row that
+  // could not be read showed the factory numbers as if they were yours, and
+  // pressing Save wrote them over your real ones. Nothing may be saved until
+  // the real values are in hand.
+  const [defaultsLoaded,   setDefaultsLoaded]   = useState(false)
+  const [defaultsError,    setDefaultsError]    = useState('')
 
   const allowedAdminEmail = useMemo(() => getAllowedAdminEmailClient(), [])
   const accountLabel      = email?.split('@')[0] || 'Admin account'
@@ -268,26 +306,60 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     }
   }
 
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/admin/business-defaults', { cache: 'no-store' })
-      .then(r => r.json())
-      .then(payload => {
-        if (!cancelled && payload.ok) {
-          setDefaults({ ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults } as Defaults)
-        }
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
+  const loadDefaults = useCallback(async () => {
+    setDefaultsError('')
+    try {
+      const res     = await fetch('/api/admin/business-defaults', { cache: 'no-store' })
+      const payload = await res.json()
+      if (!res.ok || !payload.ok) {
+        setDefaultsError(payload.error || 'Could not load your saved business defaults.')
+        return
+      }
+      setDefaults({ ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults } as Defaults)
+      setDefaultsLoaded(true)
+    } catch (err: unknown) {
+      // Never swallowed. A silent failure here left the factory numbers on
+      // screen looking like saved settings, and saving then destroyed the real
+      // ones.
+      setDefaultsError(err instanceof Error ? err.message : 'Could not load your saved business defaults.')
+    }
   }, [])
 
+  useEffect(() => { loadDefaults() }, [loadDefaults])
+
   function updateDefault(field: string, value: unknown) {
+    setDefaultsFeedback('')
     setDefaults(cur => ({ ...cur, [field]: value }))
   }
 
   async function handleDefaultsSave(event: React.FormEvent) {
     event.preventDefault()
     setDefaultsFeedback('')
+
+    if (!defaultsLoaded) {
+      setDefaultsFeedback('Your saved defaults could not be loaded, so saving now would overwrite them. Reload and try again.')
+      return
+    }
+
+    // A blank box is not zero, it is a missing answer. Saving one used to reset
+    // that field to the built-in constant without saying so.
+    const blank = DEFAULTS_FIELDS.find(field => {
+      const value = defaults[field.key]
+      return value === '' || value === null || value === undefined || Number.isNaN(Number(value))
+    })
+    if (blank) {
+      setDefaultsFeedback(`Enter a number for ${blank.label.toLowerCase()} before saving.`)
+      return
+    }
+
+    const notPositive = DEFAULTS_FIELDS.find(
+      field => DEFAULTS_MUST_BE_POSITIVE.has(field.key) && Number(defaults[field.key]) <= 0
+    )
+    if (notPositive) {
+      setDefaultsFeedback(`${notPositive.label} must be more than zero, or every quote prices its labour at nothing.`)
+      return
+    }
+
     setDefaultsBusy(true)
     try {
       const res     = await fetch('/api/admin/business-defaults', {
@@ -551,6 +623,23 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
         </p>
       </div>
 
+      {defaultsError ? (
+        <div className="mb-5 rounded-[8px] border border-[#fca5a5] bg-[#fef2f2] px-4 py-3">
+          <p className="text-[13px] font-medium text-[#991b1b]">Your saved defaults could not be loaded.</p>
+          <p className="mt-[2px] text-[12px] leading-snug text-[#7f1d1d]">
+            The boxes below are showing built-in starting values, not your settings. Saving is blocked so they cannot
+            overwrite what you have. {defaultsError}
+          </p>
+          <button
+            type="button"
+            onClick={loadDefaults}
+            className="mt-3 h-[32px] rounded-[6px] border border-[#fca5a5] bg-white px-3 text-[12px] font-medium text-[#991b1b] hover:bg-[#fef2f2]"
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.1fr]">
         <div className="flex flex-col gap-4">
           {DEFAULTS_GROUPS.map(group => (
@@ -584,29 +673,51 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
           ))}
         </div>
 
-        <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
-          <div className="border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px]">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Quote terms</p>
+        <div className="flex flex-col gap-4">
+          <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
+            <div className="border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Quote terms</p>
+            </div>
+            <div className="p-4">
+              <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
+                Default terms text
+                <textarea
+                  className="min-h-[132px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] leading-relaxed text-[#1a1a18] outline-none focus:border-[#6b9e61]"
+                  value={(defaults.quote_terms as string) || ''}
+                  onChange={event => updateDefault('quote_terms', event.target.value)}
+                  placeholder="Leave blank for no terms on a quote."
+                />
+              </label>
+              <p className="mt-2 text-[11px] leading-snug text-[#8b8a81]">
+                Written onto every new quote, including quotes converted from a website enquiry. Leave it blank and quotes carry no terms.
+              </p>
+            </div>
           </div>
-          <div className="p-4">
-            <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
-              Default terms text
-              <textarea
-                className="min-h-[132px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] leading-relaxed text-[#1a1a18] outline-none focus:border-[#6b9e61]"
-                value={(defaults.quote_terms as string) || ''}
-                onChange={event => updateDefault('quote_terms', event.target.value)}
-                placeholder="Default terms shown on new quotes."
-              />
-            </label>
-            <p className="mt-2 text-[11px] leading-snug text-[#8b8a81]">
-              This auto-populates the quote editor terms field when a quote has no quote-specific terms yet.
-            </p>
+
+          <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
+            <div className="border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Variation terms</p>
+            </div>
+            <div className="p-4">
+              <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
+                Default terms text
+                <textarea
+                  className="min-h-[92px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] leading-relaxed text-[#1a1a18] outline-none focus:border-[#6b9e61]"
+                  value={(defaults.variation_terms as string) || ''}
+                  onChange={event => updateDefault('variation_terms', event.target.value)}
+                  placeholder="Leave blank for no terms on a variation."
+                />
+              </label>
+              <p className="mt-2 text-[11px] leading-snug text-[#8b8a81]">
+                Written onto every new order variation. This wording used to be fixed in the code and could not be changed.
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="mt-5 flex items-center gap-3">
-        <button type="submit" className={primaryBtn} disabled={defaultsBusy}>
+        <button type="submit" className={primaryBtn} disabled={defaultsBusy || !defaultsLoaded}>
           {defaultsBusy ? 'Saving...' : 'Save defaults'}
         </button>
         {defaultsFeedback ? <span className="text-[13px] text-[#5a5a52]">{defaultsFeedback}</span> : null}

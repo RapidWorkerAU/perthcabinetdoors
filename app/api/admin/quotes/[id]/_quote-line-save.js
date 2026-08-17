@@ -245,7 +245,7 @@ async function addLineToQuoteTotals(supabase, quoteId, line, businessDefaults) {
   return savedQuote;
 }
 
-async function recalculateQuoteTotals(supabase, quoteId, businessDefaults) {
+export async function recalculateQuoteTotals(supabase, quoteId, businessDefaults) {
   const [quote, businessDefaultsResult, linesResult] = await Promise.all([
     loadQuote(supabase, quoteId),
     businessDefaults ? Promise.resolve(businessDefaults) : getBusinessDefaults(supabase),

@@ -17,12 +17,23 @@ import {
   profileTypesForSelection,
 } from "../../../../../../lib/quote-form-data";
 import { COLOUR_SUPPLIERS } from "../../../../../../lib/pcd-colour-library";
+import {
+  JOB_COST_ACTION,
+  JOB_COST_TYPES,
+  jobCostType,
+  orderJobCostAmount,
+  orderLabourParts,
+} from "../../../../../../lib/pcd-order-costs";
 
 const actionOptions = [
   { value: "add", label: "Add item" },
   { value: "change", label: "Change item" },
   { value: "remove", label: "Remove item" },
   { value: "price_adjustment", label: "Price adjustment" },
+  // Revises one of the order's job costs rather than an item. It never becomes
+  // a line item on the order, so extra labour does not turn up as a product in
+  // the production paperwork.
+  { value: JOB_COST_ACTION, label: "Job cost" },
 ];
 
 const BASE_CABINET_TYPE = "base_cabinet";
@@ -89,6 +100,7 @@ function itemLabel(item) {
 }
 
 function variationLineItemLabel(line) {
+  if (line.action === JOB_COST_ACTION) return jobCostType(line.cost_type)?.label || "Job cost";
   return [line.title || line.product_type || "Variation item", line.material, line.colour].filter(Boolean).join(" - ");
 }
 
@@ -109,6 +121,16 @@ function originalItemForLine(line, orderItems) {
  * an addition only the new item, a removal only what is going.
  */
 function lineSpecRows(line, orderItems) {
+  // A job cost has no specs. What it needs said under its name is the rate it is
+  // charged at, since the hours alone do not explain the money.
+  if (line.action === JOB_COST_ACTION) {
+    const type = jobCostType(line.cost_type);
+    if (type?.hours) {
+      return [{ label: "Rate", value: `${formatMoney(toNumber(line.product_unit_cost_ex_gst))} per hour` }];
+    }
+    return [{ label: "Job cost", value: "Not a manufactured item" }];
+  }
+
   const original = formatItemSpecs(originalItemForLine(line, orderItems), { includeQty: true });
   const proposed = formatItemSpecs(line, { includeQty: true });
   if (line.action === "change") {
@@ -192,6 +214,9 @@ function hardwareOptionsFromRows(rows = []) {
 function emptyLine() {
   return {
     action: "add",
+    // Which job cost this line revises. Null on every ordinary item line, and
+    // the database enforces that pairing both ways.
+    cost_type: null,
     order_line_item_id: "",
     title: "",
     description: "",
@@ -267,6 +292,19 @@ function applyVariationLinePricing(line, businessDefaults = DEFAULT_BUSINESS_DEF
   if (line.action === "price_adjustment") {
     return line;
   }
+  // A job cost has no board behind it. Labour is hours times the rate; every
+  // other cost is the figure typed in. The server recomputes both, and re-reads
+  // the "currently" figure from the order, so this is only the live preview.
+  if (line.action === JOB_COST_ACTION) {
+    const type = jobCostType(line.cost_type);
+    if (type?.hours) {
+      return {
+        ...line,
+        proposed_line_total_ex_gst: roundMoney(toNumber(line.qty) * toNumber(line.product_unit_cost_ex_gst)),
+      };
+    }
+    return line;
+  }
 
   const isBoard = isBoardVariationDraft(line);
   const calculatedUnitCost = isBoard ? calculatedUnitCostFromLine(line) : 0;
@@ -339,6 +377,7 @@ export default function VariationEditor({ orderId, variationId }) {
   const [publishEmail, setPublishEmail] = useState(null);
   const [hardwareRows, setHardwareRows] = useState([]);
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
+  const [businessDefaultsError, setBusinessDefaultsError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -393,8 +432,18 @@ export default function VariationEditor({ orderId, variationId }) {
           defaultsResponse.json(),
         ]);
         if (!cancelled && hardwarePayload.ok) setHardwareRows(hardwarePayload.hardware || []);
-        if (!cancelled && defaultsPayload.ok) setBusinessDefaults(defaultsPayload.defaults || DEFAULT_BUSINESS_DEFAULTS);
-      } catch {}
+        if (cancelled) return;
+        // A failed defaults load used to be swallowed, leaving every new
+        // variation line at the built-in 40% markup with nothing said.
+        if (defaultsPayload.ok) {
+          setBusinessDefaults({ ...DEFAULT_BUSINESS_DEFAULTS, ...(defaultsPayload.defaults || {}) });
+          setBusinessDefaultsError("");
+        } else {
+          setBusinessDefaultsError(defaultsPayload.error || "Could not load your business defaults.");
+        }
+      } catch (error) {
+        if (!cancelled) setBusinessDefaultsError(error?.message || "Could not load your business defaults.");
+      }
     }
 
     loadSupportingRows();
@@ -483,6 +532,26 @@ export default function VariationEditor({ orderId, variationId }) {
     }
     if (action === "price_adjustment") {
       setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, title: "Price adjustment", markup_percent: businessDefaults.markup_percent, notes: current.notes }));
+      return;
+    }
+    if (action === JOB_COST_ACTION) {
+      // Starts on the first cost with the order's own hours and rate already in
+      // the fields, so "revise the labour" is one number away rather than a form
+      // to fill in. Markup is 0 by design: a job cost is added to the subtotal as
+      // it stands, exactly as it is on a quote.
+      const firstCost = JOB_COST_TYPES[0];
+      const { hours, rate } = orderLabourParts(order);
+      setLineDraft((current) => ({
+        ...emptyLine(),
+        id: current.id,
+        action,
+        cost_type: firstCost.key,
+        qty: firstCost.hours ? hours : 1,
+        product_unit_cost_ex_gst: firstCost.hours ? rate : "",
+        proposed_line_total_ex_gst: firstCost.hours ? "" : orderJobCostAmount(order, firstCost.key),
+        markup_percent: 0,
+        notes: current.notes,
+      }));
       return;
     }
     updateLineDraft({ action, proposed_line_total_ex_gst: action === "remove" ? 0 : lineDraft.proposed_line_total_ex_gst });
@@ -736,7 +805,133 @@ export default function VariationEditor({ orderId, variationId }) {
     );
   }
 
+  /**
+   * A job cost line asks three things and nothing else: which cost, what it
+   * becomes, and (for labour) the hourly rate. Everything about boards, sizes
+   * and profiles is irrelevant, so it gets its own short form rather than a long
+   * one with most of it disabled.
+   *
+   * The "Currently" figure under each field is read from the order, which is
+   * what the customer will be shown as the before number. It is only true
+   * because an applied variation writes the revised figure back to the order.
+   */
+  function renderJobCostFields() {
+    const type = jobCostType(lineDraft.cost_type) || JOB_COST_TYPES[0];
+    const current = orderJobCostAmount(order, type.key);
+    const { hours: currentHours, rate: currentRate } = orderLabourParts(order);
+    const rate = toNumber(lineDraft.product_unit_cost_ex_gst) || currentRate;
+    const proposed = type.hours
+      ? roundMoney(toNumber(lineDraft.qty) * rate)
+      : toNumber(lineDraft.proposed_line_total_ex_gst);
+    const delta = roundMoney(proposed - current);
+
+    return (
+      <div className="grid gap-3 md:grid-cols-4">
+        <label className={tw.fieldLabel}>Action
+          <QuoteTileCombobox
+            compact={false}
+            placeholder="Select action"
+            value={lineDraft.action}
+            options={actionOptions}
+            onChange={(option) => changeLineDraftAction(option.value)}
+          />
+        </label>
+        <label className={`${tw.fieldLabel} md:col-span-3`}>Cost
+          <QuoteTileCombobox
+            compact={false}
+            placeholder="Select cost"
+            value={type.key}
+            options={JOB_COST_TYPES.map((item) => ({ value: item.key, label: item.label, name: item.label }))}
+            onChange={(option) => {
+              // Switching cost refills the fields from the order, so the form is
+              // always showing what THAT cost is now rather than a figure left
+              // behind from the one before it.
+              const next = jobCostType(option.value);
+              const parts = orderLabourParts(order);
+              updateLineDraft({
+                cost_type: option.value,
+                qty: next?.hours ? parts.hours : 1,
+                product_unit_cost_ex_gst: next?.hours ? parts.rate : "",
+                proposed_line_total_ex_gst: next?.hours ? "" : orderJobCostAmount(order, option.value),
+              });
+            }}
+          />
+          <span className={tw.muted}>{type.hint}</span>
+        </label>
+
+        {type.hours ? (
+          <>
+            <label className={tw.fieldLabel}>Revised hours
+              <input
+                className={tw.fieldInput}
+                type="number"
+                min="0"
+                step="0.5"
+                value={lineDraft.qty ?? ""}
+                onChange={(event) => updateLineDraft({ qty: event.target.value })}
+              />
+              <span className={tw.muted}>Currently {currentHours.toFixed(1)} hrs on this order</span>
+            </label>
+            <label className={tw.fieldLabel}>Hourly rate ex GST
+              <input
+                className={tw.fieldInput}
+                type="number"
+                min="0"
+                step="1"
+                value={lineDraft.product_unit_cost_ex_gst ?? ""}
+                onChange={(event) => updateLineDraft({ product_unit_cost_ex_gst: event.target.value })}
+              />
+              <span className={tw.muted}>
+                {currentRate > 0 ? `Currently ${formatMoney(currentRate, variation.currency)} per hour` : "This order has no rate yet, so enter one"}
+              </span>
+            </label>
+          </>
+        ) : (
+          <label className={`${tw.fieldLabel} md:col-span-2`}>Revised to ex GST
+            <input
+              className={tw.fieldInput}
+              type="number"
+              min="0"
+              step="10"
+              value={lineDraft.proposed_line_total_ex_gst ?? ""}
+              onChange={(event) => updateLineDraft({ proposed_line_total_ex_gst: event.target.value })}
+            />
+            <span className={tw.muted}>Currently {formatMoney(current, variation.currency)} on this order</span>
+          </label>
+        )}
+
+        <label className={`${tw.fieldLabel} md:col-span-2`}>Notes
+          <input
+            className={tw.fieldInput}
+            value={lineDraft.notes || ""}
+            placeholder="Why this cost is changing"
+            onChange={(event) => updateLineDraft({ notes: event.target.value })}
+          />
+        </label>
+
+        <div className="md:col-span-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-[6px] border border-[#dbd8cc] bg-[#f5f8f4] px-3 py-[10px]">
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Current ex GST</span>
+            <strong className="mt-[3px] block font-mono text-[15px]">{formatMoney(current, variation.currency)}</strong>
+          </div>
+          <div className="rounded-[6px] border border-[#dbd8cc] bg-[#f5f8f4] px-3 py-[10px]">
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Proposed ex GST</span>
+            <strong className="mt-[3px] block font-mono text-[15px]">{formatMoney(proposed, variation.currency)}</strong>
+          </div>
+          <div className="rounded-[6px] border border-[#dbd8cc] bg-[#f5f8f4] px-3 py-[10px]">
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">Variation</span>
+            <strong className={`mt-[3px] block font-mono text-[15px] ${delta > 0 ? "text-[#8a4a1f]" : delta < 0 ? "text-[#2d5e28]" : "text-[#8b8a81]"}`}>
+              {formatMoney(delta, variation.currency)}
+            </strong>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderAddLineFields() {
+    if (lineDraft.action === JOB_COST_ACTION) return renderJobCostFields();
+
     const isRemove = lineDraft.action === "remove";
     const isPriceAdjustment = lineDraft.action === "price_adjustment";
     const isHardware = lineDraft.product_type === "Hardware";
@@ -990,6 +1185,15 @@ export default function VariationEditor({ orderId, variationId }) {
         </div>
 
         <div className="flex flex-col gap-3">
+            {businessDefaultsError ? (
+              <div className="rounded-[8px] border border-[#fca5a5] bg-[#fef2f2] px-4 py-3">
+                <p className="text-[13px] font-medium text-[#991b1b]">Your business defaults could not be loaded.</p>
+                <p className="mt-[2px] text-[12px] leading-snug text-[#7f1d1d]">
+                  New lines will use the built-in markup, not your configured one. Reload before pricing anything.
+                  {" "}{businessDefaultsError}
+                </p>
+              </div>
+            ) : null}
             <div className={tw.card}>
               <div className={tw.cardHeader}>
                 <div className="flex items-center gap-3">

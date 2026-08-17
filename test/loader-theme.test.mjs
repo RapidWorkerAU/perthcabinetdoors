@@ -177,7 +177,10 @@ test("no admin page is still writing its own loading text", () => {
     "app/admin/benchtop-materials/BenchtopMaterialsManager.js",
     "app/admin/projects/ProjectsManager.js",
     "app/admin/projects/[id]/ProjectDetail.js",
-    "app/admin/business-defaults/BusinessDefaultsManager.js",
+    // app/admin/business-defaults/BusinessDefaultsManager.js was removed: it was
+    // an unreachable second copy of the business defaults editor (its page just
+    // redirects to /admin/settings), and two settings screens for one row is how
+    // they drift. The live one is app/admin/_components/AccountSettingsForm.tsx.
   ].forEach((path) => {
     const src = read(path);
     assert.ok(!/>\s*Loading[^<]*<\/|"Loading[^"]*\.\.\."/.test(src), `${path} still has a text loading state`);

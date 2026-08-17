@@ -1,5 +1,12 @@
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { isVariationFinal, recalcVariation, variationLineDelta, VARIATION_LINE_ACTIONS } from "../../../../../../../../lib/pcd-order-variations";
+import {
+  JOB_COST_ACTION,
+  jobCostChangeLabel,
+  jobCostType,
+  orderJobCostAmount,
+  orderLabourParts,
+} from "../../../../../../../../lib/pcd-order-costs";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../../lib/pcd-business-defaults";
 
@@ -106,6 +113,13 @@ async function loadEditableVariation(supabase, orderId, variationId) {
   return data;
 }
 
+async function loadOrder(supabase, orderId) {
+  const { data, error } = await supabase.from("pcd_orders").select("*").eq("id", orderId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Order not found.");
+  return data;
+}
+
 async function existingOrderLine(supabase, orderId, itemId) {
   if (!itemId) return null;
   const { data, error } = await supabase
@@ -118,10 +132,70 @@ async function existingOrderLine(supabase, orderId, itemId) {
   return data;
 }
 
-function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null) {
+/**
+ * A job cost line: what the cost is on the order right now, and what it becomes.
+ *
+ * Nothing about a board applies here, so this returns early rather than falling
+ * through the board pricing below and being asked for a width and a height.
+ *
+ * Labour is hours times a rate, so the hours go in `qty` and the rate in
+ * `product_unit_cost_ex_gst` and the money falls out of the multiplication the
+ * rest of the system already does. Markup is deliberately 0: these costs are
+ * added to a quote's subtotal as they stand, and marking them up here would
+ * charge for them differently than the quote did.
+ */
+function jobCostLinePayload(payload, order) {
+  const type = jobCostType(payload.cost_type);
+  if (!type) throw new Error("Choose which job cost this line changes.");
+
+  const current = orderJobCostAmount(order, type.key);
+  const row = {
+    order_line_item_id: null,
+    action: JOB_COST_ACTION,
+    cost_type: type.key,
+    product_type: null,
+    material: null,
+    original_line_total_ex_gst: current,
+    markup_percent: 0,
+    unit_cost_source_id: null,
+    unit_cost_source_label: null,
+    unit_cost_per_sqm_ex_gst: 0,
+    calculated_unit_cost_ex_gst: 0,
+    original_item_snapshot: null,
+    notes: cleanText(payload.notes),
+  };
+
+  if (type.hours) {
+    const { rate } = orderLabourParts(order);
+    const hours = Math.max(0, toNumber(payload.qty));
+    // A quote whose rate was never captured would value the revised hours at
+    // nothing, so the caller has to supply one rather than have it silently be 0.
+    const hourlyRate = toNumber(payload.product_unit_cost_ex_gst) || rate;
+    if (hourlyRate <= 0) {
+      throw new Error("This order has no hourly rate on it, so labour cannot be priced. Enter an hourly rate for this line.");
+    }
+    row.qty = hours;
+    row.product_unit_cost_ex_gst = hourlyRate;
+    row.proposed_line_total_ex_gst = roundMoney(hours * hourlyRate);
+  } else {
+    row.qty = 1;
+    row.product_unit_cost_ex_gst = 0;
+    row.proposed_line_total_ex_gst = roundMoney(toNumber(payload.proposed_line_total_ex_gst));
+  }
+
+  row.title = cleanText(payload.title) || jobCostChangeLabel(type.key, row.proposed_line_total_ex_gst - current);
+  row.description = cleanText(payload.description) || type.label;
+  row.line_total_ex_gst = variationLineDelta(row);
+  return row;
+}
+
+function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null, order = null) {
   const action = VARIATION_LINE_ACTIONS.includes(payload.action) ? payload.action : "add";
+  if (action === JOB_COST_ACTION) return jobCostLinePayload(payload, order);
+
   const row = {
     order_line_item_id: action === "add" || action === "price_adjustment" ? null : payload.order_line_item_id || null,
+    cost_type: null,
     action,
     title: cleanText(payload.title ?? sourceLine?.title ?? (action === "price_adjustment" ? "Price adjustment" : "")),
     description: cleanText(payload.description ?? sourceLine?.description),
@@ -239,6 +313,10 @@ export async function POST(request, { params }) {
     }
     const businessDefaults = await getBusinessDefaults(context.supabase);
     const pricingSource = await boardPricingSource(context.supabase, payload.unit_cost_source_id);
+    // A job cost line records what the cost is on the order right now, so the
+    // order is what it is measured against. Read here rather than trusted from
+    // the browser: the "currently" figure is the thing the customer is shown.
+    const order = payload.action === JOB_COST_ACTION ? await loadOrder(context.supabase, orderId) : null;
 
     const { count } = await context.supabase
       .from("pcd_order_variation_lines")
@@ -248,7 +326,7 @@ export async function POST(request, { params }) {
     const row = {
       variation_id: variationId,
       sort_order: count || 0,
-      ...linePayload(payload, sourceLine, businessDefaults, pricingSource),
+      ...linePayload(payload, sourceLine, businessDefaults, pricingSource, order),
     };
 
     let { data: line, error } = await context.supabase

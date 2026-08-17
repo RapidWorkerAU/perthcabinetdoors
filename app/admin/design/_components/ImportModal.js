@@ -88,9 +88,6 @@ function defaultSelections(items) {
   return map;
 }
 
-const DEFAULT_TERMS =
-  "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.";
-
 const EMPTY_CREATE_FORM = {
   customer_name:  "",
   title:          "Cabinetry Quote",
@@ -271,11 +268,12 @@ export default function ImportModal({ projectId, items: allItems, rooms, onClose
       const res = await fetch("/api/admin/quotes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // Currency, GST rate and terms are deliberately left out so the server
+        // fills them from Business Defaults. Sending them here overrode the
+        // configured settings, because the server treats anything the caller
+        // sends as a deliberate choice.
         body: JSON.stringify({
           title,
-          currency: "AUD",
-          gst_rate: 0.1,
-          terms: DEFAULT_TERMS,
           customer_name:  name,
           customer_email: email || null,
           customer_phone: phone || null,

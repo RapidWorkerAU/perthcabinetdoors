@@ -12,6 +12,12 @@ const lineSchema = z.object({
   height: z.number().optional(),
   finish: z.string().optional(),
   colour: z.string().optional(),
+  // The colour library row behind the swatch, and its brand. Optional because a
+  // request can still arrive from an older client, or from a path that never
+  // had a library row to point at; the conversion falls back to matching the
+  // colour by name when they are missing.
+  colourLibraryId: z.string().uuid().optional(),
+  supplierName: z.string().optional(),
   profileType: z.string().optional(),
   profile: z.string().optional(),
   edgeMould: z.string().optional(),

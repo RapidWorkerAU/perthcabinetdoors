@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
-import { COLOUR_SUPPLIERS, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
+import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney } from "../../../../lib/pcd-quote-utils";
 import AddressFields from "../../../../components/admin/AddressFields";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
@@ -42,6 +42,10 @@ const sections = [
 
 const BASE_CABINET_TYPE = "base_cabinet";
 const BENCHTOP_TYPE = "Benchtop";
+// Hardware has no board behind it and a benchtop is priced from the benchtop
+// material list, so neither is expected to carry a colour-library cost. Same
+// set the conversion and the reprice route use.
+const NON_BOARD_PRODUCT_TYPES = new Set(["Hardware", BENCHTOP_TYPE]);
 const colourOptionsCache = new Map();
 const quoteProductTypes = [
   ...PRODUCT_TYPES.map((type) => ({ value: type, label: type })),
@@ -350,8 +354,25 @@ function defaultQuoteEmailMessage(form, viewUrl) {
   ].filter((line) => line !== null).join("\n");
 }
 
-function colourSrcForLine(line) {
-  return line.colour_src || "";
+// The swatch shown next to a saved line's colour.
+//
+// `colour_src` is not a column on the quote line and never was, so this always
+// returned "" once a quote was reloaded and every swatch disappeared. The image
+// belongs to the colour library row, so it is looked up there instead, by the
+// same library id the line already stores against its cost. Falls back to
+// matching on finish and colour for lines saved before ids were captured.
+function colourSrcForLine(line, swatchesById = null, swatchesByName = null) {
+  if (line.colour_src) return line.colour_src;
+  if (!line.colour || !swatchesById) return "";
+
+  if (line.unit_cost_source_id) {
+    const byId = swatchesById.get(line.unit_cost_source_id);
+    if (byId) return byId;
+  }
+
+  const colour = String(line.colour).trim().toLowerCase();
+  const finish = String(line.finish || "").trim().toLowerCase();
+  return swatchesByName.get(`${finish}|${colour}`) || swatchesByName.get(`|${colour}`) || "";
 }
 
 function hasHingeConfig(line) {
@@ -741,17 +762,9 @@ const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact = true, 
       value={selectedValue}
       displayValue={displayValue}
       options={filteredOptions}
-      onChange={(option) =>
-        onChange({
-          supplier_name: option.supplier || selectedSupplier,
-          thickness: option.thickness || "",
-          colour: option.name || option.label,
-          finish: option.finish || "",
-          unit_cost_source_id: option.id || null,
-          unit_cost_source_label: [option.supplier || selectedSupplier, option.label || option.name].filter(Boolean).join(" - "),
-          unit_cost_per_sqm_ex_gst: Number(option.costPerSqmExGst || 0),
-        })
-      }
+      // Shared with the order-variation editor's copy of this widget, so the
+      // two cannot write a line differently. See colourSelectionPatch.
+      onChange={(option) => onChange(colourSelectionPatch(option, selectedSupplier))}
     />
   );
 });
@@ -846,9 +859,11 @@ export default function QuoteEditor({ quoteId }) {
   const [isGeneratingCabinetPdf, setIsGeneratingCabinetPdf] = useState(false);
   const [isAttachingQuotePdf, setIsAttachingQuotePdf] = useState(false);
   const [isGeneratingQuotePdf, setIsGeneratingQuotePdf] = useState(false);
+  const [isRepricing, setIsRepricing] = useState(false);
   const { toast } = useToast();
   const [publishEmail, setPublishEmail] = useState(null);
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
+  const [businessDefaultsError, setBusinessDefaultsError] = useState("");
 
   const colEls = useRef([])
   const [colWidths, setColWidths] = useState(() => {
@@ -918,9 +933,29 @@ export default function QuoteEditor({ quoteId }) {
   const hardwareOptions = useMemo(() => hardwareOptionsFromRows(hardwareRows), [hardwareRows]);
   const benchtopMaterialOptions = useMemo(() => benchtopOptionsFromRows(benchtopMaterialRows), [benchtopMaterialRows]);
 
+  // Swatch images for saved lines, indexed both ways: by the library row id the
+  // line stores against its cost, and by finish + colour for lines saved before
+  // ids were captured. One flat read, shared by every line, rather than the
+  // per-material fetch the colour picker does.
+  const [colourSwatches, setColourSwatches] = useState([]);
+  const swatchIndex = useMemo(() => {
+    const byId = new Map();
+    const byName = new Map();
+    colourSwatches.forEach((item) => {
+      if (!item.src) return;
+      if (item.id) byId.set(item.id, item.src);
+      const colour = String(item.colour || "").trim().toLowerCase();
+      if (!colour) return;
+      const finish = String(item.finish || "").trim().toLowerCase();
+      if (!byName.has(`${finish}|${colour}`)) byName.set(`${finish}|${colour}`, item.src);
+      if (!byName.has(`|${colour}`)) byName.set(`|${colour}`, item.src);
+    });
+    return { byId, byName };
+  }, [colourSwatches]);
+
   function lineViewModel(line) {
     const cached = lineViewModelCacheRef.current.get(line);
-    if (cached?.businessDefaults === businessDefaults) return cached.value;
+    if (cached?.businessDefaults === businessDefaults && cached?.swatchIndex === swatchIndex) return cached.value;
 
     const edgeProfiles = edgeProfilesForMaterial(line.material);
     const value = {
@@ -937,11 +972,11 @@ export default function QuoteEditor({ quoteId }) {
       isHardware: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Hardware"),
       isBenchtop: isBenchtopLine(line),
       hingesApplicable: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Door"),
-      colourSrc: colourSrcForLine(line),
+      colourSrc: colourSrcForLine(line, swatchIndex.byId, swatchIndex.byName),
       isBaseCabinet: isBaseCabinetLine(line),
     };
 
-    lineViewModelCacheRef.current.set(line, { businessDefaults, value });
+    lineViewModelCacheRef.current.set(line, { businessDefaults, swatchIndex, value });
     return value;
   }
 
@@ -970,6 +1005,77 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+  // Board lines sitting at no cost. These are the ones a converted quote used
+  // to be full of, and the ones Reprice is for, so the count is shown rather
+  // than left for someone to spot by scrolling.
+  const unpricedLineCount = useMemo(
+    () =>
+      form.lines.filter(
+        (line) =>
+          !NON_BOARD_PRODUCT_TYPES.has(line.product_type) &&
+          // A cabinet is costed from its cut list, so it reads $0 until someone
+          // configures it. The Cabinets tab already says so; counting it here
+          // would just be the same warning twice.
+          line.product_type !== BASE_CABINET_TYPE &&
+          line.colour &&
+          Number(line.product_unit_cost_ex_gst || 0) <= 0
+      ).length,
+    [form.lines]
+  );
+
+  /**
+   * Look every board line up in the colour library again and apply the price it
+   * holds now.
+   *
+   * A rate used to be stamped on a line once, when somebody clicked a colour,
+   * and never revisited. So a quote converted from a request had no rate at all,
+   * and putting board prices up left every open draft quoting the old number.
+   * The server does the matching (see /api/admin/quotes/[id]/reprice) and leaves
+   * deliberate manual overrides alone.
+   */
+  async function repriceFromLibrary() {
+    if (isRepricing) return;
+    setIsRepricing(true);
+    try {
+      // The option list is cached for the life of the page, so a price changed
+      // in the library would otherwise still be the old one in the picker even
+      // after a reprice.
+      colourOptionsCache.clear();
+
+      const response = await fetch(`/api/admin/quotes/${quoteId}/reprice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        toast({ title: payload.error || "Could not reprice this quote.", variant: "error" });
+        return;
+      }
+
+      await loadQuote();
+
+      const cabinetNote = payload.cabinetCount
+        ? ` ${payload.cabinetCount} cabinet${payload.cabinetCount === 1 ? "" : "s"} got a new board rate, so reopen them to recost the cut list.`
+        : "";
+
+      if (!payload.changedCount && !payload.cabinetCount && !payload.unmatchedCount) {
+        toast({ title: "Every line already matches the colour library." });
+      } else if (payload.unmatchedCount) {
+        toast({
+          title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced. ${payload.unmatchedCount} could not be matched to a library colour.${cabinetNote}`,
+          variant: "error",
+        });
+      } else {
+        toast({ title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced from the colour library.${cabinetNote}` });
+      }
+    } catch (error) {
+      toast({ title: error?.message || "Could not reprice this quote.", variant: "error" });
+    } finally {
+      setIsRepricing(false);
+    }
+  }
+
   async function loadCustomers() {
     try {
       const response = await fetch("/api/admin/customers", { cache: "no-store" });
@@ -980,10 +1086,22 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+  async function loadColourSwatches() {
+    try {
+      const response = await fetch("/api/colour-library?items=1", { cache: "no-store" });
+      const payload = await response.json();
+      if (payload?.ok) setColourSwatches(payload.items || []);
+    } catch {
+      // A missing swatch is cosmetic. The colour name still reads, so this is
+      // not worth interrupting anyone over.
+    }
+  }
+
   useEffect(() => {
     loadQuote();
     loadCustomers();
     loadBusinessDefaults();
+    loadColourSwatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteId]);
 
@@ -992,9 +1110,15 @@ export default function QuoteEditor({ quoteId }) {
   // whenever the quote landed second it replaced the form wholesale and threw
   // the freshly-applied defaults away. Doing it here instead means it runs once
   // both the defaults and the quote are in hand, in either order.
+  // NOTE ON TERMS. This used to also swap the old hardcoded "valid for 14 days"
+  // wording out for the configured terms. It was removed, because it only ever
+  // changed the form in the browser: the row kept the old text until somebody
+  // pressed Save, while the PDF and the customer's copy read the row. So the
+  // screen showed the right terms and the customer got the wrong ones, which is
+  // worse than showing the problem. Terms are now written correctly by every
+  // creation path, and the rows already carrying the old wording are repaired by
+  // supabase/202608171600_pcd_repair_legacy_quote_terms.sql.
   useEffect(() => {
-    const oldHardcodedTerms =
-      "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.";
     const isBlank = (value) => value === "" || value === null || value === undefined;
 
     setForm((current) => ({
@@ -1004,10 +1128,6 @@ export default function QuoteEditor({ quoteId }) {
       worker_hourly_rate: isBlank(current.worker_hourly_rate)
         ? businessDefaults.worker_hourly_rate
         : current.worker_hourly_rate,
-      terms:
-        !current.terms || current.terms === oldHardcodedTerms
-          ? businessDefaults.quote_terms || ""
-          : current.terms,
       lines: (current.lines || []).map((line) =>
         isBlank(line.markup_percent) ? { ...line, markup_percent: businessDefaults.markup_percent } : line
       ),
@@ -1066,14 +1186,23 @@ export default function QuoteEditor({ quoteId }) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [editableLineIndex]);
 
+  // Business defaults are NOT optional, which is what the old comment here
+  // claimed. Markup, the hourly rate and the hinge drilling fee all come from
+  // them, so a failed load meant the editor quietly priced the job at the
+  // built-in 40% and $85/hr while showing no sign anything was wrong. Say so
+  // instead: the numbers on screen are not the configured ones.
   async function loadBusinessDefaults() {
     try {
       const response = await fetch("/api/admin/business-defaults", { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok || !payload.ok) return;
+      if (!response.ok || !payload.ok) {
+        setBusinessDefaultsError(payload?.error || "Could not load your business defaults.");
+        return;
+      }
       setBusinessDefaults({ ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults });
-    } catch {
-      // Business defaults are optional; built-in defaults remain available.
+      setBusinessDefaultsError("");
+    } catch (error) {
+      setBusinessDefaultsError(error?.message || "Could not load your business defaults.");
     }
   }
 
@@ -2231,17 +2360,33 @@ export default function QuoteEditor({ quoteId }) {
 
     return (
       <div className="md:flex md:flex-col md:flex-1 md:min-h-0">
-        <div className="flex items-center justify-between mb-3 flex-shrink-0">
+        <div className="flex items-center justify-between mb-3 flex-shrink-0 gap-3">
           <span className="text-[12px] text-[#8b8a81]">
             {form.lines.length} line {form.lines.length === 1 ? 'item' : 'items'}
+            {unpricedLineCount > 0 ? (
+              <span className="ml-2 text-[#991b1b] font-medium">
+                {unpricedLineCount} with no board cost
+              </span>
+            ) : null}
           </span>
-          <button
-            type="button"
-            className="h-[32px] px-4 bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors"
-            onClick={addLine}
-          >
-            + Add line item
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="h-[32px] px-3 bg-white border border-[#dbd8cc] text-[12px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
+              onClick={repriceFromLibrary}
+              disabled={isRepricing || isLocked}
+              title="Look every board line up in the colour library again and apply the current price"
+            >
+              {isRepricing ? 'Repricing...' : 'Reprice from colour library'}
+            </button>
+            <button
+              type="button"
+              className="h-[32px] px-4 bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors"
+              onClick={addLine}
+            >
+              + Add line item
+            </button>
+          </div>
         </div>
 
         <div className={`hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden ${quoteStyles.quoteItemsTable}`}>
@@ -3113,6 +3258,23 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   function renderActiveSection() {
+    // Shown above whatever tab is open, because this affects every price on the
+    // screen rather than one section.
+    const defaultsWarning = businessDefaultsError ? (
+      <div className="mb-3 rounded-[8px] border border-[#fca5a5] bg-[#fef2f2] px-4 py-3">
+        <p className="text-[13px] font-medium text-[#991b1b]">Your business defaults could not be loaded.</p>
+        <p className="mt-[2px] text-[12px] leading-snug text-[#7f1d1d]">
+          Markup, hourly rate and hinge drilling on this screen are built-in starting values, not your settings, so the
+          totals may be wrong. Reload before saving. {businessDefaultsError}
+        </p>
+      </div>
+    ) : null;
+
+    const section = renderSectionBody();
+    return defaultsWarning ? <>{defaultsWarning}{section}</> : section;
+  }
+
+  function renderSectionBody() {
     if (activeSection === "items") return renderItems();
     if (activeSection === "cabinets") return renderCabinets();
     if (activeSection === "costs") return renderCosts();

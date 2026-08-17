@@ -29,6 +29,12 @@ function emptyItem(id) {
     finish: "",
     colour: "",
     colourSrc: "",
+    // The colour library row behind the swatch they picked. Carried so the back
+    // end can price the line off the exact board rather than guessing from a
+    // colour name, which is not unique across suppliers.
+    colourLibraryId: "",
+    supplierName: "",
+    note: "",
     edgeMould: "",
     profileType: "",
     profile: "",
@@ -249,6 +255,10 @@ function ColourControls({ item, onChange }) {
       colour: option.name,
       finish: item.finish,
       colourSrc: option.src,
+      // Keep the identity of the board, not just its name. This is what lets
+      // the quote be priced without anyone re-picking the colour by hand.
+      colourLibraryId: option.id || "",
+      supplierName: option.supplier || "",
     });
     setOpen(false);
   }
@@ -256,7 +266,17 @@ function ColourControls({ item, onChange }) {
   function chooseFinish(finish) {
     setQuery("");
     setOpen(false);
-    onChange({ finish, colour: "", colourSrc: "" });
+    onChange({ finish, colour: "", colourSrc: "", colourLibraryId: "", supplierName: "" });
+  }
+
+  // Typing filters the list; it does not choose anything. Leaving typed text in
+  // the box after that made the row read as if a colour had been chosen when
+  // none had, so an abandoned search snaps back to whatever is actually set.
+  function handleBlur() {
+    window.setTimeout(() => {
+      setOpen(false);
+      setQuery(item.colour || "");
+    }, 120);
   }
 
   return (
@@ -281,7 +301,7 @@ function ColourControls({ item, onChange }) {
           placeholder={item.finish ? "Colour" : "Select finish first"}
           type="text"
           value={query}
-          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          onBlur={handleBlur}
           onChange={(event) => {
             const nextQuery = event.target.value;
             setQuery(nextQuery);
@@ -439,6 +459,8 @@ export default function RequestQuoteFormClient() {
           next.finish = "";
           next.colour = "";
           next.colourSrc = "";
+          next.colourLibraryId = "";
+          next.supplierName = "";
           if (!isEdgeProfileSelectionAvailable(next.edgeMould, next.material)) {
             next.edgeMould = "";
           }
@@ -452,6 +474,8 @@ export default function RequestQuoteFormClient() {
           next.finish = "";
           next.colour = "";
           next.colourSrc = "";
+          next.colourLibraryId = "";
+          next.supplierName = "";
         }
 
         if (Object.prototype.hasOwnProperty.call(patch, "profileType")) {
@@ -536,15 +560,27 @@ export default function RequestQuoteFormClient() {
     setErrors({});
     setSubmitting(true);
 
+    // Every field goes across as its own field. The finish used to be glued onto
+    // the front of the colour here ("Matt - Classic White"), which is what put
+    // the finish in the colour column all the way through to the quote editor —
+    // where the colour picker then could not match it back to a library row, so
+    // the line arrived unpriced and unselectable. The finish already has its own
+    // key one line up; it never needed repeating inside the colour.
+    //
+    // colourLibraryId and supplier come from the row the customer actually
+    // clicked, so the back end can price the line exactly rather than matching
+    // on a name that two suppliers might share.
     const lines = quoteRows.map((item) => ({
       productType: item.type,
       productName: item.type || "Cabinetry item",
       material: item.material,
       thickness: item.thickness,
-      finish: item.finish || item.material,
-      colour: item.finish && item.colour ? `${item.finish} - ${item.colour}` : item.colour,
+      finish: item.finish,
+      colour: item.colour,
+      colourLibraryId: item.colourLibraryId || undefined,
+      supplierName: item.supplierName || undefined,
       profileType: item.profileType,
-      profile: item.profile || item.type,
+      profile: item.profile,
       edgeMould: item.edgeMould,
       width: numberOrUndefined(item.width),
       height: numberOrUndefined(item.height),
@@ -552,6 +588,7 @@ export default function RequestQuoteFormClient() {
       hingeHoles: item.type === "Door" && item.preDrill,
       hingeSupply: item.type === "Door" && item.hinges,
       hingeQty: item.type === "Door" && (item.hinges || item.preDrill) ? item.hingeQty : "",
+      notes: item.note || "",
     }));
 
     const payload = {

@@ -116,12 +116,13 @@ export default function QuotesTable() {
       const response = await fetch('/api/admin/quotes', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
+        // Currency, GST rate and terms are deliberately NOT sent. The server
+        // fills each from Business Defaults when the field is absent, and it
+        // uses "whatever the caller sent wins" precedence, so sending values
+        // from here overrode the configured settings on every new quote.
         body: JSON.stringify({
-          title:    'Cabinetry Quote',
-          currency: 'AUD',
-          gst_rate: 0.1,
-          terms:    'Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.',
-          lines:    [],
+          title: 'Cabinetry Quote',
+          lines: [],
         }),
       })
       const payload = await response.json()

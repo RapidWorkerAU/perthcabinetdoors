@@ -416,8 +416,11 @@ function cornerDoorLinesForCabinet(item, roomName, { cabinetIncluded = true } = 
 // drawer, at the rate for the bank's runner type. Shared by the drawers front
 // and each drawer section of a mixed front. Zero rate → no line (e.g. if the
 // runner cost defaults were cleared).
-function runnerLinesFor(item, cfg, sizes, traceLabel, sectionLabel = "") {
-  const runnerCost = runnerUnitCost(cfg);
+function runnerLinesFor(item, cfg, sizes, traceLabel, sectionLabel = "", businessDefaults = undefined) {
+  // The CONFIGURED rate. This called runnerUnitCost(cfg) with no defaults, so it
+  // always fell back to the built-in $8 / $25 / $15 and the settings screen
+  // could never change what a runner pair costs.
+  const runnerCost = runnerUnitCost(cfg, businessDefaults);
   const totalDrawers = (Array.isArray(sizes) ? sizes : []).reduce((n, s) => n + (s.qty || 0), 0);
   if (!(totalDrawers > 0) || !(runnerCost > 0)) return [];
   const label = runnerLabel(cfg);
@@ -433,7 +436,7 @@ function runnerLinesFor(item, cfg, sizes, traceLabel, sectionLabel = "") {
   }];
 }
 
-function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
+function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true, businessDefaults } = {}) {
   if (item.front_type !== "drawers") return [];
 
   const style = item.drawer_style || {};
@@ -466,7 +469,7 @@ function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) 
     unit_cost_per_sqm_ex_gst: style.cost_per_sqm || 0,
     unit_cost_mode: "auto",
   }));
-  lines.push(...runnerLinesFor(item, cfg, sizes, traceLabel));
+  lines.push(...runnerLinesFor(item, cfg, sizes, traceLabel, "", businessDefaults));
   return lines;
 }
 
@@ -477,7 +480,7 @@ function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) 
 // drawer-type section to another, rather than letting each section pick
 // its own. Each section becomes its own set of lines, labelled by section
 // number so they're traceable back to their position in the cabinet.
-function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeDoors = true, includeDrawers = true } = {}) {
+function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeDoors = true, includeDrawers = true, businessDefaults } = {}) {
   if (item.front_type !== "mixed") return [];
 
   const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
@@ -522,7 +525,7 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeD
           unit_cost_mode: "auto",
         });
       });
-      lines.push(...runnerLinesFor(item, cfg, sizes, traceLabel, sectionLabel));
+      lines.push(...runnerLinesFor(item, cfg, sizes, traceLabel, sectionLabel, businessDefaults));
     } else if (sec.type === "open" || sec.type === "appliance") {
       // Blank space or an appliance (oven/microwave) recess — no board to cut,
       // no line to quote; the appliance is customer-supplied.
@@ -1398,7 +1401,10 @@ function anyPartSelected(item, selections) {
 // Builds every quote line the design would produce, each tagged with its source
 // item — the shared core of both the import (save) path and the staging preview
 // dry-run, so the preview is exactly what a commit would create.
-function generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items }) {
+// businessDefaults is threaded all the way down to the drawer runner rate. It
+// is the only configured number the line builders need, and it used to be
+// missing, so runners were priced from a constant no one could change.
+function generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, businessDefaults }) {
   const generated = [];
   for (const item of importableItems) {
     const isCabinet = CABINET_TYPES.includes(item.item_type);
@@ -1430,11 +1436,11 @@ function generateImportLines({ importableItems, selections, selectedCabinetItems
       } else if (item.front_type === "doors") {
         if (sel.doors) add("doors", doorLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet }));
       } else if (item.front_type === "drawers") {
-        if (sel.drawers) add("drawers", drawerLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet }));
+        if (sel.drawers) add("drawers", drawerLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet, businessDefaults }));
       } else if (item.front_type === "mixed" && (sel.doors || sel.drawers)) {
         // A mixed front interleaves door and drawer lines — tag each by which it
         // is so the doors / drawers toggles each govern only their own rows.
-        for (const line of mixedLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet, includeDoors: sel.doors, includeDrawers: sel.drawers })) {
+        for (const line of mixedLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet, includeDoors: sel.doors, includeDrawers: sel.drawers, businessDefaults })) {
           const isDrawer = line.product_type === QUOTE_PRODUCT_TYPES.drawer_front || /runner/i.test(line.product_name || "");
           tagged.push({ line, part: isDrawer ? "drawers" : "doors" });
         }
@@ -1627,15 +1633,19 @@ export async function POST(request, { params }) {
       (i) => CABINET_TYPES.includes(i.item_type) && anyPartSelected(i, selections)
     );
 
+    // Read once for both paths below. The preview and the commit have to price
+    // from the same settings, or the numbers someone approves are not the
+    // numbers that get saved.
+    const businessDefaults = await getBusinessDefaults(context.supabase);
+
     // ── Staging preview (dry-run) ──────────────────────────────────────────
     // Generate + price exactly what a commit would, grouped Room → Cabinet →
     // Part, with the same pre-flight warnings — but save nothing. Stage 1 of the
     // staging-table flow: review before committing.
     if (preview) {
-      const businessDefaults = await getBusinessDefaults(context.supabase);
       const gstRate = businessDefaults.gst_rate ?? GST_RATE;
       const warnings = computeItemWarnings({ importableItems, selections, selectedCabinetItems, roomNameById, roomById });
-      const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items });
+      const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, businessDefaults });
       const mergedById = new Map(importableItems.map((i) => [i.id, i]));
 
       const pricedLines = [];
@@ -1666,7 +1676,7 @@ export async function POST(request, { params }) {
       // as the user ticks.
       const PART_ORDER = ["cabinet", "doors", "drawers", "kickboard", "filler", "panels"];
       const allCabinets = importableItems.filter((i) => CABINET_TYPES.includes(i.item_type));
-      const fullGen = generateImportLines({ importableItems, selections: undefined, selectedCabinetItems: allCabinets, roomNameById, roomById, items });
+      const fullGen = generateImportLines({ importableItems, selections: undefined, selectedCabinetItems: allCabinets, roomNameById, roomById, items, businessDefaults });
       const treeRooms = new Map(); // roomName → Map(itemId → { itemId, label, isCabinet, parts:Set })
       for (const { itemId, part } of fullGen) {
         const src = mergedById.get(itemId);
@@ -1781,7 +1791,7 @@ export async function POST(request, { params }) {
     // flat lines can be collapsed into one (qty summed) before any are saved —
     // e.g. two identical standalone panels, or the same door on two cabinets.
     // Same generator the staging preview uses, so a commit matches its preview.
-    const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items });
+    const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, businessDefaults });
 
     const mergedById = new Map(importableItems.map((i) => [i.id, i]));
     for (const { line, itemId } of mergeIdenticalLines(generated)) {

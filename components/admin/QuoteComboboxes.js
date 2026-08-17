@@ -3,7 +3,7 @@
 import React, { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { IconChevronDown, IconSearch, IconSearchOff } from "@tabler/icons-react";
-import { COLOUR_SUPPLIERS, optionsFromColourFamily } from "@/lib/pcd-colour-library";
+import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from "@/lib/pcd-colour-library";
 import { Dropdown } from "@/components/ui/Dropdown";
 
 // These comboboxes are built on the same Radix Popover primitive as
@@ -294,20 +294,9 @@ export const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact =
       value={selectedValue}
       displayValue={displayValue}
       options={filteredOptions}
-      onChange={(option) =>
-        onChange({
-          supplier_name: option.supplier || selectedSupplier,
-          thickness: option.thickness || "",
-          colour: option.name || option.label,
-          finish: option.finish || "",
-          unit_cost_source_id: option.id || null,
-          unit_cost_source_label: [option.supplier || selectedSupplier, option.label || option.name].filter(Boolean).join(" - "),
-          unit_cost_per_sqm_ex_gst: Number(option.costPerSqmExGst || 0),
-          cost_per_board_ex_gst: Number(option.costPerBoardExGst || 0),
-          preferred_board_width_mm: Number(option.preferredBoardWidthMm || 0),
-          preferred_board_height_mm: Number(option.preferredBoardHeightMm || 0),
-        })
-      }
+      // Shared with the quote editor's copy of this widget, so the two cannot
+      // write a line differently. See colourSelectionPatch.
+      onChange={(option) => onChange(colourSelectionPatch(option, selectedSupplier))}
     />
   );
 });
