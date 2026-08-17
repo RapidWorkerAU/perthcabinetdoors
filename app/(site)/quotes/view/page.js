@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import QuoteApprovalClient from "../QuoteApprovalClient";
+import PcdLoader from "@/components/public/PcdLoader";
 import styles from "../quote-public.module.css";
 
 export const metadata = {
@@ -21,7 +22,13 @@ export default function QuoteViewPage() {
           fallback={
             <section className={styles.panel}>
               <div className={styles.panelHeader}>Quote</div>
-              <div className={styles.panelBody}>Loading quote...</div>
+              <div className={styles.panelBody}>
+                <PcdLoader
+                  variant="panel"
+                  label="Loading your quote"
+                  steps={["Finding your quote", "Loading the details", "Almost there"]}
+                />
+              </div>
             </section>
           }
         >

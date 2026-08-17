@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { IconMessage } from "@tabler/icons-react";
 import {
   DEFAULT_BUSINESS_DEFAULTS,
+  formatItemSpecs,
   formatMoney,
   ORDER_LINE_STATUSES,
   ORDER_PRODUCTION_STAGES,
@@ -15,6 +16,9 @@ import {
 } from "../../../../lib/pcd-quote-utils";
 import { canRefreshPaymentRequest, canRequestPayment, hasPaymentRequest } from "../../../../lib/pcd-payment-requests";
 import { Modal } from '@/components/ui/Modal';
+import AdminLoading from "@/components/admin/AdminLoading";
+import { panelNumberKey } from "../../../../lib/pcd-order-panel-numbers";
+import { groupProductionRows } from "../../../../lib/pcd-production-groups";
 import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
 
@@ -24,7 +28,7 @@ const sections = [
   { key: "items", label: "Item Planning" },
   { key: "supplierMade", label: "Supplier Made" },
   { key: "madeInHouse", label: "Made In House" },
-  { key: "cutList", label: "Cut List" },
+  { key: "cutList", label: "Production List" },
   { key: "payments", label: "Payments" },
   { key: "variations", label: "Variations" },
   { key: "activity", label: "Activity Log" },
@@ -131,11 +135,7 @@ function formatActivityDescription(description) {
 }
 
 function itemMeta(item) {
-  const size = item.width_mm || item.height_mm ? `${item.width_mm || "-"} x ${item.height_mm || "-"}mm` : "";
-  const finish = [item.material, item.thickness, item.finish, item.colour, item.profile_type, item.profile, item.edge_mould]
-    .filter(Boolean)
-    .join(" - ");
-  return [size, finish].filter(Boolean).join(" | ");
+  return formatItemSpecs(item);
 }
 
 function itemDisplayTitle(item) {
@@ -332,6 +332,10 @@ export default function OrderDetail({ orderId }) {
   const [savingPaymentId, setSavingPaymentId] = useState("");
   const [editingPaymentId, setEditingPaymentId] = useState("");
   const [isGeneratingCutListPdf, setIsGeneratingCutListPdf] = useState(false);
+  const [generatingLabels, setGeneratingLabels] = useState("");
+  // "all" | "here" | "mto". Narrowing to the cut work is what someone at the
+  // saw wants; the whole order is what everyone else wants.
+  const [productionFilter, setProductionFilter] = useState("all");
   const { toast } = useToast();
   const [colourSupplierMap, setColourSupplierMap] = useState({});
   const [paymentModal, setPaymentModal] = useState(null);
@@ -352,6 +356,57 @@ export default function OrderDetail({ orderId }) {
   const supplierMadeRows = useMemo(() => planningRows.filter((row) => !isPanelMadeInHouse(row)), [planningRows]);
   const madeInHouseRows = useMemo(() => planningRows.filter(isPanelMadeInHouse), [planningRows]);
   const cutListRows = useMemo(() => planningRows.filter(isPanelMadeInHouse), [planningRows]);
+  const madeToOrderRows = useMemo(() => planningRows.filter((row) => !isPanelMadeInHouse(row)), [planningRows]);
+  // Panel numbers are stored against the order and assigned the first time a
+  // production document is generated, so the screen can show the same number
+  // the sheet and the labels carry rather than a position that shifts.
+  const panelNumbers = useMemo(
+    () => new Map(
+      (order?.panel_numbers || []).map((row) => [panelNumberKey(row.order_line_item_id, row.panel_key), row.panel_no])
+    ),
+    [order]
+  );
+  const panelNo = (row) => panelNumbers.get(panelNumberKey(row.item?.id, row.panelKey)) || null;
+
+  // The quote lines carry design_item_id, which is what ties a door to the
+  // cabinet it belongs to. Same grouping the printed sheet uses.
+  const assemblyQuoteLines = useMemo(() => order?.pcd_quote?.pcd_quote_line_items || [], [order]);
+  const productionGroups = useMemo(
+    () => groupProductionRows(
+      planningRows.map((row) => ({ ...row, itemId: row.item.id })),
+      { items, quoteLines: assemblyQuoteLines }
+    ),
+    [planningRows, items, assemblyQuoteLines]
+  );
+
+  // The same disc the printed label carries. A panel with no number has not
+  // been through a print yet, so it shows as an empty outline rather than a
+  // dash: not issued reads differently to missing.
+  function renderPanelBadge(row) {
+    const number = panelNo(row);
+    if (!number) {
+      return (
+        <span
+          className="inline-flex h-[24px] w-[24px] items-center justify-center rounded-full border border-dashed border-[#dbd8cc] text-[11px] font-medium text-[#8b8a81]"
+          title="Assigned when the production sheet or labels are first printed"
+        >
+          &ndash;
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex h-[24px] w-[24px] items-center justify-center rounded-full bg-[#1c2b1e] text-[11px] font-semibold text-white font-mono">
+        {number}
+      </span>
+    );
+  }
+  // One label per physical piece, counted off the same rows the cut list sheet
+  // prints, so the button can say how many will come out before anyone loads a
+  // roll. Covers both tables on the sheet: what we cut and what a supplier makes.
+  const labelCount = useMemo(
+    () => planningRows.reduce((total, row) => total + Math.max(1, Math.floor(Number(row.qty) || 1)), 0),
+    [planningRows]
+  );
   const quoteLines = useMemo(() => sortedQuoteLines(order), [order]);
   const payments = useMemo(() => sortedPayments(order), [order]);
   const activity = useMemo(() => sortedActivity(order), [order]);
@@ -384,13 +439,24 @@ export default function OrderDetail({ orderId }) {
     mono: "font-mono",
     pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border",
     tableWrap: "overflow-x-auto md:max-h-[calc(100vh-260px)] md:overflow-auto",
-    table: "w-full text-[13px] border-collapse",
+    /* min-w-max stops these wide tables being crushed into the panel width.
+       Without it the browser wraps every cell ("1mm Square Edge" over three
+       lines) instead of letting the wrapper scroll sideways. Free text cells
+       opt back into wrapping with tw.cellText so one long note cannot stretch
+       the whole table. */
+    table: "w-full min-w-max text-[13px] border-collapse",
+    /* Fixed layout, so the declared shares are the widths and one long value
+       cannot stretch a column. The floor keeps ten columns readable on a narrow
+       window: below it the wrapper scrolls rather than crushing them. */
+    tableFixed: "w-full table-fixed min-w-[1180px] text-[13px] border-collapse",
+    wrapCell: "whitespace-normal break-words",
     th: "sticky top-0 z-10 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] px-4 py-[9px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
     td: "px-4 py-[11px] border-b border-[#edf4eb] text-[#1a1a18] align-middle",
     tdLast: "px-4 py-[11px] text-[#1a1a18] align-middle",
+    cellText: "block max-w-[280px] whitespace-normal",
     inlineInput: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
     inlineSelect: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
-    totalRow: "flex justify-between items-center py-[5px] border-b border-[#edf4eb] text-[12px] last:border-0",
+    totalRow: "flex justify-between items-center gap-4 py-[5px] border-b border-[#edf4eb] text-[12px] last:border-0",
     saveBar: "flex justify-end pt-3 border-t border-[#edf4eb] mt-3",
   }
 
@@ -721,6 +787,43 @@ export default function OrderDetail({ orderId }) {
     }
   }
 
+  // Labels are one per physical piece, so a line with qty 4 downloads 4 of
+  // them. The PDF prints straight to the Brother QL on a 62mm roll; the CSV is
+  // there for P-touch Editor if the driver argues about the page size.
+  async function downloadLabels(format) {
+    setGeneratingLabels(format);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/labels?format=${format}`, { cache: "no-store" });
+      if (!response.ok) {
+        let message = "Could not generate the labels.";
+        if ((response.headers.get("content-type") || "").includes("application/json")) {
+          const payload = await response.json();
+          message = payload.error || message;
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      // The server stamps the filename with the minute it generated the file,
+      // so two downloads of the same order are two files rather than one plus a
+      // "(1)". Opening the first one after a change looks exactly like a change
+      // that did not take effect, which is a long way to chase nothing.
+      const sent = (response.headers.get("content-disposition") || "").match(/filename="([^"]+)"/);
+      link.download = sent ? sent[1] : `labels-${order?.order_number || "order"}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      toast({ title: error?.message || "Could not generate the labels.", variant: "error" });
+    } finally {
+      setGeneratingLabels("");
+    }
+  }
+
   async function updateItem(item, changes) {
     if (!order) return;
     const nextItem = { ...item, ...changes };
@@ -896,7 +999,7 @@ export default function OrderDetail({ orderId }) {
     return "";
   }
 
-  if (isLoading) return <section className={styles.emptyState}><p>Loading order...</p></section>;
+  if (isLoading) return <AdminLoading steps={["Opening the order", "Loading the line items", "Almost there"]} label="Loading order" />;
   if (!order) return <section className={styles.emptyState}><p>Order not found.</p></section>;
 
   function renderOverview() {
@@ -1042,9 +1145,9 @@ export default function OrderDetail({ orderId }) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6b9e61] mb-2">Quote totals</p>
           <div className={tw.totalRow}><span className="text-[#5a5a52]">Subtotal ex GST</span><strong className={tw.mono}>{formatMoney(quote.subtotal_ex_gst, quoteCurrency)}</strong></div>
           <div className={tw.totalRow}><span className="text-[#5a5a52]">GST</span><strong className={tw.mono}>{formatMoney(quote.gst_amount, quoteCurrency)}</strong></div>
-          <div className="flex justify-between items-center pt-2 mt-1">
+          <div className="flex justify-between items-center gap-4 pt-2 mt-1">
             <span className="text-[14px] font-semibold text-[#2d5e28]">Total inc GST</span>
-            <strong className="text-[18px] font-semibold text-[#1a1a18] font-mono">{formatMoney(quote.total_inc_gst, quoteCurrency)}</strong>
+            <strong className="text-[18px] font-semibold text-[#1a1a18] font-mono whitespace-nowrap">{formatMoney(quote.total_inc_gst, quoteCurrency)}</strong>
           </div>
         </div>
       </div>
@@ -1071,8 +1174,8 @@ export default function OrderDetail({ orderId }) {
                   return (
                     <tr key={row.key}>
                       <td className={tw.td}>
-                        <p className="text-[12px] font-semibold text-[#1a1a18]">{row.source}</p>
-                        <p className={tw.muted}>{itemMeta(item) || "No item details recorded"}</p>
+                        <p className={`${tw.cellText} text-[12px] font-semibold text-[#1a1a18]`}>{row.source}</p>
+                        <p className={`${tw.cellText} ${tw.muted}`}>{itemMeta(item) || "No item details recorded"}</p>
                       </td>
                       <td className={tw.td + " whitespace-nowrap"}>{row.cabinet || "—"}</td>
                       <td className={tw.td}>{row.piece}</td>
@@ -1157,8 +1260,8 @@ export default function OrderDetail({ orderId }) {
                 {supplierMadeRows.map(row => (
                   <tr key={row.key}>
                     <td className={tw.td}>
-                      <p className="text-[12px] font-semibold text-[#1a1a18]">{row.source}</p>
-                      <p className={tw.muted}>{row.piece} · {row.size} · {row.material}</p>
+                      <p className={`${tw.cellText} text-[12px] font-semibold text-[#1a1a18]`}>{row.source}</p>
+                      <p className={`${tw.cellText} ${tw.muted}`}>{row.piece} · {row.size} · {row.material}</p>
                     </td>
                     <td className={tw.td}>
                       <select
@@ -1423,88 +1526,238 @@ export default function OrderDetail({ orderId }) {
     );
   }
 
+  // The production tab: the same table the sheet prints.
+  //
+  // Same columns, same meanings, same grouping, so nobody has to translate
+  // between the screen and the paper in their hand. Two differences, both
+  // deliberate. Cabinet assemblies get a header bar; anything supplied on its
+  // own just lists, because a bar reading "Doors" over a list of doors is a row
+  // of chrome that says nothing on a screen you can already filter. And two
+  // columns exist here that paper cannot have: what a panel's status is right
+  // now, and who makes it, the latter only while the filter is showing both.
   function renderCutList() {
-    const totalPieces = cutListRows.reduce((total, row) => total + Number(row.qty || 0), 0);
+    const showMadeBy = productionFilter === "all";
+    const visible = (rows) => (productionFilter === "here"
+      ? rows.filter(isPanelMadeInHouse)
+      : productionFilter === "mto"
+      ? rows.filter((row) => !isPanelMadeInHouse(row))
+      : rows);
+
+    // Cabinets keep their bar, everything else is flattened into one run that
+    // follows them.
+    const groups = productionGroups
+      .map((group) => ({ ...group, rows: visible(group.rows) }))
+      .filter((group) => group.rows.length);
+    const assemblies = groups.filter((group) => group.key.startsWith("assembly:"));
+    const standalone = groups.filter((group) => !group.key.startsWith("assembly:")).flatMap((group) => group.rows);
+
+    const visibleRows = visible(planningRows);
+    const pieces = visibleRows.reduce((total, row) => total + Number(row.qty || 0), 0);
+
+    const filters = [
+      { key: "all", label: "All panels", count: planningRows.length },
+      { key: "here", label: "Cut here", count: cutListRows.length },
+      { key: "mto", label: "Made to order", count: madeToOrderRows.length },
+    ];
+
+    // Same discipline as the printed sheet: every column sized to what actually
+    // goes in it, none wider than a fifth, and everything wraps. A legacy line
+    // whose Piece cell holds a whole cabinet spec sentence now wraps inside its
+    // column instead of dragging the table sideways.
+    //
+    // Shares are declared once and drive the widths and the headers together,
+    // so the two cannot drift apart. They total 100 in both states.
+    const columns = showMadeBy
+      ? [
+          { label: "#", share: 4 },
+          { label: "Piece", share: 17 },
+          { label: "Made by", share: 8 },
+          { label: "Qty", share: 3 },
+          { label: "Cut size", share: 12 },
+          { label: "Thick.", share: 5 },
+          { label: "Material / colour", share: 18 },
+          { label: "Edging / supplier", share: 13 },
+          { label: "Notes", share: 20 },
+        ]
+      : [
+          { label: "#", share: 4 },
+          { label: "Piece", share: 19 },
+          { label: "Qty", share: 3 },
+          { label: "Cut size", share: 13 },
+          { label: "Thick.", share: 5 },
+          { label: "Material / colour", share: 19 },
+          { label: "Edging / supplier", share: 17 },
+          { label: "Notes", share: 20 },
+        ];
+
+    function renderRow(row) {
+      const madeHere = isPanelMadeInHouse(row);
+      return (
+        <tr key={row.key}>
+          <td className={tw.td}>{renderPanelBadge(row)}</td>
+          <td className={tw.td + " " + tw.wrapCell}>
+            <p className="text-[12px] font-semibold text-[#1a1a18]">{row.piece}</p>
+          </td>
+          {showMadeBy ? (
+            <td className={tw.td}>
+              <span className={`${tw.pill} ${madeHere ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]" : "bg-[#fbf2e1] text-[#8a5a12] border-[#8a5a12]"}`}>
+                {madeHere ? "We cut it" : "Supplier"}
+              </span>
+            </td>
+          ) : null}
+          <td className={tw.td + " font-mono"}>{row.qty}</td>
+          <td className={tw.td + " whitespace-nowrap font-mono text-[11px]"}>{row.size}</td>
+          <td className={tw.td + " font-mono text-[11px]"}>{row.thickness}</td>
+          <td className={tw.td + " " + tw.wrapCell}>{row.material}</td>
+          <td className={tw.td + " " + tw.wrapCell}>
+            {madeHere ? row.edging : (row.plan.supplier_name || defaultSupplierForItem(row.item))}
+          </td>
+          <td className={tw.tdLast + " " + tw.wrapCell + " text-[11px] text-[#5a5a52] italic"}>{row.notes || "—"}</td>
+        </tr>
+      );
+    }
+
     return (
       <div className={tw.card}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#edf4eb] bg-[#f5f8f4]">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap px-4 py-3 border-b border-[#edf4eb] bg-[#f5f8f4]">
+          <div className="flex items-center gap-5">
             <div>
-              <span className="text-[18px] font-semibold text-[#1a1a18] font-mono">{cutListRows.length}</span>
-              <span className={tw.muted + " ml-1"}>rows</span>
+              <span className="text-[18px] font-semibold text-[#1a1a18] font-mono">{visibleRows.length}</span>
+              <span className={tw.muted + " ml-1"}>panels</span>
             </div>
             <div>
-              <span className="text-[18px] font-semibold text-[#1a1a18] font-mono">{totalPieces}</span>
-              <span className={tw.muted + " ml-1"}>total pieces</span>
+              <span className="text-[18px] font-semibold text-[#1a1a18] font-mono">{pieces}</span>
+              <span className={tw.muted + " ml-1"}>pieces</span>
             </div>
           </div>
-          <button
-            type="button"
-            className={tw.secondaryBtn}
-            disabled={isGeneratingCutListPdf || !cutListRows.length}
-            onClick={generateCutListPdf}
-          >
-            {isGeneratingCutListPdf ? "Generating PDF..." : "Generate cut list PDF"}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Labels are numbered off this list, so they live beside it. */}
+            <button
+              type="button"
+              className={tw.primaryBtn + " whitespace-nowrap"}
+              disabled={Boolean(generatingLabels) || !labelCount}
+              onClick={() => downloadLabels("pdf")}
+              title={`${labelCount} labels, one per piece, numbered to match the production sheet`}
+            >
+              {generatingLabels === "pdf" ? "Building labels..." : `Print ${labelCount} labels`}
+            </button>
+            <button
+              type="button"
+              className={tw.secondaryBtn + " whitespace-nowrap"}
+              disabled={Boolean(generatingLabels) || !labelCount}
+              onClick={() => downloadLabels("csv")}
+              title="One row per label, for P-touch Editor"
+            >
+              {generatingLabels === "csv" ? "Building CSV..." : "Labels as CSV"}
+            </button>
+            <button
+              type="button"
+              className={tw.secondaryBtn + " whitespace-nowrap"}
+              disabled={isGeneratingCutListPdf || !labelCount}
+              onClick={generateCutListPdf}
+            >
+              {isGeneratingCutListPdf ? "Generating PDF..." : "Production sheet PDF"}
+            </button>
+          </div>
         </div>
+
+        <div className="flex items-center justify-between gap-4 flex-wrap px-4 py-3 border-b border-[#dbd8cc]">
+          <div className="inline-flex rounded-[6px] border border-[#dbd8cc] overflow-hidden">
+            {filters.map((filter, index) => (
+              <button
+                key={filter.key}
+                type="button"
+                aria-pressed={productionFilter === filter.key}
+                onClick={() => setProductionFilter(filter.key)}
+                className={`h-[30px] px-3 text-[12px] font-medium transition-colors ${index ? "border-l border-[#dbd8cc]" : ""} ${
+                  productionFilter === filter.key
+                    ? "bg-[#1c2b1e] text-white"
+                    : "bg-white text-[#5a5a52] hover:bg-[#f5f8f4]"
+                }`}
+              >
+                {filter.label}{filter.key === "all" ? "" : ` (${filter.count})`}
+              </button>
+            ))}
+          </div>
+          <span className={tw.muted}>Same rows, numbers and grouping as the production sheet</span>
+        </div>
+
         <div className="hidden md:block">
           <div className={tw.tableWrap}>
-            <table className={tw.table}>
+            <table className={tw.tableFixed}>
+              <colgroup>
+                {columns.map(column => (
+                  <col key={column.label} style={{ width: `${column.share}%` }} />
+                ))}
+              </colgroup>
               <thead>
                 <tr>
-                  {["#","Source item","Cabinet size","Cut piece","Qty","Cut size","Thickness","Material","Edging","Notes"].map(h => (
-                    <th key={h} className={tw.th}>{h}</th>
+                  {columns.map(column => (
+                    <th key={column.label} className={tw.th + " whitespace-normal"}>{column.label}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {cutListRows.map((row, index) => (
-                  <tr key={row.key}>
-                    <td className={tw.td + " text-[#8b8a81] font-mono text-[11px]"}>
-                      {index + 1}
-                    </td>
-                    <td className={tw.td}>{row.source}</td>
-                    <td className={tw.td + " whitespace-nowrap text-[#5a5a52]"}>{row.cabinet || "—"}</td>
-                    <td className={tw.td + " font-medium"}>{row.piece}</td>
-                    <td className={tw.td}>{row.qty}</td>
-                    <td className={tw.td + " whitespace-nowrap font-mono text-[11px]"}>{row.size}</td>
-                    <td className={tw.td}>{row.thickness}</td>
-                    <td className={tw.td}>{row.material}</td>
-                    <td className={tw.td}>{row.edging}</td>
-                    <td className={tw.tdLast + " text-[#5a5a52] italic text-[11px]"}>{row.notes || "—"}</td>
-                  </tr>
+                {assemblies.map(group => (
+                  <React.Fragment key={group.key}>
+                    <tr>
+                      <td colSpan={columns.length} className="px-4 py-[7px] bg-[#eae6da] border-y border-[#c9c4b4]">
+                        <span className="text-[12px] font-semibold text-[#1a1a18]">{group.name}</span>
+                        {group.meta ? <span className={tw.muted + " ml-2"}>{group.meta}</span> : null}
+                        <span className={tw.muted + " float-right"}>
+                          {group.rows.length} {group.rows.length === 1 ? "row" : "rows"}
+                        </span>
+                      </td>
+                    </tr>
+                    {group.rows.map(renderRow)}
+                  </React.Fragment>
                 ))}
-                {!cutListRows.length && (
-                  <tr><td colSpan={10} className="py-8 text-center text-[12px] text-[#8b8a81]">No cut list rows yet. Assign items to Made in house in Item Planning first.</td></tr>
+                {standalone.map(renderRow)}
+                {!visibleRows.length && (
+                  <tr><td colSpan={columns.length} className="py-8 text-center text-[12px] text-[#8b8a81]">No panels in this view.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
+
         <div className="md:hidden flex flex-col gap-3 p-3">
-          {cutListRows.map(row => (
-            <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
-              <div className="mb-2">
-                <p className="text-[13px] font-semibold text-[#1a1a18]">{row.piece}</p>
-                <p className="text-[11px] text-[#8b8a81]">{row.source}</p>
-              </div>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-                <div><dt className="text-[#8b8a81]">Cabinet</dt><dd className="text-[#1a1a18]">{row.cabinet || "—"}</dd></div>
-                <div><dt className="text-[#8b8a81]">Qty</dt><dd className="text-[#1a1a18]">{row.qty}</dd></div>
-                <div><dt className="text-[#8b8a81]">Cut size</dt><dd className="text-[#1a1a18] font-mono text-[11px]">{row.size}</dd></div>
-                <div><dt className="text-[#8b8a81]">Thickness</dt><dd className="text-[#1a1a18]">{row.thickness}</dd></div>
-                <div className="col-span-2"><dt className="text-[#8b8a81]">Material</dt><dd className="text-[#1a1a18]">{row.material}</dd></div>
-                <div className="col-span-2"><dt className="text-[#8b8a81]">Edging</dt><dd className="text-[#1a1a18]">{row.edging}</dd></div>
-              </dl>
-              {row.notes && (
-                <div className="pt-3 mt-3 border-t border-[#edf4eb]">
-                  <p className="text-[11px] text-[#5a5a52] italic">{row.notes}</p>
+          {[...assemblies.flatMap(group => group.rows), ...standalone].map(row => {
+            const madeHere = isPanelMadeInHouse(row);
+            return (
+              <article key={row.key} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex items-start gap-2">
+                    {renderPanelBadge(row)}
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#1a1a18]">{row.piece}</p>
+                      <p className="text-[11px] text-[#8b8a81]">{row.source}</p>
+                    </div>
+                  </div>
+                  <span className={`${tw.pill} ${madeHere ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]" : "bg-[#fbf2e1] text-[#8a5a12] border-[#8a5a12]"}`}>
+                    {madeHere ? "We cut it" : "Supplier"}
+                  </span>
                 </div>
-              )}
-            </article>
-          ))}
-          {!cutListRows.length && (
-            <p className="py-8 text-center text-[12px] text-[#8b8a81]">No cut list rows yet. Assign items to Made in house in Item Planning first.</p>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                  <div><dt className="text-[#8b8a81]">Qty</dt><dd className="text-[#1a1a18]">{row.qty}</dd></div>
+                  <div><dt className="text-[#8b8a81]">Cut size</dt><dd className="text-[#1a1a18] font-mono text-[11px]">{row.size}</dd></div>
+                  <div><dt className="text-[#8b8a81]">Thickness</dt><dd className="text-[#1a1a18]">{row.thickness}</dd></div>
+                  <div className="col-span-2"><dt className="text-[#8b8a81]">Material</dt><dd className="text-[#1a1a18]">{row.material}</dd></div>
+                  <div className="col-span-2">
+                    <dt className="text-[#8b8a81]">{madeHere ? "Edging" : "Supplier"}</dt>
+                    <dd className="text-[#1a1a18]">{madeHere ? row.edging : (row.plan.supplier_name || defaultSupplierForItem(row.item))}</dd>
+                  </div>
+                </dl>
+                {row.notes && (
+                  <div className="pt-3 mt-3 border-t border-[#edf4eb]">
+                    <p className="text-[11px] text-[#5a5a52] italic">{row.notes}</p>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+          {!visibleRows.length && (
+            <p className="py-8 text-center text-[12px] text-[#8b8a81]">No panels in this view.</p>
           )}
         </div>
       </div>
@@ -1994,7 +2247,7 @@ export default function OrderDetail({ orderId }) {
                 <tr key={variation.id}>
                   <td className={tw.td}>
                     <p className="text-[12px] font-semibold text-[#1a1a18]">{variation.variation_number}</p>
-                    <p className={tw.muted}>{variation.title || "Order Variation"}</p>
+                    <p className={`${tw.cellText} ${tw.muted}`}>{variation.title || "Order Variation"}</p>
                   </td>
                   <td className={tw.td}>
                     <span className={`${tw.pill} ${
@@ -2095,8 +2348,8 @@ export default function OrderDetail({ orderId }) {
                   <td className={tw.td + ' font-medium whitespace-nowrap'}>
                     {entry.title}
                   </td>
-                  <td className={tw.td + ' text-[#5a5a52] max-w-[320px]'}>
-                    <span className="block truncate text-[11px]" title={formatActivityDescription(entry.description)}>
+                  <td className={tw.td + ' text-[#5a5a52]'}>
+                    <span className="block max-w-[320px] truncate text-[11px]" title={formatActivityDescription(entry.description)}>
                       {formatActivityDescription(entry.description) || '—'}
                     </span>
                   </td>

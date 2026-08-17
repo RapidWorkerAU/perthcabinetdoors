@@ -142,6 +142,13 @@
 .pcdLoader-page { background: var(--pcdLoaderGround); height: 100%; min-height: 60vh; }
 .pcdLoader-page .pcdLoaderInner { width: min(260px, 74%); }
 
+/* Content: a whole page inside a shell. The shell has already painted the
+   background and drawn the chrome around it, so this stays transparent like
+   the panel variant rather than laying its own cream over the admin's, but it
+   is sized like the page variant because it does own everything inside. */
+.pcdLoader-content { height: 100%; }
+.pcdLoader-content .pcdLoaderInner { width: min(240px, 70%); }
+
 /* Panel: inside a stage that already has its own frame, so it stays quiet and
    inherits whatever background is behind it. */
 .pcdLoader-panel { height: 100%; }

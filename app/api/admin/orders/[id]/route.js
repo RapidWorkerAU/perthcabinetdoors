@@ -31,9 +31,21 @@ async function loadOrder(supabase, id) {
     configsByLineId = new Map((cabinetConfigs || []).map((config) => [config.line_item_id, config]));
     data.pcd_order_line_items = (data.pcd_order_line_items || []).map((item) => ({
       ...item,
-      cabinet_config: configsByLineId.get(item.quote_line_item_id) || null,
+      // Snapshot first, live join only for orders raised before snapshots.
+      cabinet_config: item.cabinet_config_snapshot || configsByLineId.get(item.quote_line_item_id) || null,
     }));
   }
+
+  // Stored panel numbers, so the production tab shows the same numbers the
+  // printed sheet and the labels carry. They are assigned the first time a
+  // production document is generated, so a panel can legitimately have none yet.
+  // order_line_item_id is part of the key: a panel key is only unique inside
+  // its own item, so two cabinets both have a "left side panel".
+  const { data: panelNumbers } = await supabase
+    .from("pcd_order_panel_numbers")
+    .select("order_line_item_id, panel_key, panel_no")
+    .eq("order_id", id);
+  data.panel_numbers = panelNumbers || [];
 
   if (data.quote_id) {
     const { data: quote } = await supabase

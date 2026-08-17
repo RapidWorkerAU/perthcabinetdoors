@@ -4,7 +4,7 @@ import * as React from 'react'
 import { IconSearch } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { SkeletonText } from '@/components/ui/Skeleton'
+import AdminLoading from '@/components/admin/AdminLoading'
 
 export interface AdminDataTableColumn<T> {
   id: string
@@ -36,7 +36,6 @@ export interface AdminDataTableProps<T> {
   className?: string
 }
 
-const SKELETON_WIDTHS = ['70%', '50%', '80%', '60%', '45%', '64%']
 
 export function AdminDataTable<T>({
   rows,
@@ -139,20 +138,15 @@ export function AdminDataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {loading && Array.from({ length: 5 }).map((_, rowIndex) => (
-              <tr key={rowIndex} className="border-b border-[#edf4eb] last:border-b-0">
-                {selectable && (
-                  <td className="px-4 py-[11px]">
-                    <SkeletonText width="16px" />
-                  </td>
-                )}
-                {columns.map((column, columnIndex) => (
-                  <td key={column.id} className="px-4 py-[11px]">
-                    <SkeletonText width={SKELETON_WIDTHS[(rowIndex + columnIndex) % SKELETON_WIDTHS.length]} />
-                  </td>
-                ))}
+            {/* The cabinet builds while the first page of data is on its way,
+                so waiting looks the same here as it does in the design tools. */}
+            {loading && (
+              <tr>
+                <td colSpan={colSpan}>
+                  <AdminLoading className="min-h-[320px] py-10" label="Loading" />
+                </td>
               </tr>
-            ))}
+            )}
 
             {isEmpty && (
               <tr>
@@ -225,13 +219,7 @@ export function AdminDataTable<T>({
         {bulkActions && <div className="mb-3">{bulkActions}</div>}
 
         <div className="flex flex-col gap-3">
-          {loading && Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="rounded-[8px] border border-[#dbd8cc] bg-white p-4">
-              <SkeletonText width="40%" className="mb-3" />
-              <SkeletonText className="mb-2" />
-              <SkeletonText width="70%" />
-            </div>
-          ))}
+          {loading && <AdminLoading className="min-h-[260px] py-10" label="Loading" />}
 
           {isEmpty && <EmptyState title={emptyTitle} description={emptyDescription} />}
 

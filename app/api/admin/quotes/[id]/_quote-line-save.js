@@ -1,6 +1,7 @@
 ﻿import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, GST_RATE, inheritWhenZero, roundMoney } from "../../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable, profileTypesForSelection, profileNamesForSelection } from "../../../../../lib/quote-form-data";
+import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 
 export async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -287,6 +288,10 @@ async function lineWithConfig(supabase, line) {
 
 export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id, sortOrder = 0 } = {}) {
   const businessDefaults = await getBusinessDefaults(supabase);
+  // Guarded here rather than in each route, so every path that can write a
+  // quote line goes through it, including any route added later.
+  await assertQuoteEditable(supabase, quoteId);
+
   await loadQuote(supabase, quoteId);
   const calculatedLine = {
     ...calculateQuoteLine(line, businessDefaults),
@@ -320,6 +325,8 @@ export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id
 }
 
 export async function deleteQuoteLine(supabase, quoteId, lineId) {
+  await assertQuoteEditable(supabase, quoteId);
+
   const { error: configError } = await supabase.from("pcd_cabinet_configs").delete().eq("line_item_id", lineId);
   if (configError) throw configError;
 

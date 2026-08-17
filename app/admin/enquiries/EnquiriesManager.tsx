@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { useToast } from '@/components/ui/Toast'
+import AdminLoading from '@/components/admin/AdminLoading'
 
 const STATUSES = ['new', 'in_progress', 'responded', 'closed', 'not_required']
 const FILTERS  = ['all', ...STATUSES]
@@ -202,6 +203,12 @@ export default function EnquiriesManager() {
 
   const allPageSelected = pageItems.length > 0 && pageItems.every(e => selectedIds.includes(e.id))
 
+  // First load owns the whole content area. A refresh with enquiries already on
+  // screen leaves them there rather than blanking the page.
+  if (isLoading && !enquiries.length) {
+    return <AdminLoading steps={['Loading your enquiries', 'Almost there']} label="Loading enquiries" />
+  }
+
   return (
     <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
@@ -252,76 +259,76 @@ export default function EnquiriesManager() {
             <span className="text-[13px] text-[#8b8a81]">{visibleEnquiries.length} {visibleEnquiries.length === 1 ? 'enquiry' : 'enquiries'}</span>
           )}
         </div>
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-              <th className="w-[40px] px-4 py-[9px]">
-                <input
-                  type="checkbox"
-                  checked={allPageSelected}
-                  onChange={e => toggleSelectedPage(e.target.checked)}
-                  aria-label="Select all visible enquiries"
-                  className="accent-[#6b9e61]"
-                />
-              </th>
-              {['Customer', 'Contact', 'Postcode', 'Topic', 'Message', 'Status', 'Received', ''].map(col => (
-                <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">{col}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr><td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">Loading...</td></tr>
-            )}
-            {!isLoading && !visibleEnquiries.length && (
-              <tr><td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">No enquiries match this filter.</td></tr>
-            )}
-            {pageItems.map(enquiry => (
-              <tr
-                key={enquiry.id}
-                className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                onClick={() => setPreviewEnquiry(enquiry)}
-              >
-                <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
+        {/* Scrolls sideways rather than crushing nine columns into the panel. */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1000px] text-[13px]">
+            <thead>
+              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                <th className="w-[40px] px-4 py-[9px]">
                   <input
                     type="checkbox"
-                    checked={selectedIds.includes(enquiry.id)}
-                    onChange={() => toggleSelected(enquiry.id)}
-                    aria-label={`Select enquiry from ${enquiry.customer_name || 'customer'}`}
+                    checked={allPageSelected}
+                    onChange={e => toggleSelectedPage(e.target.checked)}
+                    aria-label="Select all visible enquiries"
                     className="accent-[#6b9e61]"
                   />
-                </td>
-                <td className="px-4 py-[11px] text-[13px] font-medium text-[#1a1a18]">{enquiry.customer_name || '-'}</td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.customer_email || enquiry.customer_phone || '-'}</td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.postcode || '-'}</td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.topic || '-'}</td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] max-w-[200px] truncate">{enquiry.message || '-'}</td>
-                <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                  <select
-                    value={enquiry.status || 'new'}
-                    onChange={e => updateStatus(enquiry.id, e.target.value)}
-                    className="h-[30px] border border-[#dbd8cc] rounded-[4px] bg-white text-[12px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer"
-                  >
-                    {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
-                  </select>
-                </td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] whitespace-nowrap">{formatDate(enquiry.created_at)}</td>
-                <td className="px-4 py-[11px] text-right" onClick={e => e.stopPropagation()}>
-                  <div className="flex justify-end">
-                    <ActionMenu label={`Open actions for enquiry from ${enquiry.customer_name || 'customer'}`}>
-                      <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewEnquiry(enquiry)}>
-                      Preview
-                      </ActionMenuItem>
-                      <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => deleteEnquiries([enquiry.id])}>
-                      Delete
-                      </ActionMenuItem>
-                    </ActionMenu>
-                  </div>
-                </td>
+                </th>
+                {['Customer', 'Contact', 'Postcode', 'Topic', 'Message', 'Status', 'Received', ''].map(col => (
+                  <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">{col}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {!isLoading && !visibleEnquiries.length && (
+                <tr><td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">No enquiries match this filter.</td></tr>
+              )}
+              {pageItems.map(enquiry => (
+                <tr
+                  key={enquiry.id}
+                  className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
+                  onClick={() => setPreviewEnquiry(enquiry)}
+                >
+                  <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(enquiry.id)}
+                      onChange={() => toggleSelected(enquiry.id)}
+                      aria-label={`Select enquiry from ${enquiry.customer_name || 'customer'}`}
+                      className="accent-[#6b9e61]"
+                    />
+                  </td>
+                  <td className="px-4 py-[11px] text-[13px] font-medium text-[#1a1a18]">{enquiry.customer_name || '-'}</td>
+                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.customer_email || enquiry.customer_phone || '-'}</td>
+                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.postcode || '-'}</td>
+                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.topic || '-'}</td>
+                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] max-w-[200px] truncate">{enquiry.message || '-'}</td>
+                  <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
+                    <select
+                      value={enquiry.status || 'new'}
+                      onChange={e => updateStatus(enquiry.id, e.target.value)}
+                      className="h-[30px] border border-[#dbd8cc] rounded-[4px] bg-white text-[12px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer"
+                    >
+                      {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] whitespace-nowrap">{formatDate(enquiry.created_at)}</td>
+                  <td className="px-4 py-[11px] text-right" onClick={e => e.stopPropagation()}>
+                    <div className="flex justify-end">
+                      <ActionMenu label={`Open actions for enquiry from ${enquiry.customer_name || 'customer'}`}>
+                        <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewEnquiry(enquiry)}>
+                        Preview
+                        </ActionMenuItem>
+                        <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => deleteEnquiries([enquiry.id])}>
+                        Delete
+                        </ActionMenuItem>
+                      </ActionMenu>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <AdminPagination
           label="enquiries"
           page={page}
@@ -333,9 +340,6 @@ export default function EnquiriesManager() {
 
       {/* Mobile cards */}
       <div className="md:hidden flex flex-col gap-3">
-        {isLoading && (
-          <div className="py-12 text-center text-[13px] text-[#8b8a81]">Loading...</div>
-        )}
         {!isLoading && !visibleEnquiries.length && (
           <div className="py-12 text-center text-[13px] text-[#8b8a81]">No enquiries match this filter.</div>
         )}

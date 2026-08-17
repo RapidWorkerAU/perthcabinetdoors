@@ -133,3 +133,79 @@ test("light stays the default, so no existing use changes", () => {
   assert.match(COMPONENT, /theme = "light"/);
   assert.match(COMPONENT, /theme === "dark" \? " pcdLoader--dark" : ""/);
 });
+
+// ── one loading state everywhere ─────────────────────────────────────────────
+//
+// Every page used to write its own line of grey text. They are all the same
+// cabinet now, and these hold that: a page that grows a new "Loading..." has
+// gone back to looking half rendered rather than working.
+
+const ADMIN_LOADING = read("components/admin/AdminLoading.js");
+
+test("the admin loader is the same component, not a second one", () => {
+  assert.match(ADMIN_LOADING, /import PcdLoader from "\.\.\/public\/PcdLoader"/);
+  assert.match(ADMIN_LOADING, /variant="content"/);
+});
+
+test("the admin loader fills the content area and centres both ways", () => {
+  // The shell gives <main> a definite height, so min-h-full resolves against
+  // it. Without the centring the cabinet sits at the top left of the area.
+  assert.match(ADMIN_LOADING, /min-h-full/);
+  assert.match(ADMIN_LOADING, /items-center/);
+  assert.match(ADMIN_LOADING, /justify-center/);
+});
+
+test("the content variant is transparent, sized for a whole page", () => {
+  // The admin shell has already painted its own background. A cream ground of
+  // the loader's own would show as a rectangle over it.
+  const content = CSS.match(/\.pcdLoader-content\s*\{([^}]*)\}/);
+  assert.ok(content, "the content variant exists");
+  assert.ok(!/background/.test(content[1]), "it must not paint a ground of its own");
+  assert.match(CSS, /\.pcdLoader-content \.pcdLoaderInner \{ width: min\(/);
+});
+
+test("no admin page is still writing its own loading text", () => {
+  [
+    "app/admin/orders/OrdersManager.tsx",
+    "app/admin/orders/[id]/OrderDetail.js",
+    "app/admin/orders/[id]/variations/[variationId]/VariationEditor.js",
+    "app/admin/quotes/QuotesTable.tsx",
+    "app/admin/quotes/[id]/QuoteEditor.js",
+    "app/admin/enquiries/EnquiriesManager.tsx",
+    "app/admin/quote-requests/QuoteRequestsManager.tsx",
+    "app/admin/hardware/HardwareManager.js",
+    "app/admin/benchtop-materials/BenchtopMaterialsManager.js",
+    "app/admin/projects/ProjectsManager.js",
+    "app/admin/projects/[id]/ProjectDetail.js",
+    "app/admin/business-defaults/BusinessDefaultsManager.js",
+  ].forEach((path) => {
+    const src = read(path);
+    assert.ok(!/>\s*Loading[^<]*<\/|"Loading[^"]*\.\.\."/.test(src), `${path} still has a text loading state`);
+    assert.match(src, /AdminLoading/, `${path} must use the shared loader`);
+  });
+});
+
+test("the shared tables build the cabinet rather than faking rows", () => {
+  // Skeleton rows are a different answer to the same question, and having both
+  // means the wait looks like two different products depending on the page.
+  ["components/ui/DataTable.tsx", "components/ui/AdminDataTable.tsx"].forEach((path) => {
+    const src = read(path);
+    assert.match(src, /AdminLoading/, `${path} must use the shared loader`);
+    assert.ok(!/SkeletonText/.test(src), `${path} still renders skeleton rows`);
+  });
+});
+
+test("the customer facing pages wait the same way", () => {
+  [
+    "app/(site)/quotes/QuoteApprovalClient.js",
+    "app/(site)/quotes/view/page.js",
+    "app/(site)/variations/VariationApprovalClient.js",
+    "app/(site)/variations/view/page.js",
+    "app/(site)/project/ProjectViewClient.tsx",
+  ].forEach((path) => {
+    const src = read(path);
+    assert.match(src, /PcdLoader/, `${path} must use the loader`);
+    assert.ok(!/>\s*Loading[^<]*\.\.\./.test(src), `${path} still has a text loading state`);
+    assert.ok(!/theme="dark"/.test(src), `${path} must not ask for the dark theme`);
+  });
+});

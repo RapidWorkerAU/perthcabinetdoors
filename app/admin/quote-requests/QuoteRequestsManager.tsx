@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { useToast } from '@/components/ui/Toast'
+import AdminLoading from '@/components/admin/AdminLoading'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -331,6 +332,12 @@ export default function QuoteRequestsManager() {
 
   const allPageSelected = pageItems.length > 0 && pageItems.every(r => selectedQuoteRequestIds.includes(r.id))
 
+  // First load owns the whole content area. A refresh with requests already on
+  // screen leaves them there rather than blanking the page.
+  if (isLoading && !quoteRequests.length) {
+    return <AdminLoading steps={['Loading quote requests', 'Almost there']} label="Loading quote requests" />
+  }
+
   return (
     <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
@@ -399,9 +406,6 @@ export default function QuoteRequestsManager() {
             </tr>
           </thead>
           <tbody>
-            {isLoading && (
-              <tr><td colSpan={8} className="py-12 text-center text-[13px] text-[#8b8a81]">Loading...</td></tr>
-            )}
             {!isLoading && !visibleQuoteRequests.length && (
               <tr><td colSpan={8} className="py-12 text-center text-[13px] text-[#8b8a81]">No quote requests match this filter.</td></tr>
             )}
@@ -471,9 +475,6 @@ export default function QuoteRequestsManager() {
 
       {/* Mobile cards */}
       <div className="md:hidden flex flex-col gap-3">
-        {isLoading && (
-          <div className="py-12 text-center text-[13px] text-[#8b8a81]">Loading...</div>
-        )}
         {!isLoading && !visibleQuoteRequests.length && (
           <div className="py-12 text-center text-[13px] text-[#8b8a81]">No quote requests match this filter.</div>
         )}

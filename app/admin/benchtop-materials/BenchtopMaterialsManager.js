@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmModal, Modal } from "@/components/ui/Modal";
 import { IconButton } from "@/components/ui/IconButton";
 import { useToast } from "@/components/ui/Toast";
+import AdminLoading from "@/components/admin/AdminLoading";
 import { cn } from "@/lib/utils";
 
 const EMPTY_DRAFT = {
@@ -152,6 +153,12 @@ export default function BenchtopMaterialsManager() {
     </>
   );
 
+  // First load owns the whole content area. A refresh with materials already on
+  // screen leaves them there rather than blanking the page.
+  if (loading && !rows.length) {
+    return <AdminLoading steps={["Loading benchtop materials", "Almost there"]} label="Loading benchtop materials" />;
+  }
+
   return (
     <>
       <div className="p-4 md:p-6">
@@ -224,11 +231,6 @@ export default function BenchtopMaterialsManager() {
                     <td colSpan={4} className="py-12 text-center text-[13px] text-[#8b8a81]">
                       {rows.length ? "No benchtop materials match your search." : "No benchtop materials yet. Add your first material."}
                     </td>
-                  </tr>
-                ) : null}
-                {loading ? (
-                  <tr>
-                    <td colSpan={4} className="py-12 text-center text-[13px] text-[#8b8a81]">Loading benchtop materials...</td>
                   </tr>
                 ) : null}
               </tbody>

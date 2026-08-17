@@ -10,6 +10,7 @@ import { ConfirmModal, Modal } from "@/components/ui/Modal";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconButton } from "@/components/ui/IconButton";
 import { useToast } from "@/components/ui/Toast";
+import AdminLoading from "@/components/admin/AdminLoading";
 import { cn } from "@/lib/utils";
 
 const HARDWARE_TYPES = [
@@ -270,6 +271,12 @@ export default function HardwareManager() {
     </>
   );
 
+  // First load owns the whole content area. A refresh with hardware already on
+  // screen leaves it there rather than blanking the page.
+  if (loading && !rows.length) {
+    return <AdminLoading steps={["Loading your hardware", "Almost there"]} label="Loading hardware" />;
+  }
+
   return (
     <>
       <div className="p-4 md:p-6">
@@ -363,11 +370,6 @@ export default function HardwareManager() {
                     <td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">
                       {rows.length ? "No hardware matches your search." : "No hardware yet. Add your first handle, hinge or drawer runner."}
                     </td>
-                  </tr>
-                ) : null}
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">Loading hardware...</td>
                   </tr>
                 ) : null}
               </tbody>

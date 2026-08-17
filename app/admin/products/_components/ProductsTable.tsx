@@ -128,7 +128,9 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
 
       <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          {/* min-w keeps the columns readable: the wrapper scrolls instead of
+              the browser wrapping every cell onto two or three lines. */}
+          <table className="w-full min-w-[840px] text-[13px]">
             <thead>
               <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
                 <th className="w-[40px] px-4 py-[9px]">

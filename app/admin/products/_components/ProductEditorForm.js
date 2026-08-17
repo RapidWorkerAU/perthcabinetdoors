@@ -11,6 +11,7 @@ import { BulkActionBar } from "@/components/ui/BulkActionBar";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { TextAction } from "@/components/ui/TextAction";
+import PcdLoader from "@/components/public/PcdLoader";
 import productStyles from "./product-editor.module.css";
 
 function productClass(name) {
@@ -1760,7 +1761,7 @@ export default function ProductEditorForm({
 
               <div className={styles.mediaListScroller}>
                 {isLoadingAssets ? (
-                  <p className={styles.placeholderText}>Loading images from products bucket...</p>
+                  <PcdLoader variant="inline" label="Loading images" steps={["Loading images", "Almost there"]} />
                 ) : (
                   <div className={styles.mediaGrid}>
                     {bucketAssets.map((asset) => {

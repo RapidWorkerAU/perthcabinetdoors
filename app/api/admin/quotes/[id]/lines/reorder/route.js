@@ -1,5 +1,6 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
 import { quoteIdFromParams } from "../../_quote-line-save";
+import { assertQuoteEditable } from "../../../../../../../lib/pcd-quote-lock";
 
 export async function PATCH(request, { params }) {
   const context = await requireAdminApiContext();
@@ -7,6 +8,7 @@ export async function PATCH(request, { params }) {
 
   try {
     const quoteId = await quoteIdFromParams(params);
+    await assertQuoteEditable(context.supabase, quoteId);
     const payload = await request.json();
     const lineIds = Array.isArray(payload.line_ids) ? payload.line_ids.filter(Boolean) : [];
     const uniqueLineIds = new Set(lineIds);

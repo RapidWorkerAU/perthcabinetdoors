@@ -7,6 +7,7 @@ import { AdminPagination, useAdminPagination } from '../_components/AdminPaginat
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import AdminLoading from '@/components/admin/AdminLoading'
 
 const STATUSES = ['active', 'on_hold', 'complete', 'cancelled']
 const FILTERS  = ['all', ...STATUSES]
@@ -97,6 +98,12 @@ export default function OrdersManager() {
 
   useEffect(() => { loadOrders() }, [])
 
+  // First load owns the whole content area. A refresh with orders already on
+  // screen leaves them there rather than blanking the page.
+  if (isLoading && !orders.length) {
+    return <AdminLoading steps={['Loading your orders', 'Almost there']} label="Loading orders" />
+  }
+
   return (
     <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-5">
@@ -138,62 +145,62 @@ export default function OrdersManager() {
       )}
       {/* Desktop table */}
       <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-              {['Order', 'Customer', 'Job', 'Items', 'Status', 'Total', 'Accepted'].map(col => (
-                <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr><td colSpan={7} className="py-12 text-center text-[13px] text-[#8b8a81]">Loading orders...</td></tr>
-            )}
-            {!isLoading && !visibleOrders.length && (
-              <tr><td colSpan={7} className="py-12 text-center text-[13px] text-[#8b8a81]">No orders match this filter.</td></tr>
-            )}
-            {pageItems.map(order => {
-              const items  = sortedItems(order)
-              const status = order.status || 'active'
-              return (
-                <tr
-                  key={order.id}
-                  className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                  onClick={() => router.push(`/admin/orders/${order.id}`)}
-                >
-                  <td className="px-4 py-[11px] font-medium text-[#1a1a18]">
-                    <span className="flex items-center gap-1.5">
-                      {isNewOrder(order) && (
-                        <span
-                          className="inline-block w-[6px] h-[6px] rounded-full bg-[#6b9e61] flex-shrink-0"
-                          title="New order"
-                          aria-label="New order"
-                        />
-                      )}
-                      {order.order_number}
-                    </span>
-                  </td>
-                  <td className="px-4 py-[11px] text-[#1a1a18]">{order.customer_name || '-'}</td>
-                  <td className="px-4 py-[11px] text-[#1a1a18]">{order.name || '-'}</td>
-                  <td className="px-4 py-[11px] text-[#1a1a18]">{items.length}</td>
-                  <td className="px-4 py-[11px]">
-                    <span className={cn(
-                      'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
-                      getStatusPillClass(status)
-                    )}>
-                      {formatAdminLabel(status)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(order.total_inc_gst, 'AUD')}</td>
-                  <td className="px-4 py-[11px] text-[#1a1a18] whitespace-nowrap">{formatDate(order.accepted_at || order.created_at)}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        {/* Scrolls sideways rather than crushing the columns into the panel. */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-[13px]">
+            <thead>
+              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                {['Order', 'Customer', 'Job', 'Items', 'Status', 'Total', 'Accepted'].map(col => (
+                  <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {!isLoading && !visibleOrders.length && (
+                <tr><td colSpan={7} className="py-12 text-center text-[13px] text-[#8b8a81]">No orders match this filter.</td></tr>
+              )}
+              {pageItems.map(order => {
+                const items  = sortedItems(order)
+                const status = order.status || 'active'
+                return (
+                  <tr
+                    key={order.id}
+                    className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
+                    onClick={() => router.push(`/admin/orders/${order.id}`)}
+                  >
+                    <td className="px-4 py-[11px] font-medium text-[#1a1a18]">
+                      <span className="flex items-center gap-1.5">
+                        {isNewOrder(order) && (
+                          <span
+                            className="inline-block w-[6px] h-[6px] rounded-full bg-[#6b9e61] flex-shrink-0"
+                            title="New order"
+                            aria-label="New order"
+                          />
+                        )}
+                        {order.order_number}
+                      </span>
+                    </td>
+                    <td className="px-4 py-[11px] text-[#1a1a18]">{order.customer_name || '-'}</td>
+                    <td className="px-4 py-[11px] text-[#1a1a18]">{order.name || '-'}</td>
+                    <td className="px-4 py-[11px] text-[#1a1a18]">{items.length}</td>
+                    <td className="px-4 py-[11px]">
+                      <span className={cn(
+                        'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
+                        getStatusPillClass(status)
+                      )}>
+                        {formatAdminLabel(status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(order.total_inc_gst, 'AUD')}</td>
+                    <td className="px-4 py-[11px] text-[#1a1a18] whitespace-nowrap">{formatDate(order.accepted_at || order.created_at)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
         <AdminPagination
           label="orders"
           page={page}
@@ -205,9 +212,6 @@ export default function OrdersManager() {
 
       {/* Mobile cards */}
       <div className="md:hidden flex flex-col gap-3">
-        {isLoading && (
-          <div className="py-12 text-center text-[13px] text-[#8b8a81]">Loading orders...</div>
-        )}
         {!isLoading && !visibleOrders.length && (
           <div className="py-12 text-center text-[13px] text-[#8b8a81]">No orders match this filter.</div>
         )}

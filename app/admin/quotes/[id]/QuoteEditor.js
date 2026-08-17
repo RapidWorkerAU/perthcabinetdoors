@@ -25,6 +25,7 @@ import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
+import AdminLoading from "@/components/admin/AdminLoading";
 import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
 import workflowStyles from "../../_components/admin-workflow.module.css";
@@ -3135,8 +3136,14 @@ export default function QuoteEditor({ quoteId }) {
     meta: profileModal?.profile_type || "Profile",
     src: profileOptionSrc(profileModal?.profile_type, profile),
   }));
+  // Once a quote has become an order it is a record of what was agreed. The
+  // only way to change committed work is a variation, which is priced, sent and
+  // approved. The server refuses the edit either way; this stops anyone getting
+  // as far as typing one.
+  const isLocked = Boolean(form.order_id);
+
   const contentPanel = isLoading ? (
-    <div className="text-[13px] text-[#8b8a81] py-8 text-center">Loading quote...</div>
+    <AdminLoading steps={["Opening the quote", "Loading the line items", "Almost there"]} label="Loading quote" />
   ) : loadError ? (
     <div className="bg-white border border-[#dbd8cc] rounded-[8px] p-6 text-center">
       <p className="text-[15px] font-semibold text-[#1a1a18]">Quote could not be loaded</p>
@@ -3165,13 +3172,13 @@ export default function QuoteEditor({ quoteId }) {
                 View public quote
               </a>
             ) : null}
-            <button type="button" onClick={generateQuotePdf} disabled={isSaving || isLoading || Boolean(loadError) || isGeneratingQuotePdf} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+            <button type="button" onClick={generateQuotePdf} disabled={isSaving || isLoading || isLocked || Boolean(loadError) || isGeneratingQuotePdf} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
               {isGeneratingQuotePdf ? "Generating..." : "Generate PDF"}
             </button>
-            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
+            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
               Publish quote
             </button>
-            <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+            <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
               {isSaving ? "Saving..." : "Save"}
             </button>
           </div>
@@ -3204,8 +3211,8 @@ export default function QuoteEditor({ quoteId }) {
               </div>
               <div className="px-4 py-3 bg-white border-b border-[#edf4eb] flex flex-wrap gap-2">
                 {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] flex items-center">View public</a>}
-                <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || Boolean(loadError)} className="h-[32px] px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white disabled:opacity-50">Publish</button>
-                <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || Boolean(loadError)} className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] disabled:opacity-50">{isSaving ? "Saving..." : "Save"}</button>
+                <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white disabled:opacity-50">Publish</button>
+                <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] disabled:opacity-50">{isSaving ? "Saving..." : "Save"}</button>
               </div>
               {sections.map((section) => (
                 <button
@@ -3237,7 +3244,7 @@ export default function QuoteEditor({ quoteId }) {
               <div className="p-4 bg-[#f5f8f4]">
                 <form onSubmit={saveQuote}>
                   {contentPanel}
-                  {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order.</div> : null}
+                  {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order, so it can no longer be edited. Raise a variation on the order to change the work.</div> : null}
                 </form>
               </div>
             </div>
@@ -3251,7 +3258,7 @@ export default function QuoteEditor({ quoteId }) {
               the sidebar stays put either way. */}
           <form onSubmit={saveQuote} className={`flex-1 min-h-0 p-6 ${activeSection === 'items' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
             {contentPanel}
-            {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order.</div> : null}
+            {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order, so it can no longer be edited. Raise a variation on the order to change the work.</div> : null}
           </form>
         </main>
 

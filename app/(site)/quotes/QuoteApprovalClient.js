@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
 import { rowCapHeight } from "../../../lib/pcd-row-cap";
+import PcdLoader from "@/components/public/PcdLoader";
 import styles from "./quote-public.module.css";
 import {
   ADDRESS_KEYS,
@@ -430,7 +431,13 @@ export default function QuoteApprovalClient() {
     return (
       <section className={styles.panel}>
         <div className={styles.panelHeader}>Quote</div>
-        <div className={styles.panelBody}>Loading quote...</div>
+        <div className={styles.panelBody}>
+          <PcdLoader
+            variant="panel"
+            label="Loading your quote"
+            steps={["Finding your quote", "Loading the details", "Almost there"]}
+          />
+        </div>
       </section>
     );
   }

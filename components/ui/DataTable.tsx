@@ -9,7 +9,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { SkeletonText } from '@/components/ui/Skeleton'
+import AdminLoading from "@/components/admin/AdminLoading"
 import { Modal } from '@/components/ui/Modal'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -68,7 +68,6 @@ function getPages(current: number, total: number): (number | '...')[] {
   return [1, '...', current - 1, current, current + 1, '...', total]
 }
 
-const SKELETON_WIDTHS = ['60%', '80%', '50%', '70%', '45%', '65%']
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -272,18 +271,9 @@ export function DataTable<T extends { id: string }>({
 
         {/* Body */}
         <div>
-          {/* Skeleton rows */}
-          {loading && Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="grid border-b border-[#edf4eb] last:border-b-0 px-4 items-center" style={{ gridTemplateColumns: gridCols }}>
-              {selectable && <div className="py-[11px] pr-3"><SkeletonText width="16px" /></div>}
-              {columns.map((col, j) => (
-                <div key={String(col.key)} className="py-[11px] pr-3">
-                  <SkeletonText width={SKELETON_WIDTHS[(i + j) % SKELETON_WIDTHS.length]} />
-                </div>
-              ))}
-              <div />
-            </div>
-          ))}
+          {/* The cabinet builds while the first page of data is on its way, so
+              waiting looks the same here as it does in the design tools. */}
+          {loading && <AdminLoading className="min-h-[320px] py-10" label="Loading" />}
 
           {/* Empty state */}
           {isEmpty && (
@@ -496,17 +486,8 @@ export function DataTable<T extends { id: string }>({
           )}
         </div>
 
-        {/* Mobile skeleton */}
-        {loading && Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="bg-white border border-[#dbd8cc] rounded-[8px] mb-2 p-[14px]">
-            <div className="flex items-center justify-between mb-2">
-              <SkeletonText width="80px" /><SkeletonText width="20px" />
-            </div>
-            <SkeletonText className="mb-2" />
-            <SkeletonText width="60%" className="mb-2" />
-            <SkeletonText width="40%" />
-          </div>
-        ))}
+        {/* Mobile loading */}
+        {loading && <AdminLoading className="min-h-[260px] py-10" label="Loading" />}
 
         {/* Mobile empty state */}
         {isEmpty && (

@@ -10,6 +10,7 @@ import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { BulkActionBar } from "@/components/ui/BulkActionBar";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import AdminLoading from "@/components/admin/AdminLoading";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -119,6 +120,12 @@ export default function ProjectsManager() {
     });
   }
 
+  // First load owns the whole content area. A refresh with projects already on
+  // screen leaves them there rather than blanking the page.
+  if (isLoading && !projects.length) {
+    return <AdminLoading steps={["Loading your projects", "Almost there"]} label="Loading projects" />;
+  }
+
   return (
     <section className={styles.productsSection}>
       <div className={`${styles.productsHeaderBar} ${styles.tableToolbar}`}>
@@ -148,7 +155,9 @@ export default function ProjectsManager() {
 
       <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px] border-collapse">
+          {/* min-w keeps the columns readable: the wrapper scrolls instead of
+              the browser wrapping every cell onto two or three lines. */}
+          <table className="w-full min-w-[1040px] text-[13px] border-collapse">
             <thead>
               <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
                 <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] w-[40px]">
@@ -227,13 +236,6 @@ export default function ProjectsManager() {
                 </tr>
               ) : null}
 
-              {isLoading ? (
-                <tr>
-                  <td colSpan="9" className="px-4 py-[20px] text-center text-[#8b8a81] text-[13px]">
-                    Loading projects...
-                  </td>
-                </tr>
-              ) : null}
             </tbody>
           </table>
         </div>

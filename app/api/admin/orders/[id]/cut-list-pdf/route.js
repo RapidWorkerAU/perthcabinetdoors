@@ -1,5 +1,8 @@
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
-import { generateOrderCutListPdf } from "../../../../../../lib/pcd-cabinet-pdf";
+import { buildCutListRows, buildMadeToOrderRows, generateOrderCutListPdf } from "../../../../../../lib/pcd-cabinet-pdf";
+import { buildVariationContext } from "../../../../../../lib/pcd-cut-list-variations";
+import { loadOrderProductionData } from "../../../../../../lib/pcd-order-production-data";
+import { ensurePanelNumbers } from "../../../../../../lib/pcd-order-panel-numbers";
 
 async function orderIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -14,51 +17,24 @@ function cleanFilePart(value, fallback) {
     .replace(/^-+|-+$/g, "") || fallback;
 }
 
-async function loadOrderForCutListPdf(supabase, orderId) {
-  const { data: order, error: orderError } = await supabase
-    .from("pcd_orders")
-    .select("*")
-    .eq("id", orderId)
-    .single();
-  if (orderError) throw orderError;
-
-  const { data: items, error: itemsError } = await supabase
-    .from("pcd_order_line_items")
-    .select("*")
-    .eq("order_id", orderId)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-  if (itemsError) throw itemsError;
-
-  const quoteLineIds = (items || []).map((item) => item.quote_line_item_id).filter(Boolean);
-  if (!quoteLineIds.length) return { order, items: items || [] };
-
-  const { data: cabinetConfigs, error: configsError } = await supabase
-    .from("pcd_cabinet_configs")
-    .select("*")
-    .in("line_item_id", quoteLineIds);
-  if (configsError) throw configsError;
-
-  const configsByLineId = new Map((cabinetConfigs || []).map((config) => [config.line_item_id, config]));
-  return {
-    order,
-    items: (items || []).map((item) => ({
-      ...item,
-      cabinet_config: configsByLineId.get(item.quote_line_item_id) || null,
-    })),
-  };
-}
-
 export async function GET(_request, { params }) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;
 
   try {
     const orderId = await orderIdFromParams(params);
-    const { order, items } = await loadOrderForCutListPdf(context.supabase, orderId);
-    const pdfBuffer = generateOrderCutListPdf({ order, items });
+    // The same loader and the same numbering the labels use, so a label's
+    // number is always the panel number on this sheet.
+    const { order, items, quoteLines, variations, variationLines } = await loadOrderProductionData(context.supabase, orderId);
+    const variationContext = buildVariationContext({ variations, variationLines });
+    const { numbers } = await ensurePanelNumbers(context.supabase, orderId, [
+      ...buildCutListRows(items, variationContext),
+      ...buildMadeToOrderRows(items, variationContext),
+    ]);
+
+    const pdfBuffer = generateOrderCutListPdf({ order, items, quoteLines, variations, variationLines, panelNumbers: numbers });
     const orderNumber = cleanFilePart(order.order_number, "order");
-    const fileName = `cut-list-${orderNumber}.pdf`;
+    const fileName = `production-sheet-${orderNumber}.pdf`;
 
     return new Response(pdfBuffer, {
       status: 200,

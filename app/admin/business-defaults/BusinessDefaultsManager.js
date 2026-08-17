@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
+import AdminLoading from "@/components/admin/AdminLoading";
 
 const FIELDS = [
   { group: "Labour", key: "labour_hours_per_cabinet", label: "Labour hours per cabinet", suffix: "h", step: "0.25", hint: "Added to quote labour for every base-cabinet line x qty." },
@@ -67,7 +68,7 @@ export default function BusinessDefaultsManager() {
   }
 
   if (loading) {
-    return <div className="p-4 text-[13px] text-[#8b8a81] md:p-6">Loading business defaults...</div>;
+    return <AdminLoading steps={["Loading your defaults", "Almost there"]} label="Loading business defaults" />;
   }
 
   if (!form) {

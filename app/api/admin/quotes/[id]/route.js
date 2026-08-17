@@ -4,6 +4,7 @@ import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals } from "../../../../../lib/pcd-quote-utils";
 import { cabinetConfigRow, dbNumber, isMissingSupplierNameSchemaError, quoteLineRow, withoutSupplierName } from "./_quote-line-save";
+import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -132,6 +133,7 @@ export async function PUT(request, { params }) {
 
   try {
     const id = await quoteIdFromParams(params);
+    await assertQuoteEditable(context.supabase, id);
     const payload = await request.json();
     const normalized = await normalizeQuotePayload(context.supabase, payload);
 
@@ -249,6 +251,7 @@ export async function PATCH(request, { params }) {
 
   try {
     const id = await quoteIdFromParams(params);
+    await assertQuoteEditable(context.supabase, id);
     const payload = await request.json();
 
     const [
@@ -316,6 +319,7 @@ export async function DELETE(_request, { params }) {
 
   try {
     const id = await quoteIdFromParams(params);
+    await assertQuoteEditable(context.supabase, id);
 
     const { data: lines, error: lineLoadError } = await context.supabase
       .from("pcd_quote_line_items")

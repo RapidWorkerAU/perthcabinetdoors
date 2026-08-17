@@ -14,6 +14,7 @@ import { ConfirmModal } from '@/components/ui/Modal'
 import { StatusFilterBar, type StatusFilterOption } from '@/components/ui/StatusFilterBar'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
+import AdminLoading from '@/components/admin/AdminLoading'
 
 const STATUSES = ['draft', 'sent', 'viewed', 'approved', 'rejected']
 const FILTERS  = ['all', ...STATUSES]
@@ -187,6 +188,12 @@ export default function QuotesTable() {
 
   const allPageSelected = pageItems.length > 0 && pageItems.every(q => selectedQuoteIds.includes(q.id))
 
+  // First load owns the whole content area. A refresh with quotes already on
+  // screen leaves them there rather than blanking the page.
+  if (isLoading && !quotes.length) {
+    return <AdminLoading steps={['Loading your quotes', 'Almost there']} label="Loading quotes" />
+  }
+
   return (
     <div className="p-4 md:p-6">
       <AdminPageHeader title="Quotes" subtitle="Manage your quote pipeline" />
@@ -234,7 +241,9 @@ export default function QuotesTable() {
       {/* Desktop table */}
       <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          {/* min-w keeps the columns readable: the wrapper scrolls instead of
+              the browser wrapping every cell onto two or three lines. */}
+          <table className="w-full min-w-[1000px] text-[13px]">
             <thead>
               <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
                 <th className="w-[40px] px-4 py-[9px]">
@@ -254,9 +263,6 @@ export default function QuotesTable() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && (
-                <tr><td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">Loading quotes...</td></tr>
-              )}
               {!isLoading && !visibleQuotes.length && (
                 <tr><td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">No quotes match this filter.</td></tr>
               )}
@@ -330,9 +336,6 @@ export default function QuotesTable() {
 
       {/* Mobile cards */}
       <div className="md:hidden flex flex-col gap-3">
-        {isLoading && (
-          <div className="py-12 text-center text-[13px] text-[#8b8a81]">Loading quotes...</div>
-        )}
         {!isLoading && !visibleQuotes.length && (
           <div className="py-12 text-center text-[13px] text-[#8b8a81]">No quotes match this filter.</div>
         )}

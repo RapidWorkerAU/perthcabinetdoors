@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { formatMoney, PROJECT_LINE_STATUSES, PROJECT_STATUSES } from "../../../../lib/pcd-quote-utils";
+import { formatItemSpecs, formatMoney, PROJECT_LINE_STATUSES, PROJECT_STATUSES } from "../../../../lib/pcd-quote-utils";
+import AdminLoading from "@/components/admin/AdminLoading";
 import styles from "../../admin-content.module.css";
 import { AdminPagination, useAdminPagination } from "../../_components/AdminPagination";
 import { useToast } from "@/components/ui/Toast";
@@ -52,9 +53,7 @@ function projectStatusPill(status) {
 }
 
 function itemMeta(item) {
-  const finish = [item.finish, item.colour, item.profile, item.edge_mould].filter(Boolean).join(" - ");
-  const size = item.width_mm || item.height_mm ? `${item.width_mm || "-"} x ${item.height_mm || "-"}mm` : "";
-  return [finish, size].filter(Boolean).join(" - ");
+  return formatItemSpecs(item);
 }
 
 function setProjectItem(project, itemId, nextItem) {
@@ -175,7 +174,7 @@ export default function ProjectDetail({ projectId }) {
   }
 
   if (isLoading) {
-    return <section className={styles.emptyState}><p>Loading project...</p></section>;
+    return <AdminLoading steps={["Opening the project", "Loading the products", "Almost there"]} label="Loading project" />;
   }
 
   if (!project) {
@@ -270,7 +269,9 @@ export default function ProjectDetail({ projectId }) {
 
         <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px] border-collapse">
+            {/* min-w keeps the columns readable: the wrapper scrolls instead of
+                the browser wrapping every cell onto two or three lines. */}
+            <table className="w-full min-w-[1040px] text-[13px] border-collapse">
               <thead>
                 <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
                   {['Product', 'Details', 'Qty', 'Total ex GST', 'Status', 'Notes', 'Updated'].map(h => (
@@ -320,7 +321,7 @@ export default function ProjectDetail({ projectId }) {
                         onBlur={(event) => updateItem(item, { notes: event.target.value })}
                       />
                     </td>
-                    <td className="px-4 py-[11px] text-[#5a5a52] text-[12px]">{formatDateTime(item.status_updated_at || item.updated_at || item.created_at)}</td>
+                    <td className="px-4 py-[11px] text-[#5a5a52] text-[12px] whitespace-nowrap">{formatDateTime(item.status_updated_at || item.updated_at || item.created_at)}</td>
                   </tr>
                 ))}
 

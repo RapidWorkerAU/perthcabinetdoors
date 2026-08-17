@@ -3,10 +3,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Modal } from "@/components/ui/Modal";
+import AdminLoading from "@/components/admin/AdminLoading";
 import { useToast } from "@/components/ui/Toast";
 import { QuoteColourCombobox, QuoteImageCombobox, QuoteTileCombobox } from "@/components/admin/QuoteComboboxes";
 import styles from "../../../../admin-content.module.css";
-import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, formatItemSpecs, formatMoney, roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
 import {
   edgeProfilesForMaterial,
   MATERIAL_OPTIONS,
@@ -44,10 +45,15 @@ const tw = {
   dangerBtn: "h-[26px] px-3 text-[11px] font-medium rounded-[6px] border border-[#fca5a5] bg-white text-[#991b1b] hover:bg-[#fef2f2] disabled:opacity-50 transition-colors",
   muted: "text-[11px] text-[#8b8a81]",
   tableWrap: "overflow-x-auto md:max-h-[calc(100vh-300px)] md:overflow-auto",
-  table: "w-full text-[13px] border-collapse",
+  /* min-w-max keeps the columns at their natural width and lets the wrapper
+     scroll sideways, instead of the browser crushing every cell onto three
+     lines. Free text columns use tw.cellText so they wrap at a sensible
+     width rather than stretching the table. */
+  table: "w-full min-w-max text-[13px] border-collapse",
   th: "sticky top-0 z-10 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] px-4 py-[9px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
   td: "px-4 py-[11px] border-b border-[#edf4eb] text-[#1a1a18] align-middle",
   tdLast: "px-4 py-[11px] text-[#1a1a18] align-middle",
+  cellText: "block max-w-[280px] whitespace-normal",
   inlineInput: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
   inlineSelect: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
   pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border",
@@ -84,6 +90,40 @@ function itemLabel(item) {
 
 function variationLineItemLabel(line) {
   return [line.title || line.product_type || "Variation item", line.material, line.colour].filter(Boolean).join(" - ");
+}
+
+/**
+ * What the item looked like before this line changed it. The snapshot is taken
+ * when the line is saved, so it still reads correctly once the variation has
+ * been applied and the live order item has moved on. Older lines saved before
+ * the snapshot column existed fall back to the live order item.
+ */
+function originalItemForLine(line, orderItems) {
+  if (line.action === "add" || line.action === "price_adjustment") return null;
+  return line.original_item_snapshot || orderItems.find((item) => item.id === line.order_line_item_id) || null;
+}
+
+/**
+ * The spec lines shown under the item name, so a variation can be checked
+ * without opening each line: a change shows what it was and what it becomes,
+ * an addition only the new item, a removal only what is going.
+ */
+function lineSpecRows(line, orderItems) {
+  const original = formatItemSpecs(originalItemForLine(line, orderItems), { includeQty: true });
+  const proposed = formatItemSpecs(line, { includeQty: true });
+  if (line.action === "change") {
+    return [
+      { label: "Old specs", value: original },
+      { label: "New specs", value: proposed },
+    ].filter((row) => row.value);
+  }
+  if (line.action === "remove") {
+    return [{ label: "Removing", value: original }].filter((row) => row.value);
+  }
+  if (line.action === "add") {
+    return [{ label: "New specs", value: proposed }].filter((row) => row.value);
+  }
+  return [];
 }
 
 function productTypeLabel(value) {
@@ -670,13 +710,20 @@ export default function VariationEditor({ orderId, variationId }) {
     return (
       <tr key={line.id}>
         <td className={tw.td}>{lineActionLabel(line.action)}</td>
-        <td className={tw.td}>{line.order_line_item_id ? itemLabel(orderItems.find((item) => item.id === line.order_line_item_id) || line) : variationLineItemLabel(line)}</td>
-        <td className={tw.td}>{line.title || "-"}</td>
+        <td className={tw.td}>
+          <span className={tw.cellText}>{line.order_line_item_id ? itemLabel(orderItems.find((item) => item.id === line.order_line_item_id) || line) : variationLineItemLabel(line)}</span>
+          {lineSpecRows(line, orderItems).map((row) => (
+            <span key={row.label} className={`${tw.cellText} ${tw.muted} mt-[3px]`}>
+              <span className="font-semibold">{row.label}:</span> {row.value}
+            </span>
+          ))}
+        </td>
+        <td className={tw.td}><span className={tw.cellText}>{line.title || "-"}</span></td>
         <td className={tw.td}>{line.qty ?? "-"}</td>
         <td className={tw.td + " font-mono"}>{formatMoney(line.original_line_total_ex_gst, variation.currency)}</td>
         <td className={tw.td + " font-mono"}>{formatMoney(line.proposed_line_total_ex_gst, variation.currency)}</td>
         <td className={tw.td + " font-mono"}>{formatMoney(toNumber(line.line_total_ex_gst), variation.currency)}</td>
-        <td className={tw.td}>{line.notes || "-"}</td>
+        <td className={tw.td}><span className={tw.cellText}>{line.notes || "-"}</span></td>
         <td className={tw.tdLast}>
           {isEditable ? (
             <div className="flex gap-2">
@@ -924,7 +971,7 @@ export default function VariationEditor({ orderId, variationId }) {
   }
 
   if (isLoading || !order || !variation) {
-    return <div className="p-6 text-[13px] text-[#5a5a52]">Loading variation...</div>;
+    return <AdminLoading steps={["Opening the variation", "Loading the order", "Almost there"]} label="Loading variation" />;
   }
 
   return (

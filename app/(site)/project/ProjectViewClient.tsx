@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import PcdLoader from "@/components/public/PcdLoader";
 
 type ProjectPayload = {
   project: {
@@ -172,7 +173,13 @@ export default function ProjectViewClient({
     return (
       <div className="qb-panel">
         <div className="qb-panel-header">Project</div>
-        <div className="qb-panel-body text-sm text-slate-700">Loading project...</div>
+        <div className="qb-panel-body">
+          <PcdLoader
+            variant="panel"
+            label="Loading your project"
+            steps={["Finding your project", "Loading the details", "Almost there"]}
+          />
+        </div>
       </div>
     );
   }

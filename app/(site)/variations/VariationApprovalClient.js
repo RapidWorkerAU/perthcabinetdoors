@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
+import PcdLoader from "@/components/public/PcdLoader";
 import styles from "../quotes/quote-public.module.css";
 
 function sortedLines(variation) {
@@ -182,7 +183,13 @@ export default function VariationApprovalClient() {
     return (
       <section className={styles.panel}>
         <div className={styles.panelHeader}>Order Variation</div>
-        <div className={styles.panelBody}>Loading variation...</div>
+        <div className={styles.panelBody}>
+          <PcdLoader
+            variant="panel"
+            label="Loading your variation"
+            steps={["Finding your variation", "Loading the details", "Almost there"]}
+          />
+        </div>
       </section>
     );
   }
