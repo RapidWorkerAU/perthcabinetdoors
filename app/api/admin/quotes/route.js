@@ -3,7 +3,9 @@ import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
-import { calculateQuoteTotals } from "../../../../lib/pcd-quote-utils";
+import { defaultQuoteTermsFor } from "../../../../lib/pcd-quote-terms";
+import { sanitizeTermsHtml, toTermsHtml } from "../../../../lib/pcd-terms-html";
+import { applyQuoteCostDefaults, calculateQuoteTotals } from "../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
 import { isMissingSupplierNameSchemaError, withoutSupplierName } from "./[id]/_quote-line-save";
 
@@ -19,11 +21,21 @@ async function normalizeQuotePayload(supabase, payload = {}) {
   const businessDefaults = await getBusinessDefaults(supabase);
   const quoteCurrency = payload.currency || businessDefaults.currency;
   const gstRate = payload.gst_rate ?? businessDefaults.gst_rate;
-  const totals = calculateQuoteTotals(payload.lines || [], gstRate, {
-    ...payload,
+  // Delivery, consumables, door removal and the rest start at the configured
+  // default and are then the quote's own to change. This has to happen BEFORE
+  // the totals are worked out, or the quote would save a cost its total does
+  // not include. A cost the caller sent, 0 included, is left exactly as sent.
+  const withCosts = applyQuoteCostDefaults(payload, businessDefaults);
+  const totals = calculateQuoteTotals(withCosts.lines || [], gstRate, {
+    ...withCosts,
     business_defaults: businessDefaults,
   });
   const customerId = await resolveQuoteCustomer(supabase, payload);
+  // A new quote starts with every term marked Always, in library order. The
+  // caller can still send its own wording and win, which is what the duplicate
+  // and the enquiry conversion rely on.
+  const termsDefaults = await defaultQuoteTermsFor(supabase);
+  const sentTerms = payload.terms !== undefined && payload.terms !== null;
 
   return {
     quote: {
@@ -54,6 +66,12 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       painting_cost_ex_gst: totals.painting_cost_ex_gst,
       glass_cost_ex_gst: totals.glass_cost_ex_gst,
       removal_cost_ex_gst: totals.removal_cost_ex_gst,
+      // Worked out from the lines every save: metres of ABS edge tape, and what
+      // that comes to at the configured rate. The override is what someone
+      // typed over it, and null means they have not.
+      edging_lineal_metres: totals.edging_lineal_metres,
+      edging_cost_ex_gst: totals.edging_cost_ex_gst,
+      edging_cost_override_ex_gst: totals.edging_cost_override_ex_gst,
       other_cost_ex_gst: totals.other_cost_ex_gst,
       markup_percent: totals.markup_percent,
       markup_amount_ex_gst: totals.markup_amount_ex_gst,
@@ -61,7 +79,11 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       client_notes: payload.client_notes || null,
       assumptions: payload.assumptions || null,
       exclusions: payload.exclusions || null,
-      terms: payload.terms ?? businessDefaults.quote_terms ?? null,
+      // Sanitised HERE, not just in the browser: terms are written into the
+      // customer's quote page as markup, so the whitelist has to run on
+      // something the browser cannot skip.
+      terms: (sentTerms ? sanitizeTermsHtml(toTermsHtml(payload.terms)) : termsDefaults.terms) || null,
+      terms_term_ids: Array.isArray(payload.terms_term_ids) ? payload.terms_term_ids : termsDefaults.terms_term_ids,
     },
     lines: totals.lines,
   };

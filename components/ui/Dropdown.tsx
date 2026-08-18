@@ -38,6 +38,10 @@ import { cn } from '@/lib/utils'
  * @prop disabled         - Disables the trigger and prevents opening.
  * @prop containerClassName - className on the outer wrapper div.
  * @prop maxDisplay       - Max number of pills shown in multi mode before "+N more". Default: 3.
+ * @prop display          - Multi mode only. "pills" (default) lists each choice as a
+ *                          removable pill. "count" shows "N selected" instead, for a
+ *                          narrow trigger where four pills would wrap and push the
+ *                          layout around.
  * @prop autoWidth        - When true, panel expands to fit content width
  *                          (min: trigger width, max: 320px). Use for inline table cell
  *                          dropdowns. Default: false.
@@ -67,6 +71,7 @@ export interface DropdownProps {
   containerClassName?: string
   triggerClassName?:   string
   maxDisplay?:        number
+  display?:           'pills' | 'count'
   autoWidth?:         boolean
   /** Overrides the panel's z-index. Needed when rendered inside a high z-index
    *  modal so the panel isn't hidden behind it. Default: the built-in z-[60]. */
@@ -93,6 +98,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
       containerClassName,
       triggerClassName,
       maxDisplay = 3,
+      display = 'pills',
       autoWidth = false,
       contentZIndex,
     },
@@ -287,8 +293,17 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                 triggerClassName
               )}
             >
+              {/* Multi: a count instead of pills, where the trigger is narrow */}
+              {multiple && display === 'count' && (
+                <span className={cn('text-[14px]', selectedOptions.length ? 'text-[#1a1a18]' : 'text-[#8b8a81]')}>
+                  {selectedOptions.length === 0
+                    ? placeholder
+                    : `${selectedOptions.length} of ${options.length} selected`}
+                </span>
+              )}
+
               {/* Multi: pills */}
-              {multiple && (
+              {multiple && display === 'pills' && (
                 <>
                   {selectedOptions.length === 0 && (
                     <span className="text-[14px] text-[#8b8a81]">{placeholder}</span>

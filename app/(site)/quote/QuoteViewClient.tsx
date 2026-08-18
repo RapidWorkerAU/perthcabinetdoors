@@ -5,6 +5,7 @@ import PcdLoader from "@/components/public/PcdLoader";
 import PortalModal from "@/components/PortalModal";
 import modalStyles from "@/components/PortalModal.module.css";
 import { getQuoteFileTypeLabel } from "@/lib/quote/fileTypeLabel";
+import { toTermsHtml } from "@/lib/pcd-terms-html";
 import type { QuotePublicPayload, QuoteMilestone } from "@/lib/quote/types";
 
 type ActionState = {
@@ -202,11 +203,14 @@ export default function QuoteViewClient() {
     },
     { quantity: 0, total: 0 }
   );
+  // Terms carry formatting and the other three do not, so terms is marked as
+  // markup and rendered as markup. Everything here has been through the
+  // whitelist in lib/pcd-terms-html.js before it was stored.
   const proposalSections = [
-    { label: "Client notes", value: payload.version.client_notes },
-    { label: "Assumptions", value: payload.version.assumptions },
-    { label: "Exclusions", value: payload.version.exclusions },
-    { label: "Terms", value: payload.version.terms },
+    { label: "Client notes", value: payload.version.client_notes, html: false },
+    { label: "Assumptions", value: payload.version.assumptions, html: false },
+    { label: "Exclusions", value: payload.version.exclusions, html: false },
+    { label: "Terms", value: payload.version.terms, html: true },
   ].filter((section) => section.value?.trim());
 
   return (
@@ -534,9 +538,16 @@ export default function QuoteViewClient() {
             {proposalSections.map((section) => (
               <div key={section.label} className="qb-field">
                 <label>{section.label}</label>
-                <div className="qb-input qb-input--static whitespace-pre-wrap">
-                  {section.value}
-                </div>
+                {section.html ? (
+                  <div
+                    className="qb-input qb-input--static pcd-rich-text"
+                    dangerouslySetInnerHTML={{ __html: toTermsHtml(section.value) }}
+                  />
+                ) : (
+                  <div className="qb-input qb-input--static whitespace-pre-wrap">
+                    {section.value}
+                  </div>
+                )}
               </div>
             ))}
           </div>

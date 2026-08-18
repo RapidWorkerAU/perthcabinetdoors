@@ -147,6 +147,59 @@ function reassignWall(item, newWall, room) {
   }
 }
 
+/**
+ * Which wall an item belongs to, for elevation purposes.
+ *
+ * EVERY placeable item gets this, not just panels. Dragging derives a wall by
+ * nearest room edge, which cannot help an item that is nowhere near a wall: a
+ * fridge recess in the middle of a room, or an obstruction on a free-standing
+ * run, had no way to say which elevation it should appear on. The plan showed
+ * it, the elevations did not.
+ *
+ * Freestanding stays available, because an island genuinely belongs to no wall
+ * and forcing a choice would put it on an elevation it is not against.
+ */
+function WallField({ draft, room, onChange, hint = true, rotationNote = null }) {
+  return (
+    <>
+      <label className={styles.fieldLabel}>
+        Wall
+        <select
+          className={styles.fieldSelect}
+          value={draft.wall || "island"}
+          onChange={(e) => onChange(reassignWall(draft, e.target.value, room))}
+        >
+          {WALL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          <option value="island">Freestanding (island)</option>
+        </select>
+      </label>
+      {draft.wall === "island" && (
+        <label className={styles.fieldLabel}>
+          Rotation
+          <select
+            className={styles.fieldSelect}
+            value={draft.rotation || 0}
+            onChange={(e) => onChange({ rotation: Number(e.target.value) })}
+          >
+            {ROTATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {rotationNote && (
+            <span style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", fontWeight: 400, display: "block", marginTop: 2 }}>
+              {rotationNote}
+            </span>
+          )}
+        </label>
+      )}
+      {hint && (
+        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
+          Dragging near a wall sets this for you. Set it by hand for anything standing away from the
+          walls, so it still appears on the elevation you want.
+        </p>
+      )}
+    </>
+  );
+}
+
 // Sends a form's queued patch and reflects the OUTCOME.
 //
 // The three item forms (cabinet / door-panel / obstruction) each debounce
@@ -1369,18 +1422,67 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // latest edits.
   const matchOptions = collectMatchOptions(allItems, draft);
 
+  // The profile selects that sit under a panel's colour row.
+  //
+  // A finished panel is its own board over the carcass, so it can carry a
+  // different profile from the fronts — shaker drawers with a flat side panel,
+  // or the reverse. Only offered once a colour is set: while a panel is blank
+  // it is matching another part and takes that part's finish with it, so there
+  // is nothing of its own to give a profile to.
+  function renderPanelProfile(key) {
+    const style = draft[key] || {};
+    if (!style.material && !style.colour) return null;
+    const matLabel = materialLabelForType(style.material || "");
+    const thk = style.thickness_mm ? `${style.thickness_mm}mm` : "";
+    const profTypes = profileTypesForSelection(matLabel, thk);
+    if (!profTypes.length) return null;
+    const profNames = profileNamesForSelection(style.profile_type || "", matLabel, thk);
+    const upd = (patch) => setNow(key, { ...(latestRef.current[key] || {}), ...patch });
+    return (
+      <>
+        <label className={styles.fieldLabel}>
+          Profile type
+          <select
+            className={styles.fieldSelect}
+            value={style.profile_type || ""}
+            onChange={(e) => upd({ profile_type: e.target.value, profile: "" })}
+          >
+            <option value="">None</option>
+            {profTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </label>
+        {profNames.length > 0 && (
+          <label className={styles.fieldLabel}>
+            Profile
+            <select
+              className={styles.fieldSelect}
+              value={style.profile || ""}
+              onChange={(e) => upd({ profile: e.target.value })}
+            >
+              <option value="">Select</option>
+              {profNames.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        )}
+      </>
+    );
+  }
+
   function renderFinishPanelMaterial() {
     return (
-      <ColourField
-        label="Finishing panel"
-        value={draft.finish_panel_style || null}
-        matchHint="Matches the doors by default"
-        canReset
-        matchOptions={matchOptions}
-        thicknessDefault={18}
-        colourImages={colourImages}
-        onChange={(style) => setNow("finish_panel_style", style)}
-      />
+      <>
+        <ColourField
+          label="Finishing panel"
+          value={draft.finish_panel_style || null}
+          matchHint="Matches the doors by default"
+          canReset
+          matchOptions={matchOptions}
+          thicknessDefault={18}
+          colourImages={colourImages}
+          onChange={(style) => setNow("finish_panel_style", style)}
+        />
+        {renderPanelProfile("finish_panel_style")}
+      </>
     );
   }
 
@@ -1389,15 +1491,18 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // colour overrides it.
   function renderOverridePicker(key, label, matchHint) {
     return (
-      <ColourField
-        label={label}
-        value={draft[key] || null}
-        matchHint={matchHint}
-        canReset
-        matchOptions={matchOptions}
-        colourImages={colourImages}
-        onChange={(style) => setNow(key, style)}
-      />
+      <>
+        <ColourField
+          label={label}
+          value={draft[key] || null}
+          matchHint={matchHint}
+          canReset
+          matchOptions={matchOptions}
+          colourImages={colourImages}
+          onChange={(style) => setNow(key, style)}
+        />
+        {renderPanelProfile(key)}
+      </>
     );
   }
 
@@ -2314,18 +2419,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                   <input className={styles.fieldInput} type="number" min="0" value={draft.mount_height_mm ?? CABINET_MOUNT_MM[draft.item_type] ?? 0} onChange={(e) => set("mount_height_mm", e.target.value)} />
                 </label>
               )}
-              {draft.wall === "island" && (
-                <label className={styles.fieldLabel}>
-                  Rotation
-                  <select className={styles.fieldSelect} value={draft.rotation || 0} onChange={(e) => setNow("rotation", Number(e.target.value))}>
-                    {ROTATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </label>
-              )}
-
-              <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "4px 0 0", lineHeight: 1.4 }}>
-                Drag the cabinet on the floor plan to reposition. Wall assigns automatically.
-              </p>
+              <WallField draft={draft} room={room} onChange={(patch) => setMultiNow(patch)} />
             </div>
         </ConfigSection>
 
@@ -3073,7 +3167,7 @@ function shelfThicknessLabel(item) {
 // no doors, no drawers, no benchtop and no corner geometry, so it gets a short
 // form of its own — size, the two colours, shelves, back and an optional
 // kickboard — rather than a doors-and-benchtop panel with most of it hidden.
-function BookcaseForm({ item, allItems, onItemChange, openSection, toggleSection, colourImages = null }) {
+function BookcaseForm({ item, allItems, room, onItemChange, openSection, toggleSection, colourImages = null }) {
   const [draft, setDraft] = useState(item);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -3308,7 +3402,7 @@ function BookcaseForm({ item, allItems, onItemChange, openSection, toggleSection
   );
 }
 
-function ShelfForm({ item, allItems, onItemChange }) {
+function ShelfForm({ item, allItems, room, onItemChange }) {
   const [draft, setDraft] = useState(item);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -3683,36 +3777,17 @@ function DoorPanelForm({ item, room, onItemChange }) {
               )}
             </>
           )}
-          {isPanel && (
-            <label className={styles.fieldLabel}>
-              Wall
-              <select
-                className={styles.fieldSelect}
-                value={draft.wall || "island"}
-                onChange={(e) => setMultiNow(reassignWall(draft, e.target.value, room))}
-              >
-                {WALL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                <option value="island">Freestanding (island)</option>
-              </select>
-            </label>
-          )}
+          <WallField
+            draft={draft}
+            room={room}
+            onChange={(patch) => setMultiNow(patch)}
+            hint={false}
+            rotationNote={isScribe ? "Always freestanding — this sets which wall it supports (0° = top, 90° = right, 180° = bottom, 270° = left)." : null}
+          />
           <label className={styles.fieldLabel}>
             X offset mm
             <input className={styles.fieldInput} type="number" min="0" value={draft.x_mm ?? 0} onChange={(e) => set("x_mm", e.target.value)} />
           </label>
-          {draft.wall === "island" && (
-            <label className={styles.fieldLabel}>
-              Rotation
-              <select className={styles.fieldSelect} value={draft.rotation || 0} onChange={(e) => setNow("rotation", Number(e.target.value))}>
-                {ROTATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              {isScribe && (
-                <span style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", fontWeight: 400, display: "block", marginTop: 2 }}>
-                  Always freestanding — this sets which wall it supports (0° = top, 90° = right, 180° = bottom, 270° = left).
-                </span>
-              )}
-            </label>
-          )}
           <label className={styles.fieldLabel}>
             Notes
             <textarea className={styles.fieldTextarea} value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={4} />
@@ -3729,7 +3804,7 @@ function DoorPanelForm({ item, room, onItemChange }) {
 // manufactured or quoted, so this form is deliberately minimal: no
 // material/board/profile/hinge fields at all, just its footprint and where
 // it sits on the wall.
-function ObstructionForm({ item, onItemChange }) {
+function ObstructionForm({ item, room, onItemChange }) {
   const [draft, setDraft] = useState(item);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -3855,6 +3930,7 @@ function ObstructionForm({ item, onItemChange }) {
               <input className={styles.fieldInput} type="number" min="0" value={draft.mount_height_mm ?? 0} onChange={(e) => set("mount_height_mm", e.target.value)} />
             </label>
           </div>
+          <WallField draft={draft} room={room} onChange={(patch) => setMany(patch)} />
           {item.item_type === "brick_corner_pantry" && (
             <>
               <div className={styles.fieldRow}>
@@ -4067,13 +4143,13 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
         {item.item_type === "shelf_rail" ? (
           <ShelfRailForm key={item.id} item={item} allItems={allItems} room={room} onItemChange={onItemChange} openSection={openSection} toggleSection={toggleSection} colourImages={colourImages} />
         ) : item.item_type === "bookcase" ? (
-          <BookcaseForm key={item.id} item={item} allItems={allItems} onItemChange={onItemChange} openSection={openSection} toggleSection={toggleSection} colourImages={colourImages} />
+          <BookcaseForm key={item.id} item={item} allItems={allItems} room={room} onItemChange={onItemChange} openSection={openSection} toggleSection={toggleSection} colourImages={colourImages} />
         ) : isCabinet ? (
           <CabinetConfigForm key={item.id} item={item} allItems={allItems} room={room} materialDefaults={materialDefaults} onItemChange={onItemChange} onSelectItem={onSelectItem} openSection={openSection} toggleSection={toggleSection} fullWidth={fullWidth} colourImages={colourImages} />
         ) : ["obstruction", "window", "door_opening", "appliance", "brick_corner_pantry"].includes(item.item_type) ? (
-          <ObstructionForm key={item.id} item={item} onItemChange={onItemChange} />
+          <ObstructionForm key={item.id} item={item} room={room} onItemChange={onItemChange} />
         ) : item.item_type === "floating_shelf" ? (
-          <ShelfForm key={item.id} item={item} allItems={allItems} onItemChange={onItemChange} />
+          <ShelfForm key={item.id} item={item} allItems={allItems} room={room} onItemChange={onItemChange} />
         ) : (
           <DoorPanelForm key={item.id} item={item} room={room} onItemChange={onItemChange} />
         )}

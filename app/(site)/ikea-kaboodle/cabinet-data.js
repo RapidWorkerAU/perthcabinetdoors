@@ -141,6 +141,12 @@ const size = (width, height, layouts) => ({ width, height, layouts });
 
 // ── METOD ────────────────────────────────────────────────────────────────────
 //
+// FRAME SIZES re-checked against ikea.com.au on 18 Aug 2026: every base, wall
+// and high frame IKEA lists, and nothing else. IKEA names a frame width x DEPTH
+// x height in cm, so 60x37x80 and 60x60x80 are two different cabinets at the
+// same face size, and base and high frames each come in both depths. There is
+// no 450 wide frame in any of the three, and no 1000 wide base.
+//
 // Real door sizes, all five ranges agreeing:
 //   200x800
 //   300x600  300x800
@@ -148,7 +154,9 @@ const size = (width, height, layouts) => ({ width, height, layouts });
 //   450x800
 //   600x400  600x600  600x800  600x1000  600x1200  600x1400  600x2000
 // There is no 500 wide door and no 800 wide door. An 800 cabinet takes two 400s.
-// Nothing is taller than 2000.
+// Nothing is taller than 2000. The 450 door stays on this list because IKEA
+// still sells it, but no METOD frame is 450 wide, so it is not offered as a
+// frame size below.
 //
 // Real drawer fronts: 400, 600 and 800 wide at 100, 200 and 400 high. 800 is the
 // one width where a drawer front exists and a door does not.
@@ -229,37 +237,59 @@ function metodTallLayouts(width, height) {
 
 const metodPanel = (width, height) => size(width, height, [L("Cover panel", [panel(width, height)])]);
 
+// A depth is a different cabinet, not a variation on one, so each depth gets
+// its own group. Two frames can share a width and a height, and the tile says
+// which depth it is rather than leaving the customer to guess from the heading.
 const METOD = [
   {
-    group: "Base cabinets",
+    group: "Base cabinets, 600 deep",
     note: "800mm high frame, sitting on adjustable legs",
-    depth: 560,
-    items: [200, 300, 400, 450, 600, 800].map((width) =>
+    depth: 600,
+    sizeLabel: "mm frame, 600 deep",
+    items: [200, 300, 400, 600, 800].map((width) =>
+      size(width, 800, metodBaseLayouts(width))
+    ),
+  },
+  {
+    group: "Base cabinets, 370 deep",
+    note: "The same 800mm high frame, half the depth. Not made 200 wide.",
+    depth: 370,
+    sizeLabel: "mm frame, 370 deep",
+    items: [300, 400, 600, 800].map((width) =>
       size(width, 800, metodBaseLayouts(width))
     ),
   },
   {
     group: "Wall cabinets",
-    note: "Four frame heights",
+    note: "Four frame heights, all 370 deep",
     depth: 370,
+    sizeLabel: "mm frame, 370 deep",
     items: [
-      // 400 high: only 400 and 600 wide doors are made at this height.
+      // 400 high starts at 400 wide.
       ...[400, 600, 800].map((width) => size(width, 400, metodWallLayouts(width, 400))),
       // 600 high adds a 300 wide door.
       ...[300, 400, 600, 800].map((width) => size(width, 600, metodWallLayouts(width, 600))),
-      // 800 high is the fullest set, and the only height with 200 and 450 wide.
-      ...[200, 300, 400, 450, 600, 800].map((width) => size(width, 800, metodWallLayouts(width, 800))),
+      // 800 high is the fullest set, and the only height made 200 wide.
+      ...[200, 300, 400, 600, 800].map((width) => size(width, 800, metodWallLayouts(width, 800))),
       ...[400, 600, 800].map((width) => size(width, 1000, metodWallLayouts(width, 1000))),
     ],
   },
   {
-    group: "High cabinets",
-    note: "Pantry and oven housings",
-    depth: 560,
+    group: "High cabinets, 600 deep",
+    note: "Pantry and oven housings. The only depth made 2200 high.",
+    depth: 600,
+    sizeLabel: "mm frame, 600 deep",
     items: [
-      ...[400, 600, 800].map((width) => size(width, 2000, metodTallLayouts(width, 2000))),
+      ...[400, 600].map((width) => size(width, 2000, metodTallLayouts(width, 2000))),
       ...[400, 600].map((width) => size(width, 2200, metodTallLayouts(width, 2200))),
     ],
+  },
+  {
+    group: "High cabinets, 370 deep",
+    note: "2000 high only, and the only tall frame made 800 wide",
+    depth: 370,
+    sizeLabel: "mm frame, 370 deep",
+    items: [400, 600, 800].map((width) => size(width, 2000, metodTallLayouts(width, 2000))),
   },
   {
     group: "Cover panels",

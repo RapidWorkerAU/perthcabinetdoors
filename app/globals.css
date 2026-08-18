@@ -99,3 +99,22 @@ body {
 }
 
 a { color: inherit; }
+
+/* Formatted quote terms.
+   The terms editor writes a small subset of HTML (paragraphs, bold, italic,
+   underline, bulleted and numbered lists) and both customer-facing quote pages
+   render it. A browser reset strips list markers and paragraph spacing, so
+   without this the formatting someone applied in the editor would silently
+   vanish on the page the customer opens. Kept global rather than in a module
+   because the two pages that show terms are styled completely differently. */
+.pcd-rich-text > *:first-child { margin-top: 0; }
+.pcd-rich-text > *:last-child { margin-bottom: 0; }
+.pcd-rich-text p { margin: 0 0 0.6em; }
+.pcd-rich-text ul,
+.pcd-rich-text ol { margin: 0 0 0.6em; padding-left: 1.4em; }
+.pcd-rich-text ul { list-style: disc; }
+.pcd-rich-text ol { list-style: decimal; }
+.pcd-rich-text li { margin: 0 0 0.2em; }
+.pcd-rich-text strong { font-weight: 600; }
+.pcd-rich-text em { font-style: italic; }
+.pcd-rich-text u { text-decoration: underline; }

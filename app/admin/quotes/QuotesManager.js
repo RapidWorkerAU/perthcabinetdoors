@@ -6,12 +6,7 @@ import AddressFields from "../../../components/admin/AddressFields";
 import { addressColumns, addressFromRecord } from "../../../lib/pcd-contact-details";
 import styles from "../admin-content.module.css";
 import { useToast } from "@/components/ui/Toast";
-
-// Quotes saved while the terms were hard-coded carry this exact string. Treat
-// it as "never customised" so they pick up whatever is set in Business
-// Defaults, instead of being stuck on wording nobody chose.
-const LEGACY_HARDCODED_TERMS =
-  "Prices are valid for 14 days. Final measurements and site conditions may affect the final invoice.";
+import TermsEditor from "../_components/TermsEditor";
 
 const emptyLine = {
   product_name: "",
@@ -56,9 +51,9 @@ const emptyForm = {
   gst_rate: DEFAULT_BUSINESS_DEFAULTS.gst_rate,
   notes: "",
   // Left blank on purpose. This used to hold a hard-coded copy of the old terms
-  // wording, and because the API only falls back to the configured quote_terms
-  // when the payload's terms are empty, a quote started here always shipped the
-  // hard-coded text and the terms set in Business Defaults were never used.
+  // wording, so a quote started here always shipped that text and whatever was
+  // configured was never used. Blank means the server fills it in: a new quote
+  // starts with every term marked Always in the terms library.
   terms: "",
   lines: [{ ...emptyLine }],
 };
@@ -161,10 +156,6 @@ export default function QuotesManager() {
           current.gst_rate === "" || current.gst_rate === null || current.gst_rate === undefined
             ? nextDefaults.gst_rate
             : current.gst_rate,
-        terms:
-          !current.terms || current.terms === LEGACY_HARDCODED_TERMS
-            ? nextDefaults.quote_terms || ""
-            : current.terms,
         lines: current.lines.map((line) => ({
           ...line,
           worker_hourly_rate:
@@ -397,10 +388,19 @@ export default function QuotesManager() {
             Notes
             <textarea className={styles.textareaInput} rows={4} value={form.notes} onChange={(event) => updateForm("notes", event.target.value)} />
           </label>
-          <label className={styles.fieldLabel}>
+          {/* The same editor the quote page uses. Terms are formatted text
+              now, so a plain textarea here would show a customer's wording as
+              raw tags and mangle it the moment anyone typed. */}
+          <div className={styles.fieldLabel}>
             Terms
-            <textarea className={styles.textareaInput} rows={4} value={form.terms} onChange={(event) => updateForm("terms", event.target.value)} />
-          </label>
+            <TermsEditor
+              value={form.terms}
+              onChange={(html) => updateForm("terms", html)}
+              placeholder="Terms marked Always in Business Defaults. Use the quote page to add more."
+              height={120}
+              ariaLabel="Quote terms"
+            />
+          </div>
         </section>
 
         {selectedQuote?.order_id ? <p className={styles.noticeBox}>Approved quote has been converted to an order.</p> : null}

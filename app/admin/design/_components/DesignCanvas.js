@@ -28,6 +28,7 @@ import {
   cabinetVerticalRange,
   verticalRangesOverlap,
   computeGaps1D,
+  wallAxisObstacles,
   frontEdgeFor,
   panelSideEdges,
   islandEffectiveDims,
@@ -968,70 +969,20 @@ export default function DesignCanvas({
       const { lowT: dragLowT, highT: dragHighT } = endPanelSpanMm(draggingItem, dragWall);
       const dragPanelSpan = dragLowT + dragHighT;
 
-      // Items on the detected target wall that conflict in height
-      const sameWall = items.filter((i) =>
-        i.id !== drag.itemId &&
-        i.wall === newWall &&
-        verticalRangesOverlap(draggingVRange, cabinetVerticalRange(i))
-      );
+      // What blocks this item along the target wall. Same rule the on-screen
+      // measurements use, so a dimension line can never offer space the drag
+      // then refuses to let anything into. See wallAxisObstacles.
+      const others = (newWall === "island")
+        ? []
+        : wallAxisObstacles(
+            { ...(draggingItem || {}), depth_mm: drag.itemDepthMm },
+            items,
+            newWall,
+            W,
+            D,
+            drag.itemId
+          );
 
-      // Cross-wall footprint obstacles
-      const dragDepth = drag.itemDepthMm;
-      const crossWall = (newWall === "island") ? [] : items
-        .filter((i) =>
-          i.id !== drag.itemId &&
-          i.wall !== newWall &&
-          ["top","bottom","left","right"].includes(i.wall) &&
-          verticalRangesOverlap(draggingVRange, cabinetVerticalRange(i))
-        )
-        .flatMap((other) => {
-          const fp = occupiedFootprint(other, W, D);
-          if (!fp) return [];
-          if (newWall === "top" || newWall === "bottom") {
-            const dragY0 = newWall === "top" ? 0 : D - dragDepth;
-            const dragY1 = newWall === "top" ? dragDepth : D;
-            if (fp.y < dragY1 && fp.y + fp.h > dragY0) return [{ x_mm: fp.x, width_mm: fp.w }];
-          } else if (newWall === "left" || newWall === "right") {
-            const dragX0 = newWall === "left" ? 0 : W - dragDepth;
-            const dragX1 = newWall === "left" ? dragDepth : W;
-            if (fp.x < dragX1 && fp.x + fp.w > dragX0) return [{ x_mm: fp.y, width_mm: fp.h }];
-          }
-          return [];
-        });
-
-      // Same-wall items as 1D obstacles (position + length along the wall
-      // axis), taken from each one's occupied footprint so a neighbour's own
-      // end panels claim their space too — snapping to a bare width_mm is
-      // what let a cabinet land on top of the board next door.
-      const sameWallObs = sameWall.flatMap((o) => {
-        const fp = occupiedFootprint(o, W, D);
-        if (!fp) return [];
-        return (newWall === "left" || newWall === "right")
-          ? [{ x_mm: fp.y, width_mm: fp.h }]
-          : [{ x_mm: fp.x, width_mm: fp.w }];
-      });
-
-      // Corner cabinets whose SECONDARY leg sits on the target wall (their
-      // primary leg may be on a completely different wall) — without this,
-      // only their primary leg's footprint would ever block other cabinets,
-      // so anything dropped onto their second wall would overlap the return leg.
-      const secondaryLegObs = items
-        .filter((i) =>
-          i.id !== drag.itemId &&
-          isCornerShaped(i) &&
-          i.secondary_wall === newWall &&
-          i.wall !== newWall &&
-          verticalRangesOverlap(draggingVRange, cabinetVerticalRange(i))
-        )
-        .flatMap((other) => {
-          const fp = cornerSecondaryFootprint(other, W, D);
-          if (!fp) return [];
-          return (newWall === "left" || newWall === "right")
-            ? [{ x_mm: fp.y, width_mm: fp.h }]
-            : [{ x_mm: fp.x, width_mm: fp.w }];
-        });
-
-      const others = [...sameWallObs, ...crossWall, ...secondaryLegObs];
 
       if (newWall === "top" || newWall === "bottom") {
         // Magnetic alignment to a nearby cabinet's edge on this wall, before
@@ -1065,8 +1016,15 @@ export default function DesignCanvas({
         // including a corner cabinet's secondary leg — a freestanding item
         // shouldn't be droppable on top of either. Edge alignment snaps
         // each axis independently against the same obstacle set.
+        // Height matters here too. Without the vertical check a freestanding
+        // wall cabinet could not be hung over a freestanding base cabinet,
+        // which every wall branch has always allowed.
         const islandObs = items
-          .filter((i) => i.id !== drag.itemId && i.wall === "island")
+          .filter((i) =>
+            i.id !== drag.itemId &&
+            i.wall === "island" &&
+            verticalRangesOverlap(draggingVRange, cabinetVerticalRange(i))
+          )
           .map((i) => {
             const r = islandOccupiedRect(i);
             return { x_mm: r.x, y_mm: r.y, width_mm: r.w, depth_mm: r.h };
@@ -1413,7 +1371,11 @@ export default function DesignCanvas({
         const currentWall = draggingItem.wall;
         const { absX: cAbsX, absY: cAbsY } = getAbsPos(draggingItem, W, D);
 
-        const sameWallItems = items.filter((i) => i.id !== drag.itemId && i.wall === currentWall);
+        // Everything that blocks this item along the wall, by the same rule the
+        // drag uses. It used to be same-wall items only, which is why an
+        // obstruction on another wall, or a freestanding one in the middle of
+        // the room, was never measured off.
+        const gapObstacles = wallAxisObstacles(draggingItem, items, currentWall, W, D, drag.itemId);
 
         // Perpendicular (depth) gaps — from the item's front face to the nearest
         // thing in front (or the far wall) and its back face to the wall behind,
@@ -1437,10 +1399,7 @@ export default function DesignCanvas({
         // are drawn from the same occupied edges for the same reason, rather
         // than from the carcass rect.
         if (currentWall === "top" || currentWall === "bottom") {
-          const gapObs = sameWallItems.flatMap((o) => {
-            const fp = occupiedFootprint(o, W, D);
-            return fp ? [{ x_mm: fp.x, width_mm: fp.w }] : [];
-          });
+          const gapObs = gapObstacles;
           const fp = occupiedFootprint(draggingItem, W, D);
           const pos = fp ? fp.x : cAbsX;
           const len = fp ? fp.w : drag.itemWidthMm;
@@ -1456,10 +1415,7 @@ export default function DesignCanvas({
         }
 
         if (currentWall === "left" || currentWall === "right") {
-          const gapObs = sameWallItems.flatMap((o) => {
-            const fp = occupiedFootprint(o, W, D);
-            return fp ? [{ x_mm: fp.y, width_mm: fp.h }] : [];
-          });
+          const gapObs = gapObstacles;
           const fp = occupiedFootprint(draggingItem, W, D);
           const pos = fp ? fp.y : cAbsY;
           const len = fp ? fp.h : drag.itemWidthMm;

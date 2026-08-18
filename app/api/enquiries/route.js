@@ -7,6 +7,7 @@ import {
   uniqueRecipients,
 } from "../../../lib/pcd-email-templates";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
+import { upsertCustomerByEmail } from "../../../lib/pcd-customer-utils";
 
 const enquirySchema = z.object({
   customerName: z.string().optional(),
@@ -26,7 +27,29 @@ export async function POST(request) {
 
     const payload = parsed.data;
     const supabase = createSupabaseAdminClient();
+
+    // Same rule as a quote request: the enquiry makes a customer, keyed on the
+    // address, so the message shows on their desk instead of only in a list of
+    // enquiries nobody links back.
+    let customerId = null;
+    try {
+      const customer = await upsertCustomerByEmail(
+        supabase,
+        {
+          email: payload.customerEmail,
+          name: payload.customerName,
+          phone: payload.customerPhone,
+          site_postcode: payload.postcode,
+        },
+        { source: "enquiry", label: "Website enquiry" }
+      );
+      customerId = customer?.id || null;
+    } catch {
+      customerId = null;
+    }
+
     const { error } = await supabase.from("pcd_enquiries").insert({
+      customer_id: customerId,
       customer_name: payload.customerName || null,
       customer_email: payload.customerEmail || null,
       customer_phone: payload.customerPhone || null,

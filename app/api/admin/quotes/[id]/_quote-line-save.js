@@ -1,5 +1,5 @@
 ﻿import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
-import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, GST_RATE, inheritWhenZero, roundMoney } from "../../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, edgingLinealMetres, edgingTotals, GST_RATE, inheritWhenZero, roundMoney } from "../../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable, profileTypesForSelection, profileNamesForSelection } from "../../../../../lib/quote-form-data";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 
@@ -173,6 +173,9 @@ function quoteTotalsPatch(totals) {
     painting_cost_ex_gst: totals.painting_cost_ex_gst,
     glass_cost_ex_gst: totals.glass_cost_ex_gst,
     removal_cost_ex_gst: totals.removal_cost_ex_gst,
+    edging_lineal_metres: totals.edging_lineal_metres,
+    edging_cost_ex_gst: totals.edging_cost_ex_gst,
+    edging_cost_override_ex_gst: totals.edging_cost_override_ex_gst,
     other_cost_ex_gst: totals.other_cost_ex_gst,
     markup_percent: totals.markup_percent,
     markup_amount_ex_gst: totals.markup_amount_ex_gst,
@@ -195,9 +198,17 @@ function quoteTotalsPatchWithNewLine(quote, line, businessDefaults = DEFAULT_BUS
   const paintingCostExGst = dbNumber(quote.painting_cost_ex_gst);
   const glassCostExGst = dbNumber(quote.glass_cost_ex_gst);
   const removalCostExGst = dbNumber(quote.removal_cost_ex_gst);
+  // This path adds ONE line to a quote without re-reading the rest, so the
+  // edging metres are the quote's running figure plus this line's. An override
+  // still wins, exactly as it does in a full recalculation.
+  const edging = edgingTotals(
+    [{ edging_lineal_metres: dbNumber(quote.edging_lineal_metres) + edgingLinealMetres(line) }],
+    businessDefaults,
+    quote
+  );
   const otherCostExGst = 0;
   const subtotalExGst = roundMoney(
-    materialCostExGst + labourCostExGst + travelCostExGst + deliveryCostExGst + installationCostExGst + paintingCostExGst + glassCostExGst + removalCostExGst + otherCostExGst
+    materialCostExGst + labourCostExGst + travelCostExGst + deliveryCostExGst + installationCostExGst + paintingCostExGst + glassCostExGst + removalCostExGst + edging.edging_cost_ex_gst + otherCostExGst
   );
   const gstAmount = roundMoney(subtotalExGst * gstRate);
 
@@ -212,6 +223,11 @@ function quoteTotalsPatchWithNewLine(quote, line, businessDefaults = DEFAULT_BUS
     travel_cost_ex_gst: travelCostExGst,
     delivery_cost_ex_gst: deliveryCostExGst,
     installation_cost_ex_gst: installationCostExGst,
+    // The three REAL columns only. edgingTotals also reports the rate and what
+    // the calculation came to, and neither is a column on a quote.
+    edging_lineal_metres: edging.edging_lineal_metres,
+    edging_cost_ex_gst: edging.edging_cost_ex_gst,
+    edging_cost_override_ex_gst: edging.edging_cost_override_ex_gst,
     painting_cost_ex_gst: paintingCostExGst,
     glass_cost_ex_gst: glassCostExGst,
     removal_cost_ex_gst: removalCostExGst,

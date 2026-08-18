@@ -3,6 +3,7 @@ import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../../../lib/pcd-business-defaults";
 import { calculateQuoteTotals } from "../../../../../../lib/pcd-quote-utils";
+import { defaultQuoteTermsFor } from "../../../../../../lib/pcd-quote-terms";
 import { isEdgeProfileSelectionAvailable } from "../../../../../../lib/quote-form-data";
 import { isMissingSupplierNameSchemaError, withoutSupplierName } from "../_quote-line-save";
 
@@ -147,6 +148,7 @@ export async function POST(_request, { params }) {
     if (lineError) throw lineError;
 
     const businessDefaults = await getBusinessDefaults(context.supabase);
+    const termsDefaults = await defaultQuoteTermsFor(context.supabase);
     const copiedLines = (sourceLines || []).map(copyLineForCalculation);
     const totals = calculateQuoteTotals(copiedLines, businessDefaults.gst_rate, {
       business_defaults: businessDefaults,
@@ -189,7 +191,10 @@ export async function POST(_request, { params }) {
         client_notes: null,
         assumptions: null,
         exclusions: null,
-        terms: businessDefaults.quote_terms || null,
+        // A duplicate starts fresh on terms, the way it does on notes: the
+        // Always terms as they stand today, not whatever the original carried.
+        terms: termsDefaults.terms || null,
+        terms_term_ids: termsDefaults.terms_term_ids,
       })
       .select("*")
       .single();

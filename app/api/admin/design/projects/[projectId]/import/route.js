@@ -9,7 +9,7 @@ import { computeBottomPanelRun, bottomPanelSegment } from "../../../../../../../
 import { computeTopPanelRun, topPanelSegment, topPanelWidthMm } from "../../../../../../../lib/pcd-toppanel-utils";
 import { computeFillerPanelRun, fillerPanelSegment, fillerPanelGapMm } from "../../../../../../../lib/pcd-fillerpanel-utils";
 import { computeDoorSizes, computeDoorSizesForConfig, computeDrawerSizes, computeDrawerSizesForConfig, computeCornerDoorLeaves, formatHingeNote, frontSizingWidthMm, finishedSidePanelDepthMm, finishedTopPanelDepthMm, bayShelfCount, bayShelfHeightsMm } from "../../../../../../../lib/pcd-door-utils";
-import { runnerLabel, runnerUnitCost } from "../../../../../../../lib/pcd-drawer-utils";
+import { runnerLabel } from "../../../../../../../lib/pcd-drawer-utils";
 import { materialLabelForType } from "../../../../../../../lib/pcd-colour-library";
 import { finishPanelVerticalSpanMm } from "../../../../../../../lib/pcd-finishpanel-utils";
 import { floatingShelfBoards, floatingShelfStyle } from "../../../../../../../lib/pcd-floating-shelf-utils";
@@ -26,6 +26,15 @@ import {
   DEFAULT_BENCHTOP_CUTOUT_FEE_EX_GST,
 } from "../../../../../../../lib/pcd-benchtop-utils";
 import { missingReason, mergeIdenticalLines } from "../../../../../../../lib/pcd-import-utils";
+// Which board each finished panel is made from, including the per-piece
+// colour/profile overrides the design tool sets. Shared so the cut list and
+// the quote can't disagree about it.
+import {
+  styleSupplierName,
+  finishPanelBoard,
+  carcassPanelBoard,
+  panelBoardFields,
+} from "../../../../../../../lib/pcd-panel-board.js";
 
 async function getProjectId(params) {
   const resolved = await Promise.resolve(params);
@@ -288,10 +297,6 @@ function designItemToLine(item) {
   return line;
 }
 
-function styleSupplierName(style = {}) {
-  return String(style.supplier_name || style.supplier || "").trim();
-}
-
 // Doors are imported as standalone quote lines (not nested in cabinet_config),
 // grouped per cabinet, one line per unique door size + hinge setup on that cabinet.
 function doorLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
@@ -412,31 +417,12 @@ function cornerDoorLinesForCabinet(item, roomName, { cabinetIncluded = true } = 
 // Drawers are imported the same way doors are — one line per unique front
 // size on the cabinet, runner type carried as a note (no separate hardware
 // line, matching how hinge_qty is just a note on the door line).
-// Drawer runners priced as a "Hardware" line (audit p2-3) — one runner pair per
-// drawer, at the rate for the bank's runner type. Shared by the drawers front
-// and each drawer section of a mixed front. Zero rate → no line (e.g. if the
-// runner cost defaults were cleared).
-function runnerLinesFor(item, cfg, sizes, traceLabel, sectionLabel = "", businessDefaults = undefined) {
-  // The CONFIGURED rate. This called runnerUnitCost(cfg) with no defaults, so it
-  // always fell back to the built-in $8 / $25 / $15 and the settings screen
-  // could never change what a runner pair costs.
-  const runnerCost = runnerUnitCost(cfg, businessDefaults);
-  const totalDrawers = (Array.isArray(sizes) ? sizes : []).reduce((n, s) => n + (s.qty || 0), 0);
-  if (!(totalDrawers > 0) || !(runnerCost > 0)) return [];
-  const label = runnerLabel(cfg);
-  const suffix = sectionLabel ? ` (${sectionLabel})` : "";
-  return [{
-    product_type: "Hardware",
-    product_name: `Drawer runner — ${label}`,
-    description: traceLabel ? `Drawer runners — ${traceLabel}${suffix}` : `Drawer runners${suffix}`,
-    notes: `${label} runner pair, one per drawer.`,
-    qty: totalDrawers * (item.qty || 1),
-    product_unit_cost_ex_gst: runnerCost,
-    unit_cost_mode: "manual",
-  }];
-}
-
-function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true, businessDefaults } = {}) {
+//
+// The import used to add a priced "Hardware" line per drawer bank as well, at a
+// rate per runner type held in business defaults. Runners are ordinary hardware
+// now: they come off the hardware library as their own quote line, chosen per
+// job, so the import states the runner type and prices nothing.
+function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true } = {}) {
   if (item.front_type !== "drawers") return [];
 
   const style = item.drawer_style || {};
@@ -469,7 +455,6 @@ function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true, busines
     unit_cost_per_sqm_ex_gst: style.cost_per_sqm || 0,
     unit_cost_mode: "auto",
   }));
-  lines.push(...runnerLinesFor(item, cfg, sizes, traceLabel, "", businessDefaults));
   return lines;
 }
 
@@ -480,7 +465,7 @@ function drawerLinesForCabinet(item, roomName, { cabinetIncluded = true, busines
 // drawer-type section to another, rather than letting each section pick
 // its own. Each section becomes its own set of lines, labelled by section
 // number so they're traceable back to their position in the cabinet.
-function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeDoors = true, includeDrawers = true, businessDefaults } = {}) {
+function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeDoors = true, includeDrawers = true } = {}) {
   if (item.front_type !== "mixed") return [];
 
   const sections = Array.isArray(item.section_config?.sections) ? item.section_config.sections : [];
@@ -525,7 +510,6 @@ function mixedLinesForCabinet(item, roomName, { cabinetIncluded = true, includeD
           unit_cost_mode: "auto",
         });
       });
-      lines.push(...runnerLinesFor(item, cfg, sizes, traceLabel, sectionLabel, businessDefaults));
     } else if (sec.type === "open" || sec.type === "appliance") {
       // Blank space or an appliance (oven/microwave) recess — no board to cut,
       // no line to quote; the appliance is customer-supplied.
@@ -585,6 +569,7 @@ function kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room) {
   // already the inner span (see kickboardSpanMm) and it never joins a run.
   const inset = kickboardIsInset(item);
   const partName = inset ? "Plinth Rail" : "Kickboard";
+  const board = carcassPanelBoard(item, "kickboard_style", item.kickboard_thickness_mm);
 
   const lines = [];
   for (const leg of legs) {
@@ -599,13 +584,7 @@ function kickboardLinesForCabinet(item, selectedCabinetItems, roomName, room) {
       width_mm: widthMm,
       height_mm: item.kickboard_height_mm || 120,
       qty: runAwareQty(item, leg.count),
-      material: item.material || "",
-      supplier_name: styleSupplierName(item),
-      finish: item.finish || "",
-      colour: item.colour || "",
-      thickness: item.kickboard_thickness_mm ? `${item.kickboard_thickness_mm}mm` : "",
-      unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
-      unit_cost_mode: "auto",
+      ...panelBoardFields(board),
     });
   }
   return lines;
@@ -649,13 +628,7 @@ function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, 
     width_mm: widthMm,
     height_mm: heightMm,
     qty: runAwareQty(item, runCount),
-    material: item.material || "",
-    supplier_name: styleSupplierName(item),
-    finish: item.finish || "",
-    colour: item.colour || "",
-    thickness: item.filler_panel_thickness_mm ? `${item.filler_panel_thickness_mm}mm` : "",
-    unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
-    unit_cost_mode: "auto",
+    ...panelBoardFields(carcassPanelBoard(item, "filler_panel_style", item.filler_panel_thickness_mm)),
   }];
 }
 
@@ -672,26 +645,13 @@ function fillerPanelLinesForCabinet(item, selectedCabinetItems, roomName, room, 
 // end/side/back/underside panels. A finishing panel is its own finished board
 // over the carcass — not carcass material — so it uses finish_panel_style,
 // falling back to the door/front material (its normal match), then carcass.
-function finishPanelBoard(item) {
-  const fp = item.finish_panel_style || {};
-  const d = item.door_style || {};
-  return {
-    material: fp.material || d.material || item.material || "",
-    supplier_name: styleSupplierName(fp) || styleSupplierName(d) || styleSupplierName(item),
-    finish: fp.finish || d.finish || item.finish || "",
-    colour: fp.colour || d.colour || item.colour || "",
-    thicknessMm: fp.thickness_mm || d.thickness_mm || item.carcass_thickness_mm || null,
-    rate: Number(fp.cost_per_sqm) || Number(d.cost_per_sqm) || Number(item.cost_per_sqm_carcass) || 0,
-  };
-}
-
 function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
   if (!item.has_bottom_panel || item.item_type !== "wall_cabinet") return [];
 
   const lines = [];
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
   const depthMm = item.depth_mm || 600;
-  const board = finishPanelBoard(item);
+  const board = finishPanelBoard(item, "bottom_panel_style");
 
   function pushPanel(name, widthMm, qty = perCabinetQty(item)) {
     lines.push({
@@ -702,13 +662,7 @@ function bottomPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       width_mm: widthMm,
       height_mm: depthMm,
       qty,
-      material: board.material,
-      supplier_name: board.supplier_name,
-      finish: board.finish,
-      colour: board.colour,
-      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
-      unit_cost_per_sqm_ex_gst: board.rate,
-      unit_cost_mode: "auto",
+      ...panelBoardFields(board),
     });
   }
 
@@ -740,7 +694,7 @@ function topPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
   const lines = [];
   const traceLabel = [itemLabel(item), roomName].filter(Boolean).join(" — ");
   const depthMm = finishedTopPanelDepthMm(item) || item.depth_mm || 600;
-  const board = finishPanelBoard(item);
+  const board = finishPanelBoard(item, "top_panel_style");
 
   function pushPanel(name, widthMm, qty = perCabinetQty(item)) {
     lines.push({
@@ -751,13 +705,7 @@ function topPanelLinesForCabinet(item, selectedCabinetItems, roomName) {
       width_mm: widthMm,
       height_mm: depthMm,
       qty,
-      material: board.material,
-      supplier_name: board.supplier_name,
-      finish: board.finish,
-      colour: board.colour,
-      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
-      unit_cost_per_sqm_ex_gst: board.rate,
-      unit_cost_mode: "auto",
+      ...panelBoardFields(board),
     });
   }
 
@@ -811,7 +759,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
     if (!item.end_panel_left && !item.end_panel_right) return [];
     const sideH = finishPanelVerticalSpanMm(item, room?.height_mm).heightMm;
     const sideD = finishedSidePanelDepthMm(item) || item.depth_mm || 600;
-    const board = finishPanelBoard(item);
+    const board = finishPanelBoard(item); // end panels have no override of their own
     const pushSide = (name) => lines.push({
       product_type: "Panel",
       product_name: name,
@@ -820,13 +768,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
       width_mm: sideD,
       height_mm: sideH,
       qty: perCabinetQty(item),
-      material: board.material,
-      supplier_name: board.supplier_name,
-      finish: board.finish,
-      colour: board.colour,
-      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
-      unit_cost_per_sqm_ex_gst: board.rate,
-      unit_cost_mode: "auto",
+      ...panelBoardFields(board),
     });
     if (item.end_panel_left)  pushSide("Side Panel (Left)");
     if (item.end_panel_right) pushSide("Side Panel (Right)");
@@ -839,11 +781,15 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
   // kickboard-less cabinet doesn't bill a phantom 120mm) and UP to the ceiling
   // when panel_to_ceiling. Same helper the elevation and 3D use.
   const panelH = finishPanelVerticalSpanMm(item, room?.height_mm).heightMm;
-  const board = finishPanelBoard(item);
+  // End panels and back panels come out of the same function but not the same
+  // board: the back panel can be overridden on its own, the ends follow the
+  // finishing-panel style. So the board is passed in rather than closed over.
+  const endBoard  = finishPanelBoard(item);
+  const backBoard = finishPanelBoard(item, "back_panel_style");
 
   // End panels are per-cabinet; a continuous back panel may be shared across
   // a run, so the caller passes its qty explicitly in that case.
-  function pushPanel(name, widthMm, qty = perCabinetQty(item)) {
+  function pushPanel(name, widthMm, qty = perCabinetQty(item), board = endBoard) {
     lines.push({
       product_type: "Panel",
       product_name: name,
@@ -852,13 +798,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
       width_mm: widthMm,
       height_mm: panelH,
       qty,
-      material: board.material,
-      supplier_name: board.supplier_name,
-      finish: board.finish,
-      colour: board.colour,
-      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
-      unit_cost_per_sqm_ex_gst: board.rate,
-      unit_cost_mode: "auto",
+      ...panelBoardFields(board),
     });
   }
 
@@ -876,14 +816,15 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
           pushPanel(
             widths.length > 1 ? `Back Panel ${i + 1} of ${widths.length}` : "Back Panel",
             w,
-            runAwareQty(item, run.count)
+            runAwareQty(item, run.count),
+            backBoard
           )
         );
       }
       // Otherwise covered by the run's first cabinet — omit here
     } else {
       const seg = backPanelSegment(item);
-      pushPanel("Back Panel", seg?.length || item.width_mm || 600);
+      pushPanel("Back Panel", seg?.length || item.width_mm || 600, perCabinetQty(item), backBoard);
     }
   }
 
@@ -902,13 +843,7 @@ function endBackPanelLinesForCabinet(item, selectedCabinetItems, roomName, room)
         width_mm: widthMm,
         height_mm: item.kickboard_height_mm || 120,
         qty: perCabinetQty(item),
-        material: item.material || "",
-        supplier_name: styleSupplierName(item),
-        finish: item.finish || "",
-        colour: item.colour || "",
-        thickness: item.kickboard_thickness_mm ? `${item.kickboard_thickness_mm}mm` : "",
-        unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
-        unit_cost_mode: "auto",
+        ...panelBoardFields(carcassPanelBoard(item, "kickboard_style", item.kickboard_thickness_mm)),
       });
     }
 
@@ -954,7 +889,7 @@ function cornerBackPanelLinesForCabinet(item, roomName, room) {
   // when panel_to_floor and to the ceiling when panel_to_ceiling — same helper
   // the elevation and 3D use, so the corner backs match the drawing.
   const panelH = finishPanelVerticalSpanMm(item, room?.height_mm).heightMm;
-  const board = finishPanelBoard(item);
+  const board = finishPanelBoard(item, "back_panel_style");
 
   function pushPanel(name, widthMm) {
     lines.push({
@@ -965,13 +900,7 @@ function cornerBackPanelLinesForCabinet(item, roomName, room) {
       width_mm: widthMm,
       height_mm: panelH,
       qty: perCabinetQty(item),
-      material: board.material,
-      supplier_name: board.supplier_name,
-      finish: board.finish,
-      colour: board.colour,
-      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
-      unit_cost_per_sqm_ex_gst: board.rate,
-      unit_cost_mode: "auto",
+      ...panelBoardFields(board),
     });
   }
 
@@ -994,13 +923,7 @@ function cornerBackPanelLinesForCabinet(item, roomName, room) {
         width_mm: widthMm,
         height_mm: item.kickboard_height_mm || 120,
         qty: perCabinetQty(item),
-        material: item.material || "",
-        supplier_name: styleSupplierName(item),
-        finish: item.finish || "",
-        colour: item.colour || "",
-        thickness: item.kickboard_thickness_mm ? `${item.kickboard_thickness_mm}mm` : "",
-        unit_cost_per_sqm_ex_gst: item.cost_per_sqm_carcass || 0,
-        unit_cost_mode: "auto",
+        ...panelBoardFields(carcassPanelBoard(item, "kickboard_style", item.kickboard_thickness_mm)),
       });
     }
 
@@ -1053,13 +976,7 @@ function sideFillerLinesForCabinet(item, roomName, room) {
       width_mm: Number(widthMm),
       height_mm: heightMm,
       qty: perCabinetQty(item),
-      material: board.material,
-      supplier_name: board.supplier_name,
-      finish: board.finish,
-      colour: board.colour,
-      thickness: board.thicknessMm ? `${board.thicknessMm}mm` : "",
-      unit_cost_per_sqm_ex_gst: board.rate,
-      unit_cost_mode: "auto",
+      ...panelBoardFields(board),
     });
   };
 
@@ -1401,10 +1318,11 @@ function anyPartSelected(item, selections) {
 // Builds every quote line the design would produce, each tagged with its source
 // item — the shared core of both the import (save) path and the staging preview
 // dry-run, so the preview is exactly what a commit would create.
-// businessDefaults is threaded all the way down to the drawer runner rate. It
-// is the only configured number the line builders need, and it used to be
-// missing, so runners were priced from a constant no one could change.
-function generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, businessDefaults }) {
+//
+// Nothing in here needs business defaults any more. They used to be threaded
+// the whole way down for one number, the drawer runner rate, and that line is
+// gone; pricing happens above, once, on the lines this returns.
+function generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items }) {
   const generated = [];
   for (const item of importableItems) {
     const isCabinet = CABINET_TYPES.includes(item.item_type);
@@ -1436,12 +1354,12 @@ function generateImportLines({ importableItems, selections, selectedCabinetItems
       } else if (item.front_type === "doors") {
         if (sel.doors) add("doors", doorLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet }));
       } else if (item.front_type === "drawers") {
-        if (sel.drawers) add("drawers", drawerLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet, businessDefaults }));
+        if (sel.drawers) add("drawers", drawerLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet }));
       } else if (item.front_type === "mixed" && (sel.doors || sel.drawers)) {
         // A mixed front interleaves door and drawer lines — tag each by which it
         // is so the doors / drawers toggles each govern only their own rows.
-        for (const line of mixedLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet, includeDoors: sel.doors, includeDrawers: sel.drawers, businessDefaults })) {
-          const isDrawer = line.product_type === QUOTE_PRODUCT_TYPES.drawer_front || /runner/i.test(line.product_name || "");
+        for (const line of mixedLinesForCabinet(item, roomName, { cabinetIncluded: sel.cabinet, includeDoors: sel.doors, includeDrawers: sel.drawers })) {
+          const isDrawer = line.product_type === QUOTE_PRODUCT_TYPES.drawer_front;
           tagged.push({ line, part: isDrawer ? "drawers" : "doors" });
         }
       }
@@ -1645,7 +1563,7 @@ export async function POST(request, { params }) {
     if (preview) {
       const gstRate = businessDefaults.gst_rate ?? GST_RATE;
       const warnings = computeItemWarnings({ importableItems, selections, selectedCabinetItems, roomNameById, roomById });
-      const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, businessDefaults });
+      const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items });
       const mergedById = new Map(importableItems.map((i) => [i.id, i]));
 
       const pricedLines = [];
@@ -1676,7 +1594,7 @@ export async function POST(request, { params }) {
       // as the user ticks.
       const PART_ORDER = ["cabinet", "doors", "drawers", "kickboard", "filler", "panels"];
       const allCabinets = importableItems.filter((i) => CABINET_TYPES.includes(i.item_type));
-      const fullGen = generateImportLines({ importableItems, selections: undefined, selectedCabinetItems: allCabinets, roomNameById, roomById, items, businessDefaults });
+      const fullGen = generateImportLines({ importableItems, selections: undefined, selectedCabinetItems: allCabinets, roomNameById, roomById, items });
       const treeRooms = new Map(); // roomName → Map(itemId → { itemId, label, isCabinet, parts:Set })
       for (const { itemId, part } of fullGen) {
         const src = mergedById.get(itemId);
@@ -1791,7 +1709,7 @@ export async function POST(request, { params }) {
     // flat lines can be collapsed into one (qty summed) before any are saved —
     // e.g. two identical standalone panels, or the same door on two cabinets.
     // Same generator the staging preview uses, so a commit matches its preview.
-    const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, businessDefaults });
+    const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items });
 
     const mergedById = new Map(importableItems.map((i) => [i.id, i]));
     for (const { line, itemId } of mergeIdenticalLines(generated)) {

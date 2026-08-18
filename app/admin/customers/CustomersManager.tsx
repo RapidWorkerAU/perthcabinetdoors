@@ -1,13 +1,16 @@
 'use client'
 
 import * as React from 'react'
-import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { IconEdit, IconExternalLink, IconPlus, IconTrash } from '@tabler/icons-react'
 import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
+import NewSendersPanel from './NewSendersPanel'
 import { AdminPageHeader } from '@/components/ui/AdminPageHeader'
 import { BulkActionBar } from '@/components/ui/BulkActionBar'
 import { StatusPill } from '@/components/ui/StatusPill'
@@ -79,6 +82,7 @@ function formFromCustomer(customer: Customer): CustomerForm {
 }
 
 export default function CustomersManager() {
+  const router = useRouter()
   const [customers,           setCustomers]           = React.useState<Customer[]>([])
   const [form,                setForm]                = React.useState<CustomerForm>(emptyForm)
   const [isLoading,           setIsLoading]           = React.useState(true)
@@ -208,7 +212,14 @@ export default function CustomersManager() {
     {
       id: 'customer',
       header: 'Customer',
-      cell: customer => <span className="font-medium">{customer.name || '-'}</span>,
+      cell: customer => (
+        <Link
+          href={`/admin/customers/${customer.id}`}
+          className="font-medium text-[#1a1a18] underline-offset-2 hover:text-[#2d5e28] hover:underline"
+        >
+          {customer.name || customer.email || 'Customer'}
+        </Link>
+      ),
     },
     {
       id: 'company',
@@ -252,6 +263,9 @@ export default function CustomersManager() {
       cell: customer => (
         <div className="flex justify-end">
           <ActionMenu label={`Open actions for customer ${customer.name || 'customer'}`}>
+            <ActionMenuItem icon={<IconExternalLink size={14} />} onClick={() => { window.location.href = `/admin/customers/${customer.id}` }}>
+              Open customer desk
+            </ActionMenuItem>
             <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => openEditCustomerModal(customer)}>
               Edit
             </ActionMenuItem>
@@ -269,7 +283,12 @@ export default function CustomersManager() {
       <article className="rounded-[8px] border border-[#dbd8cc] bg-white p-4">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[14px] font-semibold text-[#1a1a18]">{customer.name || '-'}</p>
+            <Link
+              href={`/admin/customers/${customer.id}`}
+              className="text-[14px] font-semibold text-[#1a1a18] underline-offset-2 hover:text-[#2d5e28] hover:underline"
+            >
+              {customer.name || customer.email || 'Customer'}
+            </Link>
             <p className="text-[12px] text-[#5a5a52]">{customer.company_name || '-'}</p>
           </div>
           <StatusPill tone={customer.is_active ? 'active' : 'neutral'} status={customer.is_active ? 'active' : 'inactive'}>
@@ -294,6 +313,9 @@ export default function CustomersManager() {
         </dl>
         <div className="mt-3 flex items-center justify-end border-t border-[#edf4eb] pt-3">
           <ActionMenu label={`Open actions for customer ${customer.name || 'customer'}`}>
+            <ActionMenuItem icon={<IconExternalLink size={14} />} onClick={() => { window.location.href = `/admin/customers/${customer.id}` }}>
+              Open customer desk
+            </ActionMenuItem>
             <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => openEditCustomerModal(customer)}>
               Edit
             </ActionMenuItem>
@@ -316,12 +338,16 @@ export default function CustomersManager() {
         </div>
       )}
 
+      {/* Addresses that have emailed and nobody has decided about. Sits
+          above the list because an undecided sender is not a customer yet. */}
+      <NewSendersPanel />
+
       <AdminDataTable
         rows={pageItems}
         columns={customerColumns}
         getRowId={customer => customer.id}
         getRowLabel={customer => customer.name || 'customer'}
-        onRowClick={openEditCustomerModal}
+        onRowClick={customer => router.push(`/admin/customers/${customer.id}`)}
         loading={isLoading}
         emptyTitle="No customers found."
         searchValue={search}

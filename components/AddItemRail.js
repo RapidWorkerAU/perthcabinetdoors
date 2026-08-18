@@ -43,6 +43,7 @@ const THEMES = {
     title: "#2a2925",
     sub: "#7a766c",
     selectBg: "#ffffff", selectBorder: "#e4dfd4", selectText: "#2a2925",
+    optionBg: "#ffffff", optionText: "#2a2925",
     arrowChip: "#ffffff", arrowStroke: "%236a6a62",
     tileBg: "#faf8f3", tileBorder: "#e4dfd4",
     label: "#2a2925", desc: "#7a766c",
@@ -55,6 +56,8 @@ const THEMES = {
     sub: "rgba(255,255,255,0.35)",
     // Solid rather than translucent so the chip can match it exactly.
     selectBg: "#2f3136", selectBorder: "rgba(255,255,255,0.18)", selectText: "#f3f1ea",
+    // Deliberately a LIGHT list even on the dark theme. See the note above.
+    optionBg: "#ffffff", optionText: "#1a1a18",
     arrowChip: "#2f3136", arrowStroke: "%23f3f1ea",
     tileBg: "rgba(255,255,255,0.04)", tileBorder: "rgba(255,255,255,0.10)",
     label: "rgba(255,255,255,0.85)", desc: "rgba(255,255,255,0.4)",
@@ -141,9 +144,13 @@ export default function AddItemRail({
             title="Filter items"
             style={{ marginTop: showHeader ? 10 : 0, width: "100%", padding: "7px 10px", borderRadius: 8, border: `1px solid ${t.selectBorder}`, backgroundColor: t.selectBg, color: t.selectText, fontSize: 12.5, fontFamily: "inherit", cursor: "pointer", ...selectChrome(t) }}
           >
-            {showAllOption && <option value="all" style={{ color: "#111" }}>All items</option>}
+            {showAllOption && (
+              <option value="all" style={{ backgroundColor: t.optionBg, color: t.optionText }}>All items</option>
+            )}
             {cats.map((c) => (
-              <option key={c.key} value={c.key} style={{ color: "#111" }}>{c.label}</option>
+              <option key={c.key} value={c.key} style={{ backgroundColor: t.optionBg, color: t.optionText }}>
+                {c.label}
+              </option>
             ))}
           </select>
         )}

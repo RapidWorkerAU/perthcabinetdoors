@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
 import { rowCapHeight } from "../../../lib/pcd-row-cap";
+import { toTermsHtml } from "../../../lib/pcd-terms-html";
 import PcdLoader from "@/components/public/PcdLoader";
 import styles from "./quote-public.module.css";
 import {
@@ -338,6 +339,7 @@ export default function QuoteApprovalClient() {
     { label: "Painting", description: "Painting allowance for painted doors and drawer fronts.", amount: toNumber(quote?.painting_cost_ex_gst) },
     { label: "Glass", description: "Glass allowance for doors or panels with glass inserts.", amount: toNumber(quote?.glass_cost_ex_gst) },
     { label: "Door removal and disposal", description: "Taking off your old doors and fronts and taking them away.", amount: toNumber(quote?.removal_cost_ex_gst) },
+    { label: "Edging", description: "Edge tape applied to every board edge on the pieces we make.", amount: toNumber(quote?.edging_cost_ex_gst) },
   ].filter((row) => row.always || row.amount > 0);
   const depositPercent = Number(quote?.deposit_percent || 0);
   const depositRequired = Boolean(quote?.deposit_required && depositPercent > 0);
@@ -734,7 +736,21 @@ export default function QuoteApprovalClient() {
               {quote.client_notes ? <p className={styles.noteText}><strong>Notes:</strong> {quote.client_notes}</p> : null}
               {quote.assumptions ? <p className={styles.noteText}><strong>Assumptions:</strong> {quote.assumptions}</p> : null}
               {quote.exclusions ? <p className={styles.noteText}><strong>Exclusions:</strong> {quote.exclusions}</p> : null}
-              {quote.terms ? <p className={styles.noteText}><strong>Terms:</strong> {quote.terms}</p> : null}
+              {/* Terms are the one note that carries formatting: bold, lists,
+                  the lot. The markup is written by the terms editor and passes
+                  through the whitelist in lib/pcd-terms-html.js on save, which
+                  is what makes it safe to render here. toTermsHtml also carries
+                  the older plain-text terms across, so a quote written before
+                  formatting existed still reads with its line breaks. */}
+              {quote.terms ? (
+                <div className={styles.noteText}>
+                  <strong>Terms:</strong>
+                  <div
+                    className="pcd-rich-text"
+                    dangerouslySetInnerHTML={{ __html: toTermsHtml(quote.terms) }}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
         </section>

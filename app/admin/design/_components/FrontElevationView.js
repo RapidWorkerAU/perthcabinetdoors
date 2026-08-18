@@ -1354,17 +1354,32 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
               them (it's physically in front). Translucent + dashed so it reads
               as "a cabinet turning the corner from the next wall", not one on
               this wall. */}
-          {perpendicularCornerReturns(wall, items, room).map(({ item, alongMm, depthMm, bottomMm, topMm }) => {
+          {perpendicularCornerReturns(wall, items, room).map(({ item, alongMm, depthMm, bottomMm, topMm, kickMm, benchMm }) => {
             const rx = ox + alongMm * scale;
             const rw = depthMm * scale;
             const ry = floor - topMm * scale;
             const rh = (topMm - bottomMm) * scale;
+            // The returning item's own kickboard, in the same amber the wall's
+            // cabinets use, so a corner reads as one continuous plinth line
+            // instead of a cabinet floating over bare floor.
+            const kickY = floor - (bottomMm * scale);
+            const kickH = (kickMm || 0) * scale;
             const fill = lineOnly ? "#26313f" : (item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
             return (
               <g key={`return-${item.id}`} style={{ pointerEvents: "none" }}>
                 <rect x={rx} y={ry} width={rw} height={rh}
                   fill={fill} fillOpacity={0.2}
                   stroke={fill} strokeOpacity={0.55} strokeWidth={0.8} strokeDasharray="4 2" />
+                {kickH > 0 && (
+                  <rect x={rx} y={kickY} width={rw} height={kickH}
+                    fill="rgba(245,158,11,0.28)"
+                    stroke="rgba(245,158,11,0.5)" strokeWidth={0.5} strokeDasharray="4 2" />
+                )}
+                {benchMm > 0 && (
+                  <rect x={rx} y={ry - benchMm * scale} width={rw} height={benchMm * scale}
+                    fill="rgba(120,113,108,0.35)"
+                    stroke="rgba(168,162,158,0.6)" strokeWidth={0.5} strokeDasharray="4 2" />
+                )}
                 {rw > 26 && rh > 16 && (
                   <text x={rx + rw / 2} y={ry + rh / 2} textAnchor="middle" dominantBaseline="middle"
                     fontSize={7} fill="rgba(255,255,255,0.55)" style={{ userSelect: "none" }}>
@@ -1410,10 +1425,41 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const svgH   = hMm * scale;
             const svgY   = floor - (mountH + kbMm + hMm) * scale;
             const T      = Math.max((item.carcass_thickness_mm || 16) * scale, 1.5);
+            // ── the blind zone of a blind corner cabinet ──────────────────
+            //
+            // A blind corner is a full-width box whose far end is dead space:
+            // the run on the adjacent wall covers it and no door opens onto it.
+            // The carcass, back, kickboard and shelves all span the full width;
+            // only the FRONTS are sized against the accessible remainder. That
+            // is what frontWidthMm encodes, and 3D has always honoured it.
+            //
+            // This elevation did not. It drew the whole width as one plain box
+            // and laid the doors across all of it, so a 1000mm cabinet with
+            // 600mm blind showed a 1000mm door onto 400mm of usable space.
+            //
+            // Which END is blind follows the same rule 3D uses: blind_side is in
+            // viewer terms, and the bottom and left walls mirror the along axis,
+            // so the two flips combine rather than either deciding alone.
+            const blindMm = item.item_type === "blind_corner_cabinet"
+              ? Math.max(0, Math.min(Number(item.blind_width_mm) || 0, wMm))
+              : 0;
+            const blindAtLowEnd = blindMm > 0 &&
+              (((item.blind_side || "left") === "left") ? !axisFlipped : axisFlipped);
+            const blindX = blindAtLowEnd ? svgX : svgX + svgW - blindMm * scale;
+            const blindLowMm  = blindAtLowEnd ? blindMm : 0;
+            const blindHighMm = blindMm > 0 && !blindAtLowEnd ? blindMm : 0;
+
             const frontCanCoverSides = !isCorner && ["doors", "drawers", "mixed"].includes(item.front_type || "none") && frontPanelMode(item) === FRONT_PANEL_MODE_OVER;
-            const frontEndSpan = frontCanCoverSides ? endPanelElevationSpanMm(item) : { lowT: 0, highT: 0 };
-            const frontSvgX = svgX - frontEndSpan.lowT * scale;
-            const frontSvgW = svgW + (frontEndSpan.lowT + frontEndSpan.highT) * scale;
+            const rawFrontEndSpan = frontCanCoverSides ? endPanelElevationSpanMm(item) : { lowT: 0, highT: 0 };
+            // A front can only run over an end panel on a side it actually
+            // reaches. The blind end is interior, so it never overhangs there.
+            const frontEndSpan = {
+              lowT:  blindLowMm  ? 0 : rawFrontEndSpan.lowT,
+              highT: blindHighMm ? 0 : rawFrontEndSpan.highT,
+            };
+            const frontSvgX = svgX + blindLowMm * scale - frontEndSpan.lowT * scale;
+            const frontSvgW = svgW - (blindLowMm + blindHighMm) * scale
+              + (frontEndSpan.lowT + frontEndSpan.highT) * scale;
             const isSelected = item.id === selectedId;
             const isDragging = drag?.itemId === item.id;
             const shelves    = getShelfPositions(item);
@@ -1988,6 +2034,27 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                         width={Math.max(svgW - 2 * T, 0)} height={plinthMm * scale}
                         fill={tileFillFor(item, "kickboard")} fillOpacity={0.9}
                         style={{ pointerEvents: "none" }} />
+                    )}
+                  </>
+                )}
+
+                {blindMm > 0 && (
+                  <>
+                    <rect
+                      x={blindX} y={svgY} width={blindMm * scale} height={svgH}
+                      fill="rgba(15,23,42,0.55)"
+                      stroke="rgba(148,163,184,0.65)" strokeWidth={0.8} strokeDasharray="5 3"
+                      style={{ pointerEvents: "none" }}
+                    />
+                    {blindMm * scale > 34 && (
+                      <text
+                        x={blindX + (blindMm * scale) / 2} y={svgY + svgH / 2}
+                        textAnchor="middle" dominantBaseline="middle"
+                        fontSize={7.5} fill="rgba(203,213,225,0.75)"
+                        style={{ userSelect: "none", pointerEvents: "none" }}
+                      >
+                        Blind {Math.round(blindMm)}mm
+                      </text>
                     )}
                   </>
                 )}

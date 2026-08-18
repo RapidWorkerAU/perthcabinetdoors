@@ -15,10 +15,11 @@ import { readFileSync } from "node:fs";
 
 import {
   DEFAULT_BUSINESS_DEFAULTS,
+  applyQuoteCostDefaults,
   normalizeBusinessDefaults,
+  quoteCostDefaults,
 } from "../lib/pcd-quote-utils.js";
 import { businessDefaultsToDbRow } from "../lib/pcd-business-defaults.js";
-import { runnerUnitCost } from "../lib/pcd-drawer-utils.js";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -78,9 +79,14 @@ test("the create-quote buttons no longer send their own currency, GST or terms",
   }
 });
 
-test("converting a quote request reads the configured terms", () => {
+test("converting a quote request reads the terms library", () => {
+  // Terms moved out of Business Defaults into a library of named terms. What
+  // this test has always protected still holds: the wording on a quote made
+  // from a website enquiry is the configured wording, never a sentence written
+  // into the route.
   const src = read("app/api/admin/quote-requests/route.js");
-  assert.match(src, /terms:\s*businessDefaults\.quote_terms/);
+  assert.match(src, /terms:\s*termsDefaults\.terms/);
+  assert.match(src, /defaultQuoteTermsFor/);
 });
 
 test("creating a variation reads the configured currency, GST and terms", () => {
@@ -91,37 +97,104 @@ test("creating a variation reads the configured currency, GST and terms", () => 
   assert.match(src, /terms:\s*businessDefaults\.variation_terms/);
 });
 
-// ── Drawer runner rates ──────────────────────────────────────────────────────
+// ── Drawer runners are hardware, not a rate ──────────────────────────────────
+//
+// They used to be a rate per runner type on this screen, and the design import
+// turned that rate into a priced Hardware line on every quote with a drawer in
+// it. Runners come off the hardware library now, added per job, so no rate is
+// carried and no line is invented.
 
-test("runner rates survive normalising, so a configured rate can reach a quote", () => {
-  // They used to be dropped here, which is why the importer always priced a
-  // runner pair at the built-in number no matter what was saved.
-  const defaults = normalizeBusinessDefaults({
-    runner_unit_cost_standard_ex_gst: 11,
-    runner_unit_cost_soft_close_undermount_ex_gst: 32,
-    runner_unit_cost_soft_close_side_ex_gst: 19,
-  });
-  assert.equal(defaults.runner_unit_cost_standard_ex_gst, 11);
-  assert.equal(defaults.runner_unit_cost_soft_close_undermount_ex_gst, 32);
-  assert.equal(defaults.runner_unit_cost_soft_close_side_ex_gst, 19);
+test("no runner rate is carried through settings any more", () => {
+  const keys = Object.keys(normalizeBusinessDefaults({}));
+  assert.deepEqual(keys.filter((key) => key.includes("runner")), []);
+  assert.deepEqual(Object.keys(DEFAULT_BUSINESS_DEFAULTS).filter((key) => key.includes("runner")), []);
 });
 
-test("a normalised defaults object actually prices a runner at the configured rate", () => {
-  const defaults = normalizeBusinessDefaults({ runner_unit_cost_soft_close_undermount_ex_gst: 32 });
-  assert.equal(runnerUnitCost({ runner_type: "soft_close_undermount" }, defaults), 32);
-});
-
-test("runner rates are written back when the settings screen saves", () => {
+test("the settings screen no longer writes the runner columns", () => {
   const row = businessDefaultsToDbRow({ runner_unit_cost_standard_ex_gst: 11 });
-  assert.equal(row.runner_unit_cost_standard_ex_gst, 11);
-  assert.ok("runner_unit_cost_soft_close_undermount_ex_gst" in row);
-  assert.ok("runner_unit_cost_soft_close_side_ex_gst" in row);
-  assert.ok("variation_terms" in row);
+  assert.deepEqual(Object.keys(row).filter((key) => key.includes("runner")), []);
+  assert.ok("variation_terms" in row, "the columns that are still real must still be written");
 });
 
-test("the design importer asks for the configured runner rate", () => {
+test("the design importer invents no priced runner line", () => {
   const src = read("app/api/admin/design/projects/[projectId]/import/route.js");
-  assert.match(src, /runnerUnitCost\(cfg,\s*businessDefaults\)/, "the importer must pass the configured defaults");
+  assert.doesNotMatch(src, /runnerUnitCost/, "no rate lookup should survive");
+  assert.doesNotMatch(src, /product_name: `Drawer runner/, "no automatic runner line should survive");
+  // The runner is still the spec for whoever fits the drawer, so the NOTE stays.
+  assert.match(src, /Runner \(supplied with drawer\)/);
+});
+
+// ── Fields that are saved but not yet wired up ───────────────────────────────
+//
+// Both are entered and stored on purpose while nothing prices off them. The
+// risk is the opposite of the usual one: not that they are ignored, but that
+// they are quietly dropped between the screen and the row, so the number a
+// person typed is gone next time they look.
+
+test("in-house processing time and the ABS edging rate survive a save", () => {
+  const defaults = normalizeBusinessDefaults({
+    inhouse_processing_hours_per_piece: 0.35,
+    abs_edging_cost_per_lineal_metre_ex_gst: 1.8,
+  });
+  assert.equal(defaults.inhouse_processing_hours_per_piece, 0.35);
+  assert.equal(defaults.abs_edging_cost_per_lineal_metre_ex_gst, 1.8);
+
+  const row = businessDefaultsToDbRow({
+    inhouse_processing_hours_per_piece: 0.35,
+    abs_edging_cost_per_lineal_metre_ex_gst: 1.8,
+  });
+  assert.equal(row.inhouse_processing_hours_per_piece, 0.35);
+  assert.equal(row.abs_edging_cost_per_lineal_metre_ex_gst, 1.8);
+});
+
+test("both start at nothing, so an unset field prices nothing", () => {
+  assert.equal(DEFAULT_BUSINESS_DEFAULTS.inhouse_processing_hours_per_piece, 0);
+  assert.equal(DEFAULT_BUSINESS_DEFAULTS.abs_edging_cost_per_lineal_metre_ex_gst, 0);
+});
+
+// ── Quote-level cost defaults ────────────────────────────────────────────────
+
+test("the configured costs are what a new quote starts with", () => {
+  const costs = quoteCostDefaults({
+    default_delivery_cost_ex_gst: 120,
+    default_installation_cost_ex_gst: 45,
+    default_removal_cost_ex_gst: 200,
+  });
+  assert.equal(costs.delivery_cost_ex_gst, 120);
+  assert.equal(costs.installation_cost_ex_gst, 45);
+  assert.equal(costs.removal_cost_ex_gst, 200);
+  assert.equal(costs.travel_cost_ex_gst, 0);
+});
+
+test("a cost the quote decided for itself is never overwritten by the default", () => {
+  // Clearing the delivery box on a quote means nothing for delivery. A default
+  // that put it back would be impossible to work around.
+  const filled = applyQuoteCostDefaults(
+    { delivery_cost_ex_gst: 0, removal_cost_ex_gst: 50 },
+    { default_delivery_cost_ex_gst: 120, default_removal_cost_ex_gst: 200 }
+  );
+  assert.equal(filled.delivery_cost_ex_gst, 0);
+  assert.equal(filled.removal_cost_ex_gst, 50);
+});
+
+test("an unset cost inherits the default", () => {
+  const filled = applyQuoteCostDefaults({ title: "New" }, { default_delivery_cost_ex_gst: 120 });
+  assert.equal(filled.delivery_cost_ex_gst, 120);
+});
+
+test("nothing is defaulted until it is configured", () => {
+  // Every one starts at 0, so today's quotes are unaffected until someone
+  // fills the boxes in.
+  const costs = quoteCostDefaults(DEFAULT_BUSINESS_DEFAULTS);
+  for (const value of Object.values(costs)) assert.equal(value, 0);
+});
+
+test("both quote creation paths apply the defaults", () => {
+  // Two buttons make a quote — the quotes screen and converting a website
+  // enquiry — and a default that reached one and not the other would be worse
+  // than none at all.
+  assert.match(read("app/api/admin/quotes/route.js"), /applyQuoteCostDefaults\(payload, businessDefaults\)/);
+  assert.match(read("app/api/admin/quote-requests/route.js"), /\.\.\.quoteCostDefaults\(businessDefaults\)/);
 });
 
 // ── Zero is not an answer for an hourly rate ─────────────────────────────────

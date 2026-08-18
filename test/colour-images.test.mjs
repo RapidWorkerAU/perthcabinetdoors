@@ -76,10 +76,15 @@ test("finishing pieces match their default part, override wins", () => {
     ...carc, front_type: "doors",
     door_style: { material: "board", finish: "matt", colour: "Oak" },
   };
-  // Kickboard / underside / back default to the carcass.
+  // Kickboard and back default to the carcass. Neither is a finished face: a
+  // kickboard is its own board and a back is inside the cabinet.
   assert.equal(slotColourFields(doorItem, "kickboard").colour, "White");
-  assert.equal(slotColourFields(doorItem, "underside").colour, "White");
   assert.equal(slotColourFields(doorItem, "back").colour, "White");
+  // A finished underside IS visible finishing board, so it follows the doors.
+  // This expectation said "White" and was left behind when slotColourFields
+  // was changed to treat the underside as a finished face.
+  assert.equal(slotColourFields(doorItem, "underside").colour, "Oak");
+  assert.equal(slotColourFields(doorItem, "top").colour, "Oak");
   // Filler on a doored cabinet matches the doors; on a doorless one, the carcass.
   assert.equal(slotColourFields(doorItem, "filler").colour, "Oak");
   const drawerItem = { ...carc, front_type: "drawers", drawer_style: { colour: "Grey" } };

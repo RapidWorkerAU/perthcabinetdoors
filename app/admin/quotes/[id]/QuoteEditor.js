@@ -3,6 +3,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
+import TermsEditor from "../../_components/TermsEditor";
+import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-html";
 import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
@@ -119,6 +121,8 @@ const emptyForm = {
   painting_cost_ex_gst: "",
   glass_cost_ex_gst: "",
   removal_cost_ex_gst: "",
+  // Blank means "follow the lines". Only a typed figure pins the edging cost.
+  edging_cost_override_ex_gst: "",
   other_cost_ex_gst: 0,
   markup_percent: 0,
   markup_amount_ex_gst: 0,
@@ -129,6 +133,10 @@ const emptyForm = {
   assumptions: "",
   exclusions: "",
   terms: "",
+  // Which library terms have been added to this quote, so the Add terms list
+  // can say what is already on it. The wording in `terms` is the truth; this is
+  // for that list and nothing else.
+  terms_term_ids: [],
   lines: [emptyLineWithDefaults()],
   attachments: [],
 };
@@ -210,6 +218,7 @@ function formFromQuote(quote) {
     painting_cost_ex_gst: quote.painting_cost_ex_gst ?? "",
     glass_cost_ex_gst: quote.glass_cost_ex_gst ?? "",
     removal_cost_ex_gst: quote.removal_cost_ex_gst ?? "",
+    edging_cost_override_ex_gst: quote.edging_cost_override_ex_gst ?? "",
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
     markup_amount_ex_gst: quote.markup_amount_ex_gst ?? 0,
@@ -220,6 +229,7 @@ function formFromQuote(quote) {
     assumptions: quote.assumptions || "",
     exclusions: quote.exclusions || "",
     terms: quote.terms ?? "",
+    terms_term_ids: Array.isArray(quote.terms_term_ids) ? quote.terms_term_ids : [],
     lines: lines.length ? lines : [{ ...emptyLine }],
     attachments: [...(quote.pcd_quote_attachments || [])].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -246,6 +256,7 @@ function mergeQuoteIntoForm(current, quote) {
     painting_cost_ex_gst: quote.painting_cost_ex_gst ?? "",
     glass_cost_ex_gst: quote.glass_cost_ex_gst ?? "",
     removal_cost_ex_gst: quote.removal_cost_ex_gst ?? "",
+    edging_cost_override_ex_gst: quote.edging_cost_override_ex_gst ?? "",
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
     markup_amount_ex_gst: quote.markup_amount_ex_gst ?? 0,
@@ -256,6 +267,7 @@ function mergeQuoteIntoForm(current, quote) {
     assumptions: quote.assumptions || "",
     exclusions: quote.exclusions || "",
     terms: quote.terms ?? "",
+    terms_term_ids: Array.isArray(quote.terms_term_ids) ? quote.terms_term_ids : [],
     lines: current.lines,
     attachments: current.attachments,
   };
@@ -838,6 +850,11 @@ export default function QuoteEditor({ quoteId }) {
   const [deleteAttachmentConfirmId, setDeleteAttachmentConfirmId] = useState(null);
   const [activeCabinetLineIndex, setActiveCabinetLineIndex] = useState(null);
   const [hardwareRows, setHardwareRows] = useState([]);
+  // The terms library, for the Add terms list. Adding one COPIES its wording
+  // onto the quote; the library is never read again when the quote is printed.
+  const [termsLibrary, setTermsLibrary] = useState([]);
+  const [addTermsOpen, setAddTermsOpen] = useState(false);
+  const [termsToAdd, setTermsToAdd] = useState([]);
   const [benchtopMaterialRows, setBenchtopMaterialRows] = useState([]);
   const [hingeModal, setHingeModal] = useState(null);
   const [profileModal, setProfileModal] = useState(null);
@@ -923,6 +940,7 @@ export default function QuoteEditor({ quoteId }) {
       form.painting_cost_ex_gst,
       form.glass_cost_ex_gst,
       form.removal_cost_ex_gst,
+      form.edging_cost_override_ex_gst,
       businessDefaults,
     ]
   );
@@ -1134,6 +1152,21 @@ export default function QuoteEditor({ quoteId }) {
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessDefaults, form.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTermsLibrary() {
+      try {
+        const response = await fetch("/api/admin/quote-terms", { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled && payload.ok) setTermsLibrary(payload.terms || []);
+      } catch {}
+    }
+    loadTermsLibrary();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2989,6 +3022,23 @@ export default function QuoteEditor({ quoteId }) {
     )
   }
 
+  // Adding terms APPENDS their wording to what is already in the box, so
+  // anything typed by hand survives and the order the terms were added in is
+  // the order they read. The ids are noted so the list can say what is already
+  // on this quote; the wording itself is what the customer sees.
+  function addSelectedTerms() {
+    const chosen = termsLibrary.filter((term) => termsToAdd.includes(term.id));
+    if (chosen.length) {
+      updateForm("terms", joinTermsHtml([form.terms, ...chosen.map((term) => term.body_html)]));
+      updateForm("terms_term_ids", [
+        ...(form.terms_term_ids || []),
+        ...chosen.map((term) => term.id).filter((id) => !(form.terms_term_ids || []).includes(id)),
+      ]);
+    }
+    setAddTermsOpen(false);
+    setTermsToAdd([]);
+  }
+
   function renderNotes() {
     return (
       <div className={tw.card}>
@@ -3011,10 +3061,31 @@ export default function QuoteEditor({ quoteId }) {
               Exclusions
               <textarea className={tw.textarea} rows={4} value={form.exclusions} onChange={e => updateForm("exclusions", e.target.value)} placeholder="e.g. installation, handles, plumbing." />
             </label>
-            <label className={`${tw.fieldLabel} ${tw.wide}`}>
-              Terms
-              <textarea className={tw.textarea} rows={3} value={form.terms} onChange={e => updateForm("terms", e.target.value)} />
-            </label>
+            {/* Terms are formatted text now, not a plain box, and they are
+                built from the named terms in Business Defaults. The Always ones
+                arrive with a new quote; the rest come in through Add terms.
+                Everything stays editable once it is in here: what the quote
+                stores is its own copy of the wording, not a pointer at the
+                library. */}
+            <div className={`${tw.fieldLabel} ${tw.wide}`}>
+              <div className="flex items-center justify-between gap-3">
+                <span>Terms</span>
+                <button
+                  type="button"
+                  onClick={() => { setTermsToAdd([]); setAddTermsOpen(true); }}
+                  className="h-[28px] rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4]"
+                >
+                  Add terms
+                </button>
+              </div>
+              <TermsEditor
+                value={form.terms}
+                onChange={html => updateForm("terms", html)}
+                placeholder="Terms marked Always in Business Defaults start here. Use Add terms for the rest."
+                height={180}
+                ariaLabel="Quote terms"
+              />
+            </div>
           </div>
           <div className={tw.saveBar}>
             <button type="submit" className={tw.primaryBtn} disabled={isSaving || isLoading}>
@@ -3047,10 +3118,21 @@ export default function QuoteEditor({ quoteId }) {
                   </div>
                 </label>
               </div>
-              {totals.line_labour_hours > 0 && (
+              {(totals.cabinet_labour_hours > 0 || totals.processing_labour_hours > 0) && (
                 <p className="text-[11px] text-[#8b8a81] mt-2 leading-snug">
-                  + <span className="font-mono">{totals.line_labour_hours}h</span> from cabinets (auto, per-cabinet default) on top of your manual hours.
-                  Total labour: <strong className="font-mono">{totals.labour_hours}h</strong>.
+                  {/* Two separate defaults land here, so the hint names both
+                      rather than showing one lump nobody can check: hours per
+                      cabinet, and in-house processing time per decorative board
+                      door, drawer front or panel. */}
+                  Automatic hours on top of your manual figure:
+                  {totals.cabinet_labour_hours > 0 && (
+                    <> <span className="font-mono">{totals.cabinet_labour_hours}h</span> from cabinets</>
+                  )}
+                  {totals.cabinet_labour_hours > 0 && totals.processing_labour_hours > 0 ? "," : null}
+                  {totals.processing_labour_hours > 0 && (
+                    <> <span className="font-mono">{totals.processing_labour_hours}h</span> processing decorative board fronts and panels</>
+                  )}
+                  . Total labour: <strong className="font-mono">{totals.labour_hours}h</strong>.
                 </p>
               )}
             </div>
@@ -3075,6 +3157,58 @@ export default function QuoteEditor({ quoteId }) {
                     </div>
                   </label>
                 ))}
+
+                {/* ABS edging is worked out from the lines rather than typed:
+                    every decorative board piece contributes its perimeter, and
+                    that runs at the lineal metre rate in Business Defaults.
+                    The box is still editable for a job the sum gets wrong, and
+                    an empty box means "follow the lines" — which is why the
+                    calculated figure sits in the placeholder rather than being
+                    written into the input. */}
+                <div>
+                  <label className={tw.fieldLabel}>
+                    ABS edging ex GST
+                    <div className="flex items-center h-[34px] border border-[#dbd8cc] rounded-[6px] overflow-hidden">
+                      <span className="px-3 h-full flex items-center text-[13px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#dbd8cc]">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.edging_cost_override_ex_gst}
+                        placeholder={String(totals.edging_calculated_cost_ex_gst ?? 0)}
+                        onChange={e => updateForm("edging_cost_override_ex_gst", e.target.value)}
+                        className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono"
+                      />
+                    </div>
+                  </label>
+                  <p className={tw.muted + " mt-1 leading-snug"}>
+                    {totals.edging_rate_per_lm_ex_gst > 0 ? (
+                      <>
+                        <span className="font-mono">{totals.edging_lineal_metres}lm</span> from the lines at{" "}
+                        <span className="font-mono">{formatMoney(totals.edging_rate_per_lm_ex_gst, form.currency)}</span>/lm
+                        {" = "}
+                        <span className="font-mono">{formatMoney(totals.edging_calculated_cost_ex_gst, form.currency)}</span>.
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-mono">{totals.edging_lineal_metres}lm</span> from the lines. Set the rate per lineal
+                        metre in Business Defaults and this costs itself.
+                      </>
+                    )}
+                    {String(form.edging_cost_override_ex_gst ?? "") !== "" ? (
+                      <>
+                        {" "}You have typed over it.{" "}
+                        <button
+                          type="button"
+                          onClick={() => updateForm("edging_cost_override_ex_gst", "")}
+                          className="underline text-[#5a5a52] hover:text-[#1a1a18]"
+                        >
+                          Use the calculated figure
+                        </button>
+                      </>
+                    ) : null}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -3093,6 +3227,7 @@ export default function QuoteEditor({ quoteId }) {
             ["Painting", totals.painting_cost_ex_gst],
             ["Glass", totals.glass_cost_ex_gst],
             ["Door removal / disposal", totals.removal_cost_ex_gst],
+            [`ABS edging (${totals.edging_lineal_metres || 0}lm)`, totals.edging_cost_ex_gst],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between items-center py-[6px] border-b border-[#edf4eb] text-[12px]">
               <span className="text-[#5a5a52]">{label}</span>
@@ -3125,6 +3260,9 @@ export default function QuoteEditor({ quoteId }) {
         desc: "Workshop labour from hours and hourly rate",
         total: totals.labour_cost_ex_gst,
         rows: [
+          ["Manual hours", totals.manual_labour_hours || 0],
+          ["Cabinet hours (auto)", totals.cabinet_labour_hours || 0],
+          ["Processing hours (auto)", totals.processing_labour_hours || 0],
           ["Labour hours", totals.labour_hours || 0],
           ["Hourly rate", formatMoney(totals.worker_hourly_rate, form.currency)],
           ["Labour total", formatMoney(totals.labour_cost_ex_gst, form.currency)],
@@ -3133,7 +3271,7 @@ export default function QuoteEditor({ quoteId }) {
       {
         label: "Logistics and consumables",
         desc: "Travel, delivery, small materials, and specialist quote-level costs",
-        total: (totals.travel_cost_ex_gst || 0) + (totals.delivery_cost_ex_gst || 0) + (totals.installation_cost_ex_gst || 0) + (totals.painting_cost_ex_gst || 0) + (totals.glass_cost_ex_gst || 0) + (totals.removal_cost_ex_gst || 0),
+        total: (totals.travel_cost_ex_gst || 0) + (totals.delivery_cost_ex_gst || 0) + (totals.installation_cost_ex_gst || 0) + (totals.painting_cost_ex_gst || 0) + (totals.glass_cost_ex_gst || 0) + (totals.removal_cost_ex_gst || 0) + (totals.edging_cost_ex_gst || 0),
         rows: [
           ["Travel", totals.travel_cost_ex_gst],
           ["Delivery", totals.delivery_cost_ex_gst],
@@ -3141,6 +3279,7 @@ export default function QuoteEditor({ quoteId }) {
           ["Painting", totals.painting_cost_ex_gst],
           ["Glass", totals.glass_cost_ex_gst],
           ["Door removal / disposal", totals.removal_cost_ex_gst],
+          [`ABS edging (${totals.edging_lineal_metres || 0}lm)`, totals.edging_cost_ex_gst],
         ],
       },
     ];
@@ -3899,6 +4038,104 @@ export default function QuoteEditor({ quoteId }) {
         })(),
         document.body
       ) : null}
+      {addTermsOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Add terms to this quote"
+              onMouseDown={() => setAddTermsOpen(false)}
+            >
+              <div
+                className="flex max-h-[85vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[12px] bg-white shadow-[0_24px_48px_rgba(0,0,0,0.18)]"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-center justify-between border-b border-[#edf4eb] px-4 py-3">
+                  <div>
+                    <p className="text-[14px] font-semibold text-[#1a1a18]">Add terms</p>
+                    <p className="text-[11px] text-[#8b8a81]">Wording is copied in and stays editable on this quote.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAddTermsOpen(false)}
+                    aria-label="Close"
+                    className="h-[28px] w-[28px] rounded-[6px] border border-[#dbd8cc] bg-white text-[#8b8a81] hover:bg-[#f5f8f4]"
+                  >
+                    &#10005;
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  {termsLibrary.length === 0 ? (
+                    <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-[#8b8a81]">
+                      There are no terms set up yet. Add them under Settings, Business Defaults, Quote terms.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {termsLibrary.map((term) => {
+                        const already = (form.terms_term_ids || []).includes(term.id);
+                        const checked = termsToAdd.includes(term.id);
+                        const preview = termsHtmlToPlainText(term.body_html);
+                        return (
+                          <label
+                            key={term.id}
+                            className={`flex gap-3 rounded-[6px] border px-3 py-[10px] ${
+                              already ? "border-[#edf4eb] bg-[#f9faf8]" : "cursor-pointer border-[#dbd8cc] hover:bg-[#f5f8f4]"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-[3px]"
+                              // Already on the quote: shown ticked and locked,
+                              // rather than hidden. Hiding it reads as "that
+                              // term is gone" when it is right there in the box.
+                              checked={already || checked}
+                              disabled={already}
+                              onChange={(event) =>
+                                setTermsToAdd((current) =>
+                                  event.target.checked ? [...current, term.id] : current.filter((id) => id !== term.id)
+                                )
+                              }
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-[13px] font-medium text-[#1a1a18]">
+                                {term.name}
+                                {already ? <span className="ml-2 text-[11px] font-normal text-[#8b8a81]">already on this quote</span> : null}
+                              </span>
+                              <span className="mt-[2px] block text-[11px] leading-snug text-[#8b8a81]">
+                                {preview.length > 220 ? `${preview.slice(0, 220)}...` : preview}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-[#edf4eb] px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setAddTermsOpen(false)}
+                    className="h-[34px] rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[13px] text-[#5a5a52] hover:bg-[#f5f8f4]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addSelectedTerms}
+                    disabled={termsToAdd.length === 0}
+                    className="h-[34px] rounded-[6px] bg-[#1c2b1e] px-3 text-[13px] font-medium text-white disabled:opacity-50"
+                  >
+                    Add {termsToAdd.length || ""} {termsToAdd.length === 1 ? "term" : "terms"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
       {activeCabinetLine && isBaseCabinetLine(activeCabinetLine) && typeof document !== "undefined"
         ? createPortal(
             <div

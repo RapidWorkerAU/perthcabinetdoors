@@ -24,6 +24,7 @@ import {
   cabinetFootprint,
   cornerSecondaryFootprint,
   islandEffectiveDims,
+  islandOccupiedRect,
   frontEdgeFor,
   panelSideEdges,
 } from "../../../../lib/pcd-plan-geometry";
@@ -770,21 +771,41 @@ function benchtopSlabs(item, items, W, D) {
   // Straight cabinet: the run-based slab, drawn once by the run's owner.
   const run = computeBenchtopRun(item, items);
   if (run.count > 1 && run.firstItemId !== item.id) return null;
-  const wall = item.wall === "island" ? islandVirtualWall(item) : item.wall;
+  // A freestanding cabinet is placed by its OWN x/y, not by a wall.
+  //
+  // This used to map island onto a virtual wall first and then position by that
+  // wall, which put the top hard against whichever wall the rotation implied
+  // while the cabinets stood out in the room. The island branch below was
+  // unreachable, because `wall` was never "island" by the time it was tested.
+  //
+  // The virtual wall is still worked out, because the waterfall ends and the
+  // cutouts need to know which way the run faces. It just does not decide where
+  // the slab sits any more.
+  const isIsland = item.wall === "island";
+  const wall = isIsland ? islandVirtualWall(item) : item.wall;
   const depth = benchtopDepthMm(item);
   const start = run.startAxisPos ?? getWallAxisPos(item);
   const len = run.totalWidth;
   let rect;
-  if (wall === "top")         rect = { x: start, y: 0, w: len, h: depth };
+  if (isIsland) {
+    // Overhang on all four sides: an island is approached from every side, so
+    // there is no back edge to sit flush against.
+    //
+    // Measured from the OCCUPIED rect, not the bare carcass, so a finished end
+    // panel or a finished back is covered by the top rather than left standing
+    // proud of it. islandOccupiedRect already accounts for both, and it is the
+    // same rect collision and snapping use, so the top lands exactly where the
+    // plan says the cabinet ends.
+    const occupied = islandOccupiedRect(item);
+    const o = benchtopOverhangMm(item);
+    rect = { x: occupied.x - o, y: occupied.y - o, w: occupied.w + 2 * o, h: occupied.h + 2 * o };
+  }
+  else if (wall === "top")    rect = { x: start, y: 0, w: len, h: depth };
   else if (wall === "bottom") rect = { x: start, y: D - depth, w: len, h: depth };
   else if (wall === "left")   rect = { x: 0, y: start, w: depth, h: len };
   else if (wall === "right")  rect = { x: W - depth, y: start, w: depth, h: len };
-  else {
-    const { ew, ed } = islandEffectiveDims(item);
-    const o = benchtopOverhangMm(item);
-    rect = { x: (item.x_mm || 0) - o, y: (item.y_mm || 0) - o, w: ew + 2 * o, h: ed + 2 * o };
-  }
-  return { rects: [rect], thickness, underside, item, wall, alongX: wall === "top" || wall === "bottom" || wall === "island" };
+  else                        rect = { x: start, y: 0, w: len, h: depth };
+  return { rects: [rect], thickness, underside, item, wall, alongX: wall === "top" || wall === "bottom" };
 }
 
 function BenchtopMesh({ item, items, W, D }) {

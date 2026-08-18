@@ -5,7 +5,8 @@ import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { addressColumns } from "../../../../lib/pcd-contact-details";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { boardCostLinePatch, createBoardCostResolver, lineAreaSqm } from "../../../../lib/pcd-board-cost";
-import { calculateQuoteLine } from "../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, quoteCostDefaults } from "../../../../lib/pcd-quote-utils";
+import { defaultQuoteTermsFor } from "../../../../lib/pcd-quote-terms";
 import {
   isMissingSupplierNameSchemaError,
   quoteLineRow,
@@ -154,6 +155,7 @@ export async function POST(request) {
     };
     const customerId = await resolveQuoteCustomer(context.supabase, customerPayload);
     const businessDefaults = await getBusinessDefaults(context.supabase);
+    const termsDefaults = await defaultQuoteTermsFor(context.supabase);
 
     const { data: quote, error: quoteError } = await context.supabase
       .from("pcd_quotes")
@@ -176,13 +178,19 @@ export async function POST(request) {
         currency: businessDefaults.currency,
         gst_rate: businessDefaults.gst_rate,
         worker_hourly_rate: businessDefaults.worker_hourly_rate,
+        // Delivery, consumables, door removal and the rest, from the same
+        // defaults the quotes screen uses. An enquiry has no costs of its own
+        // to override them, and they stay editable on the quote.
+        ...quoteCostDefaults(businessDefaults),
         notes: quoteRequest.notes,
         // The configured terms, not a sentence written into this file. This
         // used to be hardcoded with the old "valid for 14 days" wording while
         // businessDefaults sat unused three lines above, so every quote made
         // from a website enquiry carried terms nobody had chosen and the
-        // settings screen appeared to do nothing.
-        terms: businessDefaults.quote_terms || null,
+        // settings screen appeared to do nothing. It now reads the same Always
+        // terms the quotes screen uses, from the one library.
+        terms: termsDefaults.terms || null,
+        terms_term_ids: termsDefaults.terms_term_ids,
       })
       .select("*")
       .single();

@@ -9,6 +9,8 @@ import { DEFAULT_BUSINESS_DEFAULTS } from '../../../lib/pcd-quote-utils'
 import { cn } from '@/lib/utils'
 import { IconArrowLeft, IconChevronRight } from '@tabler/icons-react'
 import launchStyles from './launch-preview.module.css'
+import QuoteTermsManager from './QuoteTermsManager'
+import EmailSignatureCard from './EmailSignatureCard'
 
 interface DefaultField {
   key:        string
@@ -28,6 +30,14 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     suffix: 'h',
     step:  '0.25',
     hint:  'Added to quote labour for every base-cabinet line x qty.',
+  },
+  {
+    group: 'Labour',
+    key:   'inhouse_processing_hours_per_piece',
+    label: 'In-house processing time',
+    suffix: 'h',
+    step:  '0.05',
+    hint:  'Hours to make one decorative board door, drawer front or panel. Added to quote labour for every such line x qty.',
   },
   {
     group:  'Labour',
@@ -52,43 +62,80 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     step:  '0.01',
     hint:  'As a decimal. 0.1 = 10%.',
   },
+  // Workshop fees. The drawer runner rates used to live here, one per runner
+  // type. Runners are ordinary hardware now, picked from the hardware library
+  // and added to a quote as their own line, so there is nothing to set here.
   {
-    group:  'Hardware fees',
+    group:  'Workshop fees',
     key:    'hinge_drilling_unit_cost_ex_gst',
     label:  'Hinge drilling',
     prefix: '$',
     step:   '0.5',
     hint:   'Per hinge hole, ex GST. Supplied hinges are added as separate hardware line items.',
   },
-  // These three were priced into every quote with a drawer in it but existed
-  // only as constants in the code, with no column and nothing on this screen.
   {
-    group:  'Hardware fees',
-    key:    'runner_unit_cost_standard_ex_gst',
-    label:  'Runner, standard',
+    group:  'Workshop fees',
+    key:    'abs_edging_cost_per_lineal_metre_ex_gst',
+    label:  'ABS edging',
     prefix: '$',
-    step:   '0.5',
-    hint:   'Per drawer, ex GST. One runner pair per drawer.',
+    suffix: '/lm',
+    step:   '0.1',
+    hint:   'Per lineal metre, ex GST, including your uplift. Charged on the edges of every decorative board line on a quote.',
+  },
+  // Everything below prefills the box of the same name on a NEW quote and stays
+  // editable per job. Leave one at 0 and that quote box simply starts empty, so
+  // filling these in is entirely optional.
+  {
+    group:  'Workshop fees',
+    key:    'default_installation_cost_ex_gst',
+    label:  'Consumables',
+    prefix: '$',
+    step:   '1',
+    hint:   'Ex GST. Starting value for the Consumables box on a new quote.',
   },
   {
-    group:  'Hardware fees',
-    key:    'runner_unit_cost_soft_close_undermount_ex_gst',
-    label:  'Runner, soft close undermount',
+    group:  'Workshop fees',
+    key:    'default_delivery_cost_ex_gst',
+    label:  'Delivery',
     prefix: '$',
-    step:   '0.5',
-    hint:   'Per drawer, ex GST.',
+    step:   '1',
+    hint:   'Ex GST. Starting value for the Delivery box on a new quote.',
   },
   {
-    group:  'Hardware fees',
-    key:    'runner_unit_cost_soft_close_side_ex_gst',
-    label:  'Runner, soft close side mount',
+    group:  'Workshop fees',
+    key:    'default_removal_cost_ex_gst',
+    label:  'Door removal / disposal',
     prefix: '$',
-    step:   '0.5',
-    hint:   'Per drawer, ex GST.',
+    step:   '1',
+    hint:   'Ex GST. Starting value for the Door removal box on a new quote.',
+  },
+  {
+    group:  'Workshop fees',
+    key:    'default_travel_cost_ex_gst',
+    label:  'Travel',
+    prefix: '$',
+    step:   '1',
+    hint:   'Ex GST. Starting value for the Travel box on a new quote.',
+  },
+  {
+    group:  'Workshop fees',
+    key:    'default_painting_cost_ex_gst',
+    label:  'Painting',
+    prefix: '$',
+    step:   '1',
+    hint:   'Ex GST. Starting value for the Painting box on a new quote.',
+  },
+  {
+    group:  'Workshop fees',
+    key:    'default_glass_cost_ex_gst',
+    label:  'Glass',
+    prefix: '$',
+    step:   '1',
+    hint:   'Ex GST. Starting value for the Glass box on a new quote.',
   },
 ]
 
-const DEFAULTS_GROUPS = ['Labour', 'Pricing', 'Hardware fees']
+const DEFAULTS_GROUPS = ['Labour', 'Pricing', 'Workshop fees']
 
 // Fields where zero is not a real answer. A $0 hourly rate prices the labour on
 // every quote in the system at nothing, and it is far too easy to leave a box
@@ -674,25 +721,14 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
         </div>
 
         <div className="flex flex-col gap-4">
-          <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
-            <div className="border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px]">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Quote terms</p>
-            </div>
-            <div className="p-4">
-              <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
-                Default terms text
-                <textarea
-                  className="min-h-[132px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-3 py-2 text-[13px] leading-relaxed text-[#1a1a18] outline-none focus:border-[#6b9e61]"
-                  value={(defaults.quote_terms as string) || ''}
-                  onChange={event => updateDefault('quote_terms', event.target.value)}
-                  placeholder="Leave blank for no terms on a quote."
-                />
-              </label>
-              <p className="mt-2 text-[11px] leading-snug text-[#8b8a81]">
-                Written onto every new quote, including quotes converted from a website enquiry. Leave it blank and quotes carry no terms.
-              </p>
-            </div>
-          </div>
+          {/* The terms library. This was one "Default terms text" box, which
+              put the same wording on every quote whether it fitted the job or
+              not. It saves per term rather than through Save defaults below. */}
+          <QuoteTermsManager />
+
+          {/* Signed onto replies sent from a customer page. Sits with the
+              terms because both are wording that goes out to customers. */}
+          <EmailSignatureCard />
 
           <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
             <div className="border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px]">

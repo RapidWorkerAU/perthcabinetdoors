@@ -281,6 +281,7 @@ export default function PublicDesignClient() {
   const [submitOpen, setSubmitOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false); // narrow: room sheet
+  const [startOverOpen, setStartOverOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   // Windows, doorways and fridge spaces are there to plan around, not things we
   // make, so a design holding only those has nothing to send.
@@ -569,7 +570,7 @@ export default function PublicDesignClient() {
           setMoreOpen={setMobileMoreOpen}
           onRoom={() => { setMobileMoreOpen(false); setRoomOpen(true); }}
           onSave={() => { setMobileMoreOpen(false); setSavePanel((s) => !s); }}
-          onStartOver={() => { setMobileMoreOpen(false); if (confirm("Start a new design? Your current one stays saved under its link.")) d.startOver(); }}
+          onStartOver={() => { setMobileMoreOpen(false); setStartOverOpen(true); }}
           onSubmit={() => { setMobileMoreOpen(false); setSubmitOpen(true); }}
           canSubmit={quotableCount > 0}
         />
@@ -587,7 +588,7 @@ export default function PublicDesignClient() {
             <span style={{ position: "relative" }}>
               <button type="button" style={barButton} onClick={() => setSavePanel((s) => !s)}>Save / share</button>
             </span>
-            <button type="button" style={barButton} onClick={() => { if (confirm("Start a new design? Your current one stays saved under its link.")) d.startOver(); }}>Start over</button>
+            <button type="button" style={barButton} onClick={() => setStartOverOpen(true)}>Start over</button>
             <button type="button" style={{ ...btnPrimary, fontWeight: 700 }} onClick={() => setSubmitOpen(true)} disabled={quotableCount === 0} title={quotableCount === 0 ? "Add a cabinet, panel or shelf first" : "Choose what to quote and send it to PCD"}>Send to PCD</button>
           </>}
         />
@@ -699,6 +700,16 @@ export default function PublicDesignClient() {
 
       {submitOpen && (
         <SubmitModal items={d.items} room={d.room} colourImages={d.colourImages} onSubmit={d.submitToPcd} onClose={() => setSubmitOpen(false)} />
+      )}
+
+      {startOverOpen && (
+        <ConfirmModal
+          title="Start a new design?"
+          body="Your current design stays saved under its link, so you can always come back to it. This gives you an empty room to start again."
+          confirmLabel="Start a new design"
+          onConfirm={() => { setStartOverOpen(false); d.startOver(); }}
+          onClose={() => setStartOverOpen(false)}
+        />
       )}
     </div>
   );
@@ -2402,6 +2413,37 @@ function EmptyPrompt() {
 }
 
 // A small centred modal for editing the room's overall size.
+// Every yes/no question in the planner comes through here, so an answer always
+// looks like the rest of the tool. The browser's own confirm() box was doing
+// this job, which put the site's domain and unstyled OS buttons in front of the
+// customer at the one moment they are deciding whether to throw work away.
+function ConfirmModal({ title, body, confirmLabel = "Yes, continue", cancelLabel = "Cancel", onConfirm, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000 }} />
+      <div role="dialog" aria-modal="true" aria-label={title}
+        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 1001, width: "min(400px, 92vw)", background: "#fff", borderRadius: 14, boxShadow: "0 24px 64px rgba(0,0,0,0.35)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", borderBottom: `1px solid ${C.edge}` }}>
+          <strong style={{ fontSize: 15, color: C.ink }}>{title}</strong>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.edge}`, background: "#fff", cursor: "pointer", color: C.soft }}>✕</button>
+        </div>
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: C.soft, lineHeight: 1.5 }}>{body}</p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" style={btn} onClick={onClose}>{cancelLabel}</button>
+            <button type="button" style={btnPrimary} onClick={onConfirm} autoFocus>{confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function RoomModal({ room, onUpdateRoom, onClose }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };

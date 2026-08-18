@@ -3,6 +3,7 @@ import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activi
 import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
 import { calculateQuoteTotals } from "../../../../../lib/pcd-quote-utils";
+import { sanitizeTermsHtml, toTermsHtml } from "../../../../../lib/pcd-terms-html";
 import { cabinetConfigRow, dbNumber, isMissingSupplierNameSchemaError, quoteLineRow, withoutSupplierName } from "./_quote-line-save";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 
@@ -92,6 +93,12 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       painting_cost_ex_gst: totals.painting_cost_ex_gst,
       glass_cost_ex_gst: totals.glass_cost_ex_gst,
       removal_cost_ex_gst: totals.removal_cost_ex_gst,
+      // Worked out from the lines every save: metres of ABS edge tape, and what
+      // that comes to at the configured rate. The override is what someone
+      // typed over it, and null means they have not.
+      edging_lineal_metres: totals.edging_lineal_metres,
+      edging_cost_ex_gst: totals.edging_cost_ex_gst,
+      edging_cost_override_ex_gst: totals.edging_cost_override_ex_gst,
       other_cost_ex_gst: totals.other_cost_ex_gst,
       markup_percent: totals.markup_percent,
       markup_amount_ex_gst: totals.markup_amount_ex_gst,
@@ -101,7 +108,11 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       client_notes: payload.client_notes || null,
       assumptions: payload.assumptions || null,
       exclusions: payload.exclusions || null,
-      terms: payload.terms ?? businessDefaults.quote_terms ?? null,
+      // Sanitised on the way in. The editor cleans as you type, but what
+      // protects the customer's page is this, on a request the browser does not
+      // get to shape.
+      terms: sanitizeTermsHtml(toTermsHtml(payload.terms ?? "")) || null,
+      terms_term_ids: Array.isArray(payload.terms_term_ids) ? payload.terms_term_ids : [],
     },
     lines: totals.lines.map((line, index) => ({
       ...line,
