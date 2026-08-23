@@ -35,9 +35,12 @@ export default async function AdminFinancialsPage() {
     supabase
       .from('pcd_order_payments')
       .select('id, order_id, payment_type, amount, is_paid, paid_at, requested_at, request_status, created_at, pcd_orders(order_number, customer_name, status)'),
+    // Archived orders are out. Archiving is how somebody says "this is not real
+    // work, stop counting it", and money is the first place that has to be true.
     supabase
       .from('pcd_orders')
-      .select('id, quote_id, order_number, customer_name, status, total_inc_gst, gst_amount, accepted_at, created_at'),
+      .select('id, quote_id, order_number, customer_name, status, total_inc_gst, gst_amount, accepted_at, created_at')
+      .neq('status', 'archived'),
     supabase
       .from('pcd_quotes')
       .select('id, quote_number, customer_name, status, total_inc_gst, gst_amount, sent_at, updated_at, created_at, order_id, markup_amount_ex_gst, labour_cost_ex_gst')

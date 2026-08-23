@@ -17,7 +17,10 @@ import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 
 const STATUSES = ['draft', 'sent', 'viewed', 'approved', 'rejected']
-const FILTERS  = ['all', ...STATUSES]
+// Archived is a tab you can go to, never a tab you land in. "All" means all the
+// live ones: putting something away has to actually put it away, or the tab is
+// only a label.
+const FILTERS  = ['all', ...STATUSES, 'archived']
 
 function formatDate(value?: string | null) {
   if (!value) return '-'
@@ -79,7 +82,7 @@ export default function QuotesTable() {
   }, [quotes])
 
   const visibleQuotes = useMemo(() => {
-    if (statusFilter === 'all') return quotes
+    if (statusFilter === 'all') return quotes.filter(q => (q.status || 'draft') !== 'archived')
     return quotes.filter(q => (q.status || 'draft') === statusFilter)
   }, [quotes, statusFilter])
 

@@ -51,17 +51,18 @@ export default async function AdminDashboardPage() {
     supabase.from('pcd_enquiries').select('id, customer_name, customer_email, topic, message, created_at').eq('status', 'new').order('created_at', { ascending: false }).limit(3),
     supabase.from('pcd_quote_requests').select('id, customer_name, source, created_at').in('status', ['new', 'reviewing']).order('created_at', { ascending: false }).limit(3),
     supabase.from('pcd_quotes').select('id, quote_number, customer_name, status, updated_at, created_at').in('status', ['sent', 'viewed']).order('updated_at', { ascending: false }).limit(3),
-    // Include the parent order's status so cancelled orders can be filtered
-    // out below — a cancelled order is treated as archived.
+    // Include the parent order's status so orders that have been put away can
+    // be filtered out below: cancelled, and archived.
     supabase.from('pcd_order_payments').select('id, order_id, payment_type, amount, pcd_orders(order_number, customer_name, status)').eq('is_paid', false),
   ])
 
   const enquiries     = enquiriesData     || []
   const quoteRequests = quoteRequestsData || []
   const sentQuotes    = sentQuotesData    || []
-  // Exclude payments belonging to cancelled orders (treated as archived) so
+  // Exclude payments belonging to orders that have been put away, so
   // they never count toward the pending-payments stat or the attention list.
-  const pendingPays   = ((pendingPaymentsData || []) as PendingPaymentRow[]).filter(p => p.pcd_orders?.status !== 'cancelled')
+  const pendingPays   = ((pendingPaymentsData || []) as PendingPaymentRow[])
+    .filter(p => !['cancelled', 'archived'].includes(String(p.pcd_orders?.status || '')))
 
   const attention = {
     enquiries: enquiries.map(e => ({

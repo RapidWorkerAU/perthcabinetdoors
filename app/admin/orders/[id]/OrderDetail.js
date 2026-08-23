@@ -1297,7 +1297,33 @@ export default function OrderDetail({ orderId }) {
                   disabled={isSavingOrder}
                 >
                   {ORDER_STATUSES.map(s => <option key={s} value={s}>{titleCaseStatus(s)}</option>)}
+                  {/* Shown only when it IS archived, so the dropdown reads
+                      truthfully, and never as something to choose. */}
+                  {order.status === "archived" && <option value="archived">Archived</option>}
                 </select>
+              </label>
+              <label className={tw.fieldLabel}>
+                Archive
+                {order.status === "archived" ? (
+                  <button
+                    type="button"
+                    className={tw.smBtn}
+                    disabled={isSavingOrder}
+                    onClick={() => setArchived(false)}
+                  >
+                    Restore this order
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={tw.smBtn}
+                    disabled={isSavingOrder}
+                    title="Takes it off the board, out of the financials and out of the lists. Nothing is deleted and it can be restored."
+                    onClick={() => setArchived(true)}
+                  >
+                    Archive this order
+                  </button>
+                )}
               </label>
               <label className={tw.fieldLabel}>
                 Scheduled start
@@ -2806,6 +2832,40 @@ export default function OrderDetail({ orderId }) {
     );
   }
 
+  // ARCHIVING AN ORDER, AND PUTTING IT BACK.
+  //
+  // Not a status somebody picks from the dropdown above: archiving has to
+  // record what the order WAS, so the restore puts it back rather than dropping
+  // it to active. The route refuses to archive an order with money still owed
+  // on it until that has been said out loud, and this passes the confirmation
+  // back when it has been.
+  async function setArchived(archived, acknowledge = false) {
+    setIsSavingOrder(true);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived, acknowledge_outstanding: acknowledge }),
+      });
+      const result = await response.json();
+      if (result?.needsAcknowledgement) {
+        if (window.confirm(`${result.error}\n\nArchive it anyway?`)) {
+          await setArchived(true, true);
+        }
+        return;
+      }
+      if (!response.ok || !result.ok) {
+        window.alert(result?.error || "Could not archive that order.");
+        return;
+      }
+      router.refresh();
+    } catch (error) {
+      window.alert(error?.message || "Could not archive that order.");
+    } finally {
+      setIsSavingOrder(false);
+    }
+  }
+
   function renderVariations() {
     return (
       <div className={tw.card}>
@@ -2822,14 +2882,21 @@ export default function OrderDetail({ orderId }) {
           <table className={tw.table}>
             <thead>
               <tr>
-                {["Variation", "Status", "Lines", "Variation total", "Deposit top-up", "Sent", "Approved", "Actions"].map((heading) => (
+                {["Variation", "Status", "Lines", "Variation total", "Deposit top-up", "Sent", "Approved"].map((heading) => (
                   <th key={heading} className={tw.th}>{heading}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {variations.map((variation) => (
-                <tr key={variation.id}>
+                /* The whole row opens the variation, like every other table in
+                   the admin. An Open button in its own column was a target the
+                   size of a word on a row the width of the screen. */
+                <tr
+                  key={variation.id}
+                  className="cursor-pointer transition-colors hover:bg-[#f5f8f4]"
+                  onClick={() => router.push(`/admin/orders/${orderId}/variations/${variation.id}`)}
+                >
                   <td className={tw.td}>
                     <p className="text-[12px] font-semibold text-[#1a1a18]">{variation.variation_number}</p>
                     <p className={`${tw.cellText} ${tw.muted}`}>{variation.title || "Order Variation"}</p>
@@ -2849,17 +2916,12 @@ export default function OrderDetail({ orderId }) {
                   <td className={tw.td + " font-mono"}>{formatMoney(variation.total_inc_gst, variation.currency || order.currency || "AUD")}</td>
                   <td className={tw.td + " font-mono"}>{formatMoney(variation.deposit_topup_required, variation.currency || order.currency || "AUD")}</td>
                   <td className={tw.td}>{formatDate(variation.sent_at)}</td>
-                  <td className={tw.td}>{formatDate(variation.approved_at || variation.applied_at)}</td>
-                  <td className={tw.tdLast}>
-                    <Link className={tw.smBtn} href={`/admin/orders/${orderId}/variations/${variation.id}`}>
-                      Open
-                    </Link>
-                  </td>
+                  <td className={tw.tdLast}>{formatDate(variation.approved_at || variation.applied_at)}</td>
                 </tr>
               ))}
               {!variations.length ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-[12px] text-[#8b8a81]">
+                  <td colSpan={7} className="py-8 text-center text-[12px] text-[#8b8a81]">
                     No variations yet. Create one when the customer asks to add, change, or remove accepted scope.
                   </td>
                 </tr>

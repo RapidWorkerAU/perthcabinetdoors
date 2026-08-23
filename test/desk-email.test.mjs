@@ -128,7 +128,19 @@ test("a reply with no signature or reference does not render empty boxes", () =>
 // The body is already the sanitised subset the editor produces. Escaping it
 // again would print its own tags at the customer.
 test("the written message is not escaped twice", () => {
-  assert.match(desk(), /<p>Hi Sarah,<\/p>/);
+  assert.match(desk(), /Hi Sarah,<\/p>/);
+});
+
+// ── spaced the way it was typed ────────────────────────────────────────────
+//
+// A paragraph with no style on it is spaced by whatever is reading it: 8px in
+// our editor, and "margin: 1em 0" in a mail client, which most of them do not
+// collapse the way a browser does. So one blank line typed between two
+// sentences arrived as a gap four times the size of the one on screen.
+test("every paragraph carries its own spacing, because a style block would be stripped", () => {
+  const reply = desk();
+  assert.match(reply, /<p style="margin:0 0 10px;">Hi Sarah,<\/p>/);
+  assert.doesNotMatch(reply, /<p>/, "not one paragraph left to the mail client's own margins");
 });
 
 // A reminder of which job this is, not a way back into it: an approved order

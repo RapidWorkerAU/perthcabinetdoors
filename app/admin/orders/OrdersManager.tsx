@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { formatMoney, ORDER_STATUSES } from '../../../lib/pcd-quote-utils'
+import { formatMoney, ORDER_FILTER_STATUSES } from '../../../lib/pcd-quote-utils'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 
-const STATUSES = ORDER_STATUSES
-const FILTERS  = ['all', ...STATUSES]
+// Archived is a tab you can go to, never a tab you land in. See the note on
+// ORDER_FILTER_STATUSES: what a list may be filtered BY is not what a dropdown
+// may set.
+const FILTERS  = ['all', ...ORDER_FILTER_STATUSES]
 
 function formatDate(value?: string | null) {
   if (!value) return '-'
@@ -78,7 +80,7 @@ export default function OrdersManager() {
   const visibleOrders = useMemo(() => {
     // "All" shows every non-cancelled order; cancelled ones are archived and
     // only appear when the Cancelled tab is explicitly selected.
-    if (statusFilter === 'all') return orders.filter(o => (o.status || 'active') !== 'cancelled')
+    if (statusFilter === 'all') return orders.filter(o => !['cancelled', 'archived'].includes(o.status || 'active'))
     return orders.filter(o => (o.status || 'active') === statusFilter)
   }, [orders, statusFilter])
 

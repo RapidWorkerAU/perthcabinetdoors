@@ -3689,6 +3689,36 @@ export default function QuoteEditor({ quoteId }) {
   const lockState = editability("quote", form.status);
   const isSealed = !form.order_id && lockState === "sealed";
   const isLocked = Boolean(form.order_id) || isSealed;
+  const isArchived = form.status === "archived";
+
+  // ARCHIVING A QUOTE, AND PUTTING IT BACK.
+  //
+  // Its own route rather than a status change, because archiving records the
+  // status it came from so restoring is exact: a quote archived while it was
+  // rejected comes back rejected, not as a draft. A quote that has become an
+  // order cannot be archived at all; the route says so and so does this.
+  async function setArchived(archived) {
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        toast({ title: result?.error || "Could not archive that quote.", variant: "error" });
+        return;
+      }
+      toast({
+        title: archived
+          ? "Archived. It stops counting anywhere until you restore it."
+          : `Restored to ${result.quote?.status || "draft"}.`,
+      });
+      loadQuote();
+    } catch (error) {
+      toast({ title: error?.message || "Could not archive that quote.", variant: "error" });
+    }
+  }
   // Re-sending a sealed quote is ordinary: the customer lost the email, or it
   // went to the wrong address. Nothing about the quote changes. Only an accepted
   // one is past sending, and generating its PDF is read-only either way.
@@ -3785,6 +3815,21 @@ export default function QuoteEditor({ quoteId }) {
             <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
               {isSaving ? "Saving..." : "Save"}
             </button>
+            {/* Not offered on a quote that has become an order: the order and the
+                financials behind it still read from this quote. */}
+            {!form.order_id && (
+              <button
+                type="button"
+                onClick={() => setArchived(!isArchived)}
+                disabled={isLoading || Boolean(loadError)}
+                title={isArchived
+                  ? "Put it back the way it was before it was archived."
+                  : "Takes it out of the lists, the board and the financials. Nothing is deleted and it can be restored."}
+                className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
+              >
+                {isArchived ? "Restore" : "Archive"}
+              </button>
+            )}
           </div>
           <nav className="p-3 flex flex-col gap-[2px] overflow-y-auto flex-1" aria-label="Quote builder sections">
             {sections.map((section) => (

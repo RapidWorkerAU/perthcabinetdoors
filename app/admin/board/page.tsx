@@ -49,6 +49,9 @@ export default async function AdminBoardPage() {
   // moment it was marked complete took whatever it was still owed with it, and
   // only the deposit is ever raised as a payment automatically, so an unasked
   // balance had nowhere to show up at all.
+  // Archived orders are not in any of these status lists, so they are off the
+  // board, and the payments, items and issues below are all read by the ids of
+  // the orders that are.
   const ordersQ = await supabase.from('pcd_orders')
     .select('id, order_number, name, customer_id, customer_name, customer_email, status, accepted_at, created_at, completed_at, total_inc_gst, scheduled_start_date, production_lead_days, target_completion_date, deposit_amount')
     .in('status', ['pending_deposit', 'active', 'complete'])
