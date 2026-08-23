@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation'
 import { IconRefresh, IconAlertTriangle } from '@tabler/icons-react'
 import {
   ACTORS,
+  AGE_COLS,
   COLUMNS,
+  COLUMN_KEYS,
   clockFor,
   groupCards,
   crossOptions,
@@ -76,6 +78,44 @@ const HUE: Record<string, string> = {
   chase: '#b45309',
 }
 
+// HOW YOU LEFT IT.
+//
+// The grouping and the two filters are remembered in the browser, so a refresh,
+// a trip to an order and back, or coming in tomorrow morning all put the board
+// back the way you had it. It is a board somebody looks at ten times a day, and
+// re-picking the grouping every time is the sort of small friction that ends
+// with people not looking.
+//
+// Kept in the browser rather than the url or the database on purpose: it is a
+// preference, not a place, and it belongs to the person rather than to the
+// board. Versioned so a change to what the values MEAN can retire the old ones
+// instead of restoring something that no longer exists.
+const VIEW_KEY = 'pcd.board.view.v1'
+
+type SavedView = { view: 'age' | 'cat'; actor: string; cross: string }
+
+// A STORED FILTER THAT IS NO LONGER MEANINGFUL IS DROPPED, NOT RESTORED.
+//
+// The cross filter holds a category in the age view and an age band in the
+// other, so restoring one against the wrong grouping would filter on a value
+// nothing can match: a board showing nothing at all, on a Monday, with no way
+// to tell that from having nothing to do.
+function readSavedView(): SavedView | null {
+  try {
+    const raw = window.localStorage.getItem(VIEW_KEY)
+    if (!raw) return null
+    const saved = JSON.parse(raw) as Partial<SavedView>
+    const view: 'age' | 'cat' = saved.view === 'cat' ? 'cat' : 'age'
+    const actor = ACTORS.some(a => a.key === saved.actor) ? String(saved.actor) : 'all'
+    const valid = view === 'age' ? COLUMN_KEYS : AGE_COLS.map(a => a.key)
+    const cross = valid.includes(String(saved.cross)) ? String(saved.cross) : ''
+    return { view, actor, cross }
+  } catch {
+    // A browser with site data blocked keeps the defaults rather than breaking.
+    return null
+  }
+}
+
 // The board refreshes itself, because one that is an hour stale is dangerous
 // for something whose whole job is stopping things being missed.
 const REFRESH_MS = 4 * 60 * 1000
@@ -141,6 +181,32 @@ export default function BoardClient({ cards, failed, loadedAt, setAsideCount = 0
       setSaving(false)
     }
   }
+
+  // Put it back the way it was left, once, on the client. Restoring during the
+  // render instead would disagree with what the server sent and React would
+  // throw the whole thing away and re-render it.
+  const restored = useRef(false)
+  useEffect(() => {
+    const saved = readSavedView()
+    if (saved) {
+      setView(saved.view)
+      setActor(saved.actor)
+      setCross(saved.cross)
+    }
+    restored.current = true
+  }, [])
+
+  // Saved only AFTER the restore has happened. Writing on the first render
+  // would store the defaults over what was there and remember nothing.
+  useEffect(() => {
+    if (!restored.current) return
+    try {
+      window.localStorage.setItem(VIEW_KEY, JSON.stringify({ view, actor, cross }))
+    } catch {
+      // Nothing to do about a browser that will not store it, and it is not
+      // worth interrupting somebody's morning over a remembered dropdown.
+    }
+  }, [view, actor, cross])
 
   useEffect(() => { setStamp(loadedAt) }, [loadedAt])
 
