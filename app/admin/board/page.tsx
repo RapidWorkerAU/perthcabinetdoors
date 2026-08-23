@@ -50,7 +50,7 @@ export default async function AdminBoardPage() {
   // only the deposit is ever raised as a payment automatically, so an unasked
   // balance had nowhere to show up at all.
   const ordersQ = await supabase.from('pcd_orders')
-    .select('id, order_number, name, customer_name, customer_email, status, accepted_at, created_at, completed_at, total_inc_gst, scheduled_start_date, production_lead_days, target_completion_date, deposit_amount')
+    .select('id, order_number, name, customer_id, customer_name, customer_email, status, accepted_at, created_at, completed_at, total_inc_gst, scheduled_start_date, production_lead_days, target_completion_date, deposit_amount')
     .in('status', ['pending_deposit', 'active', 'complete'])
   const liveOrderIds = (ordersQ.data || []).map(o => o.id)
 
@@ -59,14 +59,14 @@ export default async function AdminBoardPage() {
     itemsQ, paymentsQ, quotesQ, variationsQ, customersQ,
   ] = await Promise.all([
     supabase.from('pcd_order_issues').select('*').is('resolved_at', null),
-    supabase.from('pcd_enquiries').select('id, customer_name, customer_email, topic, message, created_at')
+    supabase.from('pcd_enquiries').select('id, customer_id, customer_name, customer_email, topic, message, created_at')
       .in('status', ['new', 'in_progress']),
     supabase.from('pcd_tickets').select('id, customer_id, subject, status, last_message_at').neq('status', 'closed'),
     // Who spoke last on a ticket, and when we last wrote to an address. Both
     // are asked of the database rather than pulled here and sifted, so there
     // is no cap to silently fall off the end of.
     supabase.rpc('pcd_board_message_state'),
-    supabase.from('pcd_quote_requests').select('id, customer_name, customer_email, product_name, source, status, converted_quote_id, created_at')
+    supabase.from('pcd_quote_requests').select('id, customer_id, customer_name, customer_email, product_name, source, status, converted_quote_id, created_at')
       // waiting_on_customer is deliberately not here. The column says "send a
       // formal quote", and that status means somebody has already answered them
       // and is waiting on THEM, so it is not the next thing for us to do. Three
@@ -87,7 +87,7 @@ export default async function AdminBoardPage() {
     // rows alone: a balance nobody raised has no row.
     supabase.from('pcd_order_payments').select('id, order_id, payment_type, amount, is_paid, requested_at, created_at')
       .in('order_id', liveOrderIds),
-    supabase.from('pcd_quotes').select('id, quote_number, title, customer_name, customer_email, status, sent_at, viewed_at, total_inc_gst')
+    supabase.from('pcd_quotes').select('id, quote_number, title, customer_id, customer_name, customer_email, status, sent_at, viewed_at, total_inc_gst')
       .in('status', ['sent', 'viewed']),
     supabase.from('pcd_order_variations').select('id, order_id, title, status, sent_at, total_inc_gst')
       .in('status', ['sent', 'viewed']).in('order_id', liveOrderIds),
@@ -130,6 +130,7 @@ export default async function AdminBoardPage() {
   const customers = rows(customersQ, 'messages', 'pcd_customers')
 
   const customerById = new Map(customers.map(c => [c.id, c]))
+  const customerByEmail = new Map(customers.filter(c => c.email).map(c => [String(c.email).toLowerCase(), c]))
 
   // ONE PERSON, ONE CARD, EVEN WITH TWO RECORDS.
   //
@@ -140,6 +141,20 @@ export default async function AdminBoardPage() {
   // card and one clock. Nothing was moved to make that true.
   const primaryId = primaryIdIndex(customers as { id: string; merged_into_id?: string | null }[])
   const asPrimary = (id?: string | null) => (id ? primaryId.get(id) || id : null)
+  // WHO A CARD IS ABOUT, resolved once.
+  //
+  // Always through the primary record, so a card about somebody with two
+  // customer rows links to the one their history is on rather than the empty
+  // duplicate the mail sync made. Falls back to matching the address, which is
+  // how a website enquiry or a quote request from a sender nobody has linked
+  // yet still finds their record once one exists.
+  const whoIsIt = (customerId?: string | null, email?: string | null): string | null => {
+    const direct = asPrimary(customerId)
+    if (direct) return direct
+    const byEmail = email ? customerByEmail.get(String(email).trim().toLowerCase()) : null
+    return asPrimary(byEmail?.id as string | undefined) || null
+  }
+
   const orderById = new Map(orders.map(o => [o.id, o]))
   const itemsByOrder = new Map<string, Json[]>()
   items.forEach(item => {
@@ -267,13 +282,16 @@ export default async function AdminBoardPage() {
     .map(group => ({
       ...group.ticket,
       customerName: group.customerName,
+      customerId: group.customerId,
       subjectId: group.customerId || group.ticket.id,
       waitingThreads: group.subjects.length,
       oldestUnanswered: group.oldest,
       newestInbound: group.newest,
     }))
 
-  const openEnquiries = enquiries.filter(e => !answered(e.customer_email, e.created_at))
+  const openEnquiries = enquiries
+    .filter(e => !answered(e.customer_email, e.created_at))
+    .map(e => ({ ...e, customerId: whoIsIt(e.customer_id as string, e.customer_email as string) }))
 
   // When each customer last wrote to us, whatever thread it was on. Used to flip
   // a quote between "chase them" and "answer them".
@@ -285,7 +303,6 @@ export default async function AdminBoardPage() {
   // ── quote requests ────────────────────────────────────────────────────────
   const lineCount = new Map<string, number>()
   requestLines.forEach(l => lineCount.set(l.quote_request_id, (lineCount.get(l.quote_request_id) || 0) + 1))
-  const customerByEmail = new Map(customers.filter(c => c.email).map(c => [String(c.email).toLowerCase(), c]))
   // Whether the quote a request became has actually gone out. The quotes read
   // above are only the sent and viewed ones, so a draft has to be asked for by
   // id: not finding one is not the same as one having been sent.
@@ -315,6 +332,7 @@ export default async function AdminBoardPage() {
       return {
         ...r,
         itemCount: lineCount.get(r.id) || 0,
+        customerId: whoIsIt(r.customer_id as string, r.customer_email as string),
         company_name: customerByEmail.get(String(r.customer_email || '').toLowerCase())?.company_name || null,
         draftQuoteId: quote?.id || null,
         draftQuoteNumber: quote?.quote_number || null,
@@ -329,7 +347,7 @@ export default async function AdminBoardPage() {
 
   const deposits = orders
     .filter(o => o.status === 'pending_deposit')
-    .map(o => ({ ...o, requested_at: requestedByOrder.get(o.id) || null }))
+    .map(o => ({ ...o, requested_at: requestedByOrder.get(o.id) || null, customerId: whoIsIt(o.customer_id as string, o.customer_email as string) }))
 
   const active = orders.filter(o => o.status === 'active')
 
@@ -359,6 +377,7 @@ export default async function AdminBoardPage() {
     if (missing.length && (depositPaid.has(order.id as string) || !order.deposit_amount)) {
       planning.push({
         ...order,
+        customerId: whoIsIt(order.customer_id as string, order.customer_email as string),
         missing,
         panelsMissing: undecided > 0,
         why: [
@@ -378,7 +397,7 @@ export default async function AdminBoardPage() {
     const until = daysUntil(order.scheduled_start_date, today)
     const notOrdered = lines.filter(l => l.status === 'Not Ordered').length
     if (notOrdered && until !== null && until <= 7) {
-      materials.push({ ...order, notOrdered })
+      materials.push({ ...order, notOrdered, customerId: whoIsIt(order.customer_id as string, order.customer_email as string) })
     }
 
     // Late: past the promised date, or booked in and nothing has moved.
@@ -392,6 +411,7 @@ export default async function AdminBoardPage() {
     if (overdue > 0) {
       late.push({
         ...order,
+        customerId: whoIsIt(order.customer_id as string, order.customer_email as string),
         overdueDays: overdue,
         reasonTag: 'Past due date',
         why: `Past its due date and still active.${nothingMoved ? ' Nothing on it has moved at all.' : ''}`,
@@ -399,6 +419,7 @@ export default async function AdminBoardPage() {
     } else if (startPassed && nothingMoved) {
       late.push({
         ...order,
+        customerId: whoIsIt(order.customer_id as string, order.customer_email as string),
         overdueDays: Math.abs(until as number),
         reasonTag: 'Never started',
         why: 'Booked to start and every panel is still at the start of its list: Not Started for ours, Not Ordered for the supplier\'s.',
@@ -438,6 +459,7 @@ export default async function AdminBoardPage() {
       const asked = askedByOrder.get(o.id as string)
       return {
         ...o,
+        customerId: whoIsIt(o.customer_id as string, o.customer_email as string),
         outstanding,
         requestedAt: asked?.requested_at || null,
         // Moves when a payment is raised, requested or paid, so a card set
@@ -457,12 +479,20 @@ export default async function AdminBoardPage() {
       ...p,
       orderNumber: orderById.get(p.order_id)?.order_number || null,
       customerName: orderById.get(p.order_id)?.customer_name || null,
+      customerId: whoIsIt(
+        orderById.get(p.order_id)?.customer_id as string,
+        orderById.get(p.order_id)?.customer_email as string
+      ),
     }))
 
   const chaseVariations = variations.filter(v => v.sent_at).map(v => ({
     ...v,
     orderNumber: orderById.get(v.order_id)?.order_number || null,
     customerName: orderById.get(v.order_id)?.customer_name || null,
+    customerId: whoIsIt(
+      orderById.get(v.order_id)?.customer_id as string,
+      orderById.get(v.order_id)?.customer_email as string
+    ),
   }))
 
   // ── issues, named ─────────────────────────────────────────────────────────
@@ -471,6 +501,10 @@ export default async function AdminBoardPage() {
     kindLabel: issueKindLabel(i.kind),
     orderNumber: orderById.get(i.order_id)?.order_number || null,
     customerName: orderById.get(i.order_id)?.customer_name || null,
+    customerId: whoIsIt(
+      orderById.get(i.order_id)?.customer_id as string,
+      orderById.get(i.order_id)?.customer_email as string
+    ),
     panelLabel: i.panel_label || 'a panel',
   }))
 
@@ -487,6 +521,7 @@ export default async function AdminBoardPage() {
       balances,
       quotes: quotes.filter(q => q.sent_at).map(q => ({
         ...q,
+        customerId: whoIsIt(q.customer_id as string, q.customer_email as string),
         repliedAt: inboundByEmail.get(String(q.customer_email || '').toLowerCase()) || null,
       })),
       payments: chasePayments,

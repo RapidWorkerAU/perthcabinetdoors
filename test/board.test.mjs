@@ -367,6 +367,39 @@ test("a balance that has been asked for is a chase", () => {
   assert.ok(row.tags.some((t) => t[0] === "Requested"));
 });
 
+// ── the name on a card opens the person ────────────────────────────────────
+//
+// The body of a card goes where the work is. The name goes to the customer,
+// which is the other question somebody has in front of a card.
+
+test("every kind of card can carry who it is about", () => {
+  const each = [
+    issueCards([{ id: "i1", customerId: "c1", order_id: "o1", raised_at: TODAY }], TODAY),
+    requestCards([{ id: "r1", customerId: "c1", created_at: TODAY }], TODAY),
+    depositCards([{ id: "o1", customerId: "c1", created_at: TODAY }], TODAY),
+    planningCards([{ id: "o1", customerId: "c1", accepted_at: TODAY, missing: ["Scheduled start"] }], TODAY),
+    materialCards([{ id: "o1", customerId: "c1", accepted_at: TODAY, notOrdered: 2 }], TODAY),
+    lateCards([{ id: "o1", customerId: "c1", overdueDays: 3 }], TODAY),
+    balanceCards([{ id: "o1", customerId: "c1", completed_at: TODAY, outstanding: 100 }], TODAY),
+    chaseCards({ quotes: [{ id: "q1", customerId: "c1", sent_at: TODAY }], payments: [], variations: [] }, TODAY),
+    chaseCards({ quotes: [], payments: [{ id: "p1", customerId: "c1", requested_at: TODAY }], variations: [] }, TODAY),
+    chaseCards({ quotes: [], payments: [], variations: [{ id: "v1", customerId: "c1", sent_at: TODAY }] }, TODAY),
+    replyCards({ enquiries: [{ id: "e1", customerId: "c1", created_at: TODAY }], tickets: [] }, TODAY),
+    replyCards({ enquiries: [], tickets: [{ id: "t1", customerId: "c1", last_message_at: TODAY }] }, TODAY),
+  ];
+  each.forEach((cards) => {
+    assert.equal(cards.length, 1);
+    assert.equal(cards[0].customerId, "c1", `${cards[0].cat} card lost who it is about`);
+  });
+});
+
+test("a card about somebody with no record links to nobody", () => {
+  // A website enquiry from an address we have never seen. The name has to stay
+  // plain text rather than becoming a link that goes nowhere.
+  const [row] = replyCards({ enquiries: [{ id: "e1", created_at: TODAY }], tickets: [] }, TODAY);
+  assert.equal(row.customerId, null);
+});
+
 test("the balance column exists and belongs to the orders source", () => {
   const col = COLUMNS.filter((c) => c.key === "balance")[0];
   assert.ok(col, "a finished job with money on it has a column of its own");

@@ -37,6 +37,7 @@ type Card = {
   blocks: boolean
   href: string
   ticketId?: string | null
+  customerId?: string | null
   subjectId?: string | null
   subjectType?: string | null
   stamp?: string | null
@@ -528,18 +529,35 @@ function Segmented({
 
 // Compact. The name and the money share the top line, the money fixed and the
 // name trimmed, so a narrow column can never push the figure off the edge.
+// TWO LINKS ON ONE CARD, AND ONLY ONE OF THEM IS THE CARD.
+//
+// The body goes where the work is: the order, the quote, the issues tab. The
+// NAME goes to the person, which is the other question somebody has in front of
+// a card and used to mean leaving the board to search for them.
+//
+// An anchor cannot be nested inside another anchor. The browser closes the
+// outer one at the inner one and the rest of the card stops being a link at
+// all, silently. So the card is a div, the card's own link is an invisible
+// layer over the whole of it, and the name sits above that layer. Both are real
+// links: keyboard focus, middle click and open-in-new-tab all work on each.
 function BoardCard({ card, showCat, onClose }: { card: Card; showCat: boolean; onClose?: (c: Card) => void }) {
   const hue = HUE[card.cat] || '#dbd8cc'
   const colLabel = COLUMNS.filter(c => c.key === card.cat)[0]?.label || ''
 
   return (
-    <a
-      href={card.href}
-      className={`block min-w-0 rounded-[8px] border p-[9px_11px_10px] transition-colors ${
+    <div
+      className={`group relative block min-w-0 rounded-[8px] border p-[9px_11px_10px] transition-colors ${
         card.theirs ? 'border-dashed bg-[#fcfcfa]' : 'bg-white'
       } ${card.blocks ? 'border-[#f0bcbc] shadow-[inset_0_0_0_1px_#f0bcbc]' : 'border-[#dbd8cc] hover:border-[#c8c4b6]'}`}
       style={{ borderLeft: `3px solid ${card.theirs ? '#c9c6bc' : hue}` }}
     >
+      {/* The card's own link, covering the card. Behind everything that is
+          itself clickable, so the name and the set aside button win. */}
+      <a
+        href={card.href}
+        aria-label={`${card.who}: ${card.what}`}
+        className="absolute inset-0 z-0 rounded-[8px]"
+      />
       {showCat && (
         <span
           className="block text-[9.5px] font-bold uppercase leading-[1.3] tracking-[0.05em]"
@@ -549,10 +567,25 @@ function BoardCard({ card, showCat, onClose }: { card: Card; showCat: boolean; o
         </span>
       )}
 
-      <div className="flex items-baseline gap-2">
-        <span className={`min-w-0 flex-1 truncate text-[12.5px] font-bold tracking-[-0.01em] ${card.theirs ? 'text-[#5a5a52]' : 'text-[#1a1a18]'}`}>
-          {card.who}
-        </span>
+      <div className="relative z-10 flex items-baseline gap-2">
+        {card.customerId ? (
+          <a
+            href={`/admin/customers/${card.customerId}`}
+            title={`Open ${card.who}`}
+            className={`min-w-0 flex-1 truncate text-[12.5px] font-bold tracking-[-0.01em] underline-offset-2 hover:underline focus-visible:underline ${
+              card.theirs ? 'text-[#5a5a52]' : 'text-[#1a1a18]'
+            }`}
+          >
+            {card.who}
+          </a>
+        ) : (
+          // Nobody to open. A website enquiry from an address we have never
+          // seen has no record behind it, so the name stays plain text rather
+          // than a link that goes nowhere.
+          <span className={`min-w-0 flex-1 truncate text-[12.5px] font-bold tracking-[-0.01em] ${card.theirs ? 'text-[#5a5a52]' : 'text-[#1a1a18]'}`}>
+            {card.who}
+          </span>
+        )}
         {Boolean(card.amt) && (
           <span className="flex-shrink-0 font-mono text-[12px] font-bold text-[#1a1a18]">
             {formatMoney(card.amt, 'AUD')}
@@ -560,10 +593,10 @@ function BoardCard({ card, showCat, onClose }: { card: Card; showCat: boolean; o
         )}
       </div>
 
-      <p className="mt-[2px] line-clamp-2 text-[11.5px] leading-[1.4] text-[#5a5a52]">{card.what}</p>
+      <p className="relative z-10 mt-[2px] line-clamp-2 text-[11.5px] leading-[1.4] text-[#5a5a52] pointer-events-none">{card.what}</p>
 
       {Boolean(card.tags.length) && (
-        <div className="mt-[7px] flex flex-wrap gap-1">
+        <div className="relative z-10 mt-[7px] flex flex-wrap gap-1 pointer-events-none">
           {card.tags.map(([text, kind], i) => (
             <span
               key={`${text}-${i}`}
@@ -581,11 +614,11 @@ function BoardCard({ card, showCat, onClose }: { card: Card; showCat: boolean; o
         </div>
       )}
 
-      <p className="mt-[7px] line-clamp-2 border-t border-dotted border-[#dbd8cc] pt-[6px] text-[10px] leading-[1.4] text-[#8b8a81]">
+      <p className="relative z-10 mt-[7px] line-clamp-2 border-t border-dotted border-[#dbd8cc] pt-[6px] text-[10px] leading-[1.4] text-[#8b8a81] pointer-events-none">
         {card.why}
       </p>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <div className="relative z-10 mt-2 flex flex-wrap items-center gap-1.5">
         <span
           className={`inline-flex whitespace-nowrap rounded-[5px] border px-1.5 py-px font-mono text-[9.5px] font-semibold ${
             card.late ? 'border-[#f0bcbc] bg-[#fef5f5] text-[#991b1b]' : 'border-[#dbd8cc] bg-[#f5f4ee] text-[#5a5a52]'
@@ -609,6 +642,6 @@ function BoardCard({ card, showCat, onClose }: { card: Card; showCat: boolean; o
           </button>
         )}
       </div>
-    </a>
+    </div>
   )
 }
