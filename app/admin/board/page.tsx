@@ -36,13 +36,22 @@ function panelsOf(item: Json) {
 export default async function AdminBoardPage() {
   await requireAdminSession()
   const supabase = createSupabaseAdminClient()
-  const today = new Date().toISOString().slice(0, 10)
+  // THE DATE HERE, NOT THE DATE IN LONDON.
+  //
+  // Every age on this board is worked out from this. Taken as UTC it was a day
+  // behind for the first eight hours of every working day in Perth, so cards
+  // crossed the 8 and 15 day marks a day late, all morning, every day.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Perth' }).format(new Date())
 
   // Read first, so everything that hangs off an order can be scoped to the ones
   // actually on the board rather than the whole table.
+  // Finished jobs are read as well as live ones. A job leaving the board the
+  // moment it was marked complete took whatever it was still owed with it, and
+  // only the deposit is ever raised as a payment automatically, so an unasked
+  // balance had nowhere to show up at all.
   const ordersQ = await supabase.from('pcd_orders')
-    .select('id, order_number, name, customer_name, customer_email, status, accepted_at, created_at, total_inc_gst, scheduled_start_date, production_lead_days, target_completion_date, deposit_amount')
-    .in('status', ['pending_deposit', 'active'])
+    .select('id, order_number, name, customer_name, customer_email, status, accepted_at, created_at, completed_at, total_inc_gst, scheduled_start_date, production_lead_days, target_completion_date, deposit_amount')
+    .in('status', ['pending_deposit', 'active', 'complete'])
   const liveOrderIds = (ordersQ.data || []).map(o => o.id)
 
   const [
@@ -62,14 +71,22 @@ export default async function AdminBoardPage() {
       // formal quote", and that status means somebody has already answered them
       // and is waiting on THEM, so it is not the next thing for us to do. Three
       // of the five cards in this column were in that state.
-      .in('status', ['new', 'reviewing']),
+      //
+      // converted_to_quote IS here now, and used to be the way off this board.
+      // Converting only creates a DRAFT, which nothing else looks at, so
+      // clicking convert silenced the card while the customer still had
+      // nothing. The card stays until a quote is actually sent; see below.
+      .in('status', ['new', 'reviewing', 'converted_to_quote']),
     supabase.from('pcd_quote_request_line_items').select('id, quote_request_id'),
     // Scoped to the orders on the board. Reading every line item on every order
     // ever raised was the most expensive thing on this page.
     supabase.from('pcd_order_line_items').select('id, order_id, status, production_stage, fulfilment_method, panel_planning')
       .in('order_id', liveOrderIds),
+    // Paid rows as well as unpaid. What is still owed on a finished job is the
+    // total less what has been paid, which cannot be worked out from the unpaid
+    // rows alone: a balance nobody raised has no row.
     supabase.from('pcd_order_payments').select('id, order_id, payment_type, amount, is_paid, requested_at, created_at')
-      .eq('is_paid', false).in('order_id', liveOrderIds),
+      .in('order_id', liveOrderIds),
     supabase.from('pcd_quotes').select('id, quote_number, title, customer_name, customer_email, status, sent_at, viewed_at, total_inc_gst')
       .in('status', ['sent', 'viewed']),
     supabase.from('pcd_order_variations').select('id, order_id, title, status, sent_at, total_inc_gst')
@@ -105,7 +122,9 @@ export default async function AdminBoardPage() {
   const requestLines = rows(requestLinesQ, 'requests', 'pcd_quote_request_line_items')
   const orders = rows(ordersQ, 'orders', 'pcd_orders')
   const items = rows(itemsQ, 'orders', 'pcd_order_line_items')
-  const payments = rows(paymentsQ, 'sent', 'pcd_order_payments')
+  const allPayments = rows(paymentsQ, 'sent', 'pcd_order_payments')
+  // The columns below were written against unpaid rows only, so they keep that.
+  const payments = allPayments.filter(p => !p.is_paid)
   const quotes = rows(quotesQ, 'sent', 'pcd_quotes')
   const variations = rows(variationsQ, 'sent', 'pcd_order_variations')
   const customers = rows(customersQ, 'messages', 'pcd_customers')
@@ -267,13 +286,41 @@ export default async function AdminBoardPage() {
   const lineCount = new Map<string, number>()
   requestLines.forEach(l => lineCount.set(l.quote_request_id, (lineCount.get(l.quote_request_id) || 0) + 1))
   const customerByEmail = new Map(customers.filter(c => c.email).map(c => [String(c.email).toLowerCase(), c]))
+  // Whether the quote a request became has actually gone out. The quotes read
+  // above are only the sent and viewed ones, so a draft has to be asked for by
+  // id: not finding one is not the same as one having been sent.
+  const convertedIds = requests.map(r => r.converted_quote_id).filter(Boolean) as string[]
+  const draftsQ = convertedIds.length
+    ? await supabase.from('pcd_quotes').select('id, quote_number, status, sent_at, created_at').in('id', convertedIds)
+    : { data: [] as Json[], error: null }
+  if (draftsQ.error) failed.add('requests')
+  const quoteById = new Map<string, Json>((draftsQ.data || []).map(q => [String(q.id), q as Json] as [string, Json]))
+
+  // A REQUEST IS ANSWERED BY A QUOTE, NOT BY AN EMAIL.
+  //
+  // The old rule also cleared the card if we had written to that address since,
+  // which reads as answered on a column that says "send a formal quote". Saying
+  // "I will get you a price next week" is not a price. The card now goes when
+  // one is sent, when the request is closed or marked waiting on them, or when
+  // somebody sets it aside with a reason.
   const openRequests = requests
-    .filter(r => !r.converted_quote_id && !answered(r.customer_email, r.created_at))
-    .map(r => ({
-      ...r,
-      itemCount: lineCount.get(r.id) || 0,
-      company_name: customerByEmail.get(String(r.customer_email || '').toLowerCase())?.company_name || null,
-    }))
+    .filter(r => {
+      if (!r.converted_quote_id) return true
+      const quote = quoteById.get(r.converted_quote_id as string)
+      // A quote we cannot find is not a quote that was sent.
+      return !quote?.sent_at
+    })
+    .map(r => {
+      const quote = r.converted_quote_id ? quoteById.get(r.converted_quote_id as string) : null
+      return {
+        ...r,
+        itemCount: lineCount.get(r.id) || 0,
+        company_name: customerByEmail.get(String(r.customer_email || '').toLowerCase())?.company_name || null,
+        draftQuoteId: quote?.id || null,
+        draftQuoteNumber: quote?.quote_number || null,
+        draftQuoteAt: quote?.created_at || null,
+      }
+    })
 
   // ── orders, split four ways ───────────────────────────────────────────────
   const requestedByOrder = new Map<string, string>()
@@ -359,6 +406,49 @@ export default async function AdminBoardPage() {
     }
   })
 
+  // ── finished jobs still owed for ──────────────────────────────────────────
+  //
+  // What is left is the order total less everything marked paid against it.
+  // Worked out from the total rather than from the payment rows, because the
+  // rows are the problem: only a deposit is ever raised automatically, so a
+  // balance nobody has asked for has no row to be found by.
+  const paidByOrder = new Map<string, number>()
+  const askedByOrder = new Map<string, Json>()
+  const paymentMovedAt = new Map<string, string>()
+  allPayments.forEach(p => {
+    const orderId = p.order_id as string
+    const moved = String(p.requested_at || p.created_at || '')
+    if (moved > (paymentMovedAt.get(orderId) || '')) paymentMovedAt.set(orderId, moved)
+    if (p.is_paid) {
+      paidByOrder.set(orderId, (paidByOrder.get(orderId) || 0) + Number(p.amount || 0))
+      return
+    }
+    // The unpaid row that has been asked for, newest request first.
+    const held = askedByOrder.get(orderId)
+    if (p.requested_at && (!held || String(p.requested_at) > String(held.requested_at || ''))) {
+      askedByOrder.set(orderId, p as Json)
+    }
+  })
+
+  const balances = orders
+    .filter(o => o.status === 'complete')
+    .map(o => {
+      const paid = paidByOrder.get(o.id as string) || 0
+      const outstanding = Math.round((Number(o.total_inc_gst || 0) - paid) * 100) / 100
+      const asked = askedByOrder.get(o.id as string)
+      return {
+        ...o,
+        outstanding,
+        requestedAt: asked?.requested_at || null,
+        // Moves when a payment is raised, requested or paid, so a card set
+        // aside comes back if the money situation changes.
+        stamp: [String(o.completed_at || ''), paymentMovedAt.get(o.id as string) || '', String(paid)]
+          .filter(Boolean).sort().slice(-1)[0] || null,
+      }
+    })
+    // A dollar of rounding is not a debt.
+    .filter(b => b.outstanding >= 1)
+
   // ── things sitting with the customer ──────────────────────────────────────
   const chasePayments = payments
     .filter(p => p.payment_type !== 'deposit' && p.requested_at)
@@ -394,6 +484,7 @@ export default async function AdminBoardPage() {
       planning,
       materials,
       late,
+      balances,
       quotes: quotes.filter(q => q.sent_at).map(q => ({
         ...q,
         repliedAt: inboundByEmail.get(String(q.customer_email || '').toLowerCase()) || null,

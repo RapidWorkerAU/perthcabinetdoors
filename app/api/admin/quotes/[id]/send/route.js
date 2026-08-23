@@ -3,6 +3,7 @@ import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import { assertSendable } from "../../../../../../lib/pcd-document-lock";
 import { attachQuotePdf } from "../../../../../../lib/pcd-quote-pdf-attachment";
+import { agentForUser, recordOutboundEmail } from "../../../../../../lib/pcd-desk-outbound";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -173,14 +174,30 @@ export async function POST(request, { params }) {
     let emailSent = false;
     if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && quote.customer_email) {
       const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails.send({
+      const html = quoteEmailHtml({ quote, viewUrl, message: emailMessage, includePrice });
+      const sent = await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
         to: [quote.customer_email],
         subject: emailSubject,
-        html: quoteEmailHtml({ quote, viewUrl, message: emailMessage, includePrice }),
+        html,
         text: emailMessage,
       });
       emailSent = true;
+
+      // The email goes out through Resend, which never touches the mailbox the
+      // desk syncs, so nothing about it reached the customer's conversation and
+      // the board went on saying they were waiting for an answer they had.
+      // Filed after the send, and never allowed to fail it.
+      await recordOutboundEmail(context.supabase, {
+        customerId: quote.customer_id,
+        toEmail: quote.customer_email,
+        subject: emailSubject,
+        bodyHtml: html,
+        bodyText: emailMessage,
+        providerMessageId: sent?.data?.id || null,
+        agentId: (await agentForUser(context.supabase, context.user?.email))?.id || null,
+        newTicketSubject: emailSubject,
+      });
     }
 
     return Response.json({ ok: true, emailSent, viewUrl, pdfAttached, pdfError });

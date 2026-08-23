@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
+import { agentForUser, recordOutboundEmail } from "../../../../../../../../lib/pcd-desk-outbound";
 import { formatMoney, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
 import { JOB_COST_ACTION, orderJobCostAmount } from "../../../../../../../../lib/pcd-order-costs";
 import { recalcVariation, variationLineDelta } from "../../../../../../../../lib/pcd-order-variations";
@@ -263,14 +264,28 @@ export async function POST(request, { params }) {
     const toEmail = variation.customer_email || variation.pcd_orders?.customer_email;
     if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && toEmail) {
       const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails.send({
+      const html = variationEmailHtml({ variation, order: variation.pcd_orders || {}, viewUrl, message: emailMessage, includePrice });
+      const sent = await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
         to: [toEmail],
         subject: emailSubject,
-        html: variationEmailHtml({ variation, order: variation.pcd_orders || {}, viewUrl, message: emailMessage, includePrice }),
+        html,
         text: emailMessage,
       });
       emailSent = true;
+
+      // Filed on the customer's conversation, or the board goes on saying they
+      // are waiting on us. See lib/pcd-desk-outbound.js.
+      await recordOutboundEmail(context.supabase, {
+        customerId: variation.pcd_orders?.customer_id || null,
+        toEmail,
+        subject: emailSubject,
+        bodyHtml: html,
+        bodyText: emailMessage,
+        providerMessageId: sent?.data?.id || null,
+        agentId: (await agentForUser(context.supabase, context.user?.email))?.id || null,
+        newTicketSubject: emailSubject,
+      });
     }
 
     return Response.json({ ok: true, emailSent, viewUrl });

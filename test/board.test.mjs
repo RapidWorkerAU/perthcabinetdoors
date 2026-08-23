@@ -26,6 +26,7 @@ import {
   issueCards,
   replyCards,
   requestCards,
+  balanceCards,
   depositCards,
   planningCards,
   materialCards,
@@ -38,8 +39,8 @@ const TODAY = "2026-08-19";
 
 // ── the columns ────────────────────────────────────────────────────────────
 
-test("eight columns, each with a label, a clock and a source", () => {
-  assert.equal(COLUMNS.length, 8);
+test("nine columns, each with a label, a clock and a source", () => {
+  assert.equal(COLUMNS.length, 9);
   COLUMNS.forEach((c) => {
     assert.ok(c.key && c.label && c.clock && c.source, `incomplete column: ${c.key}`);
     assert.ok(c.note && c.note.length > 15, `column ${c.key} does not explain itself`);
@@ -298,6 +299,81 @@ test("a pending deposit is the customer's move and goes to the payments tab", ()
   assert.match(row.why, /Pending Deposit/);
 });
 
+// It was theirs either way, so the one case where the next move is OURS was
+// hidden from anybody filtering the board to their own work.
+test("a deposit nobody has asked for is our move, not theirs", () => {
+  const [row] = depositCards(
+    [{ id: "o1", order_number: "PCD-O-1", deposit_amount: 2655, created_at: "2026-08-15" }],
+    TODAY
+  );
+  assert.equal(row.theirs, false);
+  assert.match(row.why, /has not been requested yet/);
+});
+
+// ── a request is answered by a quote, not by starting one ──────────────────
+
+test("a request with a drafted but unsent quote still reads as owed", () => {
+  const [row] = requestCards(
+    [{
+      id: "r1", customer_name: "Reid", created_at: "2026-08-10",
+      draftQuoteId: "q1", draftQuoteNumber: "PCD-Q-88", draftQuoteAt: "2026-08-12",
+    }],
+    TODAY
+  );
+  assert.equal(row.cat, "price");
+  // Clocked from when THEY asked, not from when somebody started the quote.
+  assert.equal(row.days, daysSince("2026-08-10", TODAY));
+  assert.match(row.why, /PCD-Q-88 is drafted and has never been sent/);
+  assert.ok(row.tags.some((t) => t[0] === "Drafted, not sent"));
+  assert.equal(row.href, "/admin/quotes/q1", "it links to the quote to finish, not the request list");
+  // The stamp moves when the draft appears, so a request set aside before
+  // anybody started on it comes back once there is a draft sitting unsent.
+  assert.equal(row.stamp, "2026-08-12");
+});
+
+test("a request nobody has started still says so plainly", () => {
+  const [row] = requestCards([{ id: "r1", created_at: "2026-08-10" }], TODAY);
+  assert.match(row.why, /no quote sent to them yet/);
+  assert.equal(row.href, "/admin/quote-requests");
+  assert.ok(!row.tags.some((t) => t[0] === "Drafted, not sent"));
+});
+
+// ── a finished job with money still on it ──────────────────────────────────
+
+test("a finished job that was never asked for the money is our move", () => {
+  const [row] = balanceCards(
+    [{
+      id: "o1", order_number: "PCD-O-9", name: "Kitchen refit", customer_name: "Sam",
+      completed_at: "2026-08-04", outstanding: 4820, requestedAt: null,
+    }],
+    TODAY
+  );
+  assert.equal(row.cat, "balance");
+  assert.equal(row.theirs, false, "nobody has asked, so it is ours");
+  assert.equal(row.amt, 4820);
+  assert.equal(row.days, daysSince("2026-08-04", TODAY), "clocked from when the job finished");
+  assert.match(row.why, /\$4,820 has never been asked for/);
+  assert.ok(row.tags.some((t) => t[0] === "Never asked for"));
+  assert.match(row.href, /section=payments/);
+});
+
+test("a balance that has been asked for is a chase", () => {
+  const [row] = balanceCards(
+    [{ id: "o1", order_number: "PCD-O-9", completed_at: "2026-08-04", outstanding: 990, requestedAt: "2026-08-10" }],
+    TODAY
+  );
+  assert.equal(row.theirs, true);
+  assert.match(row.why, /still outstanding, asked for/);
+  assert.ok(row.tags.some((t) => t[0] === "Requested"));
+});
+
+test("the balance column exists and belongs to the orders source", () => {
+  const col = COLUMNS.filter((c) => c.key === "balance")[0];
+  assert.ok(col, "a finished job with money on it has a column of its own");
+  assert.equal(col.source, "orders", "so a failed orders query reports it as unloaded");
+  assert.equal(clockFor("balance"), "since it finished");
+});
+
 test("a deposit never requested says so rather than showing a stale age", () => {
   const [row] = depositCards([{ id: "o1", order_number: "PCD-O-1", created_at: "2026-08-17" }], TODAY);
   assert.match(row.why, /not been requested yet/);
@@ -419,7 +495,7 @@ test("empty columns go to the end, in their declared order among themselves", ()
   const empty = cols.filter((col) => !col.cards.length).map((col) => col.key);
   assert.deepEqual(cols.map((col) => col.key), filled.concat(empty), "every filled column comes first");
   assert.deepEqual(filled, ["plan", "chase"], "and the filled ones stay in declared order");
-  assert.deepEqual(empty, ["issue", "reply", "price", "depo", "materials", "late"]);
+  assert.deepEqual(empty, ["issue", "reply", "price", "depo", "materials", "late", "balance"]);
 });
 
 // A column does not move just because its count changed.

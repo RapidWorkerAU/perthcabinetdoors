@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
+import { agentForUser, recordOutboundEmail } from "../../../../../../../../lib/pcd-desk-outbound";
 import { hasPaymentRequest } from "../../../../../../../../lib/pcd-payment-requests";
 import { createCheckoutSession, siteUrl } from "../../../../../../../../lib/pcd-stripe";
 import { paymentTypeLabel } from "../../../../../../../../lib/pcd-payment-notifications";
@@ -145,14 +146,29 @@ export async function POST(request, { params }) {
     let emailSent = false;
     if (!isRefresh && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
       const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails.send({
+      const html = paymentRequestHtml({ order, payment: updatedPayment, checkoutUrl: session.url, message: fullMessage });
+      const text = `${fullMessage}\n\nPay here: ${session.url}`;
+      const sent = await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
         to: [order.customer_email],
         subject: emailSubject,
-        html: paymentRequestHtml({ order, payment: updatedPayment, checkoutUrl: session.url, message: fullMessage }),
-        text: `${fullMessage}\n\nPay here: ${session.url}`,
+        html,
+        text,
       });
       emailSent = true;
+
+      // Filed on the customer's conversation, or the board goes on saying they
+      // are waiting on us. See lib/pcd-desk-outbound.js.
+      await recordOutboundEmail(context.supabase, {
+        customerId: order.customer_id || null,
+        toEmail: order.customer_email,
+        subject: emailSubject,
+        bodyHtml: html,
+        bodyText: text,
+        providerMessageId: sent?.data?.id || null,
+        agentId: (await agentForUser(context.supabase, context.user?.email))?.id || null,
+        newTicketSubject: emailSubject,
+      });
     }
 
     await logOrderActivity(context.supabase, {
