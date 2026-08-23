@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { IconCopy, IconExternalLink, IconFileText, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconCopy, IconExternalLink, IconPlus, IconTrash } from '@tabler/icons-react'
 import { formatMoney } from '../../../lib/pcd-quote-utils'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
@@ -300,9 +300,6 @@ export default function QuotesTable() {
                     <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
                       <div className="flex justify-end">
                         <ActionMenu label={`Open actions for quote ${quote.quote_number || 'draft quote'}`}>
-                          <ActionMenuItem icon={<IconFileText size={14} />} onClick={() => router.push(`/admin/quotes/${quote.id}`)}>
-                          Open
-                          </ActionMenuItem>
                         {quote.access_code && (
                           <ActionMenuItem
                             icon={<IconExternalLink size={14} />}
@@ -343,7 +340,19 @@ export default function QuotesTable() {
         {pageItems.map(quote => {
           const status = quote.status || 'draft'
           return (
-            <article key={quote.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+            <article
+              key={quote.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => router.push(`/admin/quotes/${quote.id}`)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  router.push(`/admin/quotes/${quote.id}`)
+                }
+              }}
+              className="bg-white border border-[#dbd8cc] rounded-[8px] p-4 cursor-pointer hover:bg-[#f5f8f4] focus:outline-none focus:ring-2 focus:ring-[#6b9e61]"
+            >
               <div className="mb-3">
                 <p className="text-[11px] uppercase tracking-[0.07em] text-[#8b8a81] font-semibold mb-1">Quote</p>
                 <p className="text-[15px] font-semibold text-[#1a1a18]">{quote.quote_number || 'Draft quote'}</p>
@@ -368,11 +377,8 @@ export default function QuotesTable() {
                 <div><dt className="text-[#8b8a81]">Total</dt><dd className="text-[#1a1a18]">{formatMoney(quote.total_inc_gst, quote.currency || 'AUD')}</dd></div>
                 <div><dt className="text-[#8b8a81]">Updated</dt><dd className="text-[#1a1a18]">{formatDate(quote.updated_at || quote.created_at)}</dd></div>
               </dl>
-              <div className="pt-3 border-t border-[#edf4eb] flex justify-end">
+              <div className="pt-3 border-t border-[#edf4eb] flex justify-end" onClick={e => e.stopPropagation()}>
                 <ActionMenu label={`Open actions for quote ${quote.quote_number || 'draft quote'}`}>
-                  <ActionMenuItem icon={<IconFileText size={14} />} onClick={() => router.push(`/admin/quotes/${quote.id}`)}>
-                    Open
-                  </ActionMenuItem>
                   {quote.access_code && (
                     <ActionMenuItem
                       icon={<IconExternalLink size={14} />}

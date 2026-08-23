@@ -7,7 +7,7 @@ import {
   IconLayoutDashboard, IconUsers, IconMail, IconFileText,
   IconFileInvoice, IconPackage, IconBox, IconPalette,
   IconSettings, IconLogout, IconChevronsLeft, IconChevronsRight,
-  IconBell, IconDots, IconX, IconRulerMeasure,
+  IconBell, IconDots, IconX, IconRulerMeasure, IconCoin, IconLayoutColumns,
 } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
@@ -41,33 +41,38 @@ const BORDER_LIGHT   = '#edf4eb'
 // ── Nav data ──────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS: NavItem[] = [
+  { label: 'The Board',      href: '/admin/board',          icon: IconLayoutColumns   },
   { label: 'Dashboard',      href: '/admin/dashboard',      icon: IconLayoutDashboard },
   { label: 'Customers',      href: '/admin/customers',      icon: IconUsers           },
   { label: 'Enquiries',      href: '/admin/enquiries',      icon: IconMail            },
   { label: 'Quote Requests', href: '/admin/quote-requests', icon: IconFileText        },
   { label: 'Quotes',         href: '/admin/quotes',         icon: IconFileInvoice     },
   { label: 'Orders',         href: '/admin/orders',         icon: IconPackage         },
+  { label: 'Financials',     href: '/admin/financials',     icon: IconCoin            },
   { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure    },
   { label: 'Products',       href: '/admin/products',       icon: IconBox             },
   { label: 'Board Library',  href: '/admin/options',        icon: IconPalette         },
+  { label: 'Profile Library', href: '/admin/profiles',      icon: IconPalette         },
   { label: 'Benchtop Library', href: '/admin/benchtop-materials', icon: IconRulerMeasure },
   { label: 'Hardware Library', href: '/admin/hardware',     icon: IconBox             },
   { label: 'Settings',       href: '/admin/settings',       icon: IconSettings        },
 ]
 
 const BOTTOM_PRIMARY: NavItem[] = [
-  { label: 'Dashboard', href: '/admin/dashboard', icon: IconLayoutDashboard },
+  { label: 'Board',     href: '/admin/board',     icon: IconLayoutColumns   },
   { label: 'Customers', href: '/admin/customers', icon: IconUsers           },
   { label: 'Quotes',    href: '/admin/quotes',    icon: IconFileInvoice     },
   { label: 'Orders',    href: '/admin/orders',    icon: IconPackage         },
 ]
 
 const BOTTOM_MORE: NavItem[] = [
+  { label: 'Financials',     href: '/admin/financials',     icon: IconCoin        },
   { label: 'Enquiries',      href: '/admin/enquiries',      icon: IconMail        },
   { label: 'Quote Requests', href: '/admin/quote-requests', icon: IconFileText    },
   { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure},
   { label: 'Products',       href: '/admin/products',       icon: IconBox         },
   { label: 'Board Library',  href: '/admin/options',        icon: IconPalette     },
+  { label: 'Profile Library', href: '/admin/profiles',      icon: IconPalette     },
   { label: 'Benchtop Library', href: '/admin/benchtop-materials', icon: IconRulerMeasure },
   { label: 'Hardware Library', href: '/admin/hardware',     icon: IconBox         },
   { label: 'Settings',       href: '/admin/settings',       icon: IconSettings    },
@@ -84,6 +89,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/orders':         'Orders',
   '/admin/products':       'Products',
   '/admin/options':        'Board Library',
+  '/admin/profiles':       'Profile Library',
   '/admin/benchtop-materials': 'Benchtop Library',
   '/admin/hardware':       'Hardware Library',
   '/admin/settings':       'Settings',

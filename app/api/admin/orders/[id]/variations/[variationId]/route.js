@@ -1,6 +1,7 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../lib/pcd-activity-log";
-import { isVariationFinal, recalcVariation, VARIATION_STATUSES } from "../../../../../../../lib/pcd-order-variations";
+import { recalcVariation, VARIATION_STATUSES } from "../../../../../../../lib/pcd-order-variations";
+import { lockError } from "../../../../../../../lib/pcd-document-lock";
 import { toNumber } from "../../../../../../../lib/pcd-quote-utils";
 
 async function idsFromParams(params) {
@@ -41,9 +42,6 @@ export async function PATCH(request, { params }) {
       .eq("order_id", orderId)
       .maybeSingle();
     if (!before) return Response.json({ ok: false, error: "Variation not found." }, { status: 404 });
-    if (isVariationFinal(before.status) && before.status !== "draft" && before.status !== "sent" && before.status !== "viewed") {
-      return Response.json({ ok: false, error: "Finalised variations cannot be edited." }, { status: 409 });
-    }
 
     const updates = {};
     ["title", "customer_name", "customer_email", "customer_phone", "site_address", "notes", "terms"].forEach((field) => {
@@ -54,6 +52,24 @@ export async function PATCH(request, { params }) {
         return Response.json({ ok: false, error: "Invalid variation status." }, { status: 400 });
       }
       updates.status = payload.status;
+    }
+
+    // Everything above except the status is content the customer reads. Once the
+    // variation is with them it is sealed, and the way through is the override,
+    // which pulls it back to draft and cancels the link they hold.
+    //
+    // A status change on its own is still allowed, so a sealed variation can be
+    // cancelled or moved on without first being pulled back. Cancelling is not
+    // editing: it withdraws the proposal rather than changing what it says.
+    const changesContent = Object.keys(updates).some((field) => field !== "status");
+    if (changesContent) {
+      const lock = lockError("variation", before.status);
+      if (lock) {
+        return Response.json(
+          { ok: false, error: lock.message, lockState: lock.lockState, canOverride: lock.canOverride },
+          { status: 409 }
+        );
+      }
     }
     if (Object.prototype.hasOwnProperty.call(payload, "deposit_required")) updates.deposit_required = Boolean(payload.deposit_required);
     if (Object.prototype.hasOwnProperty.call(payload, "deposit_percent")) {

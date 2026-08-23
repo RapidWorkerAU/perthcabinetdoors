@@ -3,12 +3,14 @@
 import { createPortal } from 'react-dom'
 import { useMemo, useRef, useState } from 'react'
 import { createSupabaseBrowserClient } from '../../../lib/supabase/client'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import {
   COLOUR_MATERIALS,
   COLOUR_ORDER_TYPES,
   COLOUR_SUPPLIERS,
   materialLabelForType,
   normaliseOrderTypes,
+  normaliseSupplierName,
   orderTypesLabel,
   thicknessOptionsForMaterial,
 } from '../../../lib/pcd-colour-library'
@@ -143,7 +145,7 @@ function boardSizeLabel(row: ColourRow) {
   const width  = Number(row.preferred_board_width_mm  || 0)
   const height = Number(row.preferred_board_height_mm || 0)
   if (!width && !height) return '-'
-  return `${width || '-'} x ${height || '-'}mm`
+  return `${height || '-'} x ${width || '-'}mm`
 }
 
 function rowFromDraft(draft: Draft, image: { imageUrl: string; imagePath: string | null }, sortOrder: number) {
@@ -152,7 +154,11 @@ function rowFromDraft(draft: Draft, image: { imageUrl: string; imagePath: string
     name:                      draft.name.trim(),
     image_url:                 image.imageUrl,
     image_path:                image.imagePath || draft.image_path || null,
-    supplier_name:             COLOUR_SUPPLIERS.includes(draft.supplier_name) ? draft.supplier_name : 'Polytec',
+    // Spelt the one way before the check. A brand arriving in the wrong case
+    // used to fail the match and be saved as Polytec instead.
+    supplier_name:             COLOUR_SUPPLIERS.includes(normaliseSupplierName(draft.supplier_name))
+      ? normaliseSupplierName(draft.supplier_name)
+      : 'Polytec',
     material_type:             draft.material_type,
     thickness:                 draft.thickness,
     finish_type:               draft.finish_type.trim(),
@@ -193,6 +199,12 @@ export default function ColourLibraryManager({
   const [searchQuery,  setSearchQuery]  = useState('')
   const [openFilter,   setOpenFilter]   = useState<string | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([])
+  // Plenty of the library has no cost against it yet, which is normal: those
+  // are costed by hand when a request becomes a quote. It is not a fault, it is
+  // a list of work. Worth surfacing only because the table shows a missing cost
+  // as "$0.00", which reads like a price rather than a blank, so there is no way
+  // to see how many there are or to find them.
+  const [onlyUnpriced, setOnlyUnpriced] = useState(false)
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({
     supplier:  [],
     finish:    [],
@@ -241,21 +253,31 @@ export default function ColourLibraryManager({
       ]
       return (
         (!q || searchable.filter(Boolean).some(v => String(v).toLowerCase().includes(q))) &&
-        (!columnFilters.supplier.length  || columnFilters.supplier.includes(row.supplier_name  || 'Polytec')) &&
+        (!columnFilters.supplier.length  || columnFilters.supplier.includes(normaliseSupplierName(row.supplier_name) || 'Polytec')) &&
         (!columnFilters.finish.length    || columnFilters.finish.includes(row.finish_type      || '-')) &&
         (!columnFilters.material.length  || columnFilters.material.includes(row.material_type  || '-')) &&
         (!columnFilters.thickness.length || columnFilters.thickness.includes(row.thickness     || '-')) &&
-        (!columnFilters.orderType.length || normaliseOrderTypes(row).some(t => columnFilters.orderType.includes(t)))
+        (!columnFilters.orderType.length || normaliseOrderTypes(row).some(t => columnFilters.orderType.includes(t))) &&
+        (!onlyUnpriced || !Number(row.cost_per_sqm_ex_gst))
       )
     })
-  }, [columnFilters, searchQuery, sortedRows])
+  }, [columnFilters, onlyUnpriced, searchQuery, sortedRows])
 
   const filterKey = useMemo(
-    () => `${searchQuery}|${JSON.stringify(columnFilters)}`,
-    [columnFilters, searchQuery]
+    () => `${searchQuery}|${onlyUnpriced}|${JSON.stringify(columnFilters)}`,
+    [columnFilters, onlyUnpriced, searchQuery]
   )
 
   const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(filteredRows, filterKey)
+
+  // Active colours with no cost per m2 yet, and how many active colours there
+  // are to compare it against.
+  const activeRows = useMemo(() => rows.filter(row => row.is_active !== false), [rows])
+  const activeCount = activeRows.length
+  const unpricedCount = useMemo(
+    () => activeRows.filter(row => !Number(row.cost_per_sqm_ex_gst)).length,
+    [activeRows]
+  )
 
   // ── State helpers ────────────────────────────────────────────────────────────
 
@@ -315,7 +337,9 @@ export default function ColourLibraryManager({
       last_cost_field:           null,
       order_types:               normaliseOrderTypes(row),
       is_active:                 row.is_active ?? true,
-      supplier_name:             COLOUR_SUPPLIERS.includes(row.supplier_name || '') ? row.supplier_name || 'Polytec' : 'Polytec',
+      supplier_name:             COLOUR_SUPPLIERS.includes(normaliseSupplierName(row.supplier_name))
+        ? normaliseSupplierName(row.supplier_name)
+        : 'Polytec',
       material_type:             row.material_type || 'decorative board',
       thickness:                 row.thickness     || '18mm',
       finish_type:               row.finish_type   || '',
@@ -823,6 +847,22 @@ export default function ColourLibraryManager({
           </div>
         </div>
 
+        {unpricedCount > 0 && (
+          <div className="flex flex-wrap items-center gap-3 mb-4 px-4 py-3 rounded-[8px] border border-[#dbd8cc] bg-[#f5f8f4]">
+            <span className="text-[13px] text-[#5a5a52]">
+              <strong className="font-semibold text-[#1a1a18]">{unpricedCount}</strong> of {activeCount} active colour{activeCount === 1 ? '' : 's'} have no cost against them yet.
+              Lines in {unpricedCount === 1 ? 'it' : 'them'} are costed by hand when a request becomes a quote.
+            </span>
+            <button
+              type="button"
+              onClick={() => setOnlyUnpriced(v => !v)}
+              className="ml-auto h-[30px] px-3 bg-white border border-[#dbd8cc] text-[12px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#edf4eb]"
+            >
+              {onlyUnpriced ? 'Show all colours' : 'Show only these'}
+            </button>
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -924,7 +964,7 @@ export default function ColourLibraryManager({
                       </span>
                     </td>
                     <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{row.name}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{row.supplier_name || 'Polytec'}</td>
+                    <td className="px-4 py-[11px] text-[#1a1a18]">{normaliseSupplierName(row.supplier_name) || 'Polytec'}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{materialLabelForType(row.material_type)}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{row.thickness || '-'}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{row.finish_type || '-'}</td>
@@ -942,24 +982,17 @@ export default function ColourLibraryManager({
                         {row.is_active ? 'Active' : 'Hidden'}
                       </span>
                     </td>
-                    <td className="px-4 py-[11px]">
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(row)}
-                          disabled={isSaving}
-                          className="text-[12px] font-medium text-[#1c2b1e] hover:underline disabled:opacity-50"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRowToDelete(row)}
-                          disabled={isSaving}
-                          className="text-[12px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-                        >
-                          Delete
-                        </button>
+                    {/* Edit used to sit here as a button and repeated the row,
+                        which already opens the edit modal. Delete is the only
+                        thing left that the row cannot do, so it goes in the
+                        menu and the width comes back to the money columns. */}
+                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
+                      <div className="flex justify-end">
+                        <ActionMenu label={`Open actions for ${row.name}`}>
+                          <ActionMenuItem variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
+                            Delete
+                          </ActionMenuItem>
+                        </ActionMenu>
                       </div>
                     </td>
                   </tr>

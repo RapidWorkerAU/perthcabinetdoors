@@ -4,8 +4,7 @@ import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../../../lib/pcd-business-defaults";
 import { calculateQuoteTotals } from "../../../../../../lib/pcd-quote-utils";
 import { defaultQuoteTermsFor } from "../../../../../../lib/pcd-quote-terms";
-import { isEdgeProfileSelectionAvailable } from "../../../../../../lib/quote-form-data";
-import { isMissingSupplierNameSchemaError, withoutSupplierName } from "../_quote-line-save";
+import { isMissingSupplierNameSchemaError, quoteLineRow, withoutSupplierName } from "../_quote-line-save";
 
 const LINE_COPY_FIELDS = [
   "product_type",
@@ -25,6 +24,13 @@ const LINE_COPY_FIELDS = [
   "hinge_holes",
   "hinge_supply",
   "hinge_qty",
+  // Which design, and which item in it, the line came from. These were missing,
+  // so a duplicated quote forgot it had been imported from a design: importing
+  // that design again added a second copy of every line instead of replacing
+  // the ones already there, because the sweep that replaces them is scoped by
+  // design_project_id.
+  "design_item_id",
+  "design_project_id",
   "product_unit_cost_ex_gst",
   "unit_cost_mode",
   "unit_cost_source_id",
@@ -60,71 +66,6 @@ function copyLineForCalculation(line) {
     copy[field] = line[field];
     return copy;
   }, {});
-}
-
-function cleanText(value) {
-  const text = String(value ?? "").trim();
-  return text || null;
-}
-
-function numberValue(value, fallback = 0) {
-  if (value === "" || value === null || typeof value === "undefined") return fallback;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function nullableNumber(value) {
-  if (value === "" || value === null || typeof value === "undefined") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function quoteLineRow(line, quoteId, sortOrder) {
-  return {
-    quote_id: quoteId,
-    sort_order: sortOrder,
-    product_type: cleanText(line.product_type),
-    product_name: cleanText(line.product_name),
-    description: cleanText(line.description),
-    material: cleanText(line.material),
-    supplier_name: cleanText(line.supplier_name),
-    thickness: cleanText(line.thickness),
-    width_mm: nullableNumber(line.width_mm),
-    height_mm: nullableNumber(line.height_mm),
-    finish: cleanText(line.finish),
-    colour: cleanText(line.colour),
-    profile_type: cleanText(line.profile_type),
-    profile: cleanText(line.profile),
-    edge_mould: isEdgeProfileSelectionAvailable(line.edge_mould, line.material) ? cleanText(line.edge_mould) : null,
-    qty: numberValue(line.qty, 1),
-    hinge_holes: Boolean(line.hinge_holes),
-    hinge_supply: false,
-    hinge_qty: cleanText(line.hinge_qty),
-    product_unit_cost_ex_gst: numberValue(line.product_unit_cost_ex_gst),
-    unit_cost_mode: line.unit_cost_mode === "auto" ? "auto" : "manual",
-    unit_cost_source_id: line.unit_cost_source_id || null,
-    unit_cost_source_label: cleanText(line.unit_cost_source_label),
-    unit_cost_per_sqm_ex_gst: numberValue(line.unit_cost_per_sqm_ex_gst),
-    calculated_unit_cost_ex_gst: numberValue(line.calculated_unit_cost_ex_gst),
-    material_cost_ex_gst: numberValue(line.material_cost_ex_gst),
-    hinge_drilling_cost_ex_gst: numberValue(line.hinge_drilling_cost_ex_gst),
-    hinge_supply_cost_ex_gst: 0,
-    hinge_drilling_qty: numberValue(line.hinge_drilling_qty),
-    hinge_supply_qty: 0,
-    labour_hours: numberValue(line.labour_hours),
-    worker_hourly_rate: numberValue(line.worker_hourly_rate),
-    labour_cost_ex_gst: numberValue(line.labour_cost_ex_gst),
-    travel_cost_ex_gst: numberValue(line.travel_cost_ex_gst),
-    delivery_cost_ex_gst: numberValue(line.delivery_cost_ex_gst),
-    installation_cost_ex_gst: numberValue(line.installation_cost_ex_gst),
-    other_cost_ex_gst: numberValue(line.other_cost_ex_gst),
-    markup_percent: numberValue(line.markup_percent),
-    markup_amount_ex_gst: numberValue(line.markup_amount_ex_gst),
-    unit_price_ex_gst: numberValue(line.unit_price_ex_gst),
-    line_total_ex_gst: numberValue(line.line_total_ex_gst),
-    client_note: cleanText(line.client_note),
-    notes: cleanText(line.notes),
-  };
 }
 
 export async function POST(_request, { params }) {

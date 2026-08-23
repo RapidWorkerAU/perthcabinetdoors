@@ -13,8 +13,9 @@
 import { useState } from "react";
 import styles from "../design.module.css";
 import { computeCutList } from "../../../../lib/pcd-cut-list";
-import { computeAllKickboardRuns, isCornerType } from "../../../../lib/pcd-kickboard-utils";
+import { computeAllKickboardRuns, hasKickboard, isCornerType } from "../../../../lib/pcd-kickboard-utils";
 import { computeAllBackPanelRuns, splitBackPanelWidths } from "../../../../lib/pcd-backpanel-utils";
+import { panelReach } from "../../../../lib/pcd-panel-options";
 import { computeAllBottomPanelRuns } from "../../../../lib/pcd-bottompanel-utils";
 import { computeAllTopPanelRuns } from "../../../../lib/pcd-toppanel-utils";
 import { computeAllFillerPanelRuns, fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
@@ -190,11 +191,12 @@ function BackPanelRunItem({ run, runId, openItems, toggleItem }) {
   const totalWidth = run.segments.reduce((sum, s) => sum + s.length, 0);
   const firstItem  = run.segments[0]?.item;
   const qty        = firstItem?.back_panel_qty || 1;
-  const panelH     = firstItem?.panel_to_floor
+  const runsToFloor = panelReach(firstItem, "back").toFloor;
+  const panelH     = runsToFloor
     ? (Number(firstItem.height_mm) || 0) + (Number(firstItem.kickboard_height_mm) || 120)
     : (Number(firstItem.height_mm) || 0);
   const widths = splitBackPanelWidths(totalWidth, qty);
-  const showKickboard = firstItem?.has_kickboard && !firstItem?.panel_to_floor;
+  const showKickboard = hasKickboard(firstItem) && !runsToFloor;
   const kickboardH = Number(firstItem?.kickboard_height_mm) || 120;
   return (
     <RunItem runId={runId} dot="#a855f7" tag="run" openItems={openItems} toggleItem={toggleItem}

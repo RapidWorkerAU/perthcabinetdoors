@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
   snap, snapToWall, resolveCollision1D, findEdgeSnap,
   occupiedFootprint, islandOccupiedRect, cabinetVerticalRange,
-  findOverlappingItemIds, getAbsPos, perpendicularGaps,
+  findOverlappingItemIds, getAbsPos, nearestGaps,
 } from "../lib/pcd-plan-geometry.js";
 
 const ROOM = { width_mm: 1800, depth_mm: 3000 };
@@ -147,33 +147,73 @@ test("snapToWall keeps right-wall items in the new format", () => {
   assert.equal(onRight.x_mm, 0, "must stay 0 or getAbsPos reads it as legacy");
 });
 
-test("perpendicular gaps: front to the far wall, back flush", () => {
-  // A lone top-wall base cabinet (depth 560) in a 4000×3000 room. Nothing in
-  // front, so the front gap runs to the bottom wall; the back is on the wall.
-  const cab = { id: "a", item_type: "base_cabinet", wall: "top", x_mm: 0, y_mm: 0, width_mm: 600, depth_mm: 560, height_mm: 720 };
-  const g = perpendicularGaps(cab, [cab], 4000, 3000);
-  assert.equal(g.frontGap, 3000 - 560, "front reaches the far wall");
-  assert.equal(g.backGap, 0, "back is flush to its wall");
+// nearestGaps is what every dimension line on the plan is drawn from: all four
+// sides of one item, each measured to the nearest thing in that direction.
+const GAP_ROOM = [4000, 3000];
+const baseCab = (over = {}) => ({
+  id: "a", item_type: "base_cabinet", wall: "top",
+  x_mm: 0, y_mm: 0, width_mm: 600, depth_mm: 560, height_mm: 720, ...over,
 });
 
-test("perpendicular gaps: measures to the item in front, along-overlap only", () => {
-  const top = { id: "t", item_type: "base_cabinet", wall: "top", x_mm: 0, y_mm: 0, width_mm: 600, depth_mm: 560, height_mm: 720 };
-  const bot = { id: "b", item_type: "base_cabinet", wall: "bottom", x_mm: 0, y_mm: 0, width_mm: 600, depth_mm: 560, height_mm: 720 };
-  // Facing cabinets, x-overlapping: gap between their fronts.
-  assert.equal(perpendicularGaps(top, [top, bot], 4000, 3000).frontGap, 3000 - 560 - 560);
-  // Slide the bottom one out of the top one's width — no along overlap, so it
-  // no longer obstructs and the front runs to the wall again.
-  const botClear = { ...bot, x_mm: 2000 };
-  assert.equal(perpendicularGaps(top, [top, botClear], 4000, 3000).frontGap, 3000 - 560);
+test("nearest gaps: an item alone in the room measures to the four walls", () => {
+  const cab = baseCab();
+  const g = nearestGaps(cab, [cab], ...GAP_ROOM);
+  assert.equal(g.up.gap, 0, "back is flush to its wall");
+  assert.equal(g.down.gap, 3000 - 560, "front reaches the far wall");
+  assert.equal(g.left.gap, 0, "hard into the left corner");
+  assert.equal(g.right.gap, 4000 - 600);
 });
 
-test("perpendicular gaps: benchtop overhang is what's measured to", () => {
-  const bare = { id: "a", item_type: "base_cabinet", wall: "top", x_mm: 0, y_mm: 0, width_mm: 600, depth_mm: 560, height_mm: 720, front_type: "doors", door_style: { thickness_mm: 18 } };
+test("nearest gaps: measures to the item in the way, not through it", () => {
+  const top = baseCab();
+  const bot = baseCab({ id: "b", wall: "bottom" });
+  // Facing cabinets that overlap on x: the gap is between their fronts.
+  assert.equal(nearestGaps(top, [top, bot], ...GAP_ROOM).down.gap, 3000 - 560 - 560);
+  // Slide it out of the top one's width and nothing is in the way any more.
+  assert.equal(nearestGaps(top, [top, baseCab({ id: "b", wall: "bottom", x_mm: 2000 })], ...GAP_ROOM).down.gap, 3000 - 560);
+});
+
+test("nearest gaps: an obstruction blocks, it is not seen through", () => {
+  // A fridge recess standing in front of a cabinet. Obstructions used to be
+  // skipped outright, so the dimension line read straight past this to the
+  // far wall.
+  const cab = baseCab();
+  const fridge = { id: "f", item_type: "obstruction", wall: "island", x_mm: 0, y_mm: 1200, width_mm: 900, depth_mm: 700, height_mm: 1800 };
+  assert.equal(nearestGaps(cab, [cab, fridge], ...GAP_ROOM).down.gap, 1200 - 560);
+});
+
+test("nearest gaps: a freestanding item measures to its neighbours too", () => {
+  // Islands used to be measured blindly to the four room walls with nothing
+  // between them considered.
+  const island = { id: "i", item_type: "base_cabinet", wall: "island", x_mm: 1500, y_mm: 1200, width_mm: 700, depth_mm: 600, height_mm: 720 };
+  const cab = baseCab({ id: "w", x_mm: 1500 });
+  const g = nearestGaps(island, [island, cab], ...GAP_ROOM);
+  assert.equal(g.up.gap, 1200 - 560, "stops at the cabinet on the top wall");
+  assert.equal(g.down.gap, 3000 - 1200 - 600, "nothing below, so the far wall");
+});
+
+test("nearest gaps: height is respected, so a wall cabinet is not in the way", () => {
+  // A wall cabinet hung over the facing run shares the floor plan but not the
+  // height, so it must not shorten a base cabinet's measurement.
+  const cab = baseCab();
+  const wall = { id: "w", item_type: "wall_cabinet", wall: "bottom", x_mm: 0, y_mm: 0, width_mm: 600, depth_mm: 350, height_mm: 720, mount_height_mm: 1500 };
+  assert.equal(nearestGaps(cab, [cab, wall], ...GAP_ROOM).down.gap, 3000 - 560);
+});
+
+test("nearest gaps: the benchtop overhang is what gets measured to", () => {
+  const bare = baseCab({ front_type: "doors", door_style: { thickness_mm: 18 } });
   const withTop = { ...bare, has_benchtop: true };
-  const gBare = perpendicularGaps(bare, [bare], 4000, 3000).frontGap;
-  const gTop  = perpendicularGaps(withTop, [withTop], 4000, 3000).frontGap;
-  // The top projects past the carcass (door + overhang), so its front is closer
-  // to the far wall — a smaller front gap than the bare carcass.
+  const gBare = nearestGaps(bare, [bare], ...GAP_ROOM).down.gap;
+  const gTop  = nearestGaps(withTop, [withTop], ...GAP_ROOM).down.gap;
   assert.ok(gTop < gBare, `benchtop front (${gTop}) is proud of the carcass (${gBare})`);
   assert.equal(gBare - gTop, 18 + 20, "by the door thickness + default overhang");
+});
+
+test("nearest gaps: the dragged item never measures against itself", () => {
+  // The canvas passes the live item list, which still holds the pre-drag copy
+  // of whatever is moving; counting it would report a gap of 0 on every side.
+  const cab = baseCab();
+  const stale = { ...cab, y_mm: 0 };
+  const g = nearestGaps({ ...cab, wall: "island", x_mm: 1000, y_mm: 1000 }, [stale], ...GAP_ROOM, "a");
+  assert.equal(g.up.gap, 1000);
 });

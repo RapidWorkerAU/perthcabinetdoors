@@ -220,9 +220,9 @@ test("an approved change prints was and now, and only now is cuttable", () => {
   assert.equal(labels.length, 2);
   assert.deepEqual(labels.map((label) => label.band.tone), ["outline", "solid"]);
   assert.deepEqual(labels.map((label) => label.band.right), ["SUPERSEDED", "CUT THIS"]);
-  assert.equal(labels[0].size, "347mm x 697mm", "the was label carries the old size");
+  assert.equal(labels[0].size, "697mm x 347mm", "the was label carries the old size");
   assert.equal(labels[0].struckSize, true, "and strikes it through");
-  assert.equal(labels[1].size, "347mm x 747mm", "the now label carries the current size");
+  assert.equal(labels[1].size, "747mm x 347mm", "the now label carries the current size");
 });
 
 test("a proposed removal is held, not dropped", () => {

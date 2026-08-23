@@ -1,5 +1,6 @@
 import { createOrderFromQuote } from "../../../../lib/pcd-order-from-quote";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
+import { approvalEvidence } from "../../../../lib/pcd-approval-evidence";
 import { createCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { upsertCustomerByEmail } from "../../../../lib/pcd-customer-utils";
@@ -57,9 +58,13 @@ export async function POST(request) {
     }
 
     const supabase = createSupabaseAdminClient();
+    // The lines come with it because the approval records a fingerprint of
+    // what the customer agreed to, and that is made of the lines. Without them
+    // the fingerprint would describe the totals alone and two quotes with the
+    // same total but different work would look identical.
     const { data: quote, error } = await supabase
       .from("pcd_quotes")
-      .select("*")
+      .select("*, pcd_quote_line_items(*)")
       .eq("access_code", accessCode)
       .maybeSingle();
 
@@ -134,6 +139,37 @@ export async function POST(request) {
         // against the customer must not block the customer's acceptance.
       }
 
+      // CLAIM THE QUOTE BEFORE MAKING ANYTHING FROM IT.
+      //
+      // The status was read at the top of this request. Between that read and
+      // here, an admin override can pull the quote back to draft and rotate its
+      // access code, because a customer who never received the email still has
+      // to be editable around. Without this claim the two would interleave: the
+      // override would win the status, this would still raise an order from the
+      // version being edited, and the order would exist against a quote that no
+      // longer read as approved.
+      //
+      // Conditional on the status we actually read, so exactly one of the two
+      // can win and it is decided by the database rather than by timing.
+      const { data: claimed, error: claimError } = await supabase
+        .from("pcd_quotes")
+        .update({ status: "approved", approved_at: now })
+        .eq("id", quote.id)
+        .eq("status", quote.status)
+        .select("id")
+        .maybeSingle();
+      if (claimError) throw claimError;
+      if (!claimed) {
+        return Response.json(
+          {
+            ok: false,
+            error:
+              "This quote was changed while you had it open, so it could not be approved. Please contact us and we will send you the current version.",
+          },
+          { status: 409 }
+        );
+      }
+
       orderId = await createOrderFromQuote(supabase, quote, { markAcceptedAt: !quote.deposit_required });
       const depositAmount = depositAmountForQuote(quote);
       if (quote.deposit_required && depositAmount > 0) {
@@ -194,15 +230,51 @@ export async function POST(request) {
         ? { status: "approved", approved_at: now, order_id: orderId }
         : { status: "rejected", rejected_at: now };
 
-    const { error: updateError } = await supabase.from("pcd_quotes").update(updatePayload).eq("id", quote.id);
+    // An approval has already claimed the status above; this fills in the order
+    // link. A rejection has not, so it is claimed here on the same condition,
+    // for the same reason: an override must not be overwritten by a rejection
+    // of the version it replaced.
+    const finalise = supabase.from("pcd_quotes").update(updatePayload).eq("id", quote.id);
+    const { data: finalised, error: updateError } = await (action === "approved"
+      ? finalise.select("id").maybeSingle()
+      : finalise.eq("status", quote.status).select("id").maybeSingle());
     if (updateError) throw updateError;
+    if (action === "rejected" && !finalised) {
+      return Response.json(
+        {
+          ok: false,
+          error:
+            "This quote was changed while you had it open, so your response could not be recorded. Please contact us and we will send you the current version.",
+        },
+        { status: 409 }
+      );
+    }
 
-    await supabase.from("pcd_quote_actions").insert({
+    // WHAT they agreed to, not just that they agreed. See
+    // lib/pcd-approval-evidence.js. Written best-effort: a customer's approval
+    // must never fail because the evidence column is not there yet, so a
+    // rejected insert is retried without it and said out loud.
+    const evidence = approvalEvidence({
+      request,
+      lines: quote.pcd_quote_line_items || [],
+      totals: quote,
+      accessCode,
+    });
+    const actionRow = {
       quote_id: quote.id,
       action,
       client_name: String(payload.client_name || "").trim(),
       note: payload.note || null,
-    });
+    };
+    const { error: actionError } = await supabase.from("pcd_quote_actions").insert({ ...actionRow, evidence });
+    if (actionError) {
+      const { error: retryError } = await supabase.from("pcd_quote_actions").insert(actionRow);
+      if (retryError) throw retryError;
+      console.error(
+        "[quote-workflow] pcd_quote_actions.evidence is missing, so this response was recorded without any " +
+          "record of what the customer actually agreed to. Run supabase/202608221200_pcd_approval_evidence.sql."
+      );
+    }
 
     if (action === "rejected") {
       await logOrderActivity(supabase, {

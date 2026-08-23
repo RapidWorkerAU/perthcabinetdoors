@@ -1,5 +1,6 @@
 import { requireAdminApiContext } from "../../../../../../../../../lib/admin-api";
-import { isVariationFinal, recalcVariation, variationLineDelta, VARIATION_LINE_ACTIONS } from "../../../../../../../../../lib/pcd-order-variations";
+import { recalcVariation, variationLineDelta, VARIATION_LINE_ACTIONS } from "../../../../../../../../../lib/pcd-order-variations";
+import { assertOpenForEditing } from "../../../../../../../../../lib/pcd-document-lock";
 import {
   JOB_COST_ACTION,
   jobCostChangeLabel,
@@ -9,6 +10,7 @@ import {
 } from "../../../../../../../../../lib/pcd-order-costs";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../../../lib/pcd-business-defaults";
+import { createSupplierGuard } from "../../../../../../../../../lib/pcd-supplier-guard";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -32,15 +34,6 @@ function hasValue(value) {
 
 function isBoardPricedLine(row) {
   return !["Hardware", "base_cabinet"].includes(row.product_type) && hasValue(row.material);
-}
-
-function changedBoardFields(row, sourceLine = null) {
-  if (!sourceLine) return true;
-  return ["title", "product_type", "material", "supplier_name", "thickness", "width_mm", "height_mm", "finish", "colour", "profile_type", "profile", "edge_mould", "qty"].some((field) => {
-    const next = String(row[field] ?? "").trim();
-    const before = String(sourceLine[field] ?? "").trim();
-    return next !== before;
-  });
 }
 
 function lineAreaSqm(row) {
@@ -128,7 +121,7 @@ async function assertEditable(supabase, orderId, variationId) {
     .eq("order_id", orderId)
     .maybeSingle();
   if (error || !data) throw error || new Error("Variation not found.");
-  if (isVariationFinal(data.status)) throw new Error("Finalised variations cannot be edited.");
+  assertOpenForEditing("variation", data.status);
 }
 
 // A job cost line is rebuilt from scratch on every edit rather than patched
@@ -235,6 +228,9 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
   const next = { ...before, ...updates };
   if (next.action === "change" || next.action === "remove") {
     if (sourceLine) updates.original_item_snapshot = originalItemSnapshot(sourceLine);
+    // Pointing a line at a different order item moves which cabinet it belongs
+    // to, so the grouping has to follow rather than keep the old cabinet.
+    if (sourceLine) updates.design_item_id = sourceLine.design_item_id ?? null;
   } else if (Object.prototype.hasOwnProperty.call(payload, "action")) {
     updates.original_item_snapshot = null;
   }
@@ -244,15 +240,16 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
   } else if (isBoardPricedLine(next)) {
     // A hand-typed unit cost wins over the board rate, same as a quote line.
     const manualUnitCost = payload.unit_cost_mode === "manual" ? toNumber(payload.product_unit_cost_ex_gst) : 0;
-    if (manualUnitCost <= 0 && changedBoardFields(next, sourceLine) && toNumber(next.unit_cost_per_sqm_ex_gst) <= 0) {
-      throw new Error("The selected board does not have an uploaded price. Add the board cost before saving this variation line.");
-    }
+    // No throw here any more. Refusing to save a line because its board has no
+    // cost, or because a size has not been typed yet, meant the line could not
+    // be written down at all and the work already entered was lost with the
+    // error. Much of the colour library has no cost against it and those lines
+    // are costed by hand, so this was a wall across an ordinary way of working.
+    // Anything with no cost is named at the send step instead, once, with every
+    // line in view. See lib/pcd-variation-pricing.js.
     if (manualUnitCost > 0 || toNumber(next.unit_cost_per_sqm_ex_gst) > 0) {
       const calculatedCost = calculatedUnitCost(next);
-      if (manualUnitCost <= 0 && calculatedCost <= 0) {
-        throw new Error("Enter width and height before saving this priced board variation line.");
-      }
-      const unitCost = manualUnitCost > 0 ? manualUnitCost : calculatedCost;
+      const unitCost = manualUnitCost > 0 ? manualUnitCost : Math.max(0, calculatedCost);
       const calculated = calculateQuoteLine({
         ...next,
         calculated_unit_cost_ex_gst: calculatedCost,
@@ -272,6 +269,11 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
 function isMissingSupplierNameColumn(error) {
   const message = String(error?.message || "").toLowerCase();
   return error?.code === "PGRST204" && message.includes("supplier_name") && message.includes("pcd_order_variation_lines");
+}
+
+function isMissingDesignItemColumn(error) {
+  const message = String(error?.message || "");
+  return error?.code === "PGRST204" && message.includes("design_item_id");
 }
 
 function isMissingOriginalSnapshotColumn(error) {
@@ -295,6 +297,7 @@ function withoutFallbackColumns(row, error) {
   const rest = { ...row };
   if (isMissingSupplierNameColumn(error)) delete rest.supplier_name;
   if (isMissingOriginalSnapshotColumn(error)) delete rest.original_item_snapshot;
+  if (isMissingDesignItemColumn(error)) delete rest.design_item_id;
   if (isMissingPricingColumn(error)) {
     delete rest.unit_cost_source_id;
     delete rest.unit_cost_source_label;
@@ -337,6 +340,13 @@ export async function PATCH(request, { params }) {
     const order = nextAction === JOB_COST_ACTION ? await loadOrder(context.supabase, orderId) : null;
 
     const updates = updatesFromPayload(payload, before, sourceLine, businessDefaults, pricingSource, order);
+
+    // ONE BRAND PER LINE. Against the line as it will be, not the fields that
+    // arrived: changing only the profile still has to agree with the colour
+    // already sitting on the line. See lib/pcd-supplier-guard.js.
+    const problems = (await createSupplierGuard(context.supabase))({ ...before, ...updates });
+    if (problems.length) return Response.json({ ok: false, error: problems[0] }, { status: 400 });
+
     let { data: line, error } = await context.supabase
       .from("pcd_order_variation_lines")
       .update(updates)

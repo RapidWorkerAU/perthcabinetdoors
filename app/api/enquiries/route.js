@@ -8,6 +8,7 @@ import {
 } from "../../../lib/pcd-email-templates";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 import { upsertCustomerByEmail } from "../../../lib/pcd-customer-utils";
+import { attemptSend, customerNoticeFor, reportSendFailures } from "../../../lib/pcd-notify";
 
 const enquirySchema = z.object({
   customerName: z.string().optional(),
@@ -27,6 +28,7 @@ export async function POST(request) {
 
     const payload = parsed.data;
     const supabase = createSupabaseAdminClient();
+    const results = [];
 
     // Same rule as a quote request: the enquiry makes a customer, keyed on the
     // address, so the message shows on their desk instead of only in a list of
@@ -62,7 +64,7 @@ export async function POST(request) {
     if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const businessRecipients = uniqueRecipients(SALES_EMAIL, process.env.QUOTE_TO_EMAIL);
-      const businessEmail = await resend.emails.send({
+      results.push(await attemptSend("business", () => resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
         to: businessRecipients,
         replyTo: payload.customerEmail || undefined,
@@ -79,13 +81,10 @@ export async function POST(request) {
           "",
           payload.message,
         ].join("\n"),
-      });
-      if (businessEmail.error) {
-        throw new Error(businessEmail.error.message || "Could not send enquiry notification email.");
-      }
+      })));
 
       if (payload.customerEmail) {
-        const customerEmail = await resend.emails.send({
+        results.push(await attemptSend("customer", () => resend.emails.send({
           from: process.env.RESEND_FROM_EMAIL,
           to: [payload.customerEmail],
           replyTo: SALES_EMAIL,
@@ -99,14 +98,19 @@ export async function POST(request) {
             `Perth Cabinet Doors`,
             SALES_EMAIL,
           ].join("\n"),
-        });
-        if (customerEmail.error) {
-          throw new Error(customerEmail.error.message || "Could not send customer confirmation email.");
-        }
+        })));
       }
     }
 
-    return Response.json({ ok: true });
+    // THE ENQUIRY IS SAVED. THE CUSTOMER IS DONE.
+    //
+    // This used to throw when a send failed, which became a 500 and told
+    // somebody their message had not gone through when it had. The worst of it
+    // needed nothing to be wrong at all: our notification went out fine, only
+    // the customer's own copy bounced, and we still said the whole thing
+    // failed. The row shows on the enquiries screen either way.
+    const failures = reportSendFailures("enquiry", results);
+    return Response.json({ ok: true, notice: customerNoticeFor(failures) });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not send enquiry." }, { status: 500 });
   }

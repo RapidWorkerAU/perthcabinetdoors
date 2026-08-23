@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
+import { edgeImageSrc } from "@/lib/pcd-profile-images";
 import { useEffect, useState } from "react";
 import PortalModal from "@/components/PortalModal";
 import PublicButton from "@/components/public/PublicButton";
@@ -18,7 +19,7 @@ function assetSlug(value) {
 }
 
 function edgeOptionSrc(label) {
-  return `/images/edges/${assetSlug(label)}.png`;
+  return edgeImageSrc(label);
 }
 
 function profileOptionSrc(profileType, label) {

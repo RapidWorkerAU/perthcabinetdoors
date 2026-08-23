@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { IconEdit, IconFileText, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconFileText, IconPlus, IconTrash } from '@tabler/icons-react'
 import { createSupabaseBrowserClient } from '../../../../lib/supabase/client'
 import { AdminPagination, useAdminPagination } from '../../_components/AdminPagination'
 import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
@@ -201,9 +201,8 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
                     <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
                       <div className="flex justify-end">
                         <ActionMenu label={`Open actions for product ${product.card_title || product.name || 'product'}`}>
-                          <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => router.push(`/admin/products/${product.id}/edit`)}>
-                          Edit
-                          </ActionMenuItem>
+                          {/* Edit was here and repeated the row: clicking the row
+                              already opens the editor. */}
                           <ActionMenuItem icon={<IconFileText size={14} />} onClick={() => router.push(`/admin/products/${product.id}/quote`)}>
                           Quote
                           </ActionMenuItem>

@@ -7,10 +7,25 @@ import TermsEditor from "../../_components/TermsEditor";
 import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-html";
 import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
+import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
+import { asSelectionRows, useProfileLibrary } from "../../../../lib/use-profile-library";
+import {
+  edgesForSupplier,
+  fieldsClearedBySupplierChange,
+  profileCategoriesForSupplier,
+  profilesForSupplier,
+  suppliersForMaterial,
+  supplierOffersEdges,
+  supplierOffersProfiles,
+} from "../../../../lib/pcd-supplier-selection";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney } from "../../../../lib/pcd-quote-utils";
 import AddressFields from "../../../../components/admin/AddressFields";
+import OverrideModal from "../../_components/OverrideModal";
+import LockedRegion from "../../_components/LockedRegion";
+import AcceptForCustomerModal from "../../_components/AcceptForCustomerModal";
+import { editability } from "../../../../lib/pcd-document-lock";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
 import {
   edgeProfilesForMaterial,
@@ -88,10 +103,23 @@ const emptyLine = {
   client_note: "",
 };
 
-function emptyLineWithDefaults(defaults = DEFAULT_BUSINESS_DEFAULTS) {
+// A NEW LINE WAITS FOR THE REAL MARKUP RATHER THAN GUESSING AT ONE.
+//
+// businessDefaults starts as the built-in constants and is replaced when the
+// settings come back from the server. A line added in that gap was stamped with
+// the built-in 40%, and nothing ever put it right: the effect that fills in
+// defaults only touches a BLANK markup, and 40 is not blank. It then looked
+// exactly like a rate somebody had chosen. 59 lines across the quotes in the
+// database are at 40% while the configured markup is 75%, on quotes that mix
+// the two on the same material.
+//
+// So until the real settings are in, the markup is left blank and filled the
+// moment they arrive. calculateQuoteLine reads a blank as "use the default", so
+// the figure is right even in that gap.
+function emptyLineWithDefaults(defaults, loaded = false) {
   return {
     ...emptyLine,
-    markup_percent: defaults.markup_percent ?? DEFAULT_BUSINESS_DEFAULTS.markup_percent,
+    markup_percent: loaded && defaults?.markup_percent != null ? defaults.markup_percent : "",
   };
 }
 
@@ -176,7 +204,7 @@ function lineFromQuoteLine(line) {
     thickness: line.thickness ?? "",
     width_mm: line.width_mm ?? "",
     height_mm: line.height_mm ?? "",
-    supplier_name: line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || (line.material ? COLOUR_SUPPLIERS[0] : ""),
+    supplier_name: line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || "",
     profile_type: line.profile_type ?? "",
     hinge_holes: Boolean(line.hinge_holes),
     hinge_qty: line.hinge_qty ?? "",
@@ -210,7 +238,9 @@ function formFromQuote(quote) {
     customer_phone: quote.customer_phone || "",
     ...addressColumns(addressFromRecord(quote)),
     project_name: quote.project_name || "",
-    labour_hours: quote.manual_labour_hours ?? quote.labour_hours ?? "",
+    // The override, not the total. Null means nothing has been typed, so the
+    // box shows what the lines work out to and stays editable.
+    labour_hours: quote.manual_labour_hours ?? "",
     worker_hourly_rate: hourlyRateForForm(quote.worker_hourly_rate),
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
@@ -248,7 +278,9 @@ function mergeQuoteIntoForm(current, quote) {
     customer_phone: quote.customer_phone || "",
     ...addressColumns(addressFromRecord(quote)),
     project_name: quote.project_name || "",
-    labour_hours: quote.manual_labour_hours ?? quote.labour_hours ?? "",
+    // The override, not the total. Null means nothing has been typed, so the
+    // box shows what the lines work out to and stays editable.
+    labour_hours: quote.manual_labour_hours ?? "",
     worker_hourly_rate: hourlyRateForForm(quote.worker_hourly_rate),
     travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
     delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
@@ -284,7 +316,7 @@ function Field({ label, children, wide = false }) {
 
 function quoteLineSizeText(line) {
   if (!line.width_mm && !line.height_mm) return "";
-  return `${line.width_mm || "-"} x ${line.height_mm || "-"}`;
+  return `${line.height_mm || "-"} x ${line.width_mm || "-"}`;
 }
 
 function lineValue(value, fallback = "-") {
@@ -427,8 +459,12 @@ function assetSlug(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+// Where an edge photo lives. Asked of lib/pcd-profile-images.js rather than
+// worked out here: the rule has exceptions, and a copy of it that does not
+// know them is how the 1mm Bevel Edge showed a broken tile while the square
+// edge beside it was fine.
 function edgeOptionSrc(label) {
-  return `/images/edges/${assetSlug(label)}.png`;
+  return edgeImageSrc(label);
 }
 
 function profileOptionSrc(profileType, label) {
@@ -630,7 +666,11 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", di
           <img src={selectedOption.src} alt="" className="h-4 w-4 flex-shrink-0 rounded-[3px] border border-[#dbd8cc] object-cover" />
         ) : null}
         <span className={`min-w-0 flex-1 truncate ${value ? "" : "text-[#8b8a81]"}`}>
-          {selectedOption?.label || selectedOption?.name || displayValue || value || placeholder}
+          {selectedOption?.label ||
+            selectedOption?.name ||
+            displayValue ||
+            (value && !String(value).includes("::") ? value : "") ||
+            placeholder}
         </span>
       </button>
       <button
@@ -729,9 +769,13 @@ const QuoteTileCombobox = memo(function QuoteTileCombobox({ compact = true, disa
 const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact = true, disabled = false, line, onChange }) {
   const [databaseOptions, setDatabaseOptions] = useState(null);
   const options = databaseOptions || [];
-  const selectedSupplier = COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0];
-  const filteredOptions = options.filter((option) => (option.supplier || COLOUR_SUPPLIERS[0]) === selectedSupplier);
-  const selectedValue = [selectedSupplier, line.finish, line.colour, line.thickness].filter(Boolean).join("::");
+  const selectedSupplier = String(line.supplier_name || "").trim();
+  const filteredOptions = selectedSupplier
+    ? options.filter((option) => String(option.supplier || "").toLowerCase() === selectedSupplier.toLowerCase())
+    : [];
+  const selectedValue = line.colour
+    ? [selectedSupplier, line.finish, line.colour, line.thickness].filter(Boolean).join("::")
+    : "";
   const displayValue = [line.colour, line.thickness].filter(Boolean).join(" - ");
 
   useEffect(() => {
@@ -769,8 +813,14 @@ const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact = true, 
 
   return (
     <QuoteImageCombobox
-      disabled={disabled || !line.material}
-      placeholder={line.material ? "Finish, colour & thickness" : "Select material first"}
+      disabled={disabled || !line.material || !selectedSupplier}
+      placeholder={
+        !line.material
+          ? "Select material first"
+          : !selectedSupplier
+            ? "Pick a brand first"
+            : "Finish, colour & thickness"
+      }
       value={selectedValue}
       displayValue={displayValue}
       options={filteredOptions}
@@ -880,6 +930,10 @@ export default function QuoteEditor({ quoteId }) {
   const { toast } = useToast();
   const [publishEmail, setPublishEmail] = useState(null);
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
+  // Whether these are the REAL settings or still the built-in constants. Without
+  // this the two are indistinguishable, which is how a line came to be stamped
+  // with a markup nobody configured.
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
   const [businessDefaultsError, setBusinessDefaultsError] = useState("");
 
   const colEls = useRef([])
@@ -926,8 +980,8 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   const totals = useMemo(
-    // form.labour_hours is the MANUAL base here (the "Hours" input); pass it as
-    // manual_labour_hours so the total = base + sum line labour, never basex2.
+    // form.labour_hours is the OVERRIDE here, not a base to add on top. Blank
+    // means follow the lines. See calculateQuoteTotals.
     () => calculateQuoteTotals(form.lines, form.gst_rate, { ...form, manual_labour_hours: form.labour_hours, business_defaults: businessDefaults }),
     [
       form.lines,
@@ -944,6 +998,26 @@ export default function QuoteEditor({ quoteId }) {
       businessDefaults,
     ]
   );
+  // A CALCULATED FIGURE BELONGS IN ITS FIELD, NOT BESIDE IT.
+  //
+  // Both of these boxes hold a number worked out from the business defaults
+  // until somebody types over it. Before, one of them held a blank with the
+  // figure greyed out behind it as a placeholder, and the other held only the
+  // part of the number the person had typed, with the automatic part shown in
+  // a sentence underneath. Either way the number on screen could not be
+  // selected, edited or cleared, so a wrong figure was a dead end on the very
+  // screen it should have been corrected from.
+  //
+  // Now the box shows the figure, typing pins it, and clearing it goes back to
+  // following the lines.
+  const isOverridden = (value) => String(value ?? "").trim() !== "";
+  const labourOverridden = isOverridden(form.labour_hours);
+  const labourFieldValue = labourOverridden ? form.labour_hours : String(totals.calculated_labour_hours ?? 0);
+  const edgingOverridden = isOverridden(form.edging_cost_override_ex_gst);
+  const edgingFieldValue = edgingOverridden
+    ? form.edging_cost_override_ex_gst
+    : String(totals.edging_calculated_cost_ex_gst ?? 0);
+
   const publicUrl =
     typeof window !== "undefined" && form.access_code
       ? `${window.location.origin}/quotes/view?code=${form.access_code}`
@@ -956,6 +1030,12 @@ export default function QuoteEditor({ quoteId }) {
   // ids were captured. One flat read, shared by every line, rather than the
   // per-material fetch the colour picker does.
   const [colourSwatches, setColourSwatches] = useState([]);
+  // Which brands stock which material. Same source the public quote form
+  // reads, so the two screens offer the same brands for the same material.
+  const [supplierColourRows, setSupplierColourRows] = useState([]);
+  // The profile catalogue. One fetch for the whole editor, not one per line.
+  const profileLibrary = useProfileLibrary();
+  const profileRows = useMemo(() => asSelectionRows(profileLibrary.profiles), [profileLibrary.profiles]);
   const swatchIndex = useMemo(() => {
     const byId = new Map();
     const byName = new Map();
@@ -971,22 +1051,71 @@ export default function QuoteEditor({ quoteId }) {
     return { byId, byName };
   }, [colourSwatches]);
 
+  /**
+   * The brands that stock this line's material.
+   *
+   * Derived from the colour library rather than a list in code, so adding
+   * Formica is adding its colours. A brand already on the line is kept in the
+   * list even if it is no longer stocked, or an older line would read as
+   * having no brand and quietly lose it on the next save.
+   */
+  function supplierOptionsFor(line) {
+    const names = suppliersForMaterial(supplierColourRows, line.material);
+    const current = String(line.supplier_name || "").trim();
+    const all =
+      current && !names.some((name) => name.toLowerCase() === current.toLowerCase())
+        ? [...names, current]
+        : names;
+    return all.map((name) => ({ label: name, name, value: name }));
+  }
+
+  function profileTypesFor(line, supplier, useLibrary) {
+    return useLibrary
+      ? profileCategoriesForSupplier(profileRows, { supplier, thickness: line.thickness })
+      : profileTypesForSelection(line.material, line.thickness);
+  }
+
   function lineViewModel(line) {
     const cached = lineViewModelCacheRef.current.get(line);
-    if (cached?.businessDefaults === businessDefaults && cached?.swatchIndex === swatchIndex) return cached.value;
+    if (
+      cached?.businessDefaults === businessDefaults &&
+      cached?.swatchIndex === swatchIndex &&
+      cached?.profileRows === profileRows
+    ) {
+      return cached.value;
+    }
 
-    const edgeProfiles = edgeProfilesForMaterial(line.material);
+    // WHOSE BOARD IS THIS. A door is one brand's colour on that brand's
+    // profile, so the brand on the line decides both lists below. Until the
+    // catalogue has actually loaded we leave the old material-wide lists in
+    // place rather than narrowing to nothing, because an empty dropdown and a
+    // failed read look identical on screen.
+    const supplier = String(line.supplier_name || "").trim();
+    const useLibrary = profileLibrary.isReady && Boolean(supplier);
+    const edgeProfiles = useLibrary
+      ? edgesForSupplier(profileRows, { supplier, material: line.material })
+      : edgeProfilesForMaterial(line.material);
+    // A brand that makes no edges gets no edge field at all, not an empty one.
+    const brandDoesEdges = useLibrary ? supplierOffersEdges(profileRows, supplier) : true;
+    const brandDoesProfiles = useLibrary ? supplierOffersProfiles(profileRows, supplier) : true;
     const value = {
       calculated: calculateQuoteLine(line, businessDefaults),
       materialOptions: MATERIALS_BY_TYPE[line.product_type] || MATERIAL_OPTIONS,
-      showEdges: edgeProfiles.length > 0,
-      showProfiles: line.material === "Thermolaminate" && Boolean(line.thickness),
-      edgeOptions: edgeProfiles.map((edge) => ({
-        name: edge,
-        label: edge,
-        meta: "Edge profile",
-        src: edgeOptionSrc(edge),
-      })),
+      showEdges: edgeProfiles.length > 0 && brandDoesEdges,
+      showProfiles:
+        line.material === "Thermolaminate" &&
+        Boolean(line.thickness) &&
+        brandDoesProfiles &&
+        profileTypesFor(line, supplier, useLibrary).length > 0,
+      // Both lists carry the brand that produced them, so the row can say
+      // "pick a brand first" instead of showing an empty box.
+      supplier,
+      useLibrary,
+      edgeOptions: edgeProfiles.map((edge) => {
+        const name = typeof edge === "string" ? edge : edge.name;
+        const image = typeof edge === "string" ? "" : edge.image_url;
+        return { name, label: name, meta: "Edge profile", src: image || edgeOptionSrc(name) };
+      }),
       isHardware: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Hardware"),
       isBenchtop: isBenchtopLine(line),
       hingesApplicable: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Door"),
@@ -994,7 +1123,7 @@ export default function QuoteEditor({ quoteId }) {
       isBaseCabinet: isBaseCabinetLine(line),
     };
 
-    lineViewModelCacheRef.current.set(line, { businessDefaults, swatchIndex, value });
+    lineViewModelCacheRef.current.set(line, { businessDefaults, swatchIndex, profileRows, value });
     return value;
   }
 
@@ -1106,6 +1235,11 @@ export default function QuoteEditor({ quoteId }) {
 
   async function loadColourSwatches() {
     try {
+      const availability = await fetch("/api/colour-library?availability=1", { cache: "no-store" })
+        .then((result) => result.json())
+        .catch(() => null);
+      if (availability?.ok) setSupplierColourRows(availability.brandPairs || []);
+
       const response = await fetch("/api/colour-library?items=1", { cache: "no-store" });
       const payload = await response.json();
       if (payload?.ok) setColourSwatches(payload.items || []);
@@ -1138,12 +1272,18 @@ export default function QuoteEditor({ quoteId }) {
   // supabase/202608171600_pcd_repair_legacy_quote_terms.sql.
   useEffect(() => {
     const isBlank = (value) => value === "" || value === null || value === undefined;
+    // A STORED ZERO HOURLY RATE IS NOT A DECISION, it is a column that was never
+    // filled in, and normalizeBusinessDefaults already prices it at the
+    // configured rate rather than pricing the labour at nothing. The form did
+    // not agree: it left the 0 in the box, so the quote charged $85 an hour
+    // while the field on screen said $0. Same rule in both places now.
+    const isBlankOrZero = (value) => isBlank(value) || Number(value) === 0;
 
     setForm((current) => ({
       ...current,
       currency: isBlank(current.currency) ? businessDefaults.currency : current.currency,
       gst_rate: isBlank(current.gst_rate) ? businessDefaults.gst_rate : current.gst_rate,
-      worker_hourly_rate: isBlank(current.worker_hourly_rate)
+      worker_hourly_rate: isBlankOrZero(current.worker_hourly_rate)
         ? businessDefaults.worker_hourly_rate
         : current.worker_hourly_rate,
       lines: (current.lines || []).map((line) =>
@@ -1233,6 +1373,7 @@ export default function QuoteEditor({ quoteId }) {
         return;
       }
       setBusinessDefaults({ ...DEFAULT_BUSINESS_DEFAULTS, ...payload.defaults });
+      setDefaultsLoaded(true);
       setBusinessDefaultsError("");
     } catch (error) {
       setBusinessDefaultsError(error?.message || "Could not load your business defaults.");
@@ -1301,7 +1442,7 @@ export default function QuoteEditor({ quoteId }) {
 
   function updateLine(index, field, value) {
     if (index === editableLineIndex) {
-      setEditableLineDraft((current) => applyLineFieldPatch(current || form.lines[index] || emptyLineWithDefaults(businessDefaults), field, value));
+      setEditableLineDraft((current) => applyLineFieldPatch(current || form.lines[index] || emptyLineWithDefaults(businessDefaults, defaultsLoaded), field, value));
       return;
     }
     updateSavedLine(index, (line) => applyLineFieldPatch(line, field, value));
@@ -1336,7 +1477,7 @@ export default function QuoteEditor({ quoteId }) {
       hinge_qty: hasRequirements ? hingeModal.hinge_qty : "",
     };
     if (hingeModal.lineIndex === editableLineIndex) {
-      setEditableLineDraft((current) => ({ ...(current || form.lines[hingeModal.lineIndex] || emptyLineWithDefaults(businessDefaults)), ...patch }));
+      setEditableLineDraft((current) => ({ ...(current || form.lines[hingeModal.lineIndex] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)), ...patch }));
     } else {
       updateSavedLine(hingeModal.lineIndex, (line) => ({ ...line, ...patch }));
     }
@@ -1349,6 +1490,7 @@ export default function QuoteEditor({ quoteId }) {
     setProfileModal({
       lineIndex: index,
       material: line.material || "",
+      supplier_name: line.supplier_name || "",
       thickness: line.thickness || "",
       profile_type: line.profile_type || "",
       profile: line.profile || "",
@@ -1371,7 +1513,7 @@ export default function QuoteEditor({ quoteId }) {
       profile: profileModal.profile,
     };
     if (profileModal.lineIndex === editableLineIndex) {
-      setEditableLineDraft((current) => ({ ...(current || form.lines[profileModal.lineIndex] || emptyLineWithDefaults(businessDefaults)), ...patch }));
+      setEditableLineDraft((current) => ({ ...(current || form.lines[profileModal.lineIndex] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)), ...patch }));
     } else {
       updateSavedLine(profileModal.lineIndex, (line) => ({ ...line, ...patch }));
     }
@@ -1527,7 +1669,6 @@ export default function QuoteEditor({ quoteId }) {
       next.thickness = "";
       next.finish = "";
       next.colour = "";
-      next.supplier_name = next.supplier_name || COLOUR_SUPPLIERS[0];
       next.unit_cost_mode = "manual";
       next.unit_cost_source_id = null;
       next.unit_cost_source_label = "";
@@ -1550,7 +1691,16 @@ export default function QuoteEditor({ quoteId }) {
         Object.prototype.hasOwnProperty.call(patch, "finish") ||
         Object.prototype.hasOwnProperty.call(patch, "colour") ||
         Object.prototype.hasOwnProperty.call(patch, "unit_cost_per_sqm_ex_gst");
-      next.supplier_name = COLOUR_SUPPLIERS.includes(next.supplier_name) ? next.supplier_name : COLOUR_SUPPLIERS[0];
+      const losing = fieldsClearedBySupplierChange(
+        { supplier_name: line.supplier_name, colour: line.colour, profile: line.profile, edge_mould: line.edge_mould },
+        next.supplier_name,
+        { colourRows: supplierColourRows, profileRows }
+      );
+      if (losing.some((entry) => entry.field === "profile")) {
+        next.profile = "";
+        next.profile_type = "";
+      }
+      if (losing.some((entry) => entry.field === "edge_mould")) next.edge_mould = "";
       if (!patchIncludesColourSelection) {
         next.thickness = "";
         next.finish = "";
@@ -1613,7 +1763,7 @@ export default function QuoteEditor({ quoteId }) {
 
   function updateProductLine(index, patch) {
     if (index === editableLineIndex) {
-      setEditableLineDraft((current) => applyProductLinePatch(current || form.lines[index] || emptyLineWithDefaults(businessDefaults), patch));
+      setEditableLineDraft((current) => applyProductLinePatch(current || form.lines[index] || emptyLineWithDefaults(businessDefaults, defaultsLoaded), patch));
       return;
     }
     updateSavedLine(index, (line) => applyProductLinePatch(line, patch));
@@ -1622,7 +1772,7 @@ export default function QuoteEditor({ quoteId }) {
   function resetLineUnitCost(index) {
     const reset = (line) => applyCalculatedUnitCost({ ...line, unit_cost_mode: "auto" }, { forceAuto: true });
     if (index === editableLineIndex) {
-      setEditableLineDraft((current) => reset(current || form.lines[index] || emptyLineWithDefaults(businessDefaults)));
+      setEditableLineDraft((current) => reset(current || form.lines[index] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)));
       return;
     }
     updateSavedLine(index, reset);
@@ -1633,7 +1783,7 @@ export default function QuoteEditor({ quoteId }) {
       const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex]);
       if (!saved) return;
     }
-    setEditableLineDraft(form.lines[index] || emptyLineWithDefaults(businessDefaults));
+    setEditableLineDraft(form.lines[index] || emptyLineWithDefaults(businessDefaults, defaultsLoaded));
     setEditableLineIndex(index);
     setActiveSection("items");
   }
@@ -1666,7 +1816,7 @@ export default function QuoteEditor({ quoteId }) {
       if (!saved) return;
     }
     const nextIndex = form.lines.length;
-    const nextLine = emptyLineWithDefaults(businessDefaults);
+    const nextLine = emptyLineWithDefaults(businessDefaults, defaultsLoaded);
     shouldScrollQuoteItemsToBottomRef.current = true;
     setForm((current) => ({ ...current, lines: [...current.lines, nextLine] }));
     setEditableLineDraft(nextLine);
@@ -1871,15 +2021,16 @@ export default function QuoteEditor({ quoteId }) {
       const response = await fetch(`/api/admin/quotes/${quoteId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // form.labour_hours is the MANUAL base - persist it as manual_labour_hours.
-        // The server derives labour_hours (base + sum line labour) on recalc.
+        // form.labour_hours is the OVERRIDE - persist it as manual_labour_hours,
+        // null when blank. The server derives labour_hours from the lines unless
+        // this pins it.
         // The three boxes are what was typed. site_address is rebuilt from
         // them on the way out so the one-liner every existing screen and the
         // PDF still read can never disagree with the parts.
         body: JSON.stringify({
           ...nextForm,
           ...addressColumns(addressFromRecord(nextForm)),
-          manual_labour_hours: nextForm.labour_hours,
+          manual_labour_hours: String(nextForm.labour_hours ?? "").trim() === "" ? null : Number(nextForm.labour_hours),
         }),
       });
       const payload = await response.json();
@@ -2170,13 +2321,25 @@ export default function QuoteEditor({ quoteId }) {
               </label>
               <label className={tw.fieldLabel}>
                 Status
-                <select className={tw.fieldInput} value={form.status} onChange={e => updateForm("status", e.target.value)}>
+                <select
+                  className={tw.fieldInput}
+                  value={form.status}
+                  disabled={form.status === "approved" || form.status === "rejected"}
+                  onChange={e => updateForm("status", e.target.value)}
+                >
                   <option value="draft">Draft</option>
                   <option value="sent">Sent</option>
                   <option value="viewed">Viewed</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
+                  {/* Shown only when the quote is already in that state, so the
+                      dropdown can display it without being able to select it. */}
+                  {form.status === "approved" ? <option value="approved">Approved</option> : null}
+                  {form.status === "rejected" ? <option value="rejected">Rejected</option> : null}
                 </select>
+                <span className="text-[11px] text-[#8b8a81]">
+                  {form.status === "approved" || form.status === "rejected"
+                    ? "The customer has answered, so this is a record rather than a setting."
+                    : "Accepting is not a status. Use Accept for the customer, which raises the order."}
+                </span>
               </label>
               <label className={tw.fieldLabel}>
                 Job / order reference
@@ -2201,14 +2364,22 @@ export default function QuoteEditor({ quoteId }) {
           <div className={tw.cardBody}>
             <label className={tw.fieldLabel + " mb-3"}>
               Select existing customer
-              <select className={tw.fieldInput} value={form.customer_id || ""} onChange={e => applyCustomer(e.target.value)}>
-                <option value="">Manual / new customer</option>
-                {customers.map(customer => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}{customer.email ? ` - ${customer.email}` : ""}
-                  </option>
-                ))}
-              </select>
+              <Dropdown
+                placeholder="Manual / new customer"
+                searchPlaceholder="Search by name or email"
+                value={form.customer_id || ""}
+                options={customers.map((customer) => ({
+                  value: customer.id,
+                  // The email is in the label rather than beside it, because the
+                  // search matches the label: two customers with the same name
+                  // are told apart by it, and it is how people search anyway.
+                  label: `${customer.name}${customer.email ? ` - ${customer.email}` : ""}`,
+                }))}
+                // Clearing goes back to typing the details by hand, which is a
+                // real choice here, not an empty state.
+                onChange={(value) => applyCustomer(String(value || ""))}
+                triggerClassName="!h-[34px] !text-[13px]"
+              />
             </label>
             <div className={tw.grid2}>
               <label className={tw.fieldLabel}>
@@ -2466,18 +2637,32 @@ export default function QuoteEditor({ quoteId }) {
                     showProfiles,
                     edgeOptions,
                     hingesApplicable,
+                    supplier,
+                    useLibrary,
                   } = lineViewModel(line)
                   const isBaseCabinetEditable = isEditable && isBaseCabinet
                   const isLineSaving = savingLineIndex === index
                   const hasLineNote = Boolean(line.notes || line.client_note)
                   const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id
-                  const profileTypeOptions = profileTypesForSelection(line.material, line.thickness)
-                  const profileNameOptions = profileNamesForSelection(line.profile_type, line.material, line.thickness).map((profile) => ({
-                    name: profile,
-                    label: profile,
-                    meta: line.profile_type || "Profile",
-                    src: profileOptionSrc(line.profile_type, profile),
-                  }))
+                  const libraryProfiles = useLibrary
+                    ? profilesForSupplier(profileRows, { supplier, thickness: line.thickness })
+                    : []
+                  const profileTypeOptions = profileTypesFor(line, supplier, useLibrary)
+                  const profileNameOptions = useLibrary
+                    ? libraryProfiles
+                        .filter((row) => !line.profile_type || row.category === line.profile_type)
+                        .map((row) => ({
+                          name: row.name,
+                          label: row.name,
+                          meta: row.category || "Profile",
+                          src: row.image_url || profileOptionSrc(row.category, row.name),
+                        }))
+                    : profileNamesForSelection(line.profile_type, line.material, line.thickness).map((profile) => ({
+                        name: profile,
+                        label: profile,
+                        meta: line.profile_type || "Profile",
+                        src: profileOptionSrc(line.profile_type, profile),
+                      }))
                   const canResetUnitCost = !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
                   const hintText = isBaseCabinetEditable
                     ? 'Base cabinet - dimensions configured in the Base Cabinets tab'
@@ -2578,12 +2763,12 @@ export default function QuoteEditor({ quoteId }) {
                             <QuoteTileCombobox
                               disabled={!line.material}
                               placeholder="Supplier"
-                              value={COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0]}
-                              options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
+                              value={line.supplier_name || ""}
+                              options={supplierOptionsFor(line)}
                               onChange={option => updateProductLine(index, { supplier_name: option.value || option.name || option.label })}
                             />
                           ) : (
-                            <span className={v1}>{line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || (line.material ? COLOUR_SUPPLIERS[0] : "") || <span className="text-[#c5cdd8]">-</span>}</span>
+                            <span className={v1}>{line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || <span className="text-[#c5cdd8]">-</span>}</span>
                           )}
                         </td>
 
@@ -2737,7 +2922,8 @@ export default function QuoteEditor({ quoteId }) {
                           {isEditable && showEdges && !isBaseCabinetEditable ? (
                             <QuoteImageCombobox
                               className={quoteStyles.profileNameCombo}
-                              placeholder="Edge profile"
+                              disabled={!supplier}
+                              placeholder={supplier ? "Edge profile" : "Pick a brand first"}
                               value={line.edge_mould}
                               options={edgeOptions}
                               onChange={option => updateProductLine(index, { edge_mould: option.name || option.label })}
@@ -2753,9 +2939,10 @@ export default function QuoteEditor({ quoteId }) {
                             <select
                               className="h-[22px] w-full rounded-[3px] border border-[#a8c5a0] bg-white px-[5px] text-[10px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
                               value={line.profile_type}
+                              disabled={!supplier}
                               onChange={e => updateProductLine(index, { profile_type: e.target.value })}
                             >
-                              <option value="">Select type</option>
+                              <option value="">{supplier ? "Select type" : "Pick a brand first"}</option>
                               {profileTypeOptions.map((type) => <option key={type}>{type}</option>)}
                             </select>
                           ) : (
@@ -2768,8 +2955,8 @@ export default function QuoteEditor({ quoteId }) {
                           {isEditable && showProfiles && !isBaseCabinetEditable ? (
                             <QuoteImageCombobox
                               className={quoteStyles.profileNameCombo}
-                              disabled={!line.profile_type}
-                              placeholder={line.profile_type ? "Front profile" : "Pick type first"}
+                              disabled={!supplier || !line.profile_type}
+                              placeholder={supplier ? (line.profile_type ? "Front profile" : "Pick type first") : "Pick a brand first"}
                               value={line.profile}
                               options={profileNameOptions}
                               onChange={option => updateProductLine(index, { profile: option.name || option.label })}
@@ -3005,7 +3192,7 @@ export default function QuoteEditor({ quoteId }) {
                       {[line.finish, line.colour].filter(Boolean).join(' - ')}
                     </span>
                   )}
-                  {(line.width_mm || line.height_mm) && <span className="font-mono text-[11px]">{line.width_mm || '-'} x {line.height_mm || '-'} mm</span>}
+                  {(line.width_mm || line.height_mm) && <span className="font-mono text-[11px]">{line.height_mm || '-'} x {line.width_mm || '-'} mm</span>}
                   <div className="flex items-center justify-between mt-1 pt-1 border-t border-[#f5f5f4]">
                     <span>Qty {line.qty || 1} - {formatMoney(calculated.unit_price_ex_gst, form.currency)} ea</span>
                     <span className="font-semibold text-[#1a1a18] font-mono">{formatMoney(calculated.line_total_ex_gst, form.currency)}</span>
@@ -3107,8 +3294,31 @@ export default function QuoteEditor({ quoteId }) {
             <div className={tw.cardBody}>
               <div className={tw.grid2}>
                 <label className={tw.fieldLabel}>
-                  Manual hours
-                  <input className={tw.fieldInput + " font-mono"} type="number" min="0" step="0.01" value={form.labour_hours} onChange={e => updateForm("labour_hours", e.target.value)} />
+                  <span className="flex items-center justify-between gap-2">
+                    Labour hours
+                    {labourOverridden && (
+                      <button
+                        type="button"
+                        onClick={() => updateForm("labour_hours", "")}
+                        className="text-[10px] font-medium text-[#6b9e61] hover:underline"
+                      >
+                        Reset to calculated
+                      </button>
+                    )}
+                  </span>
+                  {/* The box holds the WHOLE figure, not a base that something
+                      invisible gets added to. Until somebody types, it shows
+                      what the lines work out to; typing pins it, and Reset puts
+                      it back. A number you can see but not change is a dead end
+                      on the one screen it can be corrected from. */}
+                  <input
+                    className={tw.fieldInput + " font-mono"}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={labourFieldValue}
+                    onChange={e => updateForm("labour_hours", e.target.value)}
+                  />
                 </label>
                 <label className={tw.fieldLabel}>
                   Hourly rate ex GST
@@ -3124,7 +3334,7 @@ export default function QuoteEditor({ quoteId }) {
                       rather than showing one lump nobody can check: hours per
                       cabinet, and in-house processing time per decorative board
                       door, drawer front or panel. */}
-                  Automatic hours on top of your manual figure:
+                  The lines work out to <strong className="font-mono">{totals.calculated_labour_hours}h</strong>:
                   {totals.cabinet_labour_hours > 0 && (
                     <> <span className="font-mono">{totals.cabinet_labour_hours}h</span> from cabinets</>
                   )}
@@ -3132,7 +3342,9 @@ export default function QuoteEditor({ quoteId }) {
                   {totals.processing_labour_hours > 0 && (
                     <> <span className="font-mono">{totals.processing_labour_hours}h</span> processing decorative board fronts and panels</>
                   )}
-                  . Total labour: <strong className="font-mono">{totals.labour_hours}h</strong>.
+                  {labourOverridden
+                    ? <>. You have set it to <strong className="font-mono">{totals.labour_hours}h</strong> instead.</>
+                    : <>. Change the box above to charge something else.</>}
                 </p>
               )}
             </div>
@@ -3170,12 +3382,15 @@ export default function QuoteEditor({ quoteId }) {
                     ABS edging ex GST
                     <div className="flex items-center h-[34px] border border-[#dbd8cc] rounded-[6px] overflow-hidden">
                       <span className="px-3 h-full flex items-center text-[13px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#dbd8cc]">$</span>
+                      {/* The calculated cost sits IN the box, not behind it as a
+                          placeholder. A greyed out figure you cannot select, edit
+                          or clear is not an editable field, and this one opened
+                          empty when you clicked into it. */}
                       <input
                         type="number"
                         min="0"
                         step="0.01"
-                        value={form.edging_cost_override_ex_gst}
-                        placeholder={String(totals.edging_calculated_cost_ex_gst ?? 0)}
+                        value={edgingFieldValue}
                         onChange={e => updateForm("edging_cost_override_ex_gst", e.target.value)}
                         className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono"
                       />
@@ -3260,10 +3475,11 @@ export default function QuoteEditor({ quoteId }) {
         desc: "Workshop labour from hours and hourly rate",
         total: totals.labour_cost_ex_gst,
         rows: [
-          ["Manual hours", totals.manual_labour_hours || 0],
-          ["Cabinet hours (auto)", totals.cabinet_labour_hours || 0],
-          ["Processing hours (auto)", totals.processing_labour_hours || 0],
-          ["Labour hours", totals.labour_hours || 0],
+          ["Cabinet hours", totals.cabinet_labour_hours || 0],
+          ["Processing hours", totals.processing_labour_hours || 0],
+          ["Hours typed on lines", totals.line_labour_hours - totals.cabinet_labour_hours || 0],
+          ["Calculated hours", totals.calculated_labour_hours || 0],
+          [totals.labour_hours_overridden ? "Labour hours (you set this)" : "Labour hours", totals.labour_hours || 0],
           ["Hourly rate", formatMoney(totals.worker_hourly_rate, form.currency)],
           ["Labour total", formatMoney(totals.labour_cost_ex_gst, form.currency)],
         ],
@@ -3425,24 +3641,65 @@ export default function QuoteEditor({ quoteId }) {
 
   const activeLabel = sections.find((section) => section.key === activeSection)?.label || "Information & Contacts";
   const activeCabinetLine = activeCabinetLineIndex !== null ? form.lines[activeCabinetLineIndex] : null;
-  const profileModalTypes = profileModal
-    ? profileTypesForSelection(profileModal.material, profileModal.thickness)
+  // The modal is a second way into the same two fields, so it reads the same
+  // brand-narrowed catalogue the row does. Left on the material-wide lists it
+  // would be a way around the rule rather than another door to it.
+  const profileModalUsesLibrary = Boolean(profileModal?.supplier_name) && profileLibrary.isReady;
+  const profileModalLibraryRows = profileModalUsesLibrary
+    ? profilesForSupplier(profileRows, {
+        supplier: profileModal.supplier_name,
+        thickness: profileModal.thickness,
+      })
     : [];
-  const profileModalNames = profileModal
-    ? profileNamesForSelection(profileModal.profile_type, profileModal.material, profileModal.thickness)
-    : [];
-  const profileModalOptions = profileModalNames.map((profile) => ({
-    name: profile,
-    label: profile,
-    meta: profileModal?.profile_type || "Profile",
-    src: profileOptionSrc(profileModal?.profile_type, profile),
-  }));
+  const profileModalTypes = profileModalUsesLibrary
+    ? profileCategoriesForSupplier(profileRows, {
+        supplier: profileModal.supplier_name,
+        thickness: profileModal.thickness,
+      })
+    : profileModal
+      ? profileTypesForSelection(profileModal.material, profileModal.thickness)
+      : [];
+  const profileModalOptions = profileModalUsesLibrary
+    ? profileModalLibraryRows
+        .filter((row) => !profileModal.profile_type || row.category === profileModal.profile_type)
+        .map((row) => ({
+          name: row.name,
+          label: row.name,
+          meta: row.category || "Profile",
+          src: row.image_url || profileOptionSrc(row.category, row.name),
+        }))
+    : (profileModal
+        ? profileNamesForSelection(profileModal.profile_type, profileModal.material, profileModal.thickness)
+        : []
+      ).map((profile) => ({
+        name: profile,
+        label: profile,
+        meta: profileModal?.profile_type || "Profile",
+        src: profileOptionSrc(profileModal?.profile_type, profile),
+      }));
   // Once a quote has become an order it is a record of what was agreed. The
   // only way to change committed work is a variation, which is priced, sent and
   // approved. The server refuses the edit either way; this stops anyone getting
   // as far as typing one.
-  const isLocked = Boolean(form.order_id);
+  //
+  // Being sent seals it too, for a different reason: a customer is holding a
+  // link, and the version they approve has to be the version they read. That
+  // one is not permanent. The override pulls it back to draft and cancels their
+  // link, so they can never approve something that has moved.
+  const lockState = editability("quote", form.status);
+  const isSealed = !form.order_id && lockState === "sealed";
+  const isLocked = Boolean(form.order_id) || isSealed;
+  // Re-sending a sealed quote is ordinary: the customer lost the email, or it
+  // went to the wrong address. Nothing about the quote changes. Only an accepted
+  // one is past sending, and generating its PDF is read-only either way.
+  const isAccepted = Boolean(form.order_id);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [acceptOpen, setAcceptOpen] = useState(false);
 
+  // Everything below is the part a person types into. When the quote is locked
+  // it all goes read only in one place, so a field added later is covered
+  // without anyone having to remember to cover it. See LockedRegion for why a
+  // banner over typeable fields is not a control.
   const contentPanel = isLoading ? (
     <AdminLoading steps={["Opening the quote", "Loading the line items", "Almost there"]} label="Loading quote" />
   ) : loadError ? (
@@ -3454,7 +3711,41 @@ export default function QuoteEditor({ quoteId }) {
       </Link>
     </div>
   ) : (
-    renderActiveSection()
+    <>
+      {isLocked ? (
+        <div
+          className={`mb-3 rounded-[6px] border px-3 py-2 text-[12px] leading-[1.5] ${
+            isSealed
+              ? "border-[#e8d68f] bg-[#fffdf0] text-[#8a6d0b]"
+              : "border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28]"
+          }`}
+        >
+          {isSealed ? (
+            <>
+              <strong className="font-semibold">This quote is with the customer, so it is read only.</strong>{" "}
+              They are holding a link to this version and the version they approve has to be the version they read.
+              Use <strong className="font-semibold">Edit with override</strong> to pull it back to draft, which cancels
+              the link they were sent.
+            </>
+          ) : (
+            <>
+              <strong className="font-semibold">This quote has been accepted and is read only.</strong>{" "}
+              It is the record of what was agreed. To change the work, raise a variation on the order, which is priced,
+              sent to the customer and approved.
+              {form.order_id ? (
+                <>
+                  {" "}
+                  <Link href={`/admin/orders/${form.order_id}`} className="underline font-semibold">
+                    Open the order
+                  </Link>
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
+      {renderActiveSection()}
+    </>
   );
   return (
     <>
@@ -3473,12 +3764,24 @@ export default function QuoteEditor({ quoteId }) {
                 View public quote
               </a>
             ) : null}
-            <button type="button" onClick={generateQuotePdf} disabled={isSaving || isLoading || isLocked || Boolean(loadError) || isGeneratingQuotePdf} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+            <button type="button" onClick={generateQuotePdf} disabled={isSaving || isLoading || isAccepted || Boolean(loadError) || isGeneratingQuotePdf} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
               {isGeneratingQuotePdf ? "Generating..." : "Generate PDF"}
             </button>
-            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
-              Publish quote
+            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || isAccepted || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
+              {isSealed ? "Send again" : "Publish quote"}
             </button>
+            {isSealed ? (
+              <button type="button" onClick={() => setOverrideOpen(true)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors">
+                Edit with override
+              </button>
+            ) : null}
+            {/* The customer said yes on the phone and will never open the link.
+                Raises the order exactly as their own acceptance would. */}
+            {!isAccepted && form.status !== "rejected" ? (
+              <button type="button" onClick={() => setAcceptOpen(true)} className="h-[32px] flex items-center justify-center px-3 border border-[#a8c5a0] bg-[#edf4eb] rounded-[6px] text-[12px] font-medium text-[#2d5e28] hover:bg-[#e2ecdf] transition-colors">
+                Accept for the customer
+              </button>
+            ) : null}
             <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
               {isSaving ? "Saving..." : "Save"}
             </button>
@@ -3512,7 +3815,8 @@ export default function QuoteEditor({ quoteId }) {
               </div>
               <div className="px-4 py-3 bg-white border-b border-[#edf4eb] flex flex-wrap gap-2">
                 {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] flex items-center">View public</a>}
-                <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white disabled:opacity-50">Publish</button>
+                <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || isAccepted || Boolean(loadError)} className="h-[32px] px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white disabled:opacity-50">{isSealed ? "Re-send" : "Publish"}</button>
+                {isSealed ? <button type="button" onClick={() => setOverrideOpen(true)} className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18]">Override</button> : null}
                 <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] disabled:opacity-50">{isSaving ? "Saving..." : "Save"}</button>
               </div>
               {sections.map((section) => (
@@ -3544,7 +3848,7 @@ export default function QuoteEditor({ quoteId }) {
               </div>
               <div className="p-4 bg-[#f5f8f4]">
                 <form onSubmit={saveQuote}>
-                  {contentPanel}
+                  <LockedRegion locked={isLocked && !isLoading && !loadError}>{contentPanel}</LockedRegion>
                   {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order, so it can no longer be edited. Raise a variation on the order to change the work.</div> : null}
                 </form>
               </div>
@@ -3558,7 +3862,7 @@ export default function QuoteEditor({ quoteId }) {
               scroll internally (sticky header); other tabs scroll normally so
               the sidebar stays put either way. */}
           <form onSubmit={saveQuote} className={`flex-1 min-h-0 p-6 ${activeSection === 'items' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
-            {contentPanel}
+            <LockedRegion locked={isLocked && !isLoading && !loadError}>{contentPanel}</LockedRegion>
             {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order, so it can no longer be edited. Raise a variation on the order to change the work.</div> : null}
           </form>
         </main>
@@ -3847,7 +4151,7 @@ export default function QuoteEditor({ quoteId }) {
       {editableLineIndex !== null && typeof document !== 'undefined' ? createPortal(
         (() => {
           const idx = editableLineIndex
-          const line = editableLineDraft || form.lines[idx] || emptyLineWithDefaults(businessDefaults)
+          const line = editableLineDraft || form.lines[idx] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)
           const { calculated, materialOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isHardware, isBenchtop, isBaseCabinet } = lineViewModel(line)
           const isBaseCabinetEditable = isBaseCabinet
           const isLineSaving = savingLineIndex === idx
@@ -3915,8 +4219,8 @@ export default function QuoteEditor({ quoteId }) {
                       compact={false}
                       disabled={isHardware || isBenchtop || !line.material || isBaseCabinetEditable}
                       placeholder="Supplier"
-                      value={COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0]}
-                      options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
+                      value={line.supplier_name || ""}
+                      options={supplierOptionsFor(line)}
                       onChange={option => updateProductLine(idx, { supplier_name: option.value || option.name || option.label })}
                     />
                   </div>
@@ -4169,6 +4473,51 @@ export default function QuoteEditor({ quoteId }) {
             document.body
           )
         : null}
+
+      <AcceptForCustomerModal
+        open={acceptOpen}
+        quoteNumber={form.quote_number}
+        customerName={form.customer_name}
+        onClose={() => setAcceptOpen(false)}
+        onAccepted={(result) => {
+          setAcceptOpen(false);
+          toast({ title: result.message || "Order raised.", variant: "success" });
+          // The quote is now permanently read only and an order exists, so the
+          // screen it was is no longer the screen it is.
+          window.location.reload();
+        }}
+        onSubmit={async (body) => {
+          const response = await fetch(`/api/admin/quotes/${quoteId}/accept`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const result = await response.json();
+          if (!response.ok || !result.ok) throw new Error(result.error || "Could not accept this quote.");
+          return result;
+        }}
+      />
+
+      <OverrideModal
+        open={overrideOpen}
+        kind="quote"
+        documentNumber={form.quote_number}
+        sentAt={form.sent_at}
+        onClose={() => setOverrideOpen(false)}
+        onConfirm={async (reason) => {
+          const response = await fetch(`/api/admin/quotes/${quoteId}/override`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason }),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not override this quote.");
+          setOverrideOpen(false);
+          // The access code changed, so anything holding the old one is stale.
+          // Reloading is simpler than reconciling and cannot be half done.
+          window.location.reload();
+        }}
+      />
     </>
   );
 }

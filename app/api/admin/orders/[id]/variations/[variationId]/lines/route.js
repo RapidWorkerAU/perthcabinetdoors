@@ -1,5 +1,6 @@
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
-import { isVariationFinal, recalcVariation, variationLineDelta, VARIATION_LINE_ACTIONS } from "../../../../../../../../lib/pcd-order-variations";
+import { recalcVariation, variationLineDelta, VARIATION_LINE_ACTIONS } from "../../../../../../../../lib/pcd-order-variations";
+import { assertOpenForEditing } from "../../../../../../../../lib/pcd-document-lock";
 import {
   JOB_COST_ACTION,
   jobCostChangeLabel,
@@ -9,6 +10,7 @@ import {
 } from "../../../../../../../../lib/pcd-order-costs";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../../lib/pcd-business-defaults";
+import { createSupplierGuard } from "../../../../../../../../lib/pcd-supplier-guard";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -32,15 +34,6 @@ function hasValue(value) {
 
 function isBoardPricedLine(row) {
   return !["Hardware", "base_cabinet"].includes(row.product_type) && hasValue(row.material);
-}
-
-function changedBoardFields(row, sourceLine = null) {
-  if (!sourceLine) return true;
-  return ["title", "product_type", "material", "supplier_name", "thickness", "width_mm", "height_mm", "finish", "colour", "profile_type", "profile", "edge_mould", "qty"].some((field) => {
-    const next = String(row[field] ?? "").trim();
-    const before = String(sourceLine[field] ?? "").trim();
-    return next !== before;
-  });
 }
 
 function lineAreaSqm(row) {
@@ -109,7 +102,9 @@ async function loadEditableVariation(supabase, orderId, variationId) {
     .eq("order_id", orderId)
     .maybeSingle();
   if (error || !data) throw error || new Error("Variation not found.");
-  if (isVariationFinal(data.status)) throw new Error("Finalised variations cannot be edited.");
+  // Sealed once it is with the customer, permanent once they have answered.
+  // See lib/pcd-document-lock.js for why "sent" counts.
+  assertOpenForEditing("variation", data.status);
   return data;
 }
 
@@ -197,6 +192,15 @@ function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSI
     order_line_item_id: action === "add" || action === "price_adjustment" ? null : payload.order_line_item_id || null,
     cost_type: null,
     action,
+    // Which cabinet this piece belongs to, so the production sheet groups it
+    // with that cabinet instead of printing it loose.
+    //
+    // A change or a removal inherits it from the line it acts on, which is
+    // always right: the replacement door goes on the same cabinet the old one
+    // came off. An addition has nothing to inherit from, so it is only set when
+    // the caller says which cabinet, and prints loose otherwise, which is
+    // honest rather than guessed.
+    design_item_id: payload.design_item_id ?? sourceLine?.design_item_id ?? null,
     title: cleanText(payload.title ?? sourceLine?.title ?? (action === "price_adjustment" ? "Price adjustment" : "")),
     description: cleanText(payload.description ?? sourceLine?.description),
     product_type: cleanText(payload.product_type ?? sourceLine?.product_type),
@@ -235,19 +239,20 @@ function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSI
   if (action === "remove") {
     row.proposed_line_total_ex_gst = 0;
   } else if (isBoardPricedLine(row)) {
-    if (manualUnitCost <= 0 && changedBoardFields(row, sourceLine) && toNumber(row.unit_cost_per_sqm_ex_gst) <= 0) {
-      throw new Error("The selected board does not have an uploaded price. Add the board cost before saving this variation line.");
-    }
+    // A board with no cost against it, or a line with no size yet, used to
+    // throw here and refuse to save the line at all. Much of the colour library
+    // has no cost recorded and those lines are costed by hand at quote time, so
+    // that turned an ordinary way of working into a wall: the line could not
+    // even be written down, and the typed detail was lost with the error.
+    //
+    // The cost is still worked out wherever it can be. What has changed is what
+    // happens when it cannot: the line saves with the price whoever is doing
+    // the work put on it, and the send step names anything with no cost so it
+    // can be decided on once, with all the lines in view.
     if (manualUnitCost > 0 || toNumber(row.unit_cost_per_sqm_ex_gst) > 0) {
       row.calculated_unit_cost_ex_gst = calculatedUnitCost(row);
-      if (manualUnitCost > 0) {
-        row.product_unit_cost_ex_gst = manualUnitCost;
-      } else {
-        if (row.calculated_unit_cost_ex_gst <= 0) {
-          throw new Error("Enter width and height before saving this priced board variation line.");
-        }
-        row.product_unit_cost_ex_gst = row.calculated_unit_cost_ex_gst;
-      }
+      row.product_unit_cost_ex_gst =
+        manualUnitCost > 0 ? manualUnitCost : Math.max(0, row.calculated_unit_cost_ex_gst);
       const calculated = calculateQuoteLine(row, businessDefaults);
       row.product_unit_cost_ex_gst = calculated.product_unit_cost_ex_gst;
       row.proposed_line_total_ex_gst = calculated.line_total_ex_gst;
@@ -265,6 +270,11 @@ function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSI
 function isMissingSupplierNameColumn(error) {
   const message = String(error?.message || "").toLowerCase();
   return error?.code === "PGRST204" && message.includes("supplier_name") && message.includes("pcd_order_variation_lines");
+}
+
+function isMissingDesignItemColumn(error) {
+  const message = String(error?.message || "");
+  return error?.code === "PGRST204" && message.includes("design_item_id");
 }
 
 function isMissingOriginalSnapshotColumn(error) {
@@ -288,6 +298,7 @@ function withoutFallbackColumns(row, error) {
   const rest = { ...row };
   if (isMissingSupplierNameColumn(error)) delete rest.supplier_name;
   if (isMissingOriginalSnapshotColumn(error)) delete rest.original_item_snapshot;
+  if (isMissingDesignItemColumn(error)) delete rest.design_item_id;
   if (isMissingPricingColumn(error)) {
     delete rest.unit_cost_source_id;
     delete rest.unit_cost_source_label;
@@ -297,6 +308,23 @@ function withoutFallbackColumns(row, error) {
     delete rest.markup_percent;
   }
   return rest;
+}
+
+/**
+ * ONE BRAND PER LINE, checked on what will actually be written.
+ *
+ * A change action inherits any field the caller left out from the order line
+ * it acts on, so checking the payload would miss a mix made half of new input
+ * and half of old. The row is the combination that lands in the order.
+ *
+ * A price adjustment or a job cost carries no board fields at all, and
+ * supplierConflicts is silent about what is not filled in, so they pass
+ * without a special case.
+ */
+async function refuseMixedBrands(supabase, row) {
+  const problems = (await createSupplierGuard(supabase))(row);
+  if (!problems.length) return null;
+  return Response.json({ ok: false, error: problems[0] }, { status: 400 });
 }
 
 export async function POST(request, { params }) {
@@ -328,6 +356,9 @@ export async function POST(request, { params }) {
       sort_order: count || 0,
       ...linePayload(payload, sourceLine, businessDefaults, pricingSource, order),
     };
+
+    const mixed = await refuseMixedBrands(context.supabase, row);
+    if (mixed) return mixed;
 
     let { data: line, error } = await context.supabase
       .from("pcd_order_variation_lines")

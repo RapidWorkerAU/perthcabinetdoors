@@ -11,7 +11,9 @@ import {
   IconCheck,
   IconAlertCircle,
 } from '@tabler/icons-react'
+import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
+import useIsMobile from '@/hooks/useIsMobile'
 
 /**
  * Dropdown — searchable single-select or multi-select dropdown built on
@@ -19,6 +21,18 @@ import { cn } from '@/lib/utils'
  *
  * Scroll is auto-enabled at 8+ options (max-h-[200px], min-h-[148px]).
  * Search is auto-enabled at 16+ options regardless of the searchable prop.
+ *
+ * ON A PHONE THIS IS A BOTTOM SHEET, not a panel floating beside the trigger.
+ * A panel anchored to a control halfway down a small screen has nowhere to go:
+ * it flips above or below depending on room, the keyboard opens over it when
+ * you type in the search box, and the page scrolls itself to keep up. The
+ * result is a list that jumps around while you are trying to read it.
+ *
+ * A sheet anchored to the bottom edge does none of that: it is always in the
+ * same place, always sized the same, and it sits above the keyboard. It also
+ * always shows the search box, whatever `searchable` says, because on a phone
+ * scrolling a list is the expensive way to find something and typing two
+ * letters is the cheap one.
  *
  * @prop label            - Label rendered above the trigger.
  * @prop helper           - Small grey helper text below.
@@ -107,7 +121,20 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
     const [open, setOpen]           = React.useState(false)
     const [searchQuery, setSearchQuery] = React.useState('')
     const searchRef = React.useRef<HTMLInputElement>(null)
+    const sheetSearchRef = React.useRef<HTMLInputElement>(null)
     const listboxId = React.useId()
+
+    // ── How this instance behaves ───────────────────────────────────────────
+    const optionCount = options.length
+    // The sheet is for phones and small tablets. 768 is the same edge the
+    // admin screens use for their md: layouts, so a dropdown becomes a sheet at
+    // exactly the width the page around it becomes a single column.
+    const isMobile = useIsMobile(768)
+    // Auto-enable search at 16+ options regardless of prop, and always on a
+    // phone, where scrolling to find a row costs far more than typing.
+    const isSearchable = searchable || optionCount >= 16 || isMobile
+    // Options list is scrollable at 8+ options. The sheet sizes itself instead.
+    const isScrollable = optionCount >= 8
 
     // ── Derived values ──────────────────────────────────────────────────────
 
@@ -181,6 +208,35 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
       if (!next) setSearchQuery('')
     }
 
+    // THE PAGE BEHIND THE SHEET MUST NOT SCROLL. Without this, dragging the
+    // options list at either end scrolls the page underneath instead, which is
+    // the exact "screen jumps around" this sheet exists to stop.
+    // Focus the search box when the sheet opens, the same as the popover does.
+    React.useEffect(() => {
+      if (!isMobile || !open || !isSearchable) return
+      const timer = window.setTimeout(() => sheetSearchRef.current?.focus(), 60)
+      return () => window.clearTimeout(timer)
+    }, [isMobile, open, isSearchable])
+
+    React.useEffect(() => {
+      if (!isMobile || !open) return
+      const previous = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = previous
+      }
+    }, [isMobile, open])
+
+    // Escape closes it, the same key that closes the popover on a desktop.
+    React.useEffect(() => {
+      if (!isMobile || !open) return
+      function onKey(event: KeyboardEvent) {
+        if (event.key === 'Escape') handleOpenChange(false)
+      }
+      document.addEventListener('keydown', onKey)
+      return () => document.removeEventListener('keydown', onKey)
+    }, [isMobile, open])
+
     // ── Subcomponents ────────────────────────────────────────────────────────
 
     function RadioIndicator({ selected }: { selected: boolean }) {
@@ -191,26 +247,33 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
       )
     }
 
-    function CheckboxIndicator({ checked }: { checked: boolean }) {
+    function CheckboxIndicator({ checked, partial = false }: { checked: boolean; partial?: boolean }) {
+      // Radix takes the string "indeterminate" as a third state, which is what
+      // renders the dash rather than the tick.
+      const state: boolean | 'indeterminate' = checked ? true : partial ? 'indeterminate' : false
       return (
         <Checkbox.Root
-          checked={checked}
+          checked={state}
           className={cn(
             'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] border-[1.5px] transition-colors',
-            checked ? 'bg-[#6b9e61] border-[#6b9e61]' : 'bg-white border-[#dbd8cc]'
+            checked || partial ? 'bg-[#6b9e61] border-[#6b9e61]' : 'bg-white border-[#dbd8cc]'
           )}
           onCheckedChange={() => {}}
           tabIndex={-1}
           aria-hidden
         >
           <Checkbox.Indicator className="flex items-center justify-center">
-            <IconCheck size={10} className="text-white" />
+            {checked ? (
+              <IconCheck size={10} className="text-white" />
+            ) : (
+              <span className="block h-[2px] w-[8px] rounded-full bg-white" />
+            )}
           </Checkbox.Indicator>
         </Checkbox.Root>
       )
     }
 
-    function OptionRow({ opt }: { opt: DropdownOption }) {
+    function OptionRow({ opt, sheet = false }: { opt: DropdownOption; sheet?: boolean }) {
       const selected = multiple
         ? selectedValues.includes(opt.value)
         : singleValue === opt.value
@@ -223,9 +286,10 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
           onClick={() => handleSelect(opt.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleSelect(opt.value) }}
           className={cn(
-            'flex cursor-pointer items-center gap-[10px] px-3 py-[9px] text-[14px] text-[#1a1a18]',
+            'flex cursor-pointer items-center gap-[10px] px-3 text-[#1a1a18]',
             'outline-none transition-colors duration-100',
             'hover:bg-[#f5f8f4]',
+            sheet ? 'min-h-[44px] py-[11px] text-[16px]' : 'py-[9px] text-[14px]',
             selected && 'bg-[#edf4eb] text-[#2d5e28]'
           )}
         >
@@ -248,13 +312,122 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
 
     const singleLabel = options.find(o => o.value === singleValue)?.label
 
-    // ── Auto-behaviour thresholds ────────────────────────────────────────────
 
-    const optionCount = options.length
-    // Auto-enable search at 16+ options regardless of prop
-    const isSearchable = searchable || optionCount >= 16
-    // Options list is scrollable at 8+ options
-    const isScrollable = optionCount >= 8
+    // ── The panel body, shared by both presentations ────────────────────────
+
+    function renderBody({ sheet }: { sheet: boolean }) {
+      return (
+        <>
+          {/* Search input */}
+          {isSearchable && (
+            <div className={cn('border-b border-[#edf4eb]', sheet ? 'p-3' : 'p-2')}>
+              <div className="relative">
+                <IconSearch
+                  size={sheet ? 16 : 14}
+                  className={cn(
+                    'pointer-events-none absolute top-1/2 -translate-y-1/2 text-[#8b8a81]',
+                    sheet ? 'left-3' : 'left-2'
+                  )}
+                />
+                <input
+                  ref={sheet ? sheetSearchRef : searchRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className={cn(
+                    'w-full rounded-[6px] border border-[#dbd8cc] bg-[#f5f8f4]',
+                    'text-[#1a1a18] outline-none',
+                    'focus:border-[#6b9e61] focus:bg-white transition-colors',
+                    // 16px on the sheet is not a style choice: iOS zooms the whole
+                    // page in on any focused input below it, and the zoom is what
+                    // makes the screen jump.
+                    sheet ? 'h-[42px] pl-[36px] pr-3 text-[16px]' : 'h-[34px] pl-[28px] pr-2 text-[13px]'
+                  )}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Select all row */}
+          {multiple && selectAll && (
+            <div
+              role="option"
+              aria-selected={allFilteredSelected}
+              aria-checked={allFilteredSelected ? true : someFilteredSelected ? 'mixed' : false}
+              tabIndex={0}
+              onClick={handleSelectAll}
+              onKeyDown={e => { if (e.key === 'Enter') handleSelectAll() }}
+              className={cn(
+                'flex cursor-pointer items-center gap-[10px] border-b border-[#edf4eb] px-3 font-medium text-[#5a5a52] outline-none hover:bg-[#f5f8f4]',
+                sheet ? 'py-3 text-[15px]' : 'py-2 text-[13px]'
+              )}
+            >
+              <CheckboxIndicator
+                checked={allFilteredSelected}
+                partial={!allFilteredSelected && someFilteredSelected}
+              />
+              Select all
+            </div>
+          )}
+
+          {/* Options list */}
+          <div
+            id={sheet ? undefined : listboxId}
+            role="listbox"
+            aria-multiselectable={multiple || undefined}
+            className={cn(
+              'overflow-y-auto overscroll-contain',
+              // The sheet gets the room left over once the handle, the search box
+              // and the footer have taken theirs, so the list is the part that
+              // grows and the frame stays put.
+              sheet ? 'flex-1 min-h-0' : isScrollable ? 'max-h-[200px] min-h-[148px]' : ''
+            )}
+          >
+            {filteredOptions.length === 0 ? (
+              <div className={cn('text-center text-[#8b8a81]', sheet ? 'px-3 py-10 text-[15px]' : 'px-3 py-5 text-[13px]')}>
+                <IconSearchOff size={sheet ? 24 : 20} className="mx-auto mb-2 block" />
+                {searchQuery ? <>No results for &ldquo;{searchQuery}&rdquo;</> : 'Nothing to choose from'}
+              </div>
+            ) : (
+              <>
+                {/* Ungrouped options first */}
+                {ungrouped.map(opt => <OptionRow key={opt.value} opt={opt} sheet={sheet} />)}
+
+                {/* Grouped options */}
+                {groupNames.map(group => (
+                  <div key={group}>
+                    <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">
+                      {group}
+                    </div>
+                    {filteredOptions
+                      .filter(o => o.group === group)
+                      .map(opt => <OptionRow key={opt.value} opt={opt} sheet={sheet} />)}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Multi footer */}
+          {multiple && selectedValues.length > 0 && (
+            <div className={cn(
+              'flex items-center justify-between border-t border-[#edf4eb] px-3 text-[#5a5a52]',
+              sheet ? 'py-3 text-[14px]' : 'py-2 text-[12px]'
+            )}>
+              <span>{selectedValues.length} selected</span>
+              <button
+                type="button"
+                onClick={() => onChange?.([])}
+                className="font-medium text-[#2d5e28] hover:text-[#1c2b1e] transition-colors"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+        </>
+      )
+    }
 
     // ── Render ───────────────────────────────────────────────────────────────
 
@@ -364,7 +537,55 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
             </div>
           </Popover.Trigger>
 
-          {/* Panel */}
+          {/* Panel: a sheet on a phone, a popover on a desktop. Never both. */}
+          {isMobile && open && typeof document !== 'undefined'
+            ? createPortal(
+                <div className="fixed inset-0 z-[70] flex flex-col justify-end">
+                  {/* Tapping away closes it, the same as clicking outside the popover. */}
+                  <div
+                    className="absolute inset-0 bg-black/35"
+                    onClick={() => handleOpenChange(false)}
+                    aria-hidden
+                  />
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={label || placeholder}
+                    // 85vh, not a fixed height: a two-option list should not open
+                    // a sheet most of the way up the screen, and a long one should
+                    // not run off the top.
+                    className={cn(
+                      'relative flex max-h-[85vh] w-full flex-col overflow-hidden',
+                      'rounded-t-[16px] border-t border-[#dbd8cc] bg-white',
+                      'shadow-[0_-8px_32px_rgba(0,0,0,0.18)]'
+                    )}
+                    // The keyboard sits over the bottom of the screen, so the
+                    // sheet keeps clear of it and of the home indicator below.
+                    style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+                  >
+                    <div className="flex items-center justify-between gap-3 border-b border-[#edf4eb] px-4 py-3">
+                      <span className="truncate text-[15px] font-semibold text-[#1a1a18]">
+                        {label || placeholder}
+                      </span>
+                      {/* A named way out. Tapping the backdrop works, but it is not
+                          visible, and on a full-width sheet there is little of it. */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenChange(false)}
+                        aria-label="Close"
+                        className="flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full text-[#5a5a52] hover:bg-[#f5f8f4]"
+                      >
+                        <IconX size={18} />
+                      </button>
+                    </div>
+                    {renderBody({ sheet: true })}
+                  </div>
+                </div>,
+                document.body
+              )
+            : null}
+
+          {!isMobile && (
           <Popover.Portal>
             <Popover.Content
               data-pcd-dropdown-menu="true"
@@ -386,91 +607,11 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
               )}
             >
 
-              {/* Search input */}
-              {isSearchable && (
-                <div className="border-b border-[#edf4eb] p-2">
-                  <div className="relative">
-                    <IconSearch
-                      size={14}
-                      className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[#8b8a81]"
-                    />
-                    <input
-                      ref={searchRef}
-                      type="text"
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                      placeholder={searchPlaceholder}
-                      className={cn(
-                        'h-[34px] w-full rounded-[4px] border border-[#dbd8cc] bg-[#f5f8f4]',
-                        'pl-[28px] pr-2 text-[13px] text-[#1a1a18] outline-none',
-                        'focus:border-[#6b9e61] focus:bg-white transition-colors'
-                      )}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Select all row */}
-              {multiple && selectAll && (
-                <div
-                  role="option"
-                  aria-selected={allFilteredSelected}
-                  tabIndex={0}
-                  onClick={handleSelectAll}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSelectAll() }}
-                  className="flex cursor-pointer items-center gap-[10px] border-b border-[#edf4eb] px-3 py-2 text-[13px] font-medium text-[#5a5a52] outline-none hover:bg-[#f5f8f4]"
-                >
-                  <CheckboxIndicator checked={allFilteredSelected || (someFilteredSelected ? false : false)} />
-                  Select all
-                </div>
-              )}
-
-              {/* Options list */}
-              <div id={listboxId} role="listbox" aria-multiselectable={multiple || undefined} className={cn(
-                'overflow-y-auto',
-                isScrollable ? 'max-h-[200px] min-h-[148px]' : ''
-              )}>
-                {filteredOptions.length === 0 ? (
-                  <div className="px-3 py-5 text-center text-[13px] text-[#8b8a81]">
-                    <IconSearchOff size={20} className="mx-auto mb-2 block" />
-                    No results for &ldquo;{searchQuery}&rdquo;
-                  </div>
-                ) : (
-                  <>
-                    {/* Ungrouped options first */}
-                    {ungrouped.map(opt => <OptionRow key={opt.value} opt={opt} />)}
-
-                    {/* Grouped options */}
-                    {groupNames.map(group => (
-                      <div key={group}>
-                        <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">
-                          {group}
-                        </div>
-                        {filteredOptions
-                          .filter(o => o.group === group)
-                          .map(opt => <OptionRow key={opt.value} opt={opt} />)}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              {/* Multi footer */}
-              {multiple && selectedValues.length > 0 && (
-                <div className="flex items-center justify-between border-t border-[#edf4eb] px-3 py-2 text-[12px] text-[#5a5a52]">
-                  <span>{selectedValues.length} selected</span>
-                  <button
-                    type="button"
-                    onClick={() => onChange?.([])}
-                    className="font-medium text-[#2d5e28] hover:text-[#1c2b1e] transition-colors"
-                  >
-                    Clear all
-                  </button>
-                </div>
-              )}
+              {renderBody({ sheet: false })}
 
             </Popover.Content>
           </Popover.Portal>
+          )}
         </Popover.Root>
 
         {/* Below: error or helper */}

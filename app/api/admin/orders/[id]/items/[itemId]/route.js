@@ -43,9 +43,15 @@ export async function PATCH(request, { params }) {
       updates.production_stage = payload.production_stage;
     }
 
+    // Planning only. Everything here is about how a piece gets made, not what
+    // it is. `thickness` used to sit in this list, which meant the one field
+    // that changes what the workshop cuts could be altered from the order page
+    // with no variation, no price and no trail, leaving the production list
+    // describing a different job to the quote it came from. Spec changes go
+    // through a variation. See lib/pcd-quote-lock.js for the same rule on the
+    // quote side.
     [
       "fulfilment_method",
-      "thickness",
       "supplier_name",
       "supplier_order_ref",
       "supplier_ordered_at",
@@ -62,7 +68,13 @@ export async function PATCH(request, { params }) {
       }
     });
 
-    if (updates.fulfilment_method && !["in_house", "supplier_ready_made"].includes(updates.fulfilment_method)) {
+    // null is a legitimate value: it means nobody has decided yet, which is
+    // what an order starts as and what the planning metric counts.
+    if (
+      updates.fulfilment_method !== null &&
+      updates.fulfilment_method !== undefined &&
+      !["in_house", "supplier_ready_made"].includes(updates.fulfilment_method)
+    ) {
       return Response.json({ ok: false, error: "Invalid fulfilment method." }, { status: 400 });
     }
 

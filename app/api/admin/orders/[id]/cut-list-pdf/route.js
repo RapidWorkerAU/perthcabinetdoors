@@ -32,7 +32,31 @@ export async function GET(_request, { params }) {
       ...buildMadeToOrderRows(items, variationContext),
     ]);
 
-    const pdfBuffer = generateOrderCutListPdf({ order, items, quoteLines, variations, variationLines, panelNumbers: numbers });
+    // Problems already reported against this order. Open ones only: a resolved
+    // issue is history and belongs on the screen, not on a sheet somebody is
+    // working from today.
+    //
+    // Read soft on purpose. An issue table that cannot be read must not stop a
+    // production sheet printing, because the sheet is what the workshop needs to
+    // start. A print with no issues section is worse than no print at all only
+    // if nobody says so, which is why it is logged rather than swallowed.
+    let issues = [];
+    const issuesResult = await context.supabase
+      .from("pcd_order_issues")
+      .select("*")
+      .eq("order_id", orderId)
+      .is("resolved_at", null)
+      .order("raised_at", { ascending: true });
+    if (issuesResult.error) {
+      console.error(
+        "[cut-list-pdf] could not read pcd_order_issues for " + orderId + ", so this sheet printed without the " +
+          "open issues section: " + issuesResult.error.message
+      );
+    } else {
+      issues = issuesResult.data || [];
+    }
+
+    const pdfBuffer = generateOrderCutListPdf({ order, items, quoteLines, variations, variationLines, panelNumbers: numbers, issues });
     const orderNumber = cleanFilePart(order.order_number, "order");
     const fileName = `production-sheet-${orderNumber}.pdf`;
 

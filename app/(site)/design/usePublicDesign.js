@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { findOverlappingItemIds } from "../../admin/design/_components/DesignCanvas";
 import { buildColourImageMap, COLOUR_IMAGE_MATERIALS } from "../../../lib/pcd-colour-images";
 import { findFreeWallSlot } from "../../../lib/pcd-plan-geometry";
+import { publicItemDefaults } from "../../../lib/pcd-public-parts";
 
 const CODE_STORAGE_KEY = "pcd_public_design_code";
 const FALLBACK_CARCASS_DEFAULT = {
@@ -67,17 +68,31 @@ async function fetchCarcassDefault() {
 const NO_CARCASS_DEFAULT = new Set(["floating_shelf", "appliance", "window", "door_opening"]);
 
 function itemNeedsCarcassDefault(item) {
-  return !NO_CARCASS_DEFAULT.has(item?.item_type) && (!item?.material || !item?.finish || !item?.colour);
+  if (NO_CARCASS_DEFAULT.has(item?.item_type)) return false;
+  // A cabinet is checked every time, because the carcass is enforced rather
+  // than merely defaulted. Everything else is only topped up when blank.
+  return true;
 }
 
+// The carcass is not a choice in the public tool: every cabinet is our standard
+// 18mm carcass board, and publicItemDefaults() states that outright rather than
+// only filling blanks. Shelves start there too but are left changeable, so their
+// half only fills what is empty.
+//
+// Applied on load as well as on add, so a design drawn before this rule existed
+// is brought into line rather than keeping whatever carcass it happened to have.
 function applyCarcassDefault(item, carcassDefault) {
   if (!itemNeedsCarcassDefault(item)) return item;
-  return {
-    ...item,
-    material: item.material || carcassDefault.material,
-    finish: item.finish || carcassDefault.finish,
-    colour: item.colour || carcassDefault.colour,
-  };
+  const forced = publicItemDefaults(item, carcassDefault);
+  if (!Object.keys(forced).length) {
+    return {
+      ...item,
+      material: item.material || carcassDefault.material,
+      finish: item.finish || carcassDefault.finish,
+      colour: item.colour || carcassDefault.colour,
+    };
+  }
+  return { ...item, ...forced };
 }
 
 function readInitialCode() {

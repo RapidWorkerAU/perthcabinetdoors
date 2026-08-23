@@ -7,14 +7,20 @@
 // forever. That keeps supplier statements out of the customer list without
 // anybody having to write an ignore list in advance.
 //
-// WHY IT GROUPS BY DOMAIN. The first real sync produced 80 senders, and 46 of
-// them were 35 business domains: polytec alone had five addresses. One decision
-// per company turns that into a handful of clicks. Personal mail providers are
-// kept apart and decided one address at a time, because a domain rule on
-// gmail.com would answer for every customer you will ever have.
+// WHY THE DOMAIN STILL MATTERS. The first real sync produced 80 senders, and 46
+// of them were 35 business domains: polytec alone had five addresses. One
+// decision covering a whole company turns that into a handful of clicks, so the
+// domain is a column and the whole-company action sits on the row. Personal mail
+// providers never get that offer, because a rule on gmail.com would answer for
+// every customer you will ever have.
+//
+// It used to be a collapsed block of grouped cards sitting on top of the
+// customer table. It is a list of decisions, so it is a table.
 
 import { useCallback, useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
+import { AdminDataTable } from "@/components/ui/AdminDataTable";
 
 // Where individuals have their email, as opposed to a company. A rule here must
 // never be a domain rule.
@@ -27,28 +33,37 @@ const PERSONAL = new Set([
 
 const domainOf = (email) => String(email || "").split("@")[1]?.toLowerCase() || "";
 
-export default function NewSendersPanel() {
+// Built with cn so a variant actually wins. Concatenating "bg-white ...
+// bg-[#1c2b1e]" leaves BOTH in the class list and lets the stylesheet order
+// decide which applies, so the Customer button rendered as white text on a
+// white box: invisible, and one of two buttons on every row.
+const ACTION = "h-[26px] rounded-[6px] border px-2.5 text-[11.5px] font-medium transition-colors disabled:opacity-50";
+const quiet = cn(ACTION, "border-[#dbd8cc] bg-white text-[#1a1a18] hover:border-[#6b9e61]");
+const strong = cn(ACTION, "border-[#1c2b1e] bg-[#1c2b1e] text-white hover:bg-[#2d3f2f] hover:border-[#2d3f2f]");
+
+export default function NewSendersPanel({ onCount }) {
   const { toast } = useToast();
   const [senders, setSenders] = useState([]);
-  const [loaded, setLoaded] = useState(false);
-  // Shut by default. The queue is a job to do when there is time, not
-  // something that should push the customers list down the page every visit.
-  // The count in the strip is what makes it noticeable.
-  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch("/api/admin/customer-desk/senders", { cache: "no-store" });
       const payload = await res.json();
-      if (payload.ok) setSenders(payload.senders || []);
+      const rows = payload.ok ? payload.senders || [] : [];
+      setSenders(rows);
+      if (onCount) onCount(rows.length);
     } catch {
-      // A queue that cannot load must not take the customers list with it.
+      setSenders([]);
+      if (onCount) onCount(0);
     } finally {
-      setLoaded(true);
+      setLoading(false);
     }
-  }, []);
+  }, [onCount]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -65,7 +80,9 @@ export default function NewSendersPanel() {
         toast({ title: payload.error || "Could not save that.", variant: "error" });
         return;
       }
-      setSenders(payload.senders || []);
+      const rows = payload.senders || [];
+      setSenders(rows);
+      if (onCount) onCount(rows.length);
       toast({
         title:
           decision === "customer"
@@ -78,178 +95,180 @@ export default function NewSendersPanel() {
     }
   }
 
-  async function sync() {
+  // catchUpDays reaches back past the cursor, for mail an older version of the
+  // sync skipped. A normal run resumes from where the last one finished.
+  async function sync(catchUpDays = 0) {
     setSyncing(true);
-    toast({ title: "Reading the mailbox. This can take a minute." });
+    toast({ title: catchUpDays ? "Re-reading the mailbox. This can take a few minutes." : "Reading the mailbox. This can take a minute." });
     try {
-      const res = await fetch("/api/admin/customer-desk/sync", { method: "POST" });
+      const res = await fetch("/api/admin/customer-desk/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(catchUpDays ? { catchUpDays } : {}),
+      });
       const payload = await res.json();
       if (!res.ok || !payload.ok) {
         toast({ title: payload.error || "Could not read the mailbox.", variant: "error" });
         return;
       }
-      setSenders(payload.pendingSenders || []);
+      const rows = payload.pendingSenders || [];
+      setSenders(rows);
+      if (onCount) onCount(rows.length);
+      // If it stopped at its ceiling the mailbox is still ahead of us, and
+      // saying "done" at that point is the exact failure this replaced.
       toast({
-        title: `${payload.added} new message${payload.added === 1 ? "" : "s"}, ${payload.awaiting} waiting on a decision.`,
-        variant: "success",
+        title: payload.capped
+          ? `${payload.added} message${payload.added === 1 ? "" : "s"} filed, and there is more still to read. Run it again.`
+          : `${payload.added} new message${payload.added === 1 ? "" : "s"}, ${payload.awaiting} waiting on a decision.`,
+        variant: payload.capped ? "error" : "success",
       });
     } finally {
       setSyncing(false);
     }
   }
 
-  if (!loaded) return null;
+  // How many other addresses share this one's domain, so the whole-company
+  // action can say what it will cover.
+  const shareDomain = (email) => {
+    const domain = domainOf(email);
+    if (!domain || PERSONAL.has(domain)) return 0;
+    return senders.filter((s) => domainOf(s.email) === domain).length;
+  };
 
-  const business = new Map();
-  const personal = [];
-  for (const sender of senders) {
+  const needle = search.trim().toLowerCase();
+  const rows = needle
+    ? senders.filter((s) => `${s.email} ${s.display_name || ""}`.toLowerCase().includes(needle))
+    : senders;
+
+  const buttons = (sender) => {
     const domain = domainOf(sender.email);
-    if (!domain || PERSONAL.has(domain)) {
-      personal.push(sender);
-      continue;
-    }
-    const group = business.get(domain) || { domain, senders: [], messages: 0 };
-    group.senders.push(sender);
-    group.messages += sender.message_count || 1;
-    business.set(domain, group);
-  }
-  const groups = [...business.values()].sort((a, b) => b.messages - a.messages);
-
-  return (
-    <div className="mb-4 overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
-      <div className="flex flex-wrap items-center gap-3 border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px]">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">New senders</span>
-        {senders.length ? (
-          <span className="rounded-full border border-[#dcbf55] bg-[#fff8df] px-2 py-[1px] text-[11px] font-semibold text-[#5c4200]">
-            {senders.length} waiting
-          </span>
-        ) : (
-          <span className="text-[12px] text-[#8b8a81]">All decided</span>
-        )}
-        <span className="flex-1" />
+    const company = shareDomain(sender.email);
+    const busyAddress = busy === sender.email + "address";
+    const busyDomain = busy === sender.email + "domain";
+    return (
+      <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
         <button
           type="button"
-          onClick={sync}
-          disabled={syncing}
-          className="h-[27px] rounded-[7px] border border-[#dbd8cc] bg-white px-3 text-[12px] font-semibold text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50"
+          disabled={busyAddress}
+          className={quiet}
+          onClick={() => decide({ email: sender.email, decision: "ignore", scope: "address", label: sender.email })}
         >
-          {syncing ? "Reading..." : "Check mailbox"}
+          Not a customer
         </button>
-        {senders.length ? (
+        <button
+          type="button"
+          disabled={busyAddress}
+          className={strong}
+          onClick={() => decide({ email: sender.email, decision: "customer", scope: "address", label: sender.email })}
+        >
+          Customer
+        </button>
+        {/* One decision for a whole company, where it IS a company. */}
+        {company > 1 && (
           <button
             type="button"
-            onClick={() => setOpen((value) => !value)}
-            className="h-[27px] rounded-[7px] border border-[#dbd8cc] bg-white px-3 text-[12px] font-semibold text-[#5a5a52] hover:bg-[#f5f8f4]"
+            disabled={busyDomain}
+            className={quiet}
+            title={`Applies to all ${company} addresses at ${domain}`}
+            onClick={() => decide({ email: sender.email, decision: "ignore", scope: "domain", label: domain })}
           >
-            {open ? "Hide" : `Show ${senders.length}`}
+            Ignore all {company} at {domain}
           </button>
-        ) : null}
+        )}
+      </span>
+    );
+  };
+
+  const columns = [
+    {
+      id: "sender",
+      header: "Sender",
+      cell: (sender) => (
+        <span className="flex flex-col leading-[1.35]">
+          <span className="font-medium text-[#1a1a18]">{sender.display_name || sender.email}</span>
+          {sender.display_name && <span className="text-[11px] text-[#8b8a81]">{sender.email}</span>}
+        </span>
+      ),
+    },
+    {
+      id: "domain",
+      header: "Domain",
+      cell: (sender) => {
+        const domain = domainOf(sender.email);
+        const company = shareDomain(sender.email);
+        return (
+          <span className="text-[12px] text-[#5a5a52]">
+            {domain || "-"}
+            {company > 1 && <span className="ml-1.5 text-[11px] text-[#8b8a81]">{company} addresses</span>}
+          </span>
+        );
+      },
+    },
+    {
+      id: "messages",
+      header: "Waiting",
+      className: "whitespace-nowrap",
+      cell: (sender) => `${sender.message_count || 1} message${(sender.message_count || 1) === 1 ? "" : "s"}`,
+    },
+    {
+      id: "actions",
+      header: "",
+      className: "text-right",
+      cell: buttons,
+    },
+  ];
+
+  const mobileCard = (sender) => (
+    <article className="rounded-[8px] border border-[#dbd8cc] bg-white p-4">
+      <p className="text-[13px] font-semibold text-[#1a1a18]">{sender.display_name || sender.email}</p>
+      {sender.display_name && <p className="text-[12px] text-[#5a5a52]">{sender.email}</p>}
+      <p className="mt-1 text-[11.5px] text-[#8b8a81]">
+        {domainOf(sender.email) || "no domain"} · {sender.message_count || 1} message
+        {(sender.message_count || 1) === 1 ? "" : "s"} waiting
+      </p>
+      <div className="mt-3 border-t border-[#edf4eb] pt-3">{buttons(sender)}</div>
+    </article>
+  );
+
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <p className="max-w-[70ch] text-[12px] leading-[1.5] text-[#8b8a81]">
+          These addresses have emailed and nobody has said whether they are customers. Nothing has been created for
+          them either way. Saying <b className="text-[#1a1a18]">Customer</b> files everything they have already sent.
+        </p>
+        <span className="ml-auto flex items-center gap-1.5">
+          <button type="button" onClick={() => sync()} disabled={syncing} className={quiet}>
+            {syncing ? "Reading…" : "Check mailbox"}
+          </button>
+          {/* For mail an older version of the sync skipped. It reaches back past
+              the cursor and re-reads, which is safe: a message already on file
+              is refused by the database rather than duplicated. */}
+          <button
+            type="button"
+            onClick={() => sync(90)}
+            disabled={syncing}
+            title="Re-read the last 90 days, for anything an earlier sync missed"
+            className={quiet}
+          >
+            Re-read 90 days
+          </button>
+        </span>
       </div>
 
-      {open && senders.length ? (
-        <div className="p-4">
-          <p className="mb-3 text-[11.5px] leading-snug text-[#8b8a81]">
-            These addresses have emailed and nobody has said whether they are customers. Nothing has been created for
-            them, and their mail is sitting in Outlook untouched either way. Saying <strong>Customer</strong> files
-            everything they have already sent.
-          </p>
-
-          {groups.length ? (
-            <>
-              <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-[#8b8a81]">
-                Companies &mdash; one decision covers everyone there
-              </div>
-              <div className="mb-4 flex flex-col gap-2">
-                {groups.map((group) => (
-                  <div
-                    key={group.domain}
-                    className="flex flex-wrap items-center gap-3 rounded-[7px] border border-[#dbd8cc] px-3 py-[10px]"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-[#1a1a18]">{group.domain}</div>
-                      <div className="text-[11.5px] text-[#8b8a81]">
-                        {group.senders.length} address{group.senders.length === 1 ? "" : "es"} &middot; {group.messages}{" "}
-                        message{group.messages === 1 ? "" : "s"} &middot;{" "}
-                        {group.senders.slice(0, 2).map((s) => s.email.split("@")[0]).join(", ")}
-                        {group.senders.length > 2 ? ", ..." : ""}
-                      </div>
-                    </div>
-                    <span className="flex-1" />
-                    <button
-                      type="button"
-                      disabled={busy === group.senders[0].email + "domain"}
-                      onClick={() =>
-                        decide({ email: group.senders[0].email, decision: "ignore", scope: "domain", label: group.domain })
-                      }
-                      className="h-[27px] rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[11.5px] font-semibold text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50"
-                    >
-                      Not a customer
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy === group.senders[0].email + "domain"}
-                      onClick={() =>
-                        decide({ email: group.senders[0].email, decision: "customer", scope: "domain", label: group.domain })
-                      }
-                      className="h-[27px] rounded-[6px] bg-[#1c2b1e] px-3 text-[11.5px] font-semibold text-white hover:bg-[#26382a] disabled:opacity-50"
-                    >
-                      Customer
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : null}
-
-          {personal.length ? (
-            <>
-              <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-[#8b8a81]">
-                Personal email &mdash; decided one at a time
-              </div>
-              <div className="flex flex-col gap-2">
-                {personal.map((sender) => (
-                  <div
-                    key={sender.id}
-                    className="flex flex-wrap items-center gap-3 rounded-[7px] border border-[#dbd8cc] px-3 py-[10px]"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-[#1a1a18]">
-                        {sender.display_name || sender.email}
-                      </div>
-                      <div className="truncate text-[11.5px] text-[#8b8a81]">
-                        {sender.display_name ? `${sender.email} · ` : ""}
-                        {sender.message_count} message{sender.message_count === 1 ? "" : "s"}
-                        {sender.last_subject ? ` · ${sender.last_subject}` : ""}
-                      </div>
-                    </div>
-                    <span className="flex-1" />
-                    <button
-                      type="button"
-                      disabled={busy === sender.email + "address"}
-                      onClick={() =>
-                        decide({ email: sender.email, decision: "ignore", scope: "address", label: sender.email })
-                      }
-                      className="h-[27px] rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[11.5px] font-semibold text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50"
-                    >
-                      Not a customer
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy === sender.email + "address"}
-                      onClick={() =>
-                        decide({ email: sender.email, decision: "customer", scope: "address", label: sender.email })
-                      }
-                      className="h-[27px] rounded-[6px] bg-[#1c2b1e] px-3 text-[11.5px] font-semibold text-white hover:bg-[#26382a] disabled:opacity-50"
-                    >
-                      Customer
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+      <AdminDataTable
+        rows={rows}
+        columns={columns}
+        getRowId={(sender) => sender.email}
+        getRowLabel={(sender) => sender.email}
+        loading={loading}
+        emptyTitle="Nothing waiting on a decision"
+        emptyDescription="Every address that has written in has been decided about."
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search sender or domain"
+        mobileCard={mobileCard}
+      />
+    </>
   );
 }

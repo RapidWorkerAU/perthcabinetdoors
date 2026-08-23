@@ -8,6 +8,7 @@
 // preview is a dry-run of it), so what you see is what you get.
 
 import { createPortal } from "react-dom";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "../design.module.css";
 import { formatMoney } from "../../../../lib/pcd-quote-utils";
@@ -35,7 +36,7 @@ const btn = { padding: "8px 14px", borderRadius: 8, border: "1px solid #d8d3c8",
 const btnPrimary = { ...btn, background: "#2f5d8f", color: "#fff", borderColor: "#2f5d8f", fontWeight: 600 };
 
 const dash = (v) => (v === "" || v === null || v === undefined ? "—" : v);
-const dims = (l) => (l.width_mm || l.height_mm ? `${l.width_mm || "—"} × ${l.height_mm || "—"}` : "—");
+const dims = (l) => (l.width_mm || l.height_mm ? `${l.height_mm || "—"} × ${l.width_mm || "—"}` : "—");
 const finishOf = (l) => [l.colour, l.finish].filter(Boolean).join(" · ") || "—";
 
 // Distinct parts a cabinet actually produces, in canonical order — derived from
@@ -70,6 +71,54 @@ function buildTree(groups) {
       parts: c.isCabinet ? partsFromLines(c.lines || []) : [],
     })),
   }));
+}
+
+// Board rates this preview took from the colour library. The ones that MOVED
+// are listed one by one with the rate they replaced: a design drawn before a
+// price change carries the old rate, and quoting it without saying so is how a
+// job goes out at last month's board price. The rest are only counted, because
+// a blank being filled in is not news.
+function PricedRates({ rows }) {
+  const [open, setOpen] = useState(false);
+  const changed = rows.filter((row) => row.changed);
+  const box = { fontSize: 11.5, color: "#4a6b52", background: "#f2f7f2", border: "1px solid #d6e4d8", borderRadius: 8, padding: "8px 12px", margin: "0 0 12px", lineHeight: 1.5 };
+
+  if (!changed.length) {
+    return (
+      <p style={box}>
+        {rows.length} board rate{rows.length === 1 ? "" : "s"} priced from the colour library. Set a manual rate in the design tool to override one.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ ...box, padding: 0 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "none", border: "none", cursor: "pointer", font: "inherit", fontSize: 11.5, color: "#3f5f47", textAlign: "left" }}
+      >
+        <span style={{ fontWeight: 700, transition: "transform 150ms ease", transform: open ? "rotate(90deg)" : "none" }}>▸</span>
+        <span style={{ fontWeight: 700 }}>
+          {changed.length} board rate{changed.length === 1 ? " has" : "s have"} changed since this design was drawn
+        </span>
+        <span style={{ marginLeft: "auto", color: "#6b8a72" }}>{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <ul style={{ margin: 0, padding: "0 12px 10px 32px", lineHeight: 1.6 }}>
+          {changed.map((row, i) => (
+            <li key={i}>
+              {row.label ? `${row.label} ` : ""}{row.what}: {formatMoney(row.previous)} to <strong>{formatMoney(row.rate)}</strong> per m2 ({row.from})
+            </li>
+          ))}
+        </ul>
+      )}
+      <p style={{ margin: 0, padding: "0 12px 10px 32px", color: "#6b8a72" }}>
+        Priced from the colour library as it stands today. Set a manual rate in the design tool to override one.
+      </p>
+    </div>
+  );
 }
 
 function initSelections(tree) {
@@ -109,6 +158,10 @@ export default function StageQuoteModal({ projectId, onClose }) {
   const [groups, setGroups] = useState([]);
   const [totals, setTotals] = useState({});
   const [warnings, setWarnings] = useState([]);
+  // Every board rate this preview took from the colour library, and what it
+  // replaced. Shown so a price is never one nobody can account for, and so a
+  // rate that MOVED since the design was drawn is seen before it is committed.
+  const [pricedRates, setPricedRates] = useState([]);
   const [warningsOpen, setWarningsOpen] = useState(false); // collapsed by default each time the modal opens
   const [lineCount, setLineCount] = useState(0);
 
@@ -155,6 +208,7 @@ export default function StageQuoteModal({ projectId, onClose }) {
       setGroups(data.groups || []);
       setTotals(data.totals || {});
       setWarnings(data.warnings || []);
+      setPricedRates(data.priced_rates || []);
       setLineCount(data.line_count || 0);
       setTreeReady(true);
     } catch {
@@ -190,6 +244,7 @@ export default function StageQuoteModal({ projectId, onClose }) {
           setGroups(data.groups || []);
           setTotals(data.totals || {});
           setWarnings(data.warnings || []);
+          setPricedRates(data.priced_rates || []);
           setLineCount(data.line_count || 0);
         }
       } catch { /* keep the last good preview */ }
@@ -393,6 +448,8 @@ export default function StageQuoteModal({ projectId, onClose }) {
                   </div>
                 )}
 
+                {pricedRates.length > 0 && <PricedRates rows={pricedRates} />}
+
                 {groups.length === 0 ? (
                   <p style={{ fontSize: 13, color: "#a8a49a", padding: "24px 0", textAlign: "center" }}>
                     Nothing selected — tick something on the left to build the quote.
@@ -459,12 +516,23 @@ export default function StageQuoteModal({ projectId, onClose }) {
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap", width: "100%" }}>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11.5, color: "#6b6a63" }}>
                     Commit to an existing quote
-                    <select style={{ ...btn, minWidth: 220, cursor: "pointer" }} value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-                      <option value="">— choose a quote —</option>
-                      {quotes.map((q) => (
-                        <option key={q.id} value={q.id}>{[q.quote_number ? `#${q.quote_number}` : "", q.customer_name || q.title || "Untitled"].filter(Boolean).join(" — ")}</option>
-                      ))}
-                    </select>
+                    <Dropdown
+                      placeholder="choose a quote"
+                      searchPlaceholder="Search by number or customer"
+                      value={selectedId}
+                      options={quotes.map((q) => ({
+                        value: q.id,
+                        // Number and customer in one label, because the search
+                        // matches the label and people arrive knowing one or the
+                        // other, rarely both.
+                        label: [q.quote_number ? `#${q.quote_number}` : "", q.customer_name || q.title || "Untitled"]
+                          .filter(Boolean)
+                          .join(" - "),
+                      }))}
+                      onChange={(value) => setSelectedId(String(value || ""))}
+                      containerClassName="min-w-[260px]"
+                      triggerClassName="!h-[32px] !text-[12px]"
+                    />
                   </label>
                   <button type="button" style={btnPrimary} disabled={committing || !selectedId || lineCount === 0} onClick={() => commit()}>
                     {committing ? "Committing…" : "Commit to quote"}

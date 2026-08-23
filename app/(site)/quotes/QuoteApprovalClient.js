@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { edgeImageSrc } from "@/lib/pcd-profile-images";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
 import { rowCapHeight } from "../../../lib/pcd-row-cap";
@@ -18,10 +19,13 @@ function sortedLines(quote) {
   return [...(quote?.pcd_quote_line_items || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 }
 
+// Superseded copies are kept as our record of what was sent and when, but the
+// customer must only ever see the current one. Two PDFs in this list with no way
+// to tell which is live is how somebody ends up working from old figures.
 function sortedAttachments(quote) {
-  return [...(quote?.pcd_quote_attachments || [])].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
+  return [...(quote?.pcd_quote_attachments || [])]
+    .filter((attachment) => !attachment.superseded_at)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
 function lineValue(value) {
@@ -40,7 +44,7 @@ function productDisplayName(line) {
 function cabinetDimensionText(line) {
   const config = line.cabinet_config;
   if (config?.width_mm || config?.height_mm || config?.depth_mm) {
-    return `${config.width_mm || "-"} x ${config.height_mm || "-"} x ${config.depth_mm || "-"}`;
+    return `${config.height_mm || "-"} x ${config.width_mm || "-"} x ${config.depth_mm || "-"}`;
   }
 
   const match = String(line.description || "").match(/(\d+(?:\.\d+)?)mm wide x (\d+(?:\.\d+)?)mm high x (\d+(?:\.\d+)?)mm deep/i);
@@ -51,7 +55,7 @@ function quoteLineSizeText(line) {
   if (isBaseCabinetLine(line)) return cabinetDimensionText(line);
   const width = line.width_mm ? `${line.width_mm}` : "";
   const height = line.height_mm ? `${line.height_mm}` : "";
-  return width || height ? `${width || "-"} x ${height || "-"}` : "";
+  return width || height ? `${height || "-"} x ${width || "-"}` : "";
 }
 
 function assetSlug(value) {
@@ -82,7 +86,7 @@ async function readJsonResponse(response) {
 }
 
 function edgeOptionSrc(label) {
-  return label ? `/images/edges/${assetSlug(label)}.png` : "";
+  return edgeImageSrc(label);
 }
 
 function profileOptionSrc(profileType, label) {

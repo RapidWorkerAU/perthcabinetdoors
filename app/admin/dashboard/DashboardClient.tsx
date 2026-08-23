@@ -1,6 +1,5 @@
 'use client'
 
-import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   IconMail,
@@ -30,28 +29,9 @@ interface Attention {
   pendingPayments: AttentionItem[]
 }
 
-type FinancialRow = { id: string; monthKey: string | null; amount: number; unknown?: boolean }
-
-interface FinancialData {
-  // True when a query behind these figures failed. A failed query returns no
-  // rows, which renders as a confident $0, and nobody doubts a total.
-  loadFailed?:    boolean
-  orders:         FinancialRow[]
-  deposits:       FinancialRow[]
-  sentQuotes:     FinancialRow[]
-  // Profit, ex GST. Markup plus labour on the quote behind each order, and on
-  // each quote still out with a customer. See lib/pcd-quote-profit.js.
-  orderProfit:    FinancialRow[]
-  pipelineProfit: FinancialRow[]
-  years:      number[]
-  currentMonth: string
-  currentYear:  number
-}
-
 interface DashboardProps {
   stats:     Stats
   attention: Attention
-  financial: FinancialData
   todayLabel: string
 }
 
@@ -91,33 +71,6 @@ const GROUP_COLOURS = {
     emptyMsg:'No pending payments — all clear ✓',
   },
 } as const
-
-const MONTHS = [
-  { value: '01', label: 'January' },
-  { value: '02', label: 'February' },
-  { value: '03', label: 'March' },
-  { value: '04', label: 'April' },
-  { value: '05', label: 'May' },
-  { value: '06', label: 'June' },
-  { value: '07', label: 'July' },
-  { value: '08', label: 'August' },
-  { value: '09', label: 'September' },
-  { value: '10', label: 'October' },
-  { value: '11', label: 'November' },
-  { value: '12', label: 'December' },
-] as const
-
-function formatMoney(value: number): string {
-  return new Intl.NumberFormat('en-AU', {
-    style: 'currency',
-    currency: 'AUD',
-    maximumFractionDigits: 0,
-  }).format(value || 0)
-}
-
-function sumFinancialRows(rows: FinancialRow[], selectedMonthKey: string): number {
-  return rows.reduce((total, row) => row.monthKey === selectedMonthKey ? total + Number(row.amount || 0) : total, 0)
-}
 
 // ─── AttentionGroup ──────────────────────────────────────────────────────────
 
@@ -190,107 +143,6 @@ function AttentionGroup({
 
 // ─── NeedsAttentionPanel ─────────────────────────────────────────────────────
 
-function FinancialSummaryPanel({ financial }: { financial: FinancialData }) {
-  const [month, setMonth] = useState(financial.currentMonth)
-  const [year, setYear] = useState(String(financial.currentYear))
-  const selectedMonthKey = `${year}-${month}`
-  const selectedMonthLabel = MONTHS.find(option => option.value === month)?.label || 'Selected month'
-  const yearOptions = financial.years.length ? financial.years : [financial.currentYear]
-
-  const totals = useMemo(() => ({
-    confirmedOrders: sumFinancialRows(financial.orders, selectedMonthKey),
-    receivedDeposits: sumFinancialRows(financial.deposits, selectedMonthKey),
-    sentQuotePipeline: sumFinancialRows(financial.sentQuotes, selectedMonthKey),
-    orderProfit: sumFinancialRows(financial.orderProfit || [], selectedMonthKey),
-    pipelineProfit: sumFinancialRows(financial.pipelineProfit || [], selectedMonthKey),
-  }), [financial, selectedMonthKey])
-  const totalOpportunity = totals.confirmedOrders + totals.sentQuotePipeline
-
-  // Orders in this month with no quote behind them contribute revenue but no
-  // profit, so the profit figure is low by an unknown amount. Said out loud
-  // rather than left to look like a complete number.
-  const ordersWithoutSplit = useMemo(
-    () => (financial.orderProfit || []).filter(row => row.monthKey === selectedMonthKey && row.unknown).length,
-    [financial.orderProfit, selectedMonthKey]
-  )
-
-  return (
-    <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-      <div className="flex flex-col gap-3 px-4 py-3 border-b border-[#edf4eb] sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-[13px] font-semibold text-[#1a1a18]">Financials</h2>
-          <p className="text-[11px] text-[#8b8a81] mt-[2px]">{selectedMonthLabel} {year}</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:w-[260px]">
-          <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">
-            Month
-            <select
-              className="h-[32px] border border-[#dbd8cc] rounded-[6px] bg-white px-2 text-[12px] font-medium normal-case tracking-normal text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
-              value={month}
-              onChange={event => setMonth(event.target.value)}
-            >
-              {MONTHS.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">
-            Year
-            <select
-              className="h-[32px] border border-[#dbd8cc] rounded-[6px] bg-white px-2 text-[12px] font-medium normal-case tracking-normal text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
-              value={year}
-              onChange={event => setYear(event.target.value)}
-            >
-              {yearOptions.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
-
-      {/* Six cells over two rows of three. Each row reads revenue first, then
-          what is left of it: orders and their profit above, pipeline and its
-          potential profit below. The profit cells are tinted so they are not
-          mistaken for another revenue figure at a glance. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#edf4eb]">
-        {([
-          { label: 'Confirmed order total', value: totals.confirmedOrders, profit: false },
-          { label: 'Received deposits', value: totals.receivedDeposits, profit: false },
-          { label: 'Profit on confirmed orders', value: totals.orderProfit, profit: true },
-          { label: 'Sent quote pipeline', value: totals.sentQuotePipeline, profit: false },
-          { label: 'Potential profit in pipeline', value: totals.pipelineProfit, profit: true },
-          { label: 'Total confirmed + pipeline', value: totalOpportunity, profit: false },
-        ] as const).map(item => (
-          <div key={item.label} className={`px-4 py-4 ${item.profit ? 'bg-[#f5fff5]' : ''}`}>
-            <div className={`text-[19px] font-medium font-mono leading-none ${item.profit ? 'text-[#2d5e28]' : 'text-[#1a1a18]'}`}>
-              {formatMoney(item.value)}
-            </div>
-            <div className="mt-[6px] text-[11px] text-[#8b8a81]">
-              {item.label}
-              {item.profit && <span className="ml-1 text-[#a8a79c]">ex GST</span>}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {financial.loadFailed && (
-        <p className="border-t border-[#f0c9c4] bg-[#fdf4f3] px-4 py-[10px] text-[11px] font-semibold text-[#9c3126]">
-          These figures could not be loaded, so they are not zero, they are unknown. Refresh, and if it persists the
-          dashboard query is failing.
-        </p>
-      )}
-
-      {!financial.loadFailed && ordersWithoutSplit > 0 && (
-        <p className="border-t border-[#edf4eb] px-4 py-[10px] text-[11px] text-[#8b8a81]">
-          {ordersWithoutSplit} order{ordersWithoutSplit === 1 ? '' : 's'} this month {ordersWithoutSplit === 1 ? 'has' : 'have'} no
-          quote behind {ordersWithoutSplit === 1 ? 'it' : 'them'}, so profit on {ordersWithoutSplit === 1 ? 'it' : 'them'} is not counted.
-        </p>
-      )}
-    </div>
-  )
-}
-
 function NeedsAttentionPanel({ attention }: { attention: Attention }) {
   const total =
     attention.enquiries.length +
@@ -346,7 +198,7 @@ function NeedsAttentionPanel({ attention }: { attention: Attention }) {
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
-export default function DashboardClient({ stats, attention, financial, todayLabel }: DashboardProps) {
+export default function DashboardClient({ stats, attention, todayLabel }: DashboardProps) {
   return (
     <div className="p-5 max-w-[1400px]">
 
@@ -365,7 +217,7 @@ export default function DashboardClient({ stats, attention, financial, todayLabe
           { label: 'Quote requests',   value: stats.quoteRequests,   href: '/admin/quote-requests',  alert: stats.quoteRequests > 0,   danger: false },
           { label: 'Open quotes',      value: stats.openQuotes,      href: '/admin/quotes',          alert: false,                     danger: false },
           { label: 'Active orders',    value: stats.activeOrders,    href: '/admin/orders',          alert: false,                     danger: false },
-          { label: 'Pending payments', value: stats.pendingPayments, href: '/admin/orders',          alert: false,                     danger: stats.pendingPayments > 0 },
+          { label: 'Pending payments', value: stats.pendingPayments, href: '/admin/financials',      alert: false,                     danger: stats.pendingPayments > 0 },
         ] as const).map(stat => (
           <Link
             key={stat.label}
@@ -395,9 +247,8 @@ export default function DashboardClient({ stats, attention, financial, todayLabe
       {/* Body — needs attention left, quick actions + summary right */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-4 items-start">
 
-        {/* Left — financials + needs attention */}
+        {/* Left — needs attention */}
         <div className="flex flex-col gap-4">
-          <FinancialSummaryPanel financial={financial} />
           <NeedsAttentionPanel attention={attention} />
         </div>
 

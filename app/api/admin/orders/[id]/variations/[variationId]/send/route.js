@@ -4,6 +4,8 @@ import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
 import { formatMoney, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
 import { JOB_COST_ACTION, orderJobCostAmount } from "../../../../../../../../lib/pcd-order-costs";
 import { recalcVariation, variationLineDelta } from "../../../../../../../../lib/pcd-order-variations";
+import { unpricedVariationLines, unpricedWarning } from "../../../../../../../../lib/pcd-variation-pricing";
+import { assertSendable } from "../../../../../../../../lib/pcd-document-lock";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -34,17 +36,77 @@ function defaultEmailBody(variation, order, viewUrl) {
   ].join("\n");
 }
 
-function hasValue(value) {
-  return String(value ?? "").trim() !== "";
+/**
+ * Re-take the "what it is now" snapshot on every item line, at send.
+ *
+ * The snapshot is captured when the variation LINE is written, which is right
+ * at the moment somebody drafts it and wrong by the time it is sent if anything
+ * has happened in between. Two variations can be open at once: apply the first
+ * and the second is still showing the state from before it, so the customer is
+ * told "was Amaro, becomes Greige" when the order already says Greige.
+ *
+ * The job cost lines below have had this treatment from the start. Item lines
+ * did not, and they are the ones the customer actually reads.
+ *
+ * Done at send because that is the last moment before the document leaves, and
+ * because a draft being edited over several days should not keep re-anchoring.
+ */
+async function refreshItemSnapshots(supabase, variationId, lines) {
+  const itemLines = (lines || []).filter(
+    (line) => ["change", "remove"].includes(line.action) && line.order_line_item_id
+  );
+  if (!itemLines.length) return;
+
+  const { data: orderLines, error } = await supabase
+    .from("pcd_order_line_items")
+    .select("*")
+    .in("id", itemLines.map((line) => line.order_line_item_id));
+  if (error) throw error;
+  const byId = new Map((orderLines || []).map((line) => [line.id, line]));
+
+  for (const line of itemLines) {
+    const current = byId.get(line.order_line_item_id);
+    // The order line is gone, which means a previous variation removed it. The
+    // snapshot stays as it was rather than being blanked: it is the only record
+    // left of what this variation was written against.
+    if (!current) continue;
+
+    const fresh = originalItemSnapshot(current);
+    if (JSON.stringify(fresh) === JSON.stringify(line.original_item_snapshot || null)) continue;
+
+    const { error: updateError } = await supabase
+      .from("pcd_order_variation_lines")
+      .update({
+        original_item_snapshot: fresh,
+        original_line_total_ex_gst: toNumber(current.line_total_ex_gst),
+      })
+      .eq("id", line.id)
+      .eq("variation_id", variationId);
+    if (updateError) throw updateError;
+  }
 }
 
-function isBoardVariationLine(line) {
-  return !["Hardware", "base_cabinet"].includes(line.product_type) && hasValue(line.material);
-}
-
-function hasMissingBoardPricing(line) {
-  if (!["add", "change"].includes(line.action) || !isBoardVariationLine(line)) return false;
-  return Number(line.unit_cost_per_sqm_ex_gst || 0) <= 0 || Number(line.product_unit_cost_ex_gst || 0) <= 0;
+/** The same shape the line routes record, so a re-take matches the original. */
+function originalItemSnapshot(sourceLine) {
+  if (!sourceLine) return null;
+  return {
+    id: sourceLine.id || null,
+    title: sourceLine.title || null,
+    description: sourceLine.description || null,
+    product_type: sourceLine.product_type || null,
+    material: sourceLine.material || null,
+    supplier_name: sourceLine.supplier_name || null,
+    thickness: sourceLine.thickness || null,
+    width_mm: sourceLine.width_mm ?? null,
+    height_mm: sourceLine.height_mm ?? null,
+    finish: sourceLine.finish || null,
+    colour: sourceLine.colour || null,
+    profile_type: sourceLine.profile_type || null,
+    profile: sourceLine.profile || null,
+    edge_mould: sourceLine.edge_mould || null,
+    qty: sourceLine.qty ?? 1,
+    line_total_ex_gst: sourceLine.line_total_ex_gst ?? 0,
+  };
 }
 
 /**
@@ -135,15 +197,31 @@ export async function POST(request, { params }) {
       .eq("variation_id", variationId)
       .order("sort_order", { ascending: true });
     if (linesError) throw linesError;
+    // An applied variation has already rewritten the order. Sending it again
+    // put it back in front of the customer as though it were still pending.
+    assertSendable("variation", variation.status);
+
     if (!variationLines?.length) {
       return Response.json({ ok: false, error: "Add at least one variation line before sending." }, { status: 400 });
     }
-    const unpricedLine = variationLines.find(hasMissingBoardPricing);
-    if (unpricedLine) {
+    // A line with no cost on it is worth saying out loud, and that is all.
+    //
+    // This used to refuse the send outright, and it refused the wrong lines: it
+    // demanded a board rate, so a line priced by hand, which the save had
+    // deliberately allowed, was rejected at the last step with a message about a
+    // board that was never the problem. There was no way past it.
+    //
+    // A missing cost is a margin question, not a customer one. The price the
+    // customer sees is a separate number and it is already on the line. So this
+    // says what it noticed, once, and sends as soon as the person confirms.
+    const unpriced = unpricedVariationLines(variationLines);
+    if (unpriced.length && !payload.force) {
       return Response.json({
-        ok: false,
-        error: `The variation line "${unpricedLine.title || unpricedLine.product_type || "Variation item"}" uses a board without an uploaded price. Add the board cost or edit the line before sending.`,
-      }, { status: 400 });
+        ok: true,
+        needsConfirmation: true,
+        warning: unpricedWarning(unpriced),
+        unpricedLines: unpriced,
+      });
     }
 
     // A job cost line stores what that cost was on the order when the line was
@@ -152,6 +230,9 @@ export async function POST(request, { params }) {
     // shown. Re-measured against the order as it stands right now, at the last
     // moment before the document leaves. Without this, a second variation
     // drafted alongside a first would quote a before-figure that was never true.
+    // Both re-anchor the "currently" side of the document against the order as
+    // it stands right now, at the last moment before the customer sees it.
+    await refreshItemSnapshots(context.supabase, variationId, variationLines);
     await refreshJobCostBaselines(context.supabase, variationId, variationLines, variation.pcd_orders);
 
     const viewUrl = `${origin}/variations/view?code=${encodeURIComponent(variation.access_code)}`;
@@ -194,6 +275,11 @@ export async function POST(request, { params }) {
 
     return Response.json({ ok: true, emailSent, viewUrl });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not send variation." }, { status: 500 });
+    // A refusal carries its own status. Reporting a rule as a 500 leaves the
+    // person unable to tell "you cannot do this" from "something is broken".
+    return Response.json(
+      { ok: false, error: error?.message || "Could not send variation." },
+      { status: error?.status || 500 }
+    );
   }
 }

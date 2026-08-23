@@ -3,6 +3,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Modal } from "@/components/ui/Modal";
+import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
+import OverrideModal from "../../../../_components/OverrideModal";
+import LockedRegion from "../../../../_components/LockedRegion";
+import { editability } from "../../../../../../lib/pcd-document-lock";
+import { cabinetOptions, orderItemLabel, orderItemOptions } from "../../../../../../lib/pcd-order-item-label";
+import { edgeImageSrc } from "../../../../../../lib/pcd-profile-images";
 import AdminLoading from "@/components/admin/AdminLoading";
 import { useToast } from "@/components/ui/Toast";
 import { QuoteColourCombobox, QuoteImageCombobox, QuoteTileCombobox } from "@/components/admin/QuoteComboboxes";
@@ -16,7 +22,16 @@ import {
   profileNamesForSelection,
   profileTypesForSelection,
 } from "../../../../../../lib/quote-form-data";
-import { COLOUR_SUPPLIERS } from "../../../../../../lib/pcd-colour-library";
+import { asSelectionRows, useProfileLibrary } from "../../../../../../lib/use-profile-library";
+import {
+  edgesForSupplier,
+  fieldsClearedBySupplierChange,
+  profileCategoriesForSupplier,
+  profilesForSupplier,
+  suppliersForMaterial,
+  supplierOffersEdges,
+  supplierOffersProfiles,
+} from "../../../../../../lib/pcd-supplier-selection";
 import {
   JOB_COST_ACTION,
   JOB_COST_TYPES,
@@ -95,8 +110,10 @@ function lineActionLabel(value) {
   return actionOptions.find((option) => option.value === value)?.label || titleCase(value);
 }
 
+// Position, size and spec, so one door can be told from the seven beside it.
+// See lib/pcd-order-item-label.js for why the old label was not enough.
 function itemLabel(item) {
-  return [item.title || item.product_type || "Order item", item.material, item.colour].filter(Boolean).join(" - ");
+  return orderItemLabel(item);
 }
 
 function variationLineItemLabel(line) {
@@ -161,9 +178,14 @@ function assetSlug(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+// Where an edge photo lives. Asked of lib/pcd-profile-images.js rather than
+// worked out here: the rule has exceptions, and a copy of it that does not
+// know them is how the 1mm Bevel Edge showed a broken tile while the square
+// edge beside it was fine.
+// The "em" test it used to start with was a workaround for the same missing
+// file: the decorative board edges were hidden rather than found.
 function edgeOptionSrc(label) {
-  if (!String(label || "").trim().toLowerCase().startsWith("em")) return "";
-  return `/images/edges/${assetSlug(label)}.png`;
+  return edgeImageSrc(label);
 }
 
 function profileOptionSrc(profileType, label) {
@@ -218,6 +240,9 @@ function emptyLine() {
     // the database enforces that pairing both ways.
     cost_type: null,
     order_line_item_id: "",
+    // Which cabinet a piece belongs to. Inherited when varying an existing line,
+    // chosen by hand when adding a new one.
+    design_item_id: null,
     title: "",
     description: "",
     product_type: "",
@@ -375,7 +400,31 @@ export default function VariationEditor({ orderId, variationId }) {
   const [editingLineId, setEditingLineId] = useState(null);
   const [isAddLineModalOpen, setIsAddLineModalOpen] = useState(false);
   const [publishEmail, setPublishEmail] = useState(null);
+  // Set when the send came back saying some lines have no cost recorded. Held
+  // on the screen rather than in a toast, because it is something to read and
+  // decide on, and the decision is the very next button press.
+  const [sendWarning, setSendWarning] = useState("");
+  const [overrideOpen, setOverrideOpen] = useState(false);
   const [hardwareRows, setHardwareRows] = useState([]);
+  // Which brands stock which material, and the profile catalogue. The same two
+  // sources the quote editor and the public quote form read, so a variation
+  // cannot offer a combination a quote could not.
+  const [supplierColourRows, setSupplierColourRows] = useState([]);
+  const profileLibrary = useProfileLibrary();
+  const profileRows = useMemo(() => asSelectionRows(profileLibrary.profiles), [profileLibrary.profiles]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/colour-library?availability=1", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!cancelled && payload?.ok) setSupplierColourRows(payload.brandPairs || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
   const [businessDefaultsError, setBusinessDefaultsError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -384,12 +433,53 @@ export default function VariationEditor({ orderId, variationId }) {
   const lines = useMemo(() => sortedLines(variation), [variation]);
   const orderItems = useMemo(() => sortedItems(order), [order]);
   const hardwareOptions = useMemo(() => hardwareOptionsFromRows(hardwareRows), [hardwareRows]);
-  const isEditable = ["draft", "sent", "viewed"].includes(variation?.status || "draft");
+  // Sealed once it is with the customer. The override is the way through, and
+  // it cancels the link they hold so they can never approve a version being
+  // edited. See lib/pcd-document-lock.js.
+  const lockState = editability("variation", variation?.status);
+  const isEditable = lockState === "open";
+  const isSealed = lockState === "sealed";
   const lineDraftMaterialOptions = materialOptionsForType(lineDraft.product_type);
-  const lineDraftEdgeOptions = edgeProfilesForMaterial(lineDraft.material);
-  const lineDraftProfileTypeOptions = profileTypesForSelection(lineDraft.material, lineDraft.thickness);
-  const lineDraftProfileOptions = profileNamesForSelection(lineDraft.profile_type, lineDraft.material, lineDraft.thickness);
-  const selectedSupplier = COLOUR_SUPPLIERS.includes(lineDraft.supplier_name) ? lineDraft.supplier_name : COLOUR_SUPPLIERS[0];
+
+  // WHOSE BOARD IS THIS. A variation writes the same line shape a quote does,
+  // off the same catalogue, so the brand decides the colour, the edge and the
+  // profile here exactly as it does there. Until the catalogue has loaded the
+  // old material-wide lists stand, because an empty dropdown and a failed read
+  // look identical on screen.
+  const selectedSupplier = String(lineDraft.supplier_name || "").trim();
+  const useLibrary = profileLibrary.isReady && Boolean(selectedSupplier);
+  const lineDraftEdgeOptions = useLibrary
+    ? edgesForSupplier(profileRows, { supplier: selectedSupplier, material: lineDraft.material }).map((row) => ({
+        name: row.name,
+        src: row.image_url || edgeOptionSrc(row.name),
+      }))
+    : edgeProfilesForMaterial(lineDraft.material).map((edge) => ({ name: edge, src: edgeOptionSrc(edge) }));
+  const lineDraftProfileTypeOptions = useLibrary
+    ? profileCategoriesForSupplier(profileRows, { supplier: selectedSupplier, thickness: lineDraft.thickness })
+    : profileTypesForSelection(lineDraft.material, lineDraft.thickness);
+  const lineDraftProfileOptions = useLibrary
+    ? profilesForSupplier(profileRows, { supplier: selectedSupplier, thickness: lineDraft.thickness })
+        .filter((row) => !lineDraft.profile_type || row.category === lineDraft.profile_type)
+        .map((row) => ({
+          name: row.name,
+          src: row.image_url || profileOptionSrc(row.category, row.name),
+        }))
+    : profileNamesForSelection(lineDraft.profile_type, lineDraft.material, lineDraft.thickness).map((profile) => ({
+        name: profile,
+        src: profileOptionSrc(lineDraft.profile_type, profile),
+      }));
+  // A brand that makes no edges or no profiles gets no field, not an empty one.
+  const brandDoesEdges = useLibrary ? supplierOffersEdges(profileRows, selectedSupplier) : true;
+  const brandDoesProfiles = useLibrary ? supplierOffersProfiles(profileRows, selectedSupplier) : true;
+  const supplierOptions = (() => {
+    // From the colours we stock, not a list in code, so adding Formica is
+    // adding its colours. A brand already on the line stays offered even if it
+    // is no longer stocked, or an old line silently loses it on the next save.
+    const names = suppliersForMaterial(supplierColourRows, lineDraft.material);
+    return selectedSupplier && !names.some((name) => name.toLowerCase() === selectedSupplier.toLowerCase())
+      ? [...names, selectedSupplier]
+      : names;
+  })();
   const lineDraftPricingError = variationLinePricingError(lineDraft);
 
   useEffect(() => {
@@ -484,17 +574,35 @@ export default function VariationEditor({ orderId, variationId }) {
         next.hardware_catalogue_id = "";
         if (!keepMaterial) {
           next.material = firstBoardMaterialForType(changes.product_type);
-          next.supplier_name = next.material ? COLOUR_SUPPLIERS[0] : "";
+          // No brand is chosen for anyone. A guessed brand is how a Polytec
+          // profile ended up beside a Laminex colour.
+          next.supplier_name = "";
           clearBoardSelection(next);
         }
       }
       if (has("material")) {
-        next.supplier_name = changes.material ? COLOUR_SUPPLIERS[0] : "";
+        next.supplier_name = "";
         clearBoardSelection(next);
       }
-      if (has("supplier_name") && !has("colour")) {
-        // The old supplier's board rate must not survive the switch.
-        clearBoardSelection(next);
+      if (has("supplier_name")) {
+        // Whatever the new brand cannot make goes with the old one. The board
+        // rate goes too: it belonged to the brand being left behind.
+        const losing = fieldsClearedBySupplierChange(
+          {
+            supplier_name: lineDraft.supplier_name,
+            colour: lineDraft.colour,
+            profile: lineDraft.profile,
+            edge_mould: lineDraft.edge_mould,
+          },
+          next.supplier_name,
+          { colourRows: supplierColourRows, profileRows }
+        );
+        if (losing.some((entry) => entry.field === "profile")) {
+          next.profile = "";
+          next.profile_type = "";
+        }
+        if (losing.some((entry) => entry.field === "edge_mould")) next.edge_mould = "";
+        if (!has("colour")) clearBoardSelection(next);
       }
       if (has("thickness") && !has("colour")) {
         next.profile_type = "";
@@ -617,6 +725,7 @@ export default function VariationEditor({ orderId, variationId }) {
     setter((current) => ({
       ...current,
       order_line_item_id: itemId,
+      design_item_id: item?.design_item_id || null,
       title: item?.title || "",
       description: item?.description || "",
       product_type: item?.product_type || "",
@@ -736,6 +845,9 @@ export default function VariationEditor({ orderId, variationId }) {
 
   function prepareSend() {
     const viewUrl = typeof window !== "undefined" ? `${window.location.origin}/variations/view?code=${variation.access_code}` : "";
+    // A fresh open asks the question again. Carrying the last warning over would
+    // arm "Send anyway" before anything had been checked.
+    setSendWarning("");
     setPublishEmail({
       subject: defaultVariationEmailSubject(variation, order),
       message: defaultVariationEmailMessage(variation, order, viewUrl),
@@ -743,7 +855,11 @@ export default function VariationEditor({ orderId, variationId }) {
     });
   }
 
-  async function sendVariation() {
+  // `force` is set by the second press, after the warning below has been read.
+  // Sending used to be refused outright when a line had no cost, which stopped
+  // a variation the customer was waiting on over a number that only affects our
+  // own margin. Now it says what it noticed and gets out of the way.
+  async function sendVariation({ force = false } = {}) {
     if (!publishEmail?.subject?.trim() || !publishEmail?.message?.trim()) {
       toast({ title: "Enter an email subject and message before sending.", variant: "error" });
       return;
@@ -753,13 +869,21 @@ export default function VariationEditor({ orderId, variationId }) {
       const response = await fetch(`/api/admin/orders/${orderId}/variations/${variationId}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(publishEmail),
+        body: JSON.stringify({ ...publishEmail, force }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
         toast({ title: payload.error || "Could not send variation.", variant: "error" });
         return;
       }
+      // Nothing was sent yet: the costs are worth a look first. Said once, on
+      // the screen rather than in a toast that disappears, with the send button
+      // still right there.
+      if (payload.needsConfirmation) {
+        setSendWarning(payload.warning || "");
+        return;
+      }
+      setSendWarning("");
       setPublishEmail(null);
       setVariation((current) => ({ ...current, status: "sent", sent_at: new Date().toISOString(), viewed_at: null }));
       toast({
@@ -795,9 +919,15 @@ export default function VariationEditor({ orderId, variationId }) {
         <td className={tw.td}><span className={tw.cellText}>{line.notes || "-"}</span></td>
         <td className={tw.tdLast}>
           {isEditable ? (
-            <div className="flex gap-2">
-              <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => openEditLineModal(line)}>Edit</button>
-              <button type="button" className={tw.dangerBtn} disabled={isSaving} onClick={() => deleteLine(line.id)}>Delete</button>
+            <div className="flex justify-end">
+              <ActionMenu label={"Open actions for " + (line.title || "this variation line")}>
+                <ActionMenuItem disabled={isSaving} onClick={() => openEditLineModal(line)}>
+                  Edit
+                </ActionMenuItem>
+                <ActionMenuItem variant="danger" disabled={isSaving} onClick={() => deleteLine(line.id)}>
+                  Delete
+                </ActionMenuItem>
+              </ActionMenu>
             </div>
           ) : null}
         </td>
@@ -932,14 +1062,24 @@ export default function VariationEditor({ orderId, variationId }) {
   function renderAddLineFields() {
     if (lineDraft.action === JOB_COST_ACTION) return renderJobCostFields();
 
+    // The order line this draft is acting on, so the form can talk about what
+    // is actually there rather than about the draft alone.
+    const sourceLineForDraft = orderItems.find((entry) => entry.id === lineDraft.order_line_item_id) || null;
     const isRemove = lineDraft.action === "remove";
     const isPriceAdjustment = lineDraft.action === "price_adjustment";
+    // Removing a line removes ALL of its quantity and credits the whole line.
+    // On a line of 2 that is almost never what somebody reaching for "Remove"
+    // means, and the wrong outcome looks exactly like the right one on screen:
+    // a credit, a variation, an approval. Taking one of two is a CHANGE with the
+    // quantity reduced, which prices the difference correctly.
+    const sourceQty = Math.max(0, Number(sourceLineForDraft?.qty || 0));
+    const removingWholeQty = isRemove && sourceQty > 1;
     const isHardware = lineDraft.product_type === "Hardware";
     const isBaseCabinet = lineDraft.product_type === BASE_CABINET_TYPE;
     const isBoardLine = isBoardVariationDraft(lineDraft);
     const boardFieldsLocked = isRemove || isPriceAdjustment || isHardware || isBaseCabinet;
-    const showEdges = !boardFieldsLocked && lineDraftEdgeOptions.length > 0;
-    const showProfiles = !boardFieldsLocked && lineDraftProfileTypeOptions.length > 0;
+    const showEdges = !boardFieldsLocked && brandDoesEdges && lineDraftEdgeOptions.length > 0;
+    const showProfiles = !boardFieldsLocked && brandDoesProfiles && lineDraftProfileTypeOptions.length > 0;
     const canResetUnitCost =
       isBoardLine &&
       lineDraft.unit_cost_mode === "manual" &&
@@ -965,10 +1105,45 @@ export default function VariationEditor({ orderId, variationId }) {
             disabled={["add", "price_adjustment"].includes(lineDraft.action)}
             placeholder={["add", "price_adjustment"].includes(lineDraft.action) ? "Not applicable" : "Select item"}
             value={lineDraft.order_line_item_id}
-            options={orderItems.map((item) => ({ value: item.id, label: itemLabel(item), name: itemLabel(item) }))}
+            options={orderItemOptions(orderItems)}
             onChange={(option) => applySourceLineToDraft(option.value)}
           />
         </label>
+        {removingWholeQty ? (
+          <div className="md:col-span-6 rounded-[6px] border border-[#e8d68f] bg-[#fffdf0] px-3 py-2.5">
+            <p className="m-0 text-[12px] leading-[1.5] text-[#8a6d0b]">
+              <strong className="font-semibold">This line is a quantity of {sourceQty}.</strong>{" "}
+              Removing it takes all {sourceQty} off the order and credits the whole line. To take one off and keep the
+              rest, change the quantity instead.
+            </p>
+            <button
+              type="button"
+              className={`${tw.smBtn} mt-2`}
+              onClick={() => {
+                changeLineDraftAction("change");
+                updateLineDraft({ qty: sourceQty - 1 });
+              }}
+            >
+              Take one off instead, leaving {sourceQty - 1}
+            </button>
+          </div>
+        ) : null}
+
+        {lineDraft.action === "add" ? (
+          <label className={`${tw.fieldLabel} md:col-span-2`}>Part of which cabinet?
+            <QuoteTileCombobox
+              compact={false}
+              placeholder="Not part of a cabinet"
+              value={lineDraft.design_item_id || ""}
+              options={cabinetOptions(orderItems)}
+              onChange={(option) => updateLineDraft({ design_item_id: option.value || null })}
+            />
+            <span className={tw.muted}>
+              Groups this piece with that cabinet on the production sheet. Leave it blank for a piece supplied on its own.
+            </span>
+          </label>
+        ) : null}
+
         {/* Every other line names itself from its product type or hardware item,
             the same way a quote line does. A price adjustment has neither, so it
             is the only line that needs a name typed in. */}
@@ -1022,7 +1197,7 @@ export default function VariationEditor({ orderId, variationId }) {
                 disabled={isRemove || isPriceAdjustment || !lineDraft.material}
                 placeholder={lineDraft.material ? "Select supplier" : "Select material first"}
                 value={selectedSupplier}
-                options={COLOUR_SUPPLIERS.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
+                options={supplierOptions.map((supplier) => ({ label: supplier, name: supplier, value: supplier }))}
                 onChange={(option) => updateLineDraft({ supplier_name: option.value })}
               />
             </label>
@@ -1043,11 +1218,11 @@ export default function VariationEditor({ orderId, variationId }) {
         <label className={tw.fieldLabel}>Thickness
           <input className={tw.fieldInput} value={lineDraft.thickness || ""} placeholder="Set by the colour" disabled readOnly />
         </label>
-        <label className={tw.fieldLabel}>Width mm
-          <input className={tw.fieldInput} type="number" value={lineDraft.width_mm} disabled={isRemove || isPriceAdjustment} onChange={(event) => updateLineDraft({ width_mm: event.target.value })} />
-        </label>
         <label className={tw.fieldLabel}>Height mm
           <input className={tw.fieldInput} type="number" value={lineDraft.height_mm} disabled={isRemove || isPriceAdjustment} onChange={(event) => updateLineDraft({ height_mm: event.target.value })} />
+        </label>
+        <label className={tw.fieldLabel}>Width mm
+          <input className={tw.fieldInput} type="number" value={lineDraft.width_mm} disabled={isRemove || isPriceAdjustment} onChange={(event) => updateLineDraft({ width_mm: event.target.value })} />
         </label>
 
         <label className={tw.fieldLabel}>Qty
@@ -1059,7 +1234,7 @@ export default function VariationEditor({ orderId, variationId }) {
               disabled={isRemove}
               placeholder="Select edge"
               value={lineDraft.edge_mould}
-              options={lineDraftEdgeOptions.map((edge) => ({ value: edge, label: edge, name: edge, meta: "Edge", src: edgeOptionSrc(edge) }))}
+              options={lineDraftEdgeOptions.map((edge) => ({ value: edge.name, label: edge.name, name: edge.name, meta: "Edge", src: edge.src }))}
               onChange={(option) => updateLineDraft({ edge_mould: option.value || option.name || option.label })}
             />
           ) : notApplicable}
@@ -1082,7 +1257,7 @@ export default function VariationEditor({ orderId, variationId }) {
               disabled={isRemove || !lineDraft.profile_type}
               placeholder={lineDraft.profile_type ? "Select profile" : "Select profile type first"}
               value={lineDraft.profile}
-              options={lineDraftProfileOptions.map((profile) => ({ value: profile, label: profile, name: profile, meta: lineDraft.profile_type, src: profileOptionSrc(lineDraft.profile_type, profile) }))}
+              options={lineDraftProfileOptions.map((profile) => ({ value: profile.name, label: profile.name, name: profile.name, meta: lineDraft.profile_type, src: profile.src }))}
               onChange={(option) => updateLineDraft({ profile: option.value || option.name || option.label })}
             />
           ) : notApplicable}
@@ -1093,7 +1268,7 @@ export default function VariationEditor({ orderId, variationId }) {
             className={tw.fieldInput}
             type="number"
             step="0.01"
-            placeholder={isBoardLine ? "Calculated from the board rate" : "0.00"}
+            placeholder={isBoardLine ? "No board rate yet, type a cost" : "0.00"}
             value={lineDraft.product_unit_cost_ex_gst}
             disabled={isRemove || isPriceAdjustment}
             onChange={(event) => updateLineDraft({ product_unit_cost_ex_gst: event.target.value })}
@@ -1172,6 +1347,31 @@ export default function VariationEditor({ orderId, variationId }) {
   return (
     <>
       <div className="min-h-full bg-[#f5f8f4] p-6">
+        {!isEditable ? (
+          <div
+            className={`mb-3 rounded-[6px] border px-3 py-2 text-[12px] leading-[1.5] ${
+              isSealed
+                ? "border-[#e8d68f] bg-[#fffdf0] text-[#8a6d0b]"
+                : "border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28]"
+            }`}
+          >
+            {isSealed ? (
+              <>
+                <strong className="font-semibold">This variation is with the customer, so it is read only.</strong>{" "}
+                They are holding a link to this version, and the version they approve has to be the version they read.
+                Use <strong className="font-semibold">Edit with override</strong> to pull it back to draft, which
+                cancels the link they were sent.
+              </>
+            ) : (
+              <>
+                <strong className="font-semibold">
+                  This variation has been responded to, so it is read only.
+                </strong>{" "}
+                It is the record of what was agreed. To change the work again, raise another variation on the order.
+              </>
+            )}
+          </div>
+        ) : null}
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <Link href={`/admin/orders/${orderId}`} className="text-[12px] text-[#6b9e61] hover:underline">Back to order</Link>
@@ -1181,9 +1381,15 @@ export default function VariationEditor({ orderId, variationId }) {
           <div className="flex items-center gap-2">
             <span className={`${tw.pill} ${statusClass(variation.status)}`}>{titleCase(variation.status)}</span>
             {isEditable ? <button type="button" className={tw.primaryBtn} disabled={isSaving || !lines.length} onClick={prepareSend}>Send variation</button> : null}
+            {isSealed ? (
+              <button type="button" className={tw.secondaryBtn} onClick={() => setOverrideOpen(true)}>
+                Edit with override
+              </button>
+            ) : null}
           </div>
         </div>
 
+        <LockedRegion locked={!isEditable}>
         <div className="flex flex-col gap-3">
             {businessDefaultsError ? (
               <div className="rounded-[8px] border border-[#fca5a5] bg-[#fef2f2] px-4 py-3">
@@ -1261,6 +1467,7 @@ export default function VariationEditor({ orderId, variationId }) {
             </div>
           </div>
         </div>
+        </LockedRegion>
       </div>
 
       {isAddLineModalOpen ? (
@@ -1283,6 +1490,26 @@ export default function VariationEditor({ orderId, variationId }) {
         </Modal>
       ) : null}
 
+      <OverrideModal
+        open={overrideOpen}
+        kind="variation"
+        documentNumber={variation.variation_number}
+        sentAt={variation.sent_at}
+        onClose={() => setOverrideOpen(false)}
+        onConfirm={async (reason) => {
+          const response = await fetch(`/api/admin/orders/${orderId}/variations/${variationId}/override`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason }),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not override this variation.");
+          setOverrideOpen(false);
+          setVariation((current) => ({ ...current, ...payload.variation }));
+          toast({ title: payload.message, variant: "success" });
+        }}
+      />
+
       {publishEmail ? (
         <Modal
           open={true}
@@ -1292,11 +1519,25 @@ export default function VariationEditor({ orderId, variationId }) {
           size="lg"
           footer={
             <>
-              <button type="button" className={tw.secondaryBtn} onClick={() => setPublishEmail(null)} disabled={isSaving}>Cancel</button>
-              <button type="button" className={tw.primaryBtn} onClick={sendVariation} disabled={isSaving || !variation.customer_email}>{isSaving ? "Sending..." : "Send variation"}</button>
+              <button type="button" className={tw.secondaryBtn} onClick={() => { setSendWarning(""); setPublishEmail(null); }} disabled={isSaving}>Cancel</button>
+              {/* The second press carries force. The button says what it will
+                  do, so nobody has to work out whether the warning stopped it. */}
+              <button
+                type="button"
+                className={tw.primaryBtn}
+                onClick={() => sendVariation({ force: Boolean(sendWarning) })}
+                disabled={isSaving || !variation.customer_email}
+              >
+                {isSaving ? "Sending..." : sendWarning ? "Send anyway" : "Send variation"}
+              </button>
             </>
           }
         >
+          {sendWarning ? (
+            <div className="mb-3 rounded-[6px] border border-[#e8d68f] bg-[#fffdf0] px-3 py-2 text-[12px] text-[#8a6d0b]">
+              {sendWarning}
+            </div>
+          ) : null}
           <div className={styles.customerModalGrid}>
             <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>To
               <input className={styles.fieldInput} value={variation.customer_email || ""} disabled />

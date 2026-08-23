@@ -1,6 +1,7 @@
 ﻿import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
+import { assertSendable } from "../../../../../../lib/pcd-document-lock";
 import { attachQuotePdf } from "../../../../../../lib/pcd-quote-pdf-attachment";
 
 async function quoteIdFromParams(params) {
@@ -109,6 +110,13 @@ export async function POST(request, { params }) {
       .single();
     if (error) throw error;
 
+    // Re-sending a draft or a sent quote is ordinary. Sending one the customer
+    // has already ANSWERED is not: this route writes status "sent"
+    // unconditionally, so it used to revert an approved quote to awaiting a
+    // response and strand the approval against a quote that no longer read as
+    // approved. See lib/pcd-document-lock.js.
+    assertSendable("quote", quote.status);
+
     const viewUrl = `${origin}/quotes/view?code=${encodeURIComponent(quote.access_code)}`;
     const emailSubject = String(payload.subject || `${quote.quote_number} - Perth Cabinet Doors quote`).trim();
     const emailMessage = String(payload.message || defaultEmailBody(quote, viewUrl)).trim();
@@ -177,7 +185,10 @@ export async function POST(request, { params }) {
 
     return Response.json({ ok: true, emailSent, viewUrl, pdfAttached, pdfError });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not send quote." }, { status: 500 });
+    return Response.json(
+      { ok: false, error: error?.message || "Could not send quote." },
+      { status: error?.status || 500 }
+    );
   }
 }
 

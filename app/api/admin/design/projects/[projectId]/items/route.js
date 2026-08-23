@@ -1,5 +1,11 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
-import { applyMaterialDefaults, buildItemRow, VALID_ITEM_TYPES } from "../../../../../../../lib/pcd-design-item-io";
+import {
+  applyMaterialDefaults,
+  buildItemRow,
+  isMissingDesignColourSourceError,
+  VALID_ITEM_TYPES,
+  withoutDesignColourSource,
+} from "../../../../../../../lib/pcd-design-item-io";
 
 async function getProjectId(params) {
   const resolved = await Promise.resolve(params);
@@ -51,11 +57,16 @@ export async function POST(request, { params }) {
 
     const defaultedPayload = applyMaterialDefaults(payload, projectRow?.material_defaults);
 
-    const { data, error } = await context.supabase
-      .from("pcd_design_items")
-      .insert(buildItemRow(defaultedPayload, projectId))
-      .select("*")
-      .single();
+    const row = buildItemRow(defaultedPayload, projectId);
+    const create = (values) =>
+      context.supabase.from("pcd_design_items").insert(values).select("*").single();
+
+    let { data, error } = await create(row);
+    // See the update route: the colour-source columns arrive with a migration,
+    // and a new item must still be placeable before it has been run.
+    if (error && isMissingDesignColourSourceError(error)) {
+      ({ data, error } = await create(withoutDesignColourSource(row)));
+    }
 
     if (error) throw error;
     return Response.json({ ok: true, item: data }, { status: 201 });

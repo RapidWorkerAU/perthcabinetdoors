@@ -23,12 +23,11 @@ import {
   findEdgeSnap,
   occupiedFootprint,
   islandOccupiedRect,
-  perpendicularGaps,
   cornerSecondaryFootprint,
   cabinetVerticalRange,
   verticalRangesOverlap,
-  computeGaps1D,
   wallAxisObstacles,
+  nearestGaps,
   frontEdgeFor,
   panelSideEdges,
   islandEffectiveDims,
@@ -1362,89 +1361,48 @@ export default function DesignCanvas({
         );
       })()}
 
-      {/* ---- Gap measurements during drag ---- */}
+      {/* ---- Gap measurements during drag ----
+
+           All four sides of whatever is being dragged, each measured to the
+           nearest thing in that direction — another item's face if anything is
+           in the way, the room wall only when nothing is. One rule for every
+           item type and every wall, freestanding included.
+
+           This used to be three separate calculations that disagreed: the
+           along-wall gaps, a depth pass that ignored obstructions, and
+           freestanding items measured straight to the four room walls with
+           nothing in between considered. That is why dimension lines read
+           through fridge recesses and islands to the wall behind them. */}
       {drag && (() => {
         const draggingItem = displayItems.find((i) => i.id === drag.itemId);
         if (!draggingItem) return null;
-        const r = cabinetSvgRect(draggingItem, lay);
-        if (!r) return null;
-        const currentWall = draggingItem.wall;
-        const { absX: cAbsX, absY: cAbsY } = getAbsPos(draggingItem, W, D);
+        const g = nearestGaps(draggingItem, items, W, D, drag.itemId);
+        if (!g) return null;
+        const { rect } = g;
+        const midX = ox + (rect.x + rect.w / 2) * scale;
+        const midY = oy + (rect.y + rect.h / 2) * scale;
+        const px = (mm) => ox + mm * scale;
+        const py = (mm) => oy + mm * scale;
 
-        // Everything that blocks this item along the wall, by the same rule the
-        // drag uses. It used to be same-wall items only, which is why an
-        // obstruction on another wall, or a freestanding one in the middle of
-        // the room, was never measured off.
-        const gapObstacles = wallAxisObstacles(draggingItem, items, currentWall, W, D, drag.itemId);
-
-        // Perpendicular (depth) gaps — from the item's front face to the nearest
-        // thing in front (or the far wall) and its back face to the wall behind,
-        // so all four sides are measured. Taken to physical extents, so a
-        // benchtop or applied panel is what the distance reaches. Null (skipped)
-        // for islands, which already show gaps to all four room walls below.
-        const pg = perpendicularGaps(draggingItem, items, W, D);
-        const perpEls = pg ? [
-          ...(pg.frontGap > 1 ? [pg.vertical
-            ? <GapDimension key="pf" x1={ox + pg.alongMid * scale} y1={oy + pg.frontFace * scale} x2={ox + pg.alongMid * scale} y2={oy + pg.frontBound * scale} label={pg.frontGap} horizontal={false} />
-            : <GapDimension key="pf" x1={ox + pg.frontFace * scale} y1={oy + pg.alongMid * scale} x2={ox + pg.frontBound * scale} y2={oy + pg.alongMid * scale} label={pg.frontGap} horizontal />] : []),
-          ...(pg.backGap > 1 ? [pg.vertical
-            ? <GapDimension key="pb" x1={ox + pg.alongMid * scale} y1={oy + pg.backFace * scale} x2={ox + pg.alongMid * scale} y2={oy + pg.backBound * scale} label={pg.backGap} horizontal={false} />
-            : <GapDimension key="pb" x1={ox + pg.backFace * scale} y1={oy + pg.alongMid * scale} x2={ox + pg.backBound * scale} y2={oy + pg.alongMid * scale} label={pg.backGap} horizontal />] : []),
-        ] : null;
-
-        // Gaps are measured between OCCUPIED faces, not carcasses — with an
-        // applied end panel in play those differ by the panel's thickness,
-        // and measuring carcass-to-carcass would report a phantom 16-18mm
-        // gap across a joint that's actually shut tight. The dimension lines
-        // are drawn from the same occupied edges for the same reason, rather
-        // than from the carcass rect.
-        if (currentWall === "top" || currentWall === "bottom") {
-          const gapObs = gapObstacles;
-          const fp = occupiedFootprint(draggingItem, W, D);
-          const pos = fp ? fp.x : cAbsX;
-          const len = fp ? fp.w : drag.itemWidthMm;
-          const { leftGap, rightGap, leftBoundMm, rightBoundMm } = computeGaps1D(pos, len, gapObs, W);
-          const midY = r.y + r.h / 2;
-          return (
-            <>
-              <GapDimension x1={ox + leftBoundMm * scale}  y1={midY} x2={ox + pos * scale} y2={midY} label={leftGap}  horizontal />
-              <GapDimension x1={ox + (pos + len) * scale}  y1={midY} x2={ox + rightBoundMm * scale} y2={midY} label={rightGap} horizontal />
-              {perpEls}
-            </>
-          );
-        }
-
-        if (currentWall === "left" || currentWall === "right") {
-          const gapObs = gapObstacles;
-          const fp = occupiedFootprint(draggingItem, W, D);
-          const pos = fp ? fp.y : cAbsY;
-          const len = fp ? fp.h : drag.itemWidthMm;
-          const { leftGap, rightGap, leftBoundMm, rightBoundMm } = computeGaps1D(pos, len, gapObs, D);
-          const midX = r.x + r.w / 2;
-          return (
-            <>
-              <GapDimension x1={midX} y1={oy + leftBoundMm * scale}  x2={midX} y2={oy + pos * scale} label={leftGap}  horizontal={false} />
-              <GapDimension x1={midX} y1={oy + (pos + len) * scale}  x2={midX} y2={oy + rightBoundMm * scale} label={rightGap} horizontal={false} />
-              {perpEls}
-            </>
-          );
-        }
-
-        if (currentWall === "island") {
-          const io   = islandOccupiedRect(draggingItem);
-          const midX = r.x + r.w / 2;
-          const midY = r.y + r.h / 2;
-          return (
-            <>
-              <GapDimension x1={ox}                          y1={midY} x2={ox + io.x * scale}  y2={midY} label={io.x}                horizontal />
-              <GapDimension x1={ox + (io.x + io.w) * scale}  y1={midY} x2={ox + roomW}         y2={midY} label={W - io.x - io.w}    horizontal />
-              <GapDimension x1={midX} y1={oy}                          x2={midX} y2={oy + io.y * scale}  label={io.y}               horizontal={false} />
-              <GapDimension x1={midX} y1={oy + (io.y + io.h) * scale}  x2={midX} y2={oy + roomH}         label={D - io.y - io.h}    horizontal={false} />
-            </>
-          );
-        }
-
-        return null;
+        // A gap under a millimetre is a joint, not a space — labelling it just
+        // litters the drawing with "0"s along every flush run.
+        const show = (gap) => gap > 1;
+        return (
+          <>
+            {show(g.left.gap) && (
+              <GapDimension x1={px(g.left.bound)} y1={midY} x2={px(rect.x)} y2={midY} label={g.left.gap} horizontal />
+            )}
+            {show(g.right.gap) && (
+              <GapDimension x1={px(rect.x + rect.w)} y1={midY} x2={px(g.right.bound)} y2={midY} label={g.right.gap} horizontal />
+            )}
+            {show(g.up.gap) && (
+              <GapDimension x1={midX} y1={py(g.up.bound)} x2={midX} y2={py(rect.y)} label={g.up.gap} horizontal={false} />
+            )}
+            {show(g.down.gap) && (
+              <GapDimension x1={midX} y1={py(rect.y + rect.h)} x2={midX} y2={py(g.down.bound)} label={g.down.gap} horizontal={false} />
+            )}
+          </>
+        );
       })()}
 
       {/* Snap guide lines — cyan dashes showing the edge being aligned to */}

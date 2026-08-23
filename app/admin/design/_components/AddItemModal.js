@@ -8,6 +8,7 @@
 // picker — no data is written here.
 
 import { createPortal } from "react-dom";
+import { APPLIANCE_KINDS } from "../../../../lib/pcd-appliance-utils";
 import { useEffect, useState } from "react";
 import styles from "../design.module.css";
 
@@ -30,10 +31,10 @@ export const CATALOG = [
   { type: "window",               category: "features",   desc: "Window opening in the wall (visual reference)." },
   { type: "door_opening",         category: "features",   desc: "Doorway opening (visual reference)." },
   { type: "brick_corner_pantry",  category: "features",   desc: "Bricked-in diagonal corner pantry with a door. Never quoted." },
-  { type: "appliance", kind: "fridge",     category: "appliances", label: "Fridge / Freezer", desc: "Tall fridge — single, double or French-door style." },
-  { type: "appliance", kind: "dishwasher", category: "appliances", label: "Dishwasher",       desc: "Under-bench dishwasher with a control strip + handle." },
-  { type: "appliance", kind: "rangehood",  category: "appliances", label: "Rangehood",        desc: "Wall-mounted canopy rangehood with a chimney flue." },
-  { type: "appliance", kind: "other",      category: "appliances", label: "Other appliance",  desc: "Freestanding box — washing machine, oven, etc." },
+  // Every appliance is drawn as the appliance it actually is, so there is no
+  // generic "other" row to fall into — picking a specific thing and then being
+  // handed a featureless box helped nobody.
+  ...APPLIANCE_KINDS.map((a) => ({ type: "appliance", kind: a.kind, category: "appliances", label: a.label, desc: a.desc })),
 ];
 
 export const CATEGORIES = [
@@ -79,13 +80,36 @@ export function Mockup({ type, kind }) {
         </>);
       case "rangehood":
         return svg(<>
-          <polygon points="14,30 58,30 50,20 22,20" fill="#dfe3e8" stroke={STROKE} strokeWidth="1.2" strokeLinejoin="round" />
-          <rect x="30" y="6" width="12" height="14" fill="#e2e8f0" stroke={STROKE} strokeWidth="1.2" />
-          <rect x="16" y="30" width="40" height="3" fill="#9aa0a6" />
-          <line x1="4" y1="46" x2="68" y2="46" stroke="#cbd5e1" strokeWidth="1.5" />
+          <rect x="29" y="4" width="14" height="22" fill="#e2e8f0" stroke={STROKE} strokeWidth="1.2" />
+          <polygon points="12,38 60,38 43,26 29,26" fill="#dfe3e8" stroke={STROKE} strokeWidth="1.2" strokeLinejoin="round" />
+          <rect x="12" y="35" width="48" height="3" fill="#9aa0a6" />
+          <line x1="4" y1="47" x2="68" y2="47" stroke="#cbd5e1" strokeWidth="1.5" />
         </>);
-      case "other":
-        return svg(box(20, 6, 32, 40, "#e2e8f0"));
+      case "freestanding_cooker":
+        return svg(<>
+          {box(16, 6, 40, 42, "#e2e8f0")}
+          <rect x="16" y="6" width="40" height="3" fill="#9aa0a6" />
+          <rect x="16" y="9" width="40" height="6" fill="#cbd5e1" />
+          {[21, 28, 35, 42, 49].map((cx) => <circle key={cx} cx={cx} cy="12" r="1.4" fill={STROKE} />)}
+          <rect x="19" y="18" width="34" height="26" rx="1.5" fill="#3f4653" />
+          <rect x="22" y="20" width="28" height="2.5" rx="1" fill="#9aa0a6" />
+          <rect x="23" y="26" width="26" height="15" rx="1" fill="#565e6d" />
+        </>);
+      case "washer_front":
+        return svg(<>
+          {box(18, 6, 36, 42, "#f2f3f4")}
+          <rect x="18" y="6" width="36" height="7" fill="#3f4653" />
+          <circle cx="24" cy="9.5" r="1.4" fill="#e2e8f0" />
+          <circle cx="36" cy="30" r="11" fill="#dfe3e8" stroke={STROKE} strokeWidth="1" />
+          <circle cx="36" cy="30" r="7.5" fill="#3f4653" />
+        </>);
+      case "washer_top":
+        return svg(<>
+          {box(18, 6, 36, 42, "#f2f3f4")}
+          <rect x="18" y="6" width="36" height="6" fill="#3f4653" />
+          <circle cx="36" cy="9" r="1.8" fill="#e2e8f0" />
+          <line x1="36" y1="12" x2="36" y2="48" stroke="#d7d9db" strokeWidth="1" />
+        </>);
       default: // fridge / freezer
         return svg(<>
           {box(22, 4, 28, 44, "#e2e8f0")}

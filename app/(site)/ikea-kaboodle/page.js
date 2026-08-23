@@ -2,6 +2,7 @@ import Link from "next/link";
 import PublicArrowIcon from "@/components/public/PublicArrowIcon";
 import PublicFooter from "@/components/public/PublicFooter";
 import { PUBLIC_PRICE_ESTIMATES_ENABLED } from "@/lib/pcd-site-flags";
+import { normaliseSupplierName } from "@/lib/pcd-colour-library";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import PublicSiteNav from "../PublicSiteNav";
 import styles from "../journey.module.css";
@@ -25,11 +26,9 @@ const MATERIAL_KEYS = {
   thermolaminate: "thermolaminate",
 };
 
-function titleCaseSupplier(value) {
-  const name = String(value || "").trim();
-  if (!name) return "Other";
-  return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
-}
+// One speller for brand names, shared with the rest of the site rather than a
+// copy of it per page. See normaliseSupplierName.
+const titleCaseSupplier = (value) => normaliseSupplierName(value) || "Other";
 
 // ratePerSqm 0 on every fallback on purpose: if the colour library cannot be
 // read we show no prices at all rather than a made-up one. A wrong price on a
@@ -76,8 +75,7 @@ async function loadColours() {
         finish: row.finish_type,
         name: row.name,
         thickness: row.thickness,
-        // The library stores this inconsistently cased ("formica"), and it is a
-        // brand name on a customer-facing tile, so normalise it here.
+        // A brand name on a customer-facing tile, spelt the one way.
         supplier: titleCaseSupplier(row.supplier_name),
         imageUrl: row.image_url || null,
         // Marked up and GST-inclusive, so nothing about our cost is sent to the

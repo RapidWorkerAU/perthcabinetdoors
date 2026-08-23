@@ -17,6 +17,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  calculateQuoteLine,
   calculateQuoteTotals,
   edgingLinealMetres,
   edgingTotals,
@@ -69,15 +70,52 @@ test("a cabinet is not charged processing on top of its per-cabinet hours", () =
   assert.equal(totals.processing_labour_hours, 0);
 });
 
-test("cabinet hours and processing hours add together, on top of the manual figure", () => {
+test("cabinet hours and processing hours add together", () => {
+  const totals = calculateQuoteTotals([cabinet, door, panel, thermoDoor, hardware], 0.1, {
+    business_defaults: DEFAULTS,
+  });
+  assert.equal(totals.cabinet_labour_hours, 4.5);
+  assert.equal(totals.processing_labour_hours, 1.25);
+  assert.equal(totals.labour_hours, 5.75);
+  assert.equal(totals.labour_cost_ex_gst, 575);
+});
+
+test("a typed figure replaces the calculated hours rather than adding to them", () => {
   const totals = calculateQuoteTotals([cabinet, door, panel, thermoDoor, hardware], 0.1, {
     business_defaults: DEFAULTS,
     manual_labour_hours: 2,
   });
-  assert.equal(totals.cabinet_labour_hours, 4.5);
-  assert.equal(totals.processing_labour_hours, 1.25);
-  assert.equal(totals.labour_hours, 7.75);
-  assert.equal(totals.labour_cost_ex_gst, 775);
+  // Still reported, so the person can see what they overrode and by how much.
+  assert.equal(totals.calculated_labour_hours, 5.75);
+  assert.equal(totals.labour_hours, 2);
+  assert.equal(totals.labour_cost_ex_gst, 200);
+});
+
+// The fault behind the four hours: this used to fold the processing time into
+// the line's own labour_hours, and the result is written back to the column it
+// was read from. calculateQuoteTotals calls it on every line, so a line that had
+// already been calculated once, as it has in the Stage Quote preview, was
+// counted twice before it was ever saved.
+test("calculating the same line twice gives the same answer", () => {
+  const once = calculateQuoteLine(panel, DEFAULTS);
+  const twice = calculateQuoteLine(once, DEFAULTS);
+  const thrice = calculateQuoteLine(twice, DEFAULTS);
+  assert.equal(once.labour_hours, twice.labour_hours);
+  assert.equal(twice.labour_hours, thrice.labour_hours);
+  assert.equal(once.processing_labour_hours, twice.processing_labour_hours);
+});
+
+test("two panels at half an hour each is one hour, however many times it is priced", () => {
+  const half = { ...DEFAULTS, inhouse_processing_hours_per_piece: 0.5 };
+  const two = [
+    { product_type: "Panel", material: "Decorative Board", width_mm: 600, height_mm: 850, qty: 1 },
+    { product_type: "Panel", material: "Decorative Board", width_mm: 900, height_mm: 850, qty: 1 },
+  ];
+  assert.equal(calculateQuoteTotals(two, 0.1, { business_defaults: half }).labour_hours, 1);
+  // The same lines after a pass through calculateQuoteLine, which is what the
+  // staging preview and the design import both do before totalling them.
+  const priced = two.map((line) => calculateQuoteLine(line, half));
+  assert.equal(calculateQuoteTotals(priced, 0.1, { business_defaults: half }).labour_hours, 1);
 });
 
 test("board we do not cut ourselves is not charged processing", () => {
@@ -85,9 +123,11 @@ test("board we do not cut ourselves is not charged processing", () => {
   assert.equal(totals.processing_labour_hours, 0);
 });
 
-test("hours typed against a line by hand are kept, not replaced", () => {
+test("hours typed against a line by hand are kept, and the processing time is added once", () => {
   const totals = calculateQuoteTotals([{ ...door, labour_hours: 3 }], 0.1, { business_defaults: DEFAULTS });
-  assert.equal(totals.line_labour_hours, 4);
+  assert.equal(totals.line_labour_hours, 3, "the line keeps exactly what was typed on it");
+  assert.equal(totals.processing_labour_hours, 1, "4 doors at 0.25h");
+  assert.equal(totals.labour_hours, 4, "and the two are added once, at the total");
 });
 
 test("nothing is added until the default is set", () => {

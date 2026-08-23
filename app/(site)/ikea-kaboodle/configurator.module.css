@@ -797,6 +797,21 @@
   text-transform: uppercase;
 }
 
+/* Only one of these shows, whichever suits the pointer the visitor has. */
+.hintTouch {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .hintMouse {
+    display: none;
+  }
+
+  .hintTouch {
+    display: inline;
+  }
+}
+
 .previewMeta {
   color: #5a5a52;
   font-size: 12.5px;

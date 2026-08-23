@@ -409,8 +409,8 @@ export default function HardwareManager() {
             </label>
             {[
               ["length_mm", "Length (mm)"],
-              ["width_mm", "Width (mm)"],
               ["height_mm", "Height (mm)"],
+              ["width_mm", "Width (mm)"],
               ["depth_mm", "Depth (mm)"],
               ["hole_spacing_mm", "Hole spacing / centres (mm)"],
               ["projection_mm", "Projection (mm)"],

@@ -78,7 +78,7 @@ function itemDetails(item) {
 function sizeText(item) {
   const width = toNumber(item?.width_mm);
   const height = toNumber(item?.height_mm);
-  if (width > 0 && height > 0) return `${width}mm x ${height}mm`;
+  if (width > 0 && height > 0) return `${height}mm x ${width}mm`;
   if (width > 0) return `${width}mm wide`;
   if (height > 0) return `${height}mm high`;
   return "";

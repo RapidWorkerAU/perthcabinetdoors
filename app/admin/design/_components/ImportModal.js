@@ -1,5 +1,6 @@
 "use client";
 
+import { hasKickboard } from "../../../../lib/pcd-kickboard-utils";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -68,7 +69,7 @@ function importableParts(item) {
   const { doors, drawers } = frontCounts(item);
   if (doors > 0)   parts.push({ key: "doors",   label: `Doors (${doors})` });
   if (drawers > 0) parts.push({ key: "drawers", label: `Drawer fronts (${drawers})` });
-  if (item.has_kickboard && item.item_type !== "wall_cabinet") parts.push({ key: "kickboard", label: "Kickboard" });
+  if (hasKickboard(item)) parts.push({ key: "kickboard", label: "Kickboard" });
   if (item.has_filler_panel && (item.item_type === "wall_cabinet" || item.item_type === "tall_cabinet")) parts.push({ key: "filler", label: "Filler panel" });
   if (hasFinishedPanels(item)) parts.push({ key: "panels", label: "Finished panels" });
   return parts;

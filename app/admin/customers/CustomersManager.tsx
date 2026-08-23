@@ -9,7 +9,10 @@ import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
+import { cn } from '@/lib/utils'
 import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
+import DuplicatesPanel from './DuplicatesPanel'
+import LinkedContactsPanel from './LinkedContactsPanel'
 import NewSendersPanel from './NewSendersPanel'
 import { AdminPageHeader } from '@/components/ui/AdminPageHeader'
 import { BulkActionBar } from '@/components/ui/BulkActionBar'
@@ -92,6 +95,21 @@ export default function CustomersManager() {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = React.useState(false)
   const [selectedCustomerIds, setSelectedCustomerIds] = React.useState<string[]>([])
   const [confirmDeleteIds,    setConfirmDeleteIds]    = React.useState<string[]>([])
+
+  // THREE LISTS, ONE AT A TIME.
+  //
+  // Possible duplicates and undecided senders used to sit as blocks above the
+  // customer table and push it down the page. Neither is something you look at
+  // every day, and both grow: fifty duplicates would have buried the list this
+  // page is for. They are their own views now, with a count on the tab so a
+  // queue is never invisible just because it is not on screen.
+  const [view, setView] = React.useState<'customers' | 'duplicates' | 'senders' | 'linked'>('customers')
+  const [duplicateCount, setDuplicateCount] = React.useState(0)
+  const [senderCount, setSenderCount] = React.useState(0)
+  // Not a queue. Linked contacts are the ones that are already right, and the
+  // list only ever grows, so it gets its own tab and its own pages rather than
+  // sitting under the duplicates table where fifty of them would bury it.
+  const [linkedCount, setLinkedCount] = React.useState(0)
   const { toast } = useToast()
 
   const filteredCustomers = React.useMemo(() => {
@@ -208,18 +226,38 @@ export default function CustomersManager() {
     }
   }
 
+  // Who each linked record belongs to, so the list can say so rather than
+  // showing what looks like a second person with almost no history.
+  const primaryById = React.useMemo(() => {
+    const byId = new Map(customers.map(c => [c.id, c]))
+    return (customer: Customer) => {
+      const parentId = (customer as { merged_into_id?: string | null }).merged_into_id
+      return parentId ? byId.get(parentId) || null : null
+    }
+  }, [customers])
+
   const customerColumns = React.useMemo<AdminDataTableColumn<Customer>[]>(() => [
     {
       id: 'customer',
       header: 'Customer',
-      cell: customer => (
-        <Link
-          href={`/admin/customers/${customer.id}`}
-          className="font-medium text-[#1a1a18] underline-offset-2 hover:text-[#2d5e28] hover:underline"
-        >
-          {customer.name || customer.email || 'Customer'}
-        </Link>
-      ),
+      cell: customer => {
+        const parent = primaryById(customer)
+        return (
+          <span className="flex flex-col">
+            <Link
+              href={`/admin/customers/${parent?.id || customer.id}`}
+              className="font-medium text-[#1a1a18] underline-offset-2 hover:text-[#2d5e28] hover:underline"
+            >
+              {customer.name || customer.email || 'Customer'}
+            </Link>
+            {parent && (
+              <span className="text-[11px] text-[#8b8a81]">
+                Contact of {parent.name || parent.email}
+              </span>
+            )}
+          </span>
+        )
+      },
     },
     {
       id: 'company',
@@ -276,7 +314,7 @@ export default function CustomersManager() {
         </div>
       ),
     },
-  ], [isSaving])
+  ], [isSaving, primaryById])
 
   function renderCustomerMobileCard(customer: Customer) {
     return (
@@ -338,10 +376,59 @@ export default function CustomersManager() {
         </div>
       )}
 
-      {/* Addresses that have emailed and nobody has decided about. Sits
-          above the list because an undecided sender is not a customer yet. */}
-      <NewSendersPanel />
+      <div className="mb-4 flex flex-wrap items-center gap-1.5 border-b border-[#dbd8cc]">
+        {([
+          ['customers', 'Customers', 0, false],
+          ['duplicates', 'Possible duplicates', duplicateCount, true],
+          ['senders', 'New senders', senderCount, true],
+          ['linked', 'Linked contacts', linkedCount, false],
+        ] as const).map(([key, label, count, isQueue]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setView(key)}
+            aria-current={view === key ? 'page' : undefined}
+            className={cn(
+              'relative -mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-[13px] font-medium transition-colors',
+              view === key
+                ? 'border-[#1c2b1e] text-[#1a1a18]'
+                : 'border-transparent text-[#8b8a81] hover:text-[#1a1a18]'
+            )}
+          >
+            {label}
+            {count > 0 && (
+              <span
+                className={cn(
+                  'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold',
+                  view === key
+                    ? 'bg-[#1c2b1e] text-white'
+                    // Amber says "somebody has to look at this". A list that is
+                    // already sorted out gets a plain grey count instead.
+                    : isQueue ? 'bg-[#f0e4cc] text-[#7a5a2a]' : 'bg-[#f0efe9] text-[#5a5a52]'
+                )}
+              >
+                {count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
+      {/* All three stay mounted so their counts are live and switching back does
+          not refetch. Only one is ever on screen. */}
+      <div className={view === 'duplicates' ? '' : 'hidden'}>
+        <DuplicatesPanel onCount={setDuplicateCount} />
+      </div>
+
+      <div className={view === 'senders' ? '' : 'hidden'}>
+        <NewSendersPanel onCount={setSenderCount} />
+      </div>
+
+      <div className={view === 'linked' ? '' : 'hidden'}>
+        <LinkedContactsPanel onCount={setLinkedCount} />
+      </div>
+
+      <div className={view === 'customers' ? '' : 'hidden'}>
       <AdminDataTable
         rows={pageItems}
         columns={customerColumns}
@@ -388,6 +475,7 @@ export default function CustomersManager() {
           />
         ) : undefined}
       />
+      </div>
 
       <ConfirmModal
         open={confirmDeleteIds.length > 0}

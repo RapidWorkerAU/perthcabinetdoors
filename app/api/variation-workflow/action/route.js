@@ -2,9 +2,39 @@ import { createCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
 import { applyAcceptedVariation } from "../../../../lib/pcd-order-variations";
 import { formatMoney, toNumber } from "../../../../lib/pcd-quote-utils";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
+import { approvalEvidence } from "../../../../lib/pcd-approval-evidence";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 
 const allowedActions = new Set(["approved", "rejected"]);
+
+/**
+ * The customer's response, plus what the variation SAID when they gave it.
+ *
+ * One writer for both the approve and the reject path, so the two cannot drift
+ * into recording different things about the same kind of event.
+ *
+ * Best-effort on the evidence: a customer's response must never fail because a
+ * column is not there yet, so a rejected insert is retried without it and said
+ * out loud.
+ */
+async function recordVariationAction(supabase, { variation, action, clientName, note, request, accessCode }) {
+  const row = { variation_id: variation.id, action, client_name: clientName, note };
+  const evidence = approvalEvidence({
+    request,
+    lines: variation.pcd_order_variation_lines || [],
+    totals: variation,
+    accessCode,
+  });
+  const { error } = await supabase.from("pcd_order_variation_actions").insert({ ...row, evidence });
+  if (!error) return;
+  const { error: retryError } = await supabase.from("pcd_order_variation_actions").insert(row);
+  if (retryError) throw retryError;
+  console.error(
+    "[variation-workflow] pcd_order_variation_actions.evidence is missing, so this response was recorded " +
+      "without any record of what the customer actually agreed to. Run " +
+      "supabase/202608221200_pcd_approval_evidence.sql."
+  );
+}
 
 export async function POST(request) {
   try {
@@ -27,7 +57,7 @@ export async function POST(request) {
     const supabase = createSupabaseAdminClient();
     const { data: variation, error } = await supabase
       .from("pcd_order_variations")
-      .select("*, pcd_orders(*)")
+      .select("*, pcd_orders(*), pcd_order_variation_lines(*)")
       .eq("access_code", accessCode)
       .maybeSingle();
     if (error || !variation) throw error || new Error("Variation not found.");
@@ -40,12 +70,15 @@ export async function POST(request) {
     const note = payload.note || null;
 
     if (action === "rejected") {
+      // Same claim as the approval below: a rejection must not overwrite an
+      // override that replaced the version being rejected.
       const { error: updateError } = await supabase
         .from("pcd_order_variations")
         .update({ status: "rejected", rejected_at: now })
+        .eq("status", variation.status)
         .eq("id", variation.id);
       if (updateError) throw updateError;
-      await supabase.from("pcd_order_variation_actions").insert({ variation_id: variation.id, action, client_name: clientName, note });
+      await recordVariationAction(supabase, { variation, action, clientName, note, request, accessCode });
       await logOrderActivity(supabase, {
         order_id: variation.order_id,
         quote_id: variation.pcd_orders?.quote_id || null,
@@ -59,7 +92,7 @@ export async function POST(request) {
       return Response.json({ ok: true });
     }
 
-    await supabase.from("pcd_order_variation_actions").insert({ variation_id: variation.id, action, client_name: clientName, note });
+    await recordVariationAction(supabase, { variation, action, clientName, note, request, accessCode });
     const topup = toNumber(variation.deposit_topup_required);
     if (topup > 0) {
       const { data: payment, error: paymentError } = await supabase
@@ -124,11 +157,32 @@ export async function POST(request) {
       return Response.json({ ok: true, requiresPayment: true, checkoutUrl: session.url });
     }
 
-    const { error: updateError } = await supabase
+    // Claimed on the status we read, so an admin override that pulled this
+    // variation back to draft while the customer had it open cannot be
+    // overwritten by an approval of the version it replaced. Whichever lands
+    // first wins, decided by the database rather than by timing.
+    //
+    // This matters more here than on a quote: applyAcceptedVariation below
+    // rewrites the order's lines, so approving a superseded variation would put
+    // changes nobody agreed to straight into the workshop.
+    const { data: claimed, error: updateError } = await supabase
       .from("pcd_order_variations")
       .update({ status: "approved", approved_at: now })
-      .eq("id", variation.id);
+      .eq("id", variation.id)
+      .eq("status", variation.status)
+      .select("id")
+      .maybeSingle();
     if (updateError) throw updateError;
+    if (!claimed) {
+      return Response.json(
+        {
+          ok: false,
+          error:
+            "This variation was changed while you had it open, so it could not be approved. Please contact us and we will send you the current version.",
+        },
+        { status: 409 }
+      );
+    }
 
     await logOrderActivity(supabase, {
       order_id: variation.order_id,

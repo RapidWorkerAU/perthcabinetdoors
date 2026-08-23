@@ -13,12 +13,14 @@ import {
   profileNamesForSelection,
   profileTypesForSelection,
 } from "../../../../lib/quote-form-data";
+import { kickboardAllowedFor } from "../../../../lib/pcd-ikea-presets";
+import { carcassColumnsFromStyle, shelfColumnsFromStyle } from "../../../../lib/pcd-design-carcass-style";
 import { computeBackPanelRun } from "../../../../lib/pcd-backpanel-utils";
 import { computeBottomPanelRun } from "../../../../lib/pcd-bottompanel-utils";
 import { computeTopPanelRun } from "../../../../lib/pcd-toppanel-utils";
 import { fillerPanelGapMm, computeFillerPanelRun } from "../../../../lib/pcd-fillerpanel-utils";
 import { getAbsPos, itemDepthMm } from "./DesignCanvas";
-import { CABINET_MOUNT_MM, computeKickboardRun, isCornerType } from "../../../../lib/pcd-kickboard-utils";
+import { CABINET_MOUNT_MM, computeKickboardRun, hasKickboard, isCornerType } from "../../../../lib/pcd-kickboard-utils";
 import {
   DEFAULT_BENCHTOP_THICKNESS_MM,
   DEFAULT_BENCHTOP_OVERHANG_MM,
@@ -31,8 +33,13 @@ import {
 import { computeDrawerFrontHeights, DRAWER_RUNNER_LABELS, resolveRunnerType } from "../../../../lib/pcd-drawer-utils";
 import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayShelfCount, applianceBayHeightMm, bayIsPinned, bayPercentOfCabinet, withResolvedBayHeights, legacyRowBayMigration } from "../../../../lib/pcd-door-utils";
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
+// Which board a panel actually resolves to, so the profile list on offer is the
+// one that board supports. Shared with the quote import.
+import { finishPanelBoard, carcassPanelBoard } from "../../../../lib/pcd-panel-board.js";
+// One entry per panel a cabinet can carry, plus each panel's own reach.
+import { enabledPanels, panelDef, panelReach, panelFrontProfile, panelTakesFrontProfile, withPanelOption } from "../../../../lib/pcd-panel-options.js";
 import { FRONT_PROFILE_PRESETS, normaliseFrontProfile } from "../../../../lib/pcd-front-profiles";
-import { applianceKindDefaults } from "../../../../lib/pcd-appliance-utils";
+import { applianceKindDefaults, applianceKindLabel } from "../../../../lib/pcd-appliance-utils";
 import {
   SHELF_RAIL_DEFAULTS,
   CLEAT_THICKNESS_MM,
@@ -543,12 +550,31 @@ function AddItemForm({ onAdd, onCancel, onBack, initialType, initialKind, allowe
             ‹ Choose a different item
           </button>
         )}
-        <label className={styles.fieldLabel}>
-          Type
-          <select className={styles.fieldSelect} value={draft.item_type} onChange={(e) => setType(e.target.value)}>
-            {allowedTypes.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-          </select>
-        </label>
+        {/* You already chose the item on the left, so this states what is
+            being added rather than offering the whole catalogue again in a
+            dropdown — picking "Rangehood" and then being shown a generic
+            "Appliance" selector was asking the same question twice.
+
+            When nothing was picked (the form opened straight, with no
+            catalogue step) the selector is still the only way to choose, so it
+            stays in that case. */}
+        {onBack ? (
+          <label className={styles.fieldLabel}>
+            Type
+            <div className={styles.fieldStaticValue}>
+              {draft.item_type === "appliance"
+                ? applianceKindLabel(draft.appliance_kind)
+                : TYPE_LABELS[draft.item_type]}
+            </div>
+          </label>
+        ) : (
+          <label className={styles.fieldLabel}>
+            Type
+            <select className={styles.fieldSelect} value={draft.item_type} onChange={(e) => setType(e.target.value)}>
+              {allowedTypes.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+            </select>
+          </label>
+        )}
         <label className={styles.fieldLabel}>
           Label
           <input className={styles.fieldInput} value={draft.label} onChange={(e) => set("label", e.target.value)} placeholder={isPanel ? "e.g. Filler panel" : isScribe ? "e.g. Fridge scribe" : "e.g. Sink base"} />
@@ -1342,7 +1368,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   const summary = {};
   summary.cabinet = [
     [draft.width_mm, draft.height_mm, draft.depth_mm].every(Boolean)
-      ? `${draft.width_mm}×${draft.height_mm}×${draft.depth_mm}`
+      ? `${draft.height_mm}×${draft.width_mm}×${draft.depth_mm}`
       : "size not set",
     (draft.qty || 1) > 1 ? `×${draft.qty}` : "",
     isBlindCorner && draft.blind_width_mm ? `${draft.blind_width_mm} blind` : "",
@@ -1364,7 +1390,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   summary.front = FRONT_LABELS[draft.front_type || "none"] || "None";
 
   summary.finishing = [
-    draft.has_kickboard ? "kickboard" : "",
+    hasKickboard(draft) ? "kickboard" : "",
     draft.has_filler_panel ? "filler" : "",
     draft.end_panel_left && draft.end_panel_right ? "both ends"
       : draft.end_panel_left ? "left end"
@@ -1422,24 +1448,35 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // latest edits.
   const matchOptions = collectMatchOptions(allItems, draft);
 
-  // The profile selects that sit under a panel's colour row.
+  // Profile selection for one panel, shown in the Panels window beside that
+  // panel's sizes and spans — it describes how the panel is MADE, so it lives
+  // with the rest of the panel's build settings, not in Colours & finishes.
   //
-  // A finished panel is its own board over the carcass, so it can carry a
-  // different profile from the fronts — shaker drawers with a flat side panel,
-  // or the reverse. Only offered once a colour is set: while a panel is blank
-  // it is matching another part and takes that part's finish with it, so there
-  // is nothing of its own to give a profile to.
-  function renderPanelProfile(key) {
-    const style = draft[key] || {};
-    if (!style.material && !style.colour) return null;
-    const matLabel = materialLabelForType(style.material || "");
-    const thk = style.thickness_mm ? `${style.thickness_mm}mm` : "";
+  // A finished panel is its own board, so it can carry a different profile from
+  // the fronts: shaker drawers with a flat side panel, or the reverse. The
+  // options come from the board the panel actually resolves to, which is the
+  // panel's own colour if it has one and otherwise whatever it matches — so a
+  // kickboard in plain carcass colour can still be given a profile.
+  function renderPanelProfile(panelKey) {
+    const def = panelDef(panelKey);
+    if (!def) return null;
+    const thicknessMm = def.thicknessField ? draft[def.thicknessField] : null;
+    const board = def.board === "carcass"
+      ? carcassPanelBoard(draft, def.styleKey, thicknessMm, panelKey)
+      : finishPanelBoard(draft, def.styleKey, panelKey);
+    const matLabel = materialLabelForType(board.material || "");
+    const thk = board.thicknessMm ? `${board.thicknessMm}mm` : "";
     const profTypes = profileTypesForSelection(matLabel, thk);
     if (!profTypes.length) return null;
-    const profNames = profileNamesForSelection(style.profile_type || "", matLabel, thk);
-    const upd = (patch) => setNow(key, { ...(latestRef.current[key] || {}), ...patch });
+    const profNames = profileNamesForSelection(board.profile_type || "", matLabel, thk);
+    const upd = (patch) => setNow("panel_options", withPanelOption(latestRef.current, panelKey, patch));
+    const style = { profile_type: board.profile_type, profile: board.profile };
     return (
       <>
+        <SectionDivider label="Profile" />
+        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+          The real profile routed into this panel, from the library. Goes to the quote and the cut list, and is set separately from the fronts so a shaker door can sit beside a flat panel.
+        </p>
         <label className={styles.fieldLabel}>
           Profile type
           <select
@@ -1470,19 +1507,16 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
 
   function renderFinishPanelMaterial() {
     return (
-      <>
-        <ColourField
-          label="Finishing panel"
-          value={draft.finish_panel_style || null}
-          matchHint="Matches the doors by default"
-          canReset
-          matchOptions={matchOptions}
-          thicknessDefault={18}
-          colourImages={colourImages}
-          onChange={(style) => setNow("finish_panel_style", style)}
-        />
-        {renderPanelProfile("finish_panel_style")}
-      </>
+      <ColourField
+        label="Finishing panel"
+        value={draft.finish_panel_style || null}
+        matchHint="Matches the doors by default"
+        canReset
+        matchOptions={matchOptions}
+        thicknessDefault={18}
+        colourImages={colourImages}
+        onChange={(style) => setNow("finish_panel_style", style)}
+      />
     );
   }
 
@@ -1491,18 +1525,15 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // colour overrides it.
   function renderOverridePicker(key, label, matchHint) {
     return (
-      <>
-        <ColourField
-          label={label}
-          value={draft[key] || null}
-          matchHint={matchHint}
-          canReset
-          matchOptions={matchOptions}
-          colourImages={colourImages}
-          onChange={(style) => setNow(key, style)}
-        />
-        {renderPanelProfile(key)}
-      </>
+      <ColourField
+        label={label}
+        value={draft[key] || null}
+        matchHint={matchHint}
+        canReset
+        matchOptions={matchOptions}
+        colourImages={colourImages}
+        onChange={(style) => setNow(key, style)}
+      />
     );
   }
 
@@ -1991,8 +2022,35 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
 
   // ── Panel detail renderers (numbers/spans/runs) — shown in the Panels window.
   //    The on/off toggles live on the sidebar. ──
+  // "Runs to the floor" / "runs to the ceiling", asked of ONE panel.
+  //
+  // Both used to be single cabinet-wide flags, which could not describe an
+  // ordinary run: the exposed left end goes to the floor while the right end
+  // dies into a dishwasher. A panel with no answer of its own still inherits
+  // those old flags, so nothing drawn before this moves.
+  function renderPanelReach(panelKey) {
+    const { toFloor, toCeiling } = panelReach(draft, panelKey);
+    const set1 = (patch) => setNow("panel_options", withPanelOption(latestRef.current, panelKey, patch));
+    const isWall = draft.item_type === "wall_cabinet";
+    return (
+      <>
+        <SectionDivider label="Reach" />
+        {!isWall && (
+          <label className={styles.fieldCheckLabel}>
+            <input type="checkbox" checked={toFloor} onChange={(e) => set1({ to_floor: e.target.checked })} />
+            Runs to the floor (otherwise stops at carcass height, kickboard continues underneath)
+          </label>
+        )}
+        <label className={styles.fieldCheckLabel}>
+          <input type="checkbox" checked={toCeiling} onChange={(e) => set1({ to_ceiling: e.target.checked })} />
+          Runs to the ceiling (full height, e.g. beside a fridge or oven tower)
+        </label>
+      </>
+    );
+  }
+
   const renderKickboardDetail = () => {
-    if (!draft.has_kickboard) return <PanelOffHint />;
+    if (!hasKickboard(draft)) return <PanelOffHint />;
     const isContinuous = (draft.kickboard_span ?? "continuous") === "continuous";
     const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
     const run = isContinuous ? computeKickboardRun(draft, liveItems, room) : null;
@@ -2113,7 +2171,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
           </label>
         ) : (
           <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-            Continuous top-panel run ({run.count} cabinets) â€” panel count is set on{" "}
+            Continuous top-panel run ({run.count} cabinets) — panel count is set on{" "}
             <button type="button" onClick={() => onSelectItem?.(run.firstItemId)} style={runLinkStyle}>{firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}</button>.
           </p>
         ))}
@@ -2126,18 +2184,18 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     );
   };
 
+  // The finished back panel's spanning style and panel count. The end panels
+  // that used to share this pane now have rows of their own in the Panels
+  // window, each with its own reach and profile.
   const renderEndBackDetail = () => {
-    const anyPanel = draft.end_panel_left || draft.end_panel_right || draft.has_back_panel;
-    if (!draft.has_back_panel && !anyPanel) return <PanelOffHint />;
+    if (!draft.has_back_panel) return <PanelOffHint />;
     const isContinuous = (draft.back_panel_span ?? "continuous") === "continuous";
     const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
     const run = draft.has_back_panel && isContinuous ? computeBackPanelRun(draft, liveItems) : null;
     const isFirstInRun = !run || run.firstItemId === draft.id;
     const firstItem = run && !isFirstInRun ? liveItems.find((i) => i.id === run.firstItemId) : null;
     return (
-      <div className={styles.fieldGroup}>
-        {draft.has_back_panel && (
-          <>
+      <>
             <label className={styles.fieldLabel}>Back panel spanning style
               <select className={styles.fieldSelect} value={draft.back_panel_span ?? "continuous"} onChange={(e) => setNow("back_panel_span", e.target.value)}>
                 <option value="continuous">Continuous (spans across adjacent cabinets)</option>
@@ -2154,131 +2212,145 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 <button type="button" onClick={() => onSelectItem?.(run.firstItemId)} style={runLinkStyle}>{firstItem?.label || firstItem?.item_type || "the first cabinet in this run"}</button>.
               </p>
             ))}
-          </>
-        )}
-        {anyPanel && (
-          <>
-            <label className={styles.fieldCheckLabel}>
-              <input type="checkbox" checked={draft.panel_to_floor ?? false} onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
-              Panels run to floor (otherwise carcass height only, kickboard continues underneath)
-            </label>
-            <label className={styles.fieldCheckLabel}>
-              <input type="checkbox" checked={draft.panel_to_ceiling ?? false} onChange={(e) => setNow("panel_to_ceiling", e.target.checked)} />
-              Panels run to ceiling (full-height finished end, e.g. beside a fridge or oven tower)
-            </label>
-          </>
-        )}
-        {!anyPanel && <PanelOffHint />}
-      </div>
+      </>
     );
   };
 
-  const renderCornerBacksDetail = () => (
-    <div className={styles.fieldGroup}>
-      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-        Manual per leg — tick whichever leg(s) need a finished back, then choose whether they run to the floor.
-      </p>
-      {(draft.back_panel_wall1 || draft.back_panel_wall2) ? (
-        <label className={styles.fieldCheckLabel}>
-          <input type="checkbox" checked={Boolean(draft.panel_to_floor)} onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
-          Panels run to floor (otherwise carcass height only, kickboard continues underneath)
+  // The Panels window has a row per side, so each shows only its own gap width.
+  // Thickness is one board spec for both, so it stays on whichever side is open.
+  const renderSideFillerSide = (side) => {
+    const widthField = side === "left" ? "side_filler_left_width_mm" : "side_filler_right_width_mm";
+    return (
+      <>
+        <label className={styles.fieldLabel}>Gap width mm
+          <input className={styles.fieldInput} type="number" min="1" value={draft[widthField] ?? ""} onChange={(e) => set(widthField, e.target.value)} />
         </label>
-      ) : <PanelOffHint />}
-    </div>
-  );
-
-  const renderCornerEndExtra = () => (
-    <div className={styles.fieldGroup}>
-      {(draft.end_panel_left || draft.end_panel_right) ? (
-        <label className={styles.fieldCheckLabel}>
-          <input type="checkbox" checked={draft.panel_to_floor ?? false} onChange={(e) => setNow("panel_to_floor", e.target.checked)} />
-          End panels run to the floor (past the kickboard recess)
-        </label>
-      ) : <PanelOffHint />}
-    </div>
-  );
-
-  const renderSidePanelExtra = () => (
-    <div className={styles.fieldGroup}>
-      {(draft.end_panel_left || draft.end_panel_right) ? (
-        <>
-          {draft.has_bottom_panel && (
-            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
-              Side panels extend down to cover the finished underside panel edge.
-            </p>
-          )}
-          <label className={styles.fieldCheckLabel}>
-            <input type="checkbox" checked={draft.panel_to_ceiling ?? false} onChange={(e) => setNow("panel_to_ceiling", e.target.checked)} />
-            Side panels run to ceiling (finished side carries on to the ceiling)
-          </label>
-        </>
-      ) : <PanelOffHint />}
-    </div>
-  );
-
-  const renderSideFillerDetail = () => (
-    <div className={styles.fieldGroup}>
-      {draft.side_filler_left && (
-        <label className={styles.fieldLabel}>Left gap width mm
-          <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_left_width_mm ?? ""} onChange={(e) => set("side_filler_left_width_mm", e.target.value)} />
-        </label>
-      )}
-      {draft.side_filler_right && (
-        <label className={styles.fieldLabel}>Right gap width mm
-          <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_right_width_mm ?? ""} onChange={(e) => set("side_filler_right_width_mm", e.target.value)} />
-        </label>
-      )}
-      {(draft.side_filler_left || draft.side_filler_right) ? (
         <label className={styles.fieldLabel}>Thickness mm
           <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_thickness_mm ?? 18} onChange={(e) => set("side_filler_thickness_mm", e.target.value)} />
         </label>
-      ) : <PanelOffHint />}
-    </div>
-  );
+      </>
+    );
+  };
 
-  // Which panels apply to this cabinet type — drives the sidebar toggles AND the
-  // Panels window's left list. Each: { id, label, toggles:[{key,label,disabled}],
-  // detail:() => node }.
+  // Which panels apply to this cabinet type — drives the sidebar's on/off
+  // toggles, grouped so related switches sit together. The Panels window builds
+  // its own list from enabledPanels() instead, one row per panel.
+  // Each: { id, label, toggles:[{key,label,disabled}] }.
   const panelGroups = [];
   if (isCorner) {
     panelGroups.push({ id: "corner-backs", label: "Finished backs", toggles: [
       { key: "back_panel_wall1", label: `Wall 1 finished back (${draft.wall || "—"})` },
       { key: "back_panel_wall2", label: draft.secondary_wall ? `Wall 2 finished back (${draft.secondary_wall})` : "Wall 2 finished back (set a second wall first)", disabled: !draft.secondary_wall },
-    ], detail: renderCornerBacksDetail });
+    ] });
     panelGroups.push({ id: "corner-ends", label: "End panels", toggles: [
       { key: "end_panel_left", label: "Wall 1 end panel" },
       { key: "end_panel_right", label: "Wall 2 end panel" },
-    ], detail: renderCornerEndExtra });
+    ] });
   }
-  if (draft.item_type !== "wall_cabinet") {
-    panelGroups.push({ id: "kickboard", label: "Kickboard / plinth", toggles: [{ key: "has_kickboard", label: "Include kickboard / plinth" }], detail: renderKickboardDetail });
+  // An IKEA frame that comes with its own plinth is not offered one of ours. A
+  // Pax is sold at its overall height, base included, so a kickboard under it
+  // would raise a 2010 wardrobe to 2130 and put a board on the cut list that
+  // nobody asked for. Metod sits on legs and still gets the toggle. Same rule
+  // the public planner and the cut list use, not a second opinion on it.
+  if (draft.item_type !== "wall_cabinet" && kickboardAllowedFor(draft)) {
+    panelGroups.push({ id: "kickboard", label: "Kickboard / plinth", toggles: [{ key: "has_kickboard", label: "Include kickboard / plinth" }] });
   }
   if (draft.item_type === "wall_cabinet" || draft.item_type === "tall_cabinet" || draft.item_type === "corner_tall_cabinet") {
-    panelGroups.push({ id: "filler", label: "Filler panel", toggles: [{ key: "has_filler_panel", label: "Include filler panel (to ceiling)" }], detail: renderFillerDetail });
+    panelGroups.push({ id: "filler", label: "Filler panel", toggles: [{ key: "has_filler_panel", label: "Include filler panel (to ceiling)" }] });
   }
   if (draft.item_type === "wall_cabinet") {
-    panelGroups.push({ id: "top-panel", label: "Top panel", toggles: [{ key: "has_top_panel", label: "Finished top panel" }], detail: renderTopPanelDetail });
-    panelGroups.push({ id: "underside", label: "Underside panel", toggles: [{ key: "has_bottom_panel", label: "Finished underside panel" }], detail: renderUndersideDetail });
+    panelGroups.push({ id: "top-panel", label: "Top panel", toggles: [{ key: "has_top_panel", label: "Finished top panel" }] });
+    panelGroups.push({ id: "underside", label: "Underside panel", toggles: [{ key: "has_bottom_panel", label: "Finished underside panel" }] });
     panelGroups.push({ id: "side-panels", label: "Side panels", toggles: [
       { key: "end_panel_left", label: "Left side panel" },
       { key: "end_panel_right", label: "Right side panel" },
-    ], detail: renderSidePanelExtra });
+    ] });
   }
   if (draft.item_type === "base_cabinet" || draft.item_type === "tall_cabinet" || draft.item_type === "blind_corner_cabinet") {
     panelGroups.push({ id: "end-back", label: "End & back panels", toggles: [
       { key: "end_panel_left", label: "Left end panel" },
       { key: "end_panel_right", label: "Right end panel" },
       { key: "has_back_panel", label: "Finished back panel" },
-    ], detail: renderEndBackDetail });
+    ] });
   }
   if (!isCorner) {
     panelGroups.push({ id: "side-fillers", label: "Side fillers", toggles: [
       { key: "side_filler_left", label: "Left side filler" },
       { key: "side_filler_right", label: "Right side filler" },
-    ], detail: renderSideFillerDetail });
+    ] });
   }
   const groupEnabled = (g) => g.toggles.some((tg) => draft[tg.key]);
   const enabledGroups = panelGroups.filter(groupEnabled);
+
+  // The Panels window lists ONE entry per panel that is switched on, not one
+  // per group of panels, because every panel now decides its own reach: the
+  // left end and the right end are separate rows because they are separate
+  // boards that can run to different places.
+  const panelEntries = enabledPanels(draft);
+
+  // The sizes, spans and run settings that belong to a given panel. Panels with
+  // nothing to size (an end panel takes the cabinet's depth and height) show
+  // just their reach and profile.
+  const PANEL_SIZES = {
+    kickboard: renderKickboardDetail,
+    filler: renderFillerDetail,
+    top: renderTopPanelDetail,
+    underside: renderUndersideDetail,
+    back: renderEndBackDetail,
+    side_filler_left: () => renderSideFillerSide("left"),
+    side_filler_right: () => renderSideFillerSide("right"),
+  };
+
+  // The shape this panel is DRAWN with in the 3D view — the same slab / shaker
+  // / bevel / VJ choice a door or a drawer front takes.
+  //
+  // Separate from the routed Profile above on purpose. That one names a real
+  // profile out of the library and reaches the quote and the cut list; this one
+  // is a drawing choice and reaches nothing but the 3D view. A panel can carry
+  // one, the other, both or neither.
+  function renderPanelVisual(panelKey) {
+    if (!panelTakesFrontProfile(panelKey)) return null;
+    const value = panelFrontProfile(draft, panelKey);
+    return (
+      <>
+        <SectionDivider label="3D appearance" />
+        <label className={styles.fieldLabel}>
+          3D panel profile
+          <select
+            className={styles.fieldSelect}
+            value={value}
+            onChange={(e) => setNow(
+              "panel_options",
+              // "slab" is the default, so it is stored as nothing at all rather
+              // than as an entry that says "no shape".
+              withPanelOption(latestRef.current, panelKey, { front_profile: e.target.value === "slab" ? "" : e.target.value })
+            )}
+          >
+            {FRONT_PROFILE_PRESETS.map((profile) => (
+              <option key={profile.value} value={profile.value}>{profile.label}</option>
+            ))}
+          </select>
+        </label>
+        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+          How this panel looks in the 3D view only. It doesn&apos;t change the quote or the cut list — the <strong>Profile</strong> above does that.
+        </p>
+      </>
+    );
+  }
+
+  function renderPanelDetail(panelKey) {
+    const def = panelDef(panelKey);
+    if (!def) return null;
+    const sizes = PANEL_SIZES[panelKey];
+    return (
+      <div className={styles.fieldGroup}>
+        {sizes ? sizes() : null}
+        {def.vertical && renderPanelReach(panelKey)}
+        {renderPanelProfile(panelKey)}
+        {renderPanelVisual(panelKey)}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -2433,15 +2505,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 value={{ material: draft.material, finish: draft.finish, colour: draft.colour, thickness_mm: draft.carcass_thickness_mm, cost_per_sqm: draft.cost_per_sqm_carcass }}
                 matchOptions={matchOptions}
                 colourImages={colourImages}
-                onChange={(style) =>
-                  setMultiNow({
-                    material: style?.material || "",
-                    finish: style?.finish || "",
-                    colour: style?.colour || "",
-                    carcass_thickness_mm: style?.thickness_mm || draft.carcass_thickness_mm || 16,
-                    cost_per_sqm_carcass: style?.cost_per_sqm ?? draft.cost_per_sqm_carcass ?? 0,
-                  })
-                }
+                onChange={(style) => setMultiNow(carcassColumnsFromStyle(style, draft, 16))}
               />
 
               {frontHasDoors && (
@@ -2460,15 +2524,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                     matchHint="Matches carcass by default"
                     matchOptions={matchOptions}
                     colourImages={colourImages}
-                    onChange={(style) =>
-                      setMultiNow({
-                        shelf_material: style?.material || "",
-                        shelf_finish: style?.finish || "",
-                        shelf_colour: style?.colour || "",
-                        shelf_thickness_mm: style?.thickness_mm || draft.shelf_thickness_mm || 16,
-                        cost_per_sqm_shelf: style?.cost_per_sqm ?? draft.cost_per_sqm_shelf ?? 0,
-                      })
-                    }
+                    onChange={(style) => setMultiNow(shelfColumnsFromStyle(style, draft, 16))}
                   />
                 </>
               )}
@@ -2523,7 +2579,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                   />
                 );
               })()}
-              {draft.item_type !== "wall_cabinet" && draft.has_kickboard &&
+              {hasKickboard(draft) &&
                 renderOverridePicker("kickboard_style", "Kickboard", "Matches the carcass by default.")}
               {draft.has_filler_panel &&
                 renderOverridePicker("filler_panel_style", "Filler", "Matches the doors on a doored cabinet, otherwise the carcass.")}
@@ -2534,6 +2590,14 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               {draft.has_back_panel &&
                 renderOverridePicker("back_panel_style", "Back panel", "Matches the carcass by default.")}
               {(draft.end_panel_left || draft.end_panel_right || draft.has_back_panel) && renderFinishPanelMaterial()}
+              {/* The two ends are separate boards. An exposed end on show and a
+                  plain end that dies into a run are regularly different, and
+                  they reach the quote as two lines, so they are chosen as two
+                  here rather than sharing the finishing panel above. */}
+              {draft.end_panel_left &&
+                renderOverridePicker("end_left_style", "Left end panel", "Matches the finishing panel.")}
+              {draft.end_panel_right &&
+                renderOverridePicker("end_right_style", "Right end panel", "Matches the finishing panel.")}
 
               <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "6px 0 0", lineHeight: 1.4 }}>
                 Only pieces this cabinet actually has show up here. Turn panels on / off (and set their span &amp; sizes) in <strong>Panels &amp; finishing</strong>.
@@ -2755,7 +2819,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
         <ConfigSection title="Panels & finishing" summary={addonsOnCount ? `${addonsOnCount} on` : "Off"} {...section("panels")}>
           <div className={styles.fieldGroup}>
             <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-              Switch panels on or off here. Their sizes, spans and continuous-run settings are in <strong>Edit sizes, spans &amp; runs</strong>; their finish is in <strong>Colours &amp; finishes</strong>.
+              Switch panels on or off here. Each panel&apos;s own reach, profile, sizes and run settings are in <strong>Edit each panel</strong>; its colour is in <strong>Colours &amp; finishes</strong>.
             </p>
             {panelGroups.map((g) => (
               <div key={g.id} style={{ marginTop: 2 }}>
@@ -2766,8 +2830,8 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               </div>
             ))}
             {!panelGroups.length && <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: 0 }}>No add-on panels apply to this cabinet type.</p>}
-            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10 }} disabled={!enabledGroups.length} onClick={() => { setPanelPart(enabledGroups[0]?.id || null); setOpenWin("panels"); }}>
-              Edit sizes, spans &amp; runs →
+            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10 }} disabled={!panelEntries.length} onClick={() => { setPanelPart(panelEntries[0]?.key || null); setOpenWin("panels"); }}>
+              Edit each panel →
             </button>
           </div>
         </ConfigSection>
@@ -2805,14 +2869,14 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
       {openWin === "panels" && (
         <ConfigWindow
           theme="light" fullWidth={fullWidth}
-          title="Panel sizes, spans & runs"
+          title="Panels"
           subtitle={itemDisplayLabel(draft)}
-          parts={enabledGroups.map((g) => ({ id: g.id, label: g.label, badge: "on" }))}
+          parts={panelEntries.map((d) => ({ id: d.key, label: d.label, badge: "on" }))}
           selectedId={panelPart}
           onSelect={setPanelPart}
-          renderPart={(p) => (panelGroups.find((g) => g.id === p.id) || {}).detail?.() || null}
+          renderPart={(p) => renderPanelDetail(p.id)}
           onClose={() => setOpenWin(null)}
-          footer={<p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", lineHeight: 1.4, margin: 0 }}>Switch panels on / off in the sidebar. Their finish is in Colours &amp; finishes.</p>}
+          footer={<p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", lineHeight: 1.4, margin: 0 }}>Switch panels on / off in the sidebar. Their colour is in Colours &amp; finishes.</p>}
         />
       )}
 
@@ -3116,13 +3180,10 @@ function ShelfRailForm({ item, allItems, room, onItemChange, openSection, toggle
           onChange={(style) => {
             // A 16mm board changes the derived height AND tightens the span
             // guide, so both move with the colour choice.
-            const t = style?.thickness_mm || draft.carcass_thickness_mm || 18;
+            const columns = carcassColumnsFromStyle(style, draft, 18);
+            const t = columns.carcass_thickness_mm;
             setMultiNow({
-              material: style?.material || "",
-              finish: style?.finish || "",
-              colour: style?.colour || "",
-              carcass_thickness_mm: t,
-              cost_per_sqm_carcass: style?.cost_per_sqm ?? draft.cost_per_sqm_carcass ?? 0,
+              ...columns,
               height_mm: shelfRailHeightMm({ ...latestRef.current, carcass_thickness_mm: t }),
             });
           }}
@@ -3258,14 +3319,14 @@ function BookcaseForm({ item, allItems, room, onItemChange, openSection, toggleS
   const section = (id) => ({ open: openSection === id, onToggle: () => toggleSection(id), theme: "light" });
   const summary = {
     size: [
-      [draft.width_mm, draft.height_mm, draft.depth_mm].every(Boolean) ? `${draft.width_mm}×${draft.height_mm}×${draft.depth_mm}` : "size not set",
+      [draft.width_mm, draft.height_mm, draft.depth_mm].every(Boolean) ? `${draft.height_mm}×${draft.width_mm}×${draft.depth_mm}` : "size not set",
       (draft.qty || 1) > 1 ? `×${draft.qty}` : "",
     ].filter(Boolean).join(" · "),
     colours: [draft.colour || draft.material || "no board", draft.shelf_colour ? `shelves ${draft.shelf_colour}` : ""].filter(Boolean).join(" · "),
     shelves: shelfQty > 0 ? `${shelfQty} shelf${shelfQty === 1 ? "" : "ves"}` : "no shelves",
     construction: [
       (draft.back_panel_included ?? true) ? "solid back" : "no back",
-      draft.has_kickboard ? "kickboard" : "on the floor",
+      hasKickboard(draft) ? "kickboard" : "on the floor",
     ].join(" · "),
     notes: draft.notes ? String(draft.notes).split("\n")[0] : "",
   };
@@ -3313,13 +3374,7 @@ function BookcaseForm({ item, allItems, room, onItemChange, openSection, toggleS
           matchOptions={matchOptions}
           thicknessDefault={18}
           colourImages={colourImages}
-          onChange={(style) => setMultiNow({
-            material: style?.material || "",
-            finish: style?.finish || "",
-            colour: style?.colour || "",
-            carcass_thickness_mm: style?.thickness_mm || draft.carcass_thickness_mm || 18,
-            cost_per_sqm_carcass: style?.cost_per_sqm ?? draft.cost_per_sqm_carcass ?? 0,
-          })}
+          onChange={(style) => setMultiNow(carcassColumnsFromStyle(style, draft, 18))}
         />
         <ColourField
           label="Shelves"
@@ -3328,13 +3383,7 @@ function BookcaseForm({ item, allItems, room, onItemChange, openSection, toggleS
           matchOptions={matchOptions}
           thicknessDefault={18}
           colourImages={colourImages}
-          onChange={(style) => setMultiNow({
-            shelf_material: style?.material || "",
-            shelf_finish: style?.finish || "",
-            shelf_colour: style?.colour || "",
-            shelf_thickness_mm: style?.thickness_mm || draft.shelf_thickness_mm || 18,
-            cost_per_sqm_shelf: style?.cost_per_sqm ?? draft.cost_per_sqm_shelf ?? 0,
-          })}
+          onChange={(style) => setMultiNow(shelfColumnsFromStyle(style, draft, 18))}
         />
       </div>
       </ConfigSection>
@@ -3376,11 +3425,17 @@ function BookcaseForm({ item, allItems, room, onItemChange, openSection, toggleS
             <input className={styles.fieldInput} type="number" min="1" value={draft.back_panel_thickness_mm ?? 16} onChange={(e) => set("back_panel_thickness_mm", e.target.value)} />
           </label>
         )}
-        <label className={styles.fieldCheckLabel}>
-          <input type="checkbox" checked={Boolean(draft.has_kickboard)} onChange={(e) => setNow("has_kickboard", e.target.checked)} />
-          Kickboard
-        </label>
-        {draft.has_kickboard && (
+        {kickboardAllowedFor(draft) ? (
+          <label className={styles.fieldCheckLabel}>
+            <input type="checkbox" checked={Boolean(draft.has_kickboard)} onChange={(e) => setNow("has_kickboard", e.target.checked)} />
+            Kickboard
+          </label>
+        ) : (
+          <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: 0 }}>
+            This frame has its own plinth built into its height, so there is no kickboard to add.
+          </p>
+        )}
+        {kickboardAllowedFor(draft) && draft.has_kickboard && (
           <label className={styles.fieldLabel}>
             Kickboard height mm
             <input className={styles.fieldInput} type="number" min="1" value={draft.kickboard_height_mm ?? 120} onChange={(e) => set("kickboard_height_mm", e.target.value)} />
@@ -3488,13 +3543,7 @@ function ShelfForm({ item, allItems, room, onItemChange }) {
           matchHint="Decorative board — set the colour & thickness"
           matchOptions={matchOptions}
           thicknessDefault={18}
-          onChange={(style) => setMultiNow({
-            material: style?.material || "",
-            finish: style?.finish || "",
-            colour: style?.colour || "",
-            carcass_thickness_mm: style?.thickness_mm || draft.carcass_thickness_mm || 18,
-            cost_per_sqm_carcass: style?.cost_per_sqm ?? draft.cost_per_sqm_carcass ?? 0,
-          })}
+          onChange={(style) => setMultiNow(carcassColumnsFromStyle(style, draft, 18))}
         />
 
         <SectionDivider label="End caps" />
@@ -3868,23 +3917,14 @@ function ObstructionForm({ item, room, onItemChange }) {
         <div className={styles.fieldGroup}>
           {item.item_type === "appliance" && (
             <>
+              {/* The appliance was chosen from the catalogue, so this names it.
+                  A kind switcher here meant the panel for a rangehood looked
+                  identical to the panel for a dishwasher, and switching kind
+                  silently rewrote the item's size out from under you. Change
+                  your mind by deleting it and picking the right one. */}
               <label className={styles.fieldLabel}>
                 Appliance
-                <select
-                  className={styles.fieldSelect}
-                  value={draft.appliance_kind || "fridge"}
-                  onChange={(e) => setMany({ appliance_kind: e.target.value, ...applianceKindDefaults(e.target.value) })}
-                >
-                  <option value="fridge">Fridge</option>
-                  <option value="freezer">Freezer</option>
-                  <option value="dishwasher">Dishwasher</option>
-                  <option value="oven">Oven</option>
-                  <option value="cooktop">Cooktop</option>
-                  <option value="rangehood">Rangehood</option>
-                  <option value="microwave">Microwave</option>
-                  <option value="washing_machine">Washing machine</option>
-                  <option value="other">Other</option>
-                </select>
+                <div className={styles.fieldStaticValue}>{applianceKindLabel(draft.appliance_kind)}</div>
               </label>
               {(draft.appliance_kind === "fridge" || draft.appliance_kind === "freezer") && (
                 <label className={styles.fieldLabel}>

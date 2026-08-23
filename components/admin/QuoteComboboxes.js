@@ -3,7 +3,7 @@
 import React, { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { IconChevronDown, IconSearch, IconSearchOff } from "@tabler/icons-react";
-import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from "@/lib/pcd-colour-library";
+import { colourSelectionPatch, optionsFromColourFamily } from "@/lib/pcd-colour-library";
 import { Dropdown } from "@/components/ui/Dropdown";
 
 // These comboboxes are built on the same Radix Popover primitive as
@@ -72,7 +72,13 @@ export const QuoteImageCombobox = memo(function QuoteImageCombobox({
     [options, cleanedQuery]
   );
 
-  const selectedLabel = selectedOption?.label || selectedOption?.name || displayValue || (value ? String(value) : "");
+  const selectedLabel =
+    selectedOption?.label ||
+    selectedOption?.name ||
+    displayValue ||
+    // An unmatched "a::b::c" is an internal key, not something to show. Any
+    // other unmatched value is the label as far as most callers are concerned.
+    (value && !String(value).includes("::") ? String(value) : "");
 
   function handleOpenChange(next) {
     if (disabled) return;
@@ -243,9 +249,16 @@ export const QuoteTileCombobox = memo(function QuoteTileCombobox({ compact = tru
 export const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact = true, disabled = false, line, onChange }) {
   const [databaseOptions, setDatabaseOptions] = useState(null);
   const options = databaseOptions || [];
-  const selectedSupplier = COLOUR_SUPPLIERS.includes(line.supplier_name) ? line.supplier_name : COLOUR_SUPPLIERS[0];
-  const filteredOptions = options.filter((option) => (option.supplier || COLOUR_SUPPLIERS[0]) === selectedSupplier);
-  const selectedValue = [selectedSupplier, line.finish, line.colour, line.thickness].filter(Boolean).join("::");
+  // Whatever brand is on the line, and nothing if none is. A colour row with
+  // no brand recorded is left out: we cannot say whose it is, and guessing is
+  // exactly what lets a Polytec profile end up beside a Laminex colour.
+  const selectedSupplier = String(line.supplier_name || "").trim();
+  const filteredOptions = selectedSupplier
+    ? options.filter((option) => String(option.supplier || "").toLowerCase() === selectedSupplier.toLowerCase())
+    : [];
+  const selectedValue = line.colour
+    ? [selectedSupplier, line.finish, line.colour, line.thickness].filter(Boolean).join("::")
+    : "";
   const displayValue = [line.colour, line.thickness].filter(Boolean).join(" - ");
 
   useEffect(() => {
@@ -284,13 +297,21 @@ export const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact =
   return (
     <QuoteImageCombobox
       compact={compact}
-      disabled={disabled || !line.material}
+      disabled={disabled || !line.material || !selectedSupplier}
       emptyMessage={
         databaseOptions === null
           ? "Loading colours..."
-          : `No ${selectedSupplier} colours for ${line.material}. Try another supplier.`
+          : !selectedSupplier
+            ? "Pick a brand first."
+            : `No ${selectedSupplier} colours for ${line.material}. Try another supplier.`
       }
-      placeholder={line.material ? "Finish, colour & thickness" : "Select material first"}
+      placeholder={
+        !line.material
+          ? "Select material first"
+          : !selectedSupplier
+            ? "Pick a brand first"
+            : "Finish, colour & thickness"
+      }
       value={selectedValue}
       displayValue={displayValue}
       options={filteredOptions}

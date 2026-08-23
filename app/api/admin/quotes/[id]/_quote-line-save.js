@@ -1,6 +1,7 @@
 ﻿import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, edgingLinealMetres, edgingTotals, GST_RATE, inheritWhenZero, roundMoney } from "../../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable, profileTypesForSelection, profileNamesForSelection } from "../../../../../lib/quote-form-data";
+import { createSupplierGuard } from "../../../../../lib/pcd-supplier-guard";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 
 export async function quoteIdFromParams(params) {
@@ -307,6 +308,19 @@ export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id
   // Guarded here rather than in each route, so every path that can write a
   // quote line goes through it, including any route added later.
   await assertQuoteEditable(supabase, quoteId);
+
+  // ONE BRAND PER LINE, for the same reason and in the same place. A door is
+  // one brand's colour on that brand's profile, and the mix is not visible in
+  // the finished quote: it shows a colour and a profile, both real, and only
+  // the factory finds out they cannot be put together. The editor narrows its
+  // dropdowns by the brand; this catches the paths that are not the editor.
+  // See lib/pcd-supplier-guard.js.
+  const problems = (await createSupplierGuard(supabase))(line || {});
+  if (problems.length) {
+    const refusal = new Error(problems[0]);
+    refusal.status = 400;
+    throw refusal;
+  }
 
   await loadQuote(supabase, quoteId);
   const calculatedLine = {

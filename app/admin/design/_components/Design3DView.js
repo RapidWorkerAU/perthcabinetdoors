@@ -16,8 +16,9 @@
 import { Component, Suspense, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, OrthographicCamera, Billboard, Text, Grid, Line, Edges, useTexture } from "@react-three/drei";
+import { builtInPlinthMm } from "../../../../lib/pcd-ikea-presets";
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
-import { normaliseFrontProfile } from "../../../../lib/pcd-front-profiles";
+import { normaliseFrontProfile, vjBoards } from "../../../../lib/pcd-front-profiles";
 
 import {
   getAbsPos,
@@ -37,7 +38,10 @@ import {
   isCornerType,
   isCornerShaped,
 } from "../../../../lib/pcd-kickboard-utils";
-import { endPanelSpanMm, finishPanelVerticalSpanMm } from "../../../../lib/pcd-finishpanel-utils";
+import { endPanelSpanMm, finishPanelVerticalSpanMm, finishPanelThicknessMm, endPanelBackExtensionMm } from "../../../../lib/pcd-finishpanel-utils";
+import { backPanelSegment } from "../../../../lib/pcd-backpanel-utils";
+import { panelFrontProfile } from "../../../../lib/pcd-panel-options";
+import { rangehoodParts } from "../../../../lib/pcd-appliance-utils";
 import { topPanelSideExtensionMm, topPanelThicknessMm } from "../../../../lib/pcd-toppanel-utils";
 import { shelfRailConfig, CLEAT_THICKNESS_MM } from "../../../../lib/pcd-shelf-rail-utils";
 import {
@@ -249,6 +253,44 @@ function DiagonalNotchFill({ item, W, D, color, src, opacity = 0.92 }) {
   );
 }
 
+// A four-sided frustum: a rectangular top opening over a bigger rectangular
+// bottom one, centred on the origin, built as raw triangles the same way
+// DiagonalNotchFill does — the design chunk deliberately never imports three
+// directly, so there is no BoxGeometry-with-a-taper to reach for.
+//
+// This is the rangehood canopy. Because the top and bottom rectangles are given
+// independently, the flue can stay a fixed section while the canopy below it
+// flares out as wide and as deep as the hood needs.
+function FrustumMesh({ bottom, top, y0, y1, children }) {
+  const geoRef = useRef();
+  const key = `${bottom.x0},${bottom.x1},${bottom.z0},${bottom.z1},${top.x0},${top.x1},${top.z0},${top.z1},${y0},${y1}`;
+  const positions = useMemo(() => {
+    // Corners, anticlockwise seen from above, bottom then top.
+    const b = [[bottom.x0, y0, bottom.z0], [bottom.x1, y0, bottom.z0], [bottom.x1, y0, bottom.z1], [bottom.x0, y0, bottom.z1]];
+    const t = [[top.x0, y1, top.z0], [top.x1, y1, top.z0], [top.x1, y1, top.z1], [top.x0, y1, top.z1]];
+    const faces = [];
+    // The four sloping sides.
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      faces.push(b[i], b[j], t[j], b[i], t[j], t[i]);
+    }
+    // Caps, so the canopy reads solid from above and below.
+    faces.push(b[0], b[2], b[1], b[0], b[3], b[2]);
+    faces.push(t[0], t[1], t[2], t[0], t[2], t[3]);
+    return new Float32Array(faces.flat());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  useEffect(() => { if (geoRef.current) geoRef.current.computeVertexNormals(); }, [key]);
+  return (
+    <mesh>
+      <bufferGeometry ref={geoRef}>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      {children}
+    </mesh>
+  );
+}
+
 // Extends a footprint frontward (away from the wall it backs onto) by `delta`.
 function extendFront(rect, wall, delta) {
   switch (wall) {
@@ -258,6 +300,16 @@ function extendFront(rect, wall, delta) {
     case "right":  return { x: rect.x - delta, y: rect.y, w: rect.w + delta, h: rect.h };
     default:       return rect;
   }
+}
+
+// The mirror of extendFront: grows a rect AWAY from the room, past the carcass
+// back. A finished back panel sits inside the ends, so the ends run past it and
+// cover its edge.
+const OPPOSITE_WALL = { top: "bottom", bottom: "top", left: "right", right: "left" };
+function extendBack(rect, wall, delta) {
+  if (!delta) return rect;
+  const opposite = OPPOSITE_WALL[wall];
+  return opposite ? extendFront(rect, opposite, delta) : rect;
 }
 
 // A thin slab of thickness `t` hugging the FRONT edge of a footprint, spanning
@@ -329,38 +381,62 @@ function boxFromRect(rect, bottomMm, topMm) {
 // bookcase's solid back is the point of it, and switching it off has to show.
 // `baseGapMm` lifts the BOTTOM board off the floor without shortening the
 // sides — an inset plinth (bookcase), where the toe space is inside the box.
-function openCarcassPanels(rect, wall, carc, bottomMm, topMm, withBack = true, backT = carc, baseGapMm = 0) {
+function openCarcassPanels(rect, wall, carc, bottomMm, topMm, withBack = true, backT = carc, baseGapMm = 0, baseRailT = 0) {
   const { x, y, w, h } = rect;
   const floorMm = bottomMm + baseGapMm;
   const midB = floorMm + carc, midT = Math.max(topMm - carc, midB + 1);
   const bt = withBack ? backT : 0;
+  const rt = baseGapMm > 0 ? baseRailT : 0;
   const panels = [];
   // Top and bottom span only the gap between the sides, at each end of it.
   const capBoards = (inner) => {
     panels.push({ rect: inner, b: floorMm, t: midB }); // bottom
     panels.push({ rect: inner, b: midT, t: topMm });   // top
   };
+  // THE BASE RAIL ACROSS THE FRONT.
+  //
+  // A frame that carries its own base closes it off at the front with a board
+  // between the sides, floor to the underside of the bottom shelf. It is what
+  // you see on the front of an IKEA Pax, and without it the base read as two
+  // legs with a shelf balanced across them and daylight underneath.
+  //
+  // Only where the caller says the base is part of the carcass. A bookcase's
+  // plinth is a board of OURS, in its own colour, and KickboardMesh draws that
+  // one: drawing it here as well would put two rails in the same place.
+  const baseRail = (rail) => { if (rt > 0) panels.push({ rect: rail, b: bottomMm, t: floorMm }); };
   if (wall === "top" || wall === "bottom" || wall === "island") {
     panels.push({ rect: { x, y, w: carc, h }, b: bottomMm, t: topMm });                // left side
     panels.push({ rect: { x: x + w - carc, y, w: carc, h }, b: bottomMm, t: topMm });   // right side
     capBoards({ x: x + carc, y, w: Math.max(w - 2 * carc, 1), h });
     const backY = wall === "bottom" ? y + h - bt : y;
     if (withBack) panels.push({ rect: { x: x + carc, y: backY, w: Math.max(w - 2 * carc, 1), h: bt }, b: midB, t: midT }); // back
+    // The front is whichever side of the footprint the back is not on.
+    baseRail({ x: x + carc, y: wall === "bottom" ? y : y + h - rt, w: Math.max(w - 2 * carc, 1), h: rt });
   } else {
     panels.push({ rect: { x, y, w, h: carc }, b: bottomMm, t: topMm });                // side
     panels.push({ rect: { x, y: y + h - carc, w, h: carc }, b: bottomMm, t: topMm });   // side
     capBoards({ x, y: y + carc, w, h: Math.max(h - 2 * carc, 1) });
     const backX = wall === "right" ? x + w - bt : x;
     if (withBack) panels.push({ rect: { x: backX, y: y + carc, w: bt, h: Math.max(h - 2 * carc, 1) }, b: midB, t: midT }); // back
+    baseRail({ x: wall === "right" ? x : x + w - rt, y: y + carc, w: rt, h: Math.max(h - 2 * carc, 1) });
   }
   return panels;
 }
 
-// How far an INSET plinth lifts the bottom board off the floor. Zero for every
-// other cabinet, whose whole carcass is lifted onto its kickboard instead (that
-// lift is kickboardOffsetMm, already folded into cabinetVerticalSpanMm).
+// How far a plinth INSIDE the carcass lifts the bottom board off the floor,
+// leaving the sides running on down to it. Two cabinets are built that way:
+//
+//   a bookcase   its plinth is a rail we cut, set back between the sides
+//   an IKEA Pax  its base is part of the frame, which is why the height it is
+//                sold at already includes it. Without this an open Pax drew as
+//                a plain box sitting flat on the floor, nothing like the one in
+//                the shop.
+//
+// Zero for every other cabinet, whose whole carcass is lifted onto its kickboard
+// instead (that lift is kickboardOffsetMm, already folded into
+// cabinetVerticalSpanMm).
 function insetPlinthMm(item) {
-  return kickboardIsInset(item) ? kickboardHeightMm(item) : 0;
+  return kickboardIsInset(item) ? kickboardHeightMm(item) : builtInPlinthMm(item);
 }
 
 // The carcass's own structural back board thickness — 0 when it has no back,
@@ -562,28 +638,164 @@ function StandaloneApplianceMesh({ item, W, D, roomHmm, color, src }) {
     );
     details.push(hHandle("hh", -a * 0.35, a * 0.35, hMet - 0.1));
   } else if (kind === "rangehood") {
+    // The control strip sits on the canopy's front lip, at the bottom.
     details.push(
-      <mesh key="lip" position={[0, 0.02, 0.011]}>
-        <boxGeometry args={[a * 0.96, 0.04, 0.02]} />
+      <mesh key="lip" position={[0, 0.018, -0.012]}>
+        <boxGeometry args={[a * 0.98, 0.036, 0.026]} />
         <meshStandardMaterial color={metal} roughness={0.5} metalness={0.5} />
+      </mesh>
+    );
+  } else if (kind === "freestanding_cooker") {
+    // An upright cooker: a hob deck with real burners on TOP, a control fascia,
+    // and a black glass oven door with a full-width bar handle under it.
+    //
+    // The top surface matters here in a way it doesn't for the other
+    // appliances: you look down on a cooker in every plan-ish 3D view, and a
+    // bare slab reads as a bench offcut rather than a cooktop. So the deck, the
+    // burners, the trivets and the rear upstand are all built on the horizontal
+    // face rather than being implied by knobs on the front.
+    const fasciaY = hMet - 0.11;
+    const deckY = hMet + 0.001;
+    const dz = dMet;           // the body runs from z = 0 back to z = -dMet
+    const upstandH = 0.05;
+
+    // The deck itself: dark glass/enamel, inset slightly from the body edges.
+    details.push(
+      <mesh key="deck" position={[0, deckY, -dz / 2]}>
+        <boxGeometry args={[a * 0.98, 0.006, dz * 0.96]} />
+        <meshStandardMaterial color="#1a1b1e" roughness={0.3} metalness={0.2} />
+      </mesh>
+    );
+    // A low upstand across the back, the splash lip a freestanding cooker has.
+    details.push(
+      <mesh key="upstand" position={[0, hMet + upstandH / 2, -dz + 0.012]}>
+        <boxGeometry args={[a, upstandH, 0.024]} />
+        <meshStandardMaterial color={metal} roughness={0.4} metalness={0.5} />
+      </mesh>
+    );
+
+    // Five burners: four on the corners of the deck, one in the middle — the
+    // standard 900 layout. Each is a burner cap sitting in a trivet ring.
+    const bx = a * 0.3, bzF = -dz * 0.3, bzB = -dz * 0.72;
+    const burners = [
+      [-bx, bzF], [bx, bzF], [-bx, bzB], [bx, bzB], [0, (bzF + bzB) / 2],
+    ];
+    const rBurner = Math.min(a, dz) * 0.11;
+    burners.forEach(([px, pz], i) => {
+      details.push(
+        <mesh key={`trivet${i}`} position={[px, deckY + 0.008, pz]}>
+          <cylinderGeometry args={[rBurner * 1.5, rBurner * 1.5, 0.008, 18]} />
+          <meshStandardMaterial color="#2a2c30" roughness={0.75} />
+        </mesh>
+      );
+      details.push(
+        <mesh key={`burner${i}`} position={[px, deckY + 0.016, pz]}>
+          <cylinderGeometry args={[rBurner * 0.62, rBurner * 0.8, 0.016, 18]} />
+          <meshStandardMaterial color="#3c4046" roughness={0.5} metalness={0.5} />
+        </mesh>
+      );
+    });
+    details.push(
+      <mesh key="fascia" position={[0, fasciaY, 0.012]}>
+        <boxGeometry args={[a * 0.98, 0.12, 0.016]} />
+        <meshStandardMaterial color={metal} roughness={0.45} metalness={0.5} />
+      </mesh>
+    );
+    for (let i = 0; i < 5; i++) {
+      const kx = (-a / 2) + a * (0.2 + i * 0.15);
+      details.push(
+        <mesh key={`knob${i}`} position={[kx, fasciaY, 0.03]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.016, 0.016, 0.03, 12]} />
+          <meshStandardMaterial color="#e8eaed" roughness={0.35} metalness={0.4} />
+        </mesh>
+      );
+    }
+    details.push(
+      <mesh key="door" position={[0, hMet * 0.42, 0.014]}>
+        <boxGeometry args={[a * 0.9, hMet * 0.58, 0.018]} />
+        <meshStandardMaterial color="#17181b" roughness={0.25} metalness={0.1} />
+      </mesh>
+    );
+    details.push(hHandle("oh", -a * 0.42, a * 0.42, hMet * 0.72));
+  } else if (kind === "washer_front" || kind === "washing_machine") {
+    // Front loader: a dark console across the top and a round glass door.
+    details.push(
+      <mesh key="console" position={[0, hMet - 0.06, 0.012]}>
+        <boxGeometry args={[a * 0.98, 0.12, 0.016]} />
+        <meshStandardMaterial color="#25272b" roughness={0.6} />
+      </mesh>
+    );
+    const r = Math.min(a, hMet) * 0.3;
+    details.push(
+      <mesh key="doorRim" position={[0, hMet * 0.44, 0.014]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[r, r, 0.02, 28]} />
+        <meshStandardMaterial color="#d9dbdf" roughness={0.5} />
+      </mesh>
+    );
+    details.push(
+      <mesh key="doorGlass" position={[0, hMet * 0.44, 0.026]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[r * 0.72, r * 0.72, 0.012, 28]} />
+        <meshStandardMaterial color="#101114" roughness={0.15} metalness={0.2} />
+      </mesh>
+    );
+  } else if (kind === "washer_top") {
+    // Top loader: the lid and console are on TOP, so the front is a plain face
+    // and the detail belongs on the horizontal surface instead.
+    details.push(
+      <mesh key="lid" position={[0, hMet + 0.001, -dMet / 2]} rotation={[-Math.PI / 2, 0, 0]}>
+        <boxGeometry args={[a * 0.86, dMet * 0.6, 0.014]} />
+        <meshStandardMaterial color="#25272b" roughness={0.5} />
+      </mesh>
+    );
+    details.push(
+      <mesh key="console" position={[0, hMet + 0.002, -dMet * 0.86]} rotation={[-Math.PI / 2, 0, 0]}>
+        <boxGeometry args={[a * 0.9, dMet * 0.24, 0.016]} />
+        <meshStandardMaterial color="#1d1f22" roughness={0.6} />
+      </mesh>
+    );
+    details.push(
+      <mesh key="dial" position={[0, hMet + 0.014, -dMet * 0.86]}>
+        <cylinderGeometry args={[0.022, 0.022, 0.024, 14]} />
+        <meshStandardMaterial color="#e8eaed" roughness={0.35} metalness={0.4} />
       </mesh>
     );
   }
 
-  const chimney = kind === "rangehood" ? (() => {
-    const ceilY = (roomHmm - bottomMm) / M;
-    const chimH = ceilY - hMet;
-    if (chimH <= 0.02) return null;
-    const chimW = Math.min(a * 0.42, 0.35);
-    const chimD = Math.min(dMet * 0.6, 0.24);
-    const backZ = -dMet + chimD / 2 + 0.005;
+  // A rangehood is NOT a box. It is a canopy that flares from the cooktop up to
+  // a duct, plus the flue above it — and the two scale independently, which is
+  // the whole reason rangehoodGeometry() exists. Drawing it as one block with a
+  // chimney bolted on ignored all of that: the canopy never flared, and making
+  // the hood taller stretched the canopy instead of lengthening the flue.
+  if (kind === "rangehood") {
+    // The canopy and the flue come out of one call, in mm, in the hood's own
+    // frame — front face at z = 0, body running back to -depth. Scaling to
+    // metres here is the only arithmetic this view does to them.
+    const { canopy, flue, flueH } = rangehoodParts(item);
+    const m = (v) => v / M;
+    const scaleRect = (r) => ({ x0: m(r.x0), x1: m(r.x1), z0: m(r.z0), z1: m(r.z1) });
     return (
-      <mesh position={[0, hMet + chimH / 2, backZ]}>
-        <boxGeometry args={[chimW, chimH, chimD]} />
-        <PanelMaterial src={src} color={steel} roughness={0.4} metalness={0.25} />
-      </mesh>
+      <group position={[cx / M, bottomMm / M, cz / M]} rotation={[0, rotY, 0]}>
+        <FrustumMesh
+          bottom={scaleRect(canopy.bottom)}
+          top={scaleRect(canopy.top)}
+          y0={m(canopy.y0)}
+          y1={m(canopy.y1)}
+        >
+          {/* Double-sided like the other hand-built geometry here: a frustum's
+              winding flips with the direction of the taper, and a culled face
+              makes the canopy look see-through rather than solid. */}
+          <PanelMaterial src={src} color={steel} roughness={0.4} metalness={0.25} side={2} />
+        </FrustumMesh>
+        {flueH > 0 && (
+          <mesh position={[0, m((flue.y0 + flue.y1) / 2), m((flue.z0 + flue.z1) / 2)]}>
+            <boxGeometry args={[m(flue.x1 - flue.x0), m(flue.y1 - flue.y0), m(flue.z1 - flue.z0)]} />
+            <PanelMaterial src={src} color={steel} roughness={0.4} metalness={0.25} />
+          </mesh>
+        )}
+        {details}
+      </group>
     );
-  })() : null;
+  }
 
   return (
     <>
@@ -593,7 +805,6 @@ function StandaloneApplianceMesh({ item, W, D, roomHmm, color, src }) {
       </mesh>
       <group position={[cx / M, bottomMm / M, cz / M]} rotation={[0, rotY, 0]}>
         {details}
-        {chimney}
       </group>
     </>
   );
@@ -676,7 +887,14 @@ function CabinetMesh({ item, W, D, roomHmm, elevationWall = null }) {
     return (
       <>
         {cabinetLegs(item, W, D).map((leg, li) =>
-          openCarcassPanels(leg.rect, leg.wall, carc, bottomMm, topMm, item.back_panel_included !== false, backBoardMm(item), insetPlinthMm(item)).map((p, pi) => {
+          openCarcassPanels(
+            leg.rect, leg.wall, carc, bottomMm, topMm,
+            item.back_panel_included !== false, backBoardMm(item), insetPlinthMm(item),
+            // Only a base that came with the frame gets its rail drawn here, in
+            // the carcass board and the carcass colour, because that is what it
+            // is made of. A bookcase's plinth is ours and KickboardMesh has it.
+            builtInPlinthMm(item) > 0 ? carc : 0
+          ).map((p, pi) => {
             const box = boxFromRect(p.rect, p.b, p.t);
             return (
               <mesh key={`${li}-${pi}`} position={box.position}>
@@ -1002,11 +1220,19 @@ function KickboardMesh({ item, W, D }) {
         const box = inset
           ? boxFromRect(footprint, bottomMm, bottomMm + kb)
           : boxFromRect(footprint, Math.max(bottomMm - kb, 0), bottomMm);
+        const [kbBottom, kbTop] = inset ? [bottomMm, bottomMm + kb] : [Math.max(bottomMm - kb, 0), bottomMm];
         return (
-          <mesh key={i} position={box.position}>
-            <boxGeometry args={box.size} />
-            <PanelMaterial src={src} color={KICKBOARD_COLOR} roughness={0.9} />
-          </mesh>
+          <group key={i}>
+            <mesh position={box.position}>
+              <boxGeometry args={box.size} />
+              <PanelMaterial src={src} color={KICKBOARD_COLOR} roughness={0.9} />
+            </mesh>
+            <PanelFaceProfile
+              rect={footprint} bottomMm={kbBottom} topMm={kbTop}
+              faceWall={leg.wall}
+              profile={panelFrontProfile(item, "kickboard")} src={src}
+            />
+          </group>
         );
       })}
     </>
@@ -1027,12 +1253,20 @@ function FillerMesh({ item, room, items, W, D }) {
   return (
     <>
       {cabinetLegs(item, W, D).map((leg, i) => {
-        const box = boxFromRect(frontEdgeRect(leg.rect, leg.wall, t), topMm, topMm + heightMm);
+        const face = frontEdgeRect(leg.rect, leg.wall, t);
+        const box = boxFromRect(face, topMm, topMm + heightMm);
         return (
-          <mesh key={i} position={box.position}>
-            <boxGeometry args={box.size} />
-            <PanelMaterial src={src} color={FILLER_COLOR} roughness={0.6} />
-          </mesh>
+          <group key={i}>
+            <mesh position={box.position}>
+              <boxGeometry args={box.size} />
+              <PanelMaterial src={src} color={FILLER_COLOR} roughness={0.6} />
+            </mesh>
+            <PanelFaceProfile
+              rect={face} bottomMm={topMm} topMm={topMm + heightMm}
+              faceWall={leg.wall}
+              profile={panelFrontProfile(item, "filler")} src={src}
+            />
+          </group>
         );
       })}
     </>
@@ -1161,15 +1395,23 @@ function edgeBoardRect(rect, edge, t) {
 // enabled are drawn. panelSideEdges maps viewer left/right to the room-space
 // footprint edge, matching the plan and elevation.
 function EndPanelMesh({ item, room, W, D }) {
-  const src = usePanelSrc(item, "endpanel");
+  const srcLeft = usePanelSrc(item, "endpanel_left");
+  const srcRight = usePanelSrc(item, "endpanel_right");
+  const srcFor = (key) => (key === "end_right" ? srcRight : srcLeft);
   const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   if (item.item_type === "obstruction" || (!item.end_panel_left && !item.end_panel_right)) return null;
-  // Shared vertical span so the 3D end/side panel matches the quote and the
-  // elevation: extends past a finished underside (wall), down to the floor
-  // (panel_to_floor) and up to the ceiling (panel_to_ceiling).
-  const { bottomMm, topMm } = finishPanelVerticalSpanMm(item, room?.height_mm);
+  // Each end carries its OWN reach, so a left end running to the floor and a
+  // right end stopping at the carcass draw as what they are. Same shared helper
+  // the quote and the elevation use, and it still extends a wall cabinet's side
+  // down past a finished underside.
+  const spanFor = (panelKey) => finishPanelVerticalSpanMm(item, room?.height_mm, panelKey);
   const t = Number(item.finish_panel_style?.thickness_mm) || 18;
   const frontProjection = frontPanelMode(item) === FRONT_PANEL_MODE_INSET ? frontPanelThicknessMm(item) : 0;
+  // Deeper at the back by the finished back panel's thickness, so the end
+  // covers its edge instead of stopping flush and leaving it on show. Same
+  // extra depth finishedSidePanelDepthMm() bills, so the board drawn is the
+  // board cut.
+  const backProjection = endPanelBackExtensionMm(item);
 
   const edges = [];
   if (isCornerType(item)) {
@@ -1182,24 +1424,41 @@ function EndPanelMesh({ item, room, W, D }) {
       (legWall === "top" || legWall === "bottom")
         ? (cornerWall === "left" ? "right" : "left")
         : (cornerWall === "top" ? "bottom" : "top");
-    if (item.end_panel_left && legs[0]) edges.push(extendFront(edgeBoardRect(legs[0].rect, outerEdge(legs[0].wall, item.secondary_wall), t), legs[0].wall, frontProjection));
-    if (item.end_panel_right && legs[1]) edges.push(extendFront(edgeBoardRect(legs[1].rect, outerEdge(legs[1].wall, item.wall), t), legs[1].wall, frontProjection));
+    if (item.end_panel_left && legs[0]) {
+      const e = outerEdge(legs[0].wall, item.secondary_wall);
+      edges.push({ key: "end_left", edge: e, rect: extendBack(extendFront(edgeBoardRect(legs[0].rect, e, t), legs[0].wall, frontProjection), legs[0].wall, backProjection) });
+    }
+    if (item.end_panel_right && legs[1]) {
+      const e = outerEdge(legs[1].wall, item.wall);
+      edges.push({ key: "end_right", edge: e, rect: extendBack(extendFront(edgeBoardRect(legs[1].rect, e, t), legs[1].wall, frontProjection), legs[1].wall, backProjection) });
+    }
   } else {
     const { leftEdge, rightEdge } = panelSideEdges(item);
     const rect = cabinetLegs(item, W, D)[0]?.rect;
     if (!rect) return null;
-    if (item.end_panel_left) edges.push(extendFront(edgeBoardRect(rect, leftEdge, t), item.wall, frontProjection));
-    if (item.end_panel_right) edges.push(extendFront(edgeBoardRect(rect, rightEdge, t), item.wall, frontProjection));
+    // extendFront/extendBack work in room axes, so a freestanding cabinet has
+    // to be read through its virtual wall the way every other panel is.
+    const panelWall = item.wall === "island" ? islandVirtualWall(item) : item.wall;
+    if (item.end_panel_left) edges.push({ key: "end_left", edge: leftEdge, rect: extendBack(extendFront(edgeBoardRect(rect, leftEdge, t), panelWall, frontProjection), panelWall, backProjection) });
+    if (item.end_panel_right) edges.push({ key: "end_right", edge: rightEdge, rect: extendBack(extendFront(edgeBoardRect(rect, rightEdge, t), panelWall, frontProjection), panelWall, backProjection) });
   }
   return (
     <>
-      {edges.filter(Boolean).map((r, i) => {
-        const box = boxFromRect(r, bottomMm, topMm);
+      {edges.filter((e) => e && e.rect).map((e, i) => {
+        const { bottomMm, topMm } = spanFor(e.key);
+        const box = boxFromRect(e.rect, bottomMm, topMm);
         return (
-          <mesh key={i} position={box.position}>
-            <boxGeometry args={box.size} />
-            <PanelMaterial src={src} color={color} roughness={0.55} />
-          </mesh>
+          <group key={i}>
+            <mesh position={box.position}>
+              <boxGeometry args={box.size} />
+              <PanelMaterial src={srcFor(e.key)} color={color} roughness={0.55} />
+            </mesh>
+            <PanelFaceProfile
+              rect={e.rect} bottomMm={bottomMm} topMm={topMm}
+              faceWall={OPPOSITE_WALL[e.edge]}
+              profile={panelFrontProfile(item, e.key)} src={srcFor(e.key)}
+            />
+          </group>
         );
       })}
     </>
@@ -1216,23 +1475,31 @@ function SideFillerMesh({ item, room, W, D }) {
   const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   if (item.item_type === "obstruction" || (!item.side_filler_left && !item.side_filler_right)) return null;
   const { leftEdge, rightEdge } = panelSideEdges(item);
-  const { bottomMm, topMm } = finishPanelVerticalSpanMm(item, room?.height_mm);
+  const spanFor = (panelKey) => finishPanelVerticalSpanMm(item, room?.height_mm, panelKey);
   const rect = cabinetLegs(item, W, D)[0]?.rect;
   if (!rect) return null;
   const lw = Number(item.side_filler_left_width_mm) || 0;
   const rw = Number(item.side_filler_right_width_mm) || 0;
   const boards = [];
-  if (item.side_filler_left && lw > 0)  boards.push(edgeBoardRect(rect, leftEdge, lw));
-  if (item.side_filler_right && rw > 0) boards.push(edgeBoardRect(rect, rightEdge, rw));
+  if (item.side_filler_left && lw > 0)  boards.push({ key: "side_filler_left", edge: leftEdge, rect: edgeBoardRect(rect, leftEdge, lw) });
+  if (item.side_filler_right && rw > 0) boards.push({ key: "side_filler_right", edge: rightEdge, rect: edgeBoardRect(rect, rightEdge, rw) });
   return (
     <>
-      {boards.filter(Boolean).map((r, i) => {
-        const box = boxFromRect(r, bottomMm, topMm);
+      {boards.filter((b) => b && b.rect).map((b, i) => {
+        const { bottomMm, topMm } = spanFor(b.key);
+        const box = boxFromRect(b.rect, bottomMm, topMm);
         return (
-          <mesh key={i} position={box.position}>
-            <boxGeometry args={box.size} />
-            <PanelMaterial src={src} color={color} roughness={0.55} />
-          </mesh>
+          <group key={i}>
+            <mesh position={box.position}>
+              <boxGeometry args={box.size} />
+              <PanelMaterial src={src} color={color} roughness={0.55} />
+            </mesh>
+            <PanelFaceProfile
+              rect={b.rect} bottomMm={bottomMm} topMm={topMm}
+              faceWall={OPPOSITE_WALL[b.edge]}
+              profile={panelFrontProfile(item, b.key)} src={src}
+            />
+          </group>
         );
       })}
     </>
@@ -1299,23 +1566,72 @@ function TopPanelMesh({ item, W, D }) {
 
 // Finished BACK panel — a board over an exposed back (island/peninsula), in the
 // carcass finish. Against a wall it renders into the wall and simply isn't seen.
-function BackPanelMesh({ item, W, D }) {
+// The join drawn between two separate back panels. Individual panels are their
+// own boards, so the join between them is a real edge you would see on site; a
+// continuous run is one board across the whole run and has no join to show.
+// Sized to match the reveal the fronts already draw.
+const BACK_PANEL_SEAM_MM = 1.5;
+
+// Insets a board's along-wall ends wherever another cabinet's back panel butts
+// against it, so three individual panels read as three boards instead of one
+// unbroken sheet. Drawing convention only, like the door reveals — the quote
+// still cuts each panel its full width.
+function insetBackPanelSeams(board, item, items, wall) {
+  const seg = backPanelSegment(item);
+  if (!seg || !Array.isArray(items)) return board;
+  const neighbours = items
+    .filter((i) => i.id !== item.id && i.room_id === item.room_id && i.has_back_panel)
+    .map(backPanelSegment)
+    .filter((n) => n && n.wall === seg.wall);
+  const touches = (edgeMm) => neighbours.some(
+    (n) => Math.abs(n.axisPos - edgeMm) < 2 || Math.abs(n.axisPos + n.length - edgeMm) < 2
+  );
+  const low = touches(seg.axisPos) ? BACK_PANEL_SEAM_MM : 0;
+  const high = touches(seg.axisPos + seg.length) ? BACK_PANEL_SEAM_MM : 0;
+  if (!low && !high) return board;
+  return (wall === "left" || wall === "right")
+    ? { ...board, y: board.y + low, h: Math.max(1, board.h - low - high) }
+    : { ...board, x: board.x + low, w: Math.max(1, board.w - low - high) };
+}
+
+function BackPanelMesh({ item, room, items, W, D }) {
   const src = usePanelSrc(item, "back");
   const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   const enabled = item.has_back_panel || item.back_panel_wall1 || item.back_panel_wall2;
   if (!enabled || item.item_type === "obstruction") return null;
   const { backEdge } = panelSideEdges(item);
-  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
-  const t = Number(item.back_panel_thickness_mm) || Number(item.carcass_thickness_mm) || 16;
+  // The shared span, so panel_to_floor and panel_to_ceiling carry through here
+  // the way they already do for end panels. This used to be the carcass span,
+  // which is why a back panel marked to run to the floor still stopped short at
+  // the kickboard recess.
+  // A corner names its backs per leg; the straight cabinets have the one.
+  const panelKey = item.has_back_panel ? "back" : (item.back_panel_wall1 ? "back_wall1" : "back_wall2");
+  const { bottomMm, topMm } = finishPanelVerticalSpanMm(item, room?.height_mm, panelKey);
+  // A finished back is a finish panel, not the carcass's own structural back
+  // board (back_panel_thickness_mm) — a different piece with its own thickness.
+  // Reading the wrong one drew it at 16mm while the quote cut 18.
+  const t = finishPanelThicknessMm(item);
   const rect = cabinetLegs(item, W, D)[0]?.rect;
-  const board = rect && edgeBoardRect(rect, backEdge, t);
+  if (!rect) return null;
+  const wall = item.wall === "island" ? islandVirtualWall(item) : item.wall;
+  let board = edgeBoardRect(rect, backEdge, t);
   if (!board) return null;
+  if ((item.back_panel_span || "continuous") === "individual") {
+    board = insetBackPanelSeams(board, item, items, wall);
+  }
   const box = boxFromRect(board, bottomMm, topMm);
   return (
-    <mesh position={box.position}>
-      <boxGeometry args={box.size} />
-      <PanelMaterial src={src} color={color} roughness={0.6} />
-    </mesh>
+    <>
+      <mesh position={box.position}>
+        <boxGeometry args={box.size} />
+        <PanelMaterial src={src} color={color} roughness={0.6} />
+      </mesh>
+      <PanelFaceProfile
+        rect={board} bottomMm={bottomMm} topMm={topMm}
+        faceWall={OPPOSITE_WALL[backEdge]}
+        profile={panelFrontProfile(item, panelKey)} src={src}
+      />
+    </>
   );
 }
 
@@ -1348,7 +1664,12 @@ function facePoint(basis, alongMm, vertMm, off = 0.006) {
 function frontGroups(item, W, D) {
   const ft = item.front_type || "none";
   if (ft === "none") return [];
-  const [bottomMm, topMm] = cabinetVerticalSpanMm(item);
+  // The fronts start ABOVE a plinth the frame came with. An IKEA Pax is sold at
+  // its overall height, base included, so its doors are 60 or 70mm shorter than
+  // the frame and the base shows below them. One line, because every front type
+  // below is laid out between these two numbers.
+  const [carcassBottomMm, topMm] = cabinetVerticalSpanMm(item);
+  const bottomMm = carcassBottomMm + builtInPlinthMm(item);
 
   const addDoors = (cells, cfg, v0, v1, aStart, aLen) => {
     const cols = Math.max(1, cfg.columns || 1);
@@ -1487,7 +1808,7 @@ function ProfileFeatureBox({ basis, a0, a1, v0, v1, depth = 0.006, offset = DOOR
   );
 }
 
-function FrontProfileGeometry({ basis, cell, src, profile }) {
+function FrontProfileGeometry({ basis, cell, src, profile, baseOffset = DOOR_PANEL_THICKNESS }) {
   const key = normaliseFrontProfile(profile);
   if (key === "slab") return null;
 
@@ -1498,7 +1819,6 @@ function FrontProfileGeometry({ basis, cell, src, profile }) {
   const parts = [];
   const rail = Math.max(28, Math.min(62, Math.min(w, h) * 0.12));
   const inset = Math.max(30, Math.min(70, Math.min(w, h) * 0.14));
-  const groove = 8;
 
   if (key === "shaker") {
     parts.push(
@@ -1507,20 +1827,74 @@ function FrontProfileGeometry({ basis, cell, src, profile }) {
       { a0: cell.a0, a1: cell.a0 + rail, v0: cell.v0, v1: cell.v1 },
       { a0: cell.a1 - rail, a1: cell.a1, v0: cell.v0, v1: cell.v1 }
     );
-    return <>{parts.map((p, i) => <ProfileFeatureBox key={i} basis={basis} {...p} depth={0.006} src={src} />)}</>;
+    return <>{parts.map((p, i) => <ProfileFeatureBox key={i} basis={basis} {...p} depth={0.006} offset={baseOffset} src={src} />)}</>;
   }
 
+  // VJ panelling: a run of vertical boards with a groove between each one.
+  //
+  // The groove is the GAP BETWEEN two proud boards, not a dark stripe drawn on
+  // a flat face. The door slab sits behind it in the same colour and the same
+  // tile, so the line you see is the scene's own shadow falling into a real
+  // recess — it deepens as the light moves, it survives any colour, and it
+  // disappears edge-on exactly the way a real groove does.
+  if (key === "vj") {
+    for (const b of vjBoards(w)) {
+      parts.push({ a0: cell.a0 + b.a0, a1: cell.a0 + b.a1, v0: cell.v0, v1: cell.v1 });
+    }
+    return <>{parts.map((p, i) => <ProfileFeatureBox key={i} basis={basis} {...p} depth={0.005} offset={baseOffset} src={src} />)}</>;
+  }
+
+  // Bevel: a raised centre field stepped up out of a flat border.
+  //
+  // This used to be four flat grey bars laid on the door face, which is the
+  // thing a profile must never be — painted-on lines that stay the same colour
+  // as the door changes and never catch the light. It is now two real steps in
+  // the door's own finish, so the bevel is read from its shadow.
   if (key === "bevel") {
-    parts.push(
-      { a0: cell.a0 + inset, a1: cell.a1 - inset, v0: cell.v1 - inset - groove, v1: cell.v1 - inset },
-      { a0: cell.a0 + inset, a1: cell.a1 - inset, v0: cell.v0 + inset, v1: cell.v0 + inset + groove },
-      { a0: cell.a0 + inset, a1: cell.a0 + inset + groove, v0: cell.v0 + inset, v1: cell.v1 - inset },
-      { a0: cell.a1 - inset - groove, a1: cell.a1 - inset, v0: cell.v0 + inset, v1: cell.v1 - inset }
+    const step = Math.max(6, Math.min(14, Math.min(w, h) * 0.02));
+    return (
+      <>
+        <ProfileFeatureBox
+          basis={basis} src={src} depth={0.004} offset={baseOffset}
+          a0={cell.a0 + inset} a1={cell.a1 - inset}
+          v0={cell.v0 + inset} v1={cell.v1 - inset}
+        />
+        <ProfileFeatureBox
+          basis={basis} src={src} depth={0.004} offset={baseOffset + 0.004}
+          a0={cell.a0 + inset + step} a1={cell.a1 - inset - step}
+          v0={cell.v0 + inset + step} v1={cell.v1 - inset - step}
+        />
+      </>
     );
-    return <>{parts.map((p, i) => <ProfileFeatureBox key={i} basis={basis} {...p} depth={0.003} offset={DOOR_PANEL_THICKNESS + 0.001} color="#7b746b" dark />)}</>;
   }
 
   return null;
+}
+
+// The visual 3D profile shaped into one panel's outward face — the same
+// slab / shaker / bevel / VJ shapes a door front can take.
+//
+// Deliberately the same geometry the fronts use, so a shaker end panel beside a
+// shaker door is genuinely the same shape rather than a lookalike drawn twice.
+// The only difference is where it starts from: a door front floats proud of the
+// carcass, while a panel's profile sits directly on the panel's own face.
+//
+// `faceWall` names which of the board's four upright faces is on show, in the
+// same top/bottom/left/right terms faceBasis() uses.
+function PanelFaceProfile({ rect, bottomMm, topMm, faceWall, profile, src }) {
+  if (!rect || normaliseFrontProfile(profile) === "slab") return null;
+  const basis = faceBasis({ rect, wall: faceWall });
+  if (!basis) return null;
+  const along = (faceWall === "top" || faceWall === "bottom") ? rect.w : rect.h;
+  return (
+    <FrontProfileGeometry
+      basis={basis}
+      cell={{ a0: 0, a1: along, v0: bottomMm, v1: topMm }}
+      src={src}
+      profile={profile}
+      baseOffset={0.001}
+    />
+  );
 }
 
 function DoorPanel({ basis, cell, src, profile }) {
@@ -2023,7 +2397,9 @@ function Room({ W, D, H, wallsVisible }) {
 export default function Design3DView({ room, items, onClose, colourImages, showColours, onToggleColours, selectedItemId, onSelectItem, onCaptureReady, mono = false, touch = false, showClose = true, elevationWall = null }) {
   const controlsRef = useRef();
   const [wallsVisible, setWallsVisible] = useState(true);
-  const [labelsVisible, setLabelsVisible] = useState(true);
+  // Off by default: the labels are a look-up aid, not something you want
+  // crowding the model every time the 3D view opens.
+  const [labelsVisible, setLabelsVisible] = useState(false);
   // The hover handlers set a pointer cursor; make sure it doesn't linger if the
   // view closes while the cursor is over a cabinet.
   useEffect(() => () => { document.body.style.cursor = "auto"; }, []);
@@ -2204,7 +2580,7 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
                   <SideFillerMesh item={item} room={room} W={W} D={D} />
                   <UndersidePanelMesh item={item} W={W} D={D} />
                   <TopPanelMesh item={item} W={W} D={D} />
-                  <BackPanelMesh item={item} W={W} D={D} />
+                  <BackPanelMesh item={item} room={room} items={placed} W={W} D={D} />
                   <BenchtopMesh item={item} items={placed} W={W} D={D} />
                   <ShelfMesh item={item} W={W} D={D} />
                   <FrontDetail item={item} W={W} D={D} />

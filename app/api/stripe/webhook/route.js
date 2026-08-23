@@ -2,34 +2,11 @@ import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { applyAcceptedVariation } from "../../../../lib/pcd-order-variations";
 import { sendPaymentReceivedSalesEmail } from "../../../../lib/pcd-payment-notifications";
 import { fromCents, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
+import { syncDepositFields } from "../../../../lib/pcd-order-deposit";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-async function syncDepositFields(supabase, orderId) {
-  const { data: deposits, error } = await supabase
-    .from("pcd_order_payments")
-    .select("amount,is_paid,paid_at")
-    .eq("order_id", orderId)
-    .eq("payment_type", "deposit");
-  if (error) throw error;
-  const rows = deposits || [];
-  const depositAmount = rows.reduce((total, payment) => total + Number(payment.amount || 0), 0);
-  const depositPaid = rows.length > 0 && rows.every((payment) => payment.is_paid);
-  const paidAt = depositPaid ? rows.find((payment) => payment.paid_at)?.paid_at || new Date().toISOString().slice(0, 10) : null;
-  const updates = {
-    deposit_required: rows.length > 0,
-    deposit_amount: depositAmount,
-    deposit_paid: depositPaid,
-    deposit_paid_at: paidAt,
-  };
-  if (depositPaid) updates.accepted_at = new Date().toISOString();
-  await supabase
-    .from("pcd_orders")
-    .update(updates)
-    .eq("id", orderId);
-}
 
 async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
   const supabase = createSupabaseAdminClient();
@@ -42,12 +19,55 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
 
   const { data: existingPayment, error: existingPaymentError } = await supabase
     .from("pcd_order_payments")
-    .select("id,is_paid")
+    // Everything, not a named list. Naming settlement_method here would make
+    // this whole webhook fail on a database that has not had 202608221800 run,
+    // and a webhook that throws is every incoming payment silently not being
+    // recorded. No column this reads is worth that.
+    .select("*")
     .eq("id", paymentId)
     .eq("order_id", orderId)
     .maybeSingle();
   if (existingPaymentError || !existingPayment) throw existingPaymentError || new Error("Payment not found.");
-  if (existingPayment.is_paid) return;
+
+  // ALREADY PAID, AND MONEY HAS JUST ARRIVED ANYWAY.
+  //
+  // Returning quietly kept the books right and the customer wrong. It happens
+  // when a payment was settled by hand because the link did not work, and then
+  // the link was paid too: we have their money twice and nothing anywhere says
+  // so, because the row already reads as paid.
+  //
+  // The row is deliberately NOT updated. It is correct, and a second payment is
+  // not a correction to it. What is recorded is that a duplicate arrived, so
+  // somebody can refund it.
+  if (existingPayment.is_paid) {
+    const duplicate = session.amount_total ? fromCents(session.amount_total) : null;
+    console.error(
+      "[stripe-webhook] DUPLICATE PAYMENT on " + paymentId + ": this was already marked paid" +
+        (existingPayment.settlement_method ? " by " + existingPayment.settlement_method : "") +
+        " and Stripe has now taken " + (duplicate === null ? "another payment" : duplicate) +
+        " through session " + session.id + ". The customer has paid twice and needs a refund."
+    );
+    await logOrderActivity(supabase, {
+      order_id: orderId,
+      actor_type: "system",
+      action_type: "payment_received_twice",
+      title: "Customer paid twice, refund needed",
+      description:
+        "This payment was already settled" +
+        (existingPayment.settlement_method ? " by " + existingPayment.settlement_method : "") +
+        " and a further payment has come through the Stripe link. Refund the duplicate.",
+      metadata: {
+        payment_id: paymentId,
+        duplicate_amount: duplicate,
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent || null,
+        already_paid_at: existingPayment.paid_at || null,
+        settled_by: existingPayment.settlement_method || null,
+      },
+      event_key: `payment:${paymentId}:duplicate:${session.id}`,
+    });
+    return;
+  }
 
   const paidAt = new Date().toISOString().slice(0, 10);
   const amount = session.amount_total ? fromCents(session.amount_total) : null;

@@ -91,6 +91,27 @@ export async function POST(request, { params }) {
       ticket = data;
     }
 
+    // WHO THIS REPLY IS ACTUALLY GOING TO.
+    //
+    // A customer can have more than one record: the same person writing from two
+    // addresses, or their partner answering for them. The desk shows them as one
+    // person, so the record in the url is the primary and its address is not
+    // necessarily the address this conversation is with.
+    //
+    // The thread knows. A ticket belongs to the record the message came in on,
+    // so the reply goes back to whoever wrote, which is what somebody expects
+    // when they hit reply on a conversation in front of them. Only a brand new
+    // conversation, which has nobody to reply TO, goes to the primary.
+    let replyTo = customer.email;
+    if (ticket?.customer_id && ticket.customer_id !== customerId) {
+      const { data: threadCustomer } = await context.supabase
+        .from("pcd_customers")
+        .select("id, email")
+        .eq("id", ticket.customer_id)
+        .maybeSingle();
+      if (threadCustomer?.email) replyTo = threadCustomer.email;
+    }
+
     const { data: agent } = await context.supabase
       .from("pcd_agents")
       .select("id,name")
@@ -101,7 +122,7 @@ export async function POST(request, { params }) {
     let providerMessageId = null;
 
     if (!isNote) {
-      if (!customer.email) {
+      if (!replyTo) {
         return Response.json({ ok: false, error: "This customer has no email address to reply to." }, { status: 422 });
       }
       if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
@@ -112,18 +133,27 @@ export async function POST(request, { params }) {
       // one, because the order is the live thing. Neither carries a link: an
       // approved order with variations against it would send somebody to
       // figures that are no longer what they are getting.
+      // Across every record that reads as this person, so a quote raised under
+      // their other address is still the job this email is about.
+      const { data: linked } = await context.supabase
+        .from("pcd_customers")
+        .select("id")
+        .or(`id.eq.${customerId},merged_into_id.eq.${customerId}`);
+      const customerIds = (linked || []).map((c) => c.id);
+      const ids = customerIds.length ? customerIds : [customerId];
+
       const [{ data: quote }, { data: order }] = await Promise.all([
         context.supabase
           .from("pcd_quotes")
           .select("quote_number,total_inc_gst,created_at")
-          .eq("customer_id", customerId)
+          .in("customer_id", ids)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
         context.supabase
           .from("pcd_orders")
           .select("order_number,total_inc_gst,created_at")
-          .eq("customer_id", customerId)
+          .in("customer_id", ids)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -133,12 +163,12 @@ export async function POST(request, { params }) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const sent = await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL,
-        to: customer.email,
+        to: replyTo,
         // Replies come back to the mailbox we read, which is how the customer's
         // answer rejoins this ticket.
         replyTo: process.env.RESEND_FROM_EMAIL,
         subject: subject.toLowerCase().startsWith("re:") ? subject : `Re: ${subject}`,
-        html: deskReplyEmailHtml({ bodyHtml: written, signatureHtml, reference }),
+        html: deskReplyEmailHtml({ bodyHtml: written, signatureHtml, reference, subject }),
         text: deskReplyEmailText({
           bodyText: termsHtmlToPlainText(written),
           signatureText: termsHtmlToPlainText(signatureHtml),
@@ -160,7 +190,7 @@ export async function POST(request, { params }) {
         agent_id: agent?.id || null,
         from_name: agent?.name || "Perth Cabinet Doors",
         from_email: isNote ? null : process.env.RESEND_FROM_EMAIL,
-        to_email: isNote ? null : customer.email,
+        to_email: isNote ? null : replyTo,
         subject: isNote ? `Note: ${subject}` : subject,
         body_html: html,
         body_text: text,

@@ -131,6 +131,9 @@ export default function EmailSignatureCard() {
               sandbox=""
               className="h-[560px] w-full rounded-[8px] border border-[#dbd8cc] bg-white"
               srcDoc={deskReplyEmailHtml({
+                // A real subject, because the header shows it. A preview that leaves
+                // it blank would not show the line somebody is checking.
+                subject: "Re: Your quote PCD-Q-2026-4A7C21",
                 bodyHtml:
                   "<p>Hi Sarah,</p><p>Good to hear from you. The quote still stands at the same price, and I am happy to add the pantry doors to the same job.</p>",
                 signatureHtml: toTermsHtml(signature),

@@ -356,8 +356,8 @@ export default function QuotesManager() {
                     <input className={styles.fieldInput} placeholder="Colour" value={line.colour} onChange={(event) => updateLine(index, "colour", event.target.value)} />
                     <input className={styles.fieldInput} placeholder="Profile" value={line.profile} onChange={(event) => updateLine(index, "profile", event.target.value)} />
                     <input className={styles.fieldInput} placeholder="Edge" value={line.edge_mould} onChange={(event) => updateLine(index, "edge_mould", event.target.value)} />
-                    <input className={styles.fieldInput} type="number" placeholder="Width mm" value={line.width_mm} onChange={(event) => updateLine(index, "width_mm", event.target.value)} />
                     <input className={styles.fieldInput} type="number" placeholder="Height mm" value={line.height_mm} onChange={(event) => updateLine(index, "height_mm", event.target.value)} />
+                    <input className={styles.fieldInput} type="number" placeholder="Width mm" value={line.width_mm} onChange={(event) => updateLine(index, "width_mm", event.target.value)} />
                     <input className={styles.fieldInput} type="number" placeholder="Qty" value={line.qty} onChange={(event) => updateLine(index, "qty", event.target.value)} />
                     <input className={styles.fieldInput} type="number" placeholder="Product unit cost ex GST" value={line.product_unit_cost_ex_gst} onChange={(event) => updateLine(index, "product_unit_cost_ex_gst", event.target.value)} />
                     <input className={styles.fieldInput} type="number" placeholder="Labour hours" value={line.labour_hours} onChange={(event) => updateLine(index, "labour_hours", event.target.value)} />

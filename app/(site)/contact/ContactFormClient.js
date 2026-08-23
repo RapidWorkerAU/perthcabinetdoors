@@ -67,7 +67,15 @@ export default function ContactFormClient() {
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Could not send message.");
       form.reset();
-      setStatus({ type: "success", message: "Thanks. Your message has been sent and we will come back to you within one business day." });
+      setStatus({
+        type: "success",
+        message: [
+          "Thanks. Your message has been sent and we will come back to you within one business day.",
+          result.notice,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      });
     } catch (error) {
       setStatus({ type: "error", message: error.message || "Could not send message." });
     } finally {

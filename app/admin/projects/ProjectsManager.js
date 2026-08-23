@@ -214,11 +214,8 @@ export default function ProjectsManager() {
                     </td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(project.total_inc_gst, "AUD")}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{formatDate(project.accepted_at || project.created_at)}</td>
-                    <td className="px-4 py-[11px]">
+                    <td className="px-4 py-[11px]" onClick={(event) => event.stopPropagation()}>
                       <ActionMenu label={`Open actions for project ${project.project_number || project.id}`}>
-                        <ActionMenuItem onClick={() => router.push(`/admin/projects/${project.id}`)}>
-                          Open
-                        </ActionMenuItem>
                         <ActionMenuItem variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([project.id])}>
                           Delete
                         </ActionMenuItem>

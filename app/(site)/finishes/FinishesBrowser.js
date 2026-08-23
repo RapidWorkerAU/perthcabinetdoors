@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { profileImageSrc } from "@/lib/pcd-profile-images";
+import { profileImageSrc, edgeImageSrc } from "@/lib/pcd-profile-images";
+import { edgeSupplier, profileSupplier } from "@/lib/pcd-profile-suppliers";
+import { LAMINEX_PROFILES } from "@/lib/pcd-laminex-profiles";
 import {
   DECORATIVE_BOARD_EDGE_PROFILES,
   PROFILE_NAMES_BY_TYPE,
@@ -20,16 +22,6 @@ import styles from "./finishes.module.css";
 
 const PAGE_SIZE = 48;
 const ALL = "All";
-
-// Same slug rule as the product pages, quote form and approval screen, so the
-// four stay in step: "EM1 6mm Pencil Round" -> em1-6mm-pencil-round.png
-function edgeImageSrc(name) {
-  const slug = String(name || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug ? `/images/edges/${slug}.png` : "";
-}
 
 const EDGE_GROUPS = [
   { group: "Thermolaminate", names: THERMOLAMINATE_EDGE_PROFILES },
@@ -59,15 +51,22 @@ export default function FinishesBrowser({ colours = [], initialTab = "colours" }
   const [shown, setShown] = useState(PAGE_SIZE);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
 
+  // Both ranges, in one list. Polytec families are shapes (Minimal, Soft) and
+  // Laminex groups are series, which reads oddly only if you look at them
+  // together: the Brand filter is above the family filter, so choosing a brand
+  // narrows the families to that brand every time.
   const profiles = useMemo(
-    () =>
-      Object.keys(PROFILE_NAMES_BY_TYPE).flatMap((type) =>
+    () => [
+      ...Object.keys(PROFILE_NAMES_BY_TYPE).flatMap((type) =>
         PROFILE_NAMES_BY_TYPE[type].map((name) => ({
           name,
           family: type,
+          supplier: profileSupplier(name, type),
           imageUrl: profileImageSrc(type, name),
         }))
       ),
+      ...LAMINEX_PROFILES,
+    ],
     []
   );
 
@@ -78,19 +77,13 @@ export default function FinishesBrowser({ colours = [], initialTab = "colours" }
           name: name.replace(/^EM\d+\s/, ""),
           code: (name.match(/^EM\d+/) || [""])[0],
           family: group,
+          supplier: edgeSupplier(name),
           imageUrl: edgeImageSrc(name),
         }))
       ),
     []
   );
 
-  const suppliers = useMemo(() => {
-    const found = [];
-    colours.forEach((colour) => {
-      if (!found.includes(colour.supplier)) found.push(colour.supplier);
-    });
-    return found;
-  }, [colours]);
 
   // Finish options narrow to the chosen brand, so picking Laminex does not
   // leave you scrolling past fourteen Polytec ranges that would return nothing.
@@ -105,14 +98,36 @@ export default function FinishesBrowser({ colours = [], initialTab = "colours" }
 
   const dataset = tab === "profiles" ? profiles : tab === "edges" ? edges : colours;
 
+  // Narrowed to the chosen brand, so picking Laminex does not leave the customer
+  // scrolling past Polytec families that would return nothing, and the counts
+  // beside each one match what is actually on screen.
+  const families = useMemo(() => {
+    const counts = new Map();
+    dataset.forEach((item) => {
+      if (!item.family) return;
+      if (supplier !== ALL && item.supplier !== supplier) return;
+      counts.set(item.family, (counts.get(item.family) || 0) + 1);
+    });
+    return [...counts.entries()];
+  }, [dataset, supplier]);
+
+  // Read from whatever is on screen, not only from the colours. On the profiles
+  // tab a brand list built from colours would offer brands that say nothing
+  // about what is being looked at.
+  const suppliers = useMemo(() => {
+    const found = [];
+    dataset.forEach((item) => {
+      if (item.supplier && !found.includes(item.supplier)) found.push(item.supplier);
+    });
+    return found;
+  }, [dataset]);
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     return dataset.filter((item) => {
       if (q && !item.name.toLowerCase().includes(q)) return false;
-      if (tab === "colours") {
-        if (supplier !== ALL && item.supplier !== supplier) return false;
-        if (finish !== ALL && item.finish !== finish) return false;
-      }
+      if (supplier !== ALL && item.supplier !== supplier) return false;
+      if (tab === "colours" && finish !== ALL && item.finish !== finish) return false;
       if (tab === "profiles" && family !== ALL && item.family !== family) return false;
       if (tab === "edges" && family !== ALL && item.family !== family) return false;
       return true;
@@ -174,26 +189,29 @@ export default function FinishesBrowser({ colours = [], initialTab = "colours" }
       </div>
 
       <div className={styles.filters}>
+        {suppliers.length > 1 ? (
+          <label className={styles.field}>
+            <span>Brand</span>
+            <select className="pcdSelect"
+              value={supplier}
+              onChange={(event) => {
+                setSupplier(event.target.value);
+                setFinish(ALL);
+                setFamily(ALL);
+                setShown(PAGE_SIZE);
+              }}
+            >
+              <option value={ALL}>All brands ({dataset.length})</option>
+              {suppliers.map((name) => (
+                <option key={name} value={name}>
+                  {name} ({dataset.filter((item) => item.supplier === name).length})
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {tab === "colours" ? (
           <>
-            <label className={styles.field}>
-              <span>Brand</span>
-              <select className="pcdSelect"
-                value={supplier}
-                onChange={(event) => {
-                  setSupplier(event.target.value);
-                  setFinish(ALL);
-                  setShown(PAGE_SIZE);
-                }}
-              >
-                <option value={ALL}>All brands ({colours.length})</option>
-                {suppliers.map((name) => (
-                  <option key={name} value={name}>
-                    {name} ({colours.filter((colour) => colour.supplier === name).length})
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className={styles.field}>
               <span>Finish</span>
               <select className="pcdSelect"
@@ -224,10 +242,10 @@ export default function FinishesBrowser({ colours = [], initialTab = "colours" }
                 setShown(PAGE_SIZE);
               }}
             >
-              <option value={ALL}>All families ({profiles.length})</option>
-              {Object.keys(PROFILE_NAMES_BY_TYPE).map((type) => (
-                <option key={type} value={type}>
-                  {type} ({PROFILE_NAMES_BY_TYPE[type].length})
+              <option value={ALL}>All families ({families.reduce((total, [, count]) => total + count, 0)})</option>
+              {families.map(([name, count]) => (
+                <option key={name} value={name}>
+                  {name} ({count})
                 </option>
               ))}
             </select>
@@ -346,7 +364,11 @@ function Tile({ item, tab, onOpen }) {
       </span>
       <span className={styles.tileName}>
         {item.name}
-        <em>{tab === "colours" ? `${item.supplier} · ${item.finish}` : item.code || item.family}</em>
+        <em>
+          {tab === "colours"
+            ? `${item.supplier} · ${item.finish}`
+            : [item.supplier, item.code || item.family].filter(Boolean).join(" · ")}
+        </em>
       </span>
     </button>
   );

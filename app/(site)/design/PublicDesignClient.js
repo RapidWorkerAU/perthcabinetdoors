@@ -21,6 +21,7 @@ import {
   matchPreset,
   partsForItem,
   quotableItems,
+  ROOM_REFERENCE_TYPES,
   selectedPartKeys,
 } from "../../../lib/pcd-design-parts";
 import { requestLinesForItem } from "../../../lib/pcd-design-request-lines";
@@ -31,9 +32,13 @@ import PublicColourModal from "./PublicColourModal";
 import DesignTopBar, { barButton } from "../../../components/DesignTopBar";
 import AddItemRail from "../../../components/AddItemRail";
 import { resolveColourSrc, slotColourFields } from "../../../lib/pcd-colour-images";
-import { CABINET_MOUNT_MM } from "../../../lib/pcd-kickboard-utils";
+import { materialLabelForType } from "../../../lib/pcd-colour-library";
+import { CABINET_MOUNT_MM, hasKickboard } from "../../../lib/pcd-kickboard-utils";
 import { bayShelfCount, applianceBayHeightMm, bayIsPinned, bayPercentOfCabinet, withResolvedBayHeights } from "../../../lib/pcd-door-utils";
 import { applianceKindDefaults } from "../../../lib/pcd-appliance-utils";
+import { carcassIsConfigurable, hasBenchtopOption, BENCHTOP_NOT_SUPPLIED, BENCHTOP_NOT_SUPPLIED_SHORT, PUBLIC_CARCASS_THICKNESS_MM, PUBLIC_SHELF_THICKNESS_MM } from "../../../lib/pcd-public-parts";
+import { publicPartsFor, readPartBoard, partIsComplete } from "../../../lib/pcd-public-config";
+import PartConfigWindow from "./PartConfigWindow";
 import { IKEA_RANGES, ikeaGroupsForRange, isIkeaPreset, kickboardAllowedFor, kickboardOnPatch, resolveIkeaPreset } from "../../../lib/pcd-ikea-presets";
 import { defaultIkeaCarcassFinish, ikeaCarcassFinishesForRange, ikeaCarcassHex, ikeaCarcassSrc } from "../../../lib/pcd-ikea-carcass";
 import {
@@ -89,7 +94,9 @@ const CATALOGUE_CATEGORIES = [
 const DEFAULT_RAIL_CATEGORY = CATALOGUE_CATEGORIES[0].key;
 // Placed to show what's already in the room, never manufactured or quoted , 
 // so they take a size and nothing else: no colour, no style, no panels.
-const ROOM_REFERENCE_TYPES = new Set(["appliance", "window", "door_opening"]);
+// The list lives in lib/pcd-design-parts.js. It was a third copy here, and the
+// copies had drifted: this one and the parts list did not know a wall or a
+// bulkhead is not something we make.
 const isRoomReference = (item) => ROOM_REFERENCE_TYPES.has(item?.item_type);
 // A standalone panel stores its face WIDTH in depth_mm; width_mm is its on-edge
 // thickness (see the "panel" case in the admin AddItemForm). The public form
@@ -127,14 +134,22 @@ const hasFinishPanels = (item) => Boolean(item?.end_panel_left || item?.end_pane
 const isOpenFront = (item) => (item?.front_type || "none") === "none" && !isShelf(item);
 
 // Which colour-image slot a sidebar surface maps to (for the current swatch).
-const slotForTarget = (item, target) => {
-  if (target === "front") return item?.front_type === "drawers" ? "drawer" : "door";
-  if (target === "shelf") return "shelf";
-  if (target === "kickboard") return "kickboard";
-  if (target === "benchtop") return "benchtop";
-  if (target === "panels") return "endpanel";
-  return "carcass";
-};
+// Which colour tile stands for a configurable PART. The two ends resolve
+// separately, because they are separate boards.
+const slotForPart = (key) => ({
+  doors: "door",
+  drawers: "drawer",
+  end_left: "endpanel_left",
+  end_right: "endpanel_right",
+  back: "back",
+  kickboard: "kickboard",
+  filler: "filler",
+  top: "top",
+  underside: "underside",
+  shelves: "shelf",
+  body: "carcass",
+  benchtop: "benchtop",
+}[key] || "carcass");
 
 // The colour surfaces available to edit for a given item, in tab order. Front
 // hides when open; Shelves appears when an open cabinet has shelves; Panels when
@@ -157,10 +172,13 @@ function targetsFor(item) {
   return [
     ...(open ? [] : [{ key: "front", label: item.front_type === "drawers" ? "Drawers" : item.front_type === "mixed" ? "Fronts" : "Doors" }]),
     ...(hasShelves ? [{ key: "shelf", label: "Shelves" }] : []),
-    { key: "body", label: isBookcase(item) ? "Bookcase" : "Carcass" },
-    ...(item.has_kickboard ? [{ key: "kickboard", label: "Kickboard" }] : []),
+    // The carcass is OURS to decide — standard 18mm board in our carcass white
+    // — so it is not offered here. A bookcase is the exception: its box is the
+    // thing being bought, so its own board is genuinely a choice.
+    ...(carcassIsConfigurable(item) || isBookcase(item) ? [{ key: "body", label: isBookcase(item) ? "Bookcase" : "Board" }] : []),
+    ...(hasKickboard(item) ? [{ key: "kickboard", label: "Kickboard" }] : []),
     ...(hasFinishPanels(item) ? [{ key: "panels", label: "Panels" }] : []),
-    ...(HAS_BENCHTOP.has(item.item_type) ? [{ key: "benchtop", label: "Benchtop" }] : []),
+    ...(HAS_BENCHTOP.has(item.item_type) ? [{ key: "benchtop", label: "Benchtop (drawing only)" }] : []),
   ];
 }
 
@@ -200,7 +218,15 @@ function doorConfigPatchForOpening(cfg = {}, opening) {
 // The door_config values below stay put: inert while the cabinet is open, and
 // the arrangement Style falls back to the moment someone does pick doors.
 function cabinetDraft(type, kind = null) {
-  const base = { item_type: type, wall: "top", front_type: "none", shelf_qty: 0, qty: 1, colour_hex: CARCASS_WHITE };
+  // carcass_thickness_mm is stated here rather than left to fall back, because
+  // the public tool builds every cabinet on the same 18mm carcass and never
+  // asks about it. shelf_thickness_mm matches, and the shelf colour is topped
+  // up from the carcass default on load (see usePublicDesign).
+  const base = {
+    item_type: type, wall: "top", front_type: "none", shelf_qty: 0, qty: 1, colour_hex: CARCASS_WHITE,
+    carcass_thickness_mm: PUBLIC_CARCASS_THICKNESS_MM,
+    shelf_thickness_mm: PUBLIC_SHELF_THICKNESS_MM,
+  };
   switch (type) {
     case "panel":
       // panel_thickness_mm is the canonical thickness; width_mm mirrors it for
@@ -268,7 +294,11 @@ const C = {
 // selects, and the shorthand resets background-image, which would wipe the
 // .pcdSelect arrow layers.
 const btn = { padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.edge}`, backgroundColor: "#fff", cursor: "pointer", font: "inherit", fontSize: 13.5, color: C.ink };
-const btnPrimary = { ...btn, background: C.green, color: "#fff", borderColor: C.green, fontWeight: 600 };
+// Longhands only, matching btn above. Mixing `background` with the inherited
+// `backgroundColor` (or `borderColor` with the inherited `border`) means React
+// removes one while the other stands, which it warns about on every render of
+// any element that switches between the two styles.
+const btnPrimary = { ...btn, backgroundColor: C.green, color: "#fff", border: `1px solid ${C.green}`, fontWeight: 600 };
 
 export default function PublicDesignClient() {
   const d = usePublicDesign();
@@ -349,7 +379,7 @@ export default function PublicDesignClient() {
     group.presets.map((p) => ({
       type: p.item_type,
       kind: p.ref,
-      label: `${p.width_mm} × ${p.height_mm}mm`,
+      label: `${p.height_mm} × ${p.width_mm}mm`,
       desc: `${group.label.replace(/s$/, "")} · ${p.depth_mm}mm deep`,
       category: "ikea",
     }))
@@ -430,7 +460,7 @@ export default function PublicDesignClient() {
   const wantThicknessMm = (() => {
     const item = d.selectedItem;
     if (!item) return 0;
-    if (colourTarget === "shelf") return Number(item.shelf_thickness_mm) || 16;
+    if (colourTarget === "shelf") return Number(item.shelf_thickness_mm) || PUBLIC_SHELF_THICKNESS_MM;
     if (colourTarget === "kickboard") return Number(item.kickboard_thickness_mm) || 16;
     if (colourTarget === "panels") return 18;
     // A benchtop is a slab priced from the benchtop materials list, not a board
@@ -439,7 +469,7 @@ export default function PublicDesignClient() {
     if (colourTarget === "body") {
       if (isPanel(item)) return Number(item.panel_thickness_mm) || 18;
       if (isShelf(item) || isShelfRail(item)) return Number(item.carcass_thickness_mm) || 18;
-      return Number(item.carcass_thickness_mm) || 16;
+      return Number(item.carcass_thickness_mm) || PUBLIC_CARCASS_THICKNESS_MM;
     }
     return 18; // doors and drawer fronts
   })();
@@ -1104,7 +1134,7 @@ function lineNeedsColour(line) {
 function ReviewRow({ line, index, onRemove }) {
   const size =
     line.width && line.height ? (
-      <span className="pcdRqMono">{line.width} × {line.height} mm</span>
+      <span className="pcdRqMono">{line.height} × {line.width} mm</span>
     ) : (
       <span className="pcdRqNA">priced from cut list</span>
     );
@@ -1203,6 +1233,9 @@ function SubmitModal({ items, room, colourImages, onSubmit, onClose }) {
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", suburb: "", notes: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Set when the design arrived but their confirmation email did not. Not an
+  // error: we have the design either way, and the send is ours to chase.
+  const [notice, setNotice] = useState("");
   const upd = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
@@ -1331,8 +1364,10 @@ function SubmitModal({ items, room, colourImages, onSubmit, onClose }) {
       selection,
     });
     setBusy(false);
-    if (res?.ok) setStep("done");
-    else setError(res?.error || "Could not send. Please try again.");
+    if (res?.ok) {
+      setNotice(res.notice || "");
+      setStep("done");
+    } else setError(res?.error || "Could not send. Please try again.");
   }
 
   // The review step is a full form, so it gets a much wider panel than the
@@ -1584,6 +1619,9 @@ function SubmitModal({ items, room, colourImages, onSubmit, onClose }) {
                         kickboard they chose is written up as a Panel. */}
                     <p>Kickboards, end panels and fillers are quoted as <strong>Panels</strong>, which is how flat board is cut and priced.</p>
                     <p>Anything you remove here stays in your saved design, it just will not be quoted.</p>
+                    {/* Benchtops are drawn but never made, so they never reach this
+                        list. Said here so nobody wonders where theirs went. */}
+                    <p>Benchtops are not on this list because <strong>we do not supply them</strong>. Yours stays on the drawing so your kitchen looks right.</p>
                   </div>
                 </div>
 
@@ -1633,9 +1671,12 @@ function SubmitModal({ items, room, colourImages, onSubmit, onClose }) {
                 We&apos;ll price the {reviewLines.length} line{reviewLines.length === 1 ? "" : "s"} you sent and get back to you,
                 usually within 1 to 3 business days. Your design stays saved under its link.
               </div>
+              {notice ? (
+                <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.5 }}>{notice}</div>
+              ) : null}
             </div>
             <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderTop: `1px solid ${C.edge}`, background: "#fcfbf8" }}>
-              <button type="button" style={btn} onClick={() => { setStep("choose"); setError(""); }}>Send something else</button>
+              <button type="button" style={btn} onClick={() => { setStep("choose"); setError(""); setNotice(""); }}>Send something else</button>
               <span style={{ flex: 1 }} />
               <button type="button" style={btnPrimary} onClick={onClose}>Back to my design</button>
             </div>
@@ -1701,10 +1742,18 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
   const floor = FLOOR_TYPES.has(item.item_type);
   const wall = item.item_type === "wall_cabinet";
   const targets = targetsFor(item);
+  // Every part of this cabinet that carries a board of its own. Built from the
+  // item, so switching a panel on or off adds and removes it here.
+  const configurableParts = publicPartsFor(item);
+  const partsDone = configurableParts.filter((pt) => pt.benchtop || partIsComplete(item, pt.key)).length;
+  const partsSummary = configurableParts.length ? `${partsDone} of ${configurableParts.length} set` : "";
   const set = (patch) => onUpdate(item.id, patch);
   const [open, setOpen] = useState("colour"); // one section open at a time, Colour first
 
   const [duplicating, setDuplicating] = useState(false);
+  // Which part's window is open. The sidebar picks the part; the window is only
+  // ever about that one.
+  const [configPart, setConfigPart] = useState(null);
 
   async function handleDuplicate() {
     if (duplicating || !onDuplicate) return;
@@ -1911,12 +1960,12 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
     : null;
 
   const anyFinishPanel = item.end_panel_left || item.end_panel_right || item.has_back_panel || item.has_bottom_panel || item.has_top_panel || item.has_filler_panel;
-  const panelCount = [item.has_kickboard, item.end_panel_left, item.end_panel_right, item.has_back_panel, item.has_bottom_panel, item.has_top_panel, item.has_filler_panel].filter(Boolean).length;
+  const panelCount = [hasKickboard(item), item.end_panel_left, item.end_panel_right, item.has_back_panel, item.has_bottom_panel, item.has_top_panel, item.has_filler_panel].filter(Boolean).length;
   const sizeSummary = shelfRail
     ? `${item.width_mm || "?"} span · ${item.depth_mm || "?"} deep · ${shelfTopMm(item)} high`
     : panel
     ? `${item.depth_mm || "?"}×${item.height_mm || "?"} mm`
-    : `${shelf ? `${item.width_mm || "?"}×${item.depth_mm || "?"}` : `${item.width_mm || "?"}×${item.height_mm || "?"}×${item.depth_mm || "?"}`} mm`;
+    : `${shelf ? `${item.width_mm || "?"}×${item.depth_mm || "?"}` : `${item.height_mm || "?"}×${item.width_mm || "?"}×${item.depth_mm || "?"}`} mm`;
 
   return (
     <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -1942,28 +1991,58 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
       {/* Colour & finish, each surface opens the brand→finish→colour chooser.
           Hidden entirely for a room reference, which has no surfaces. */}
       {targets.length > 0 && (
-      <AccSection k="colour" label="Colour & finish" openKey={open} setOpen={setOpen}>
+      <AccSection k="colour" label="Parts &amp; finishes" summary={partsSummary} openKey={open} setOpen={setOpen}>
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {targets.map((t) => {
-            const slot = slotForTarget(item, t.key);
-            const nm = slotColourFields(item, slot).colour;
-            // On a prop the carcass row is the customer's own cabinet, so it
-            // reads from the IKEA finish rather than a library selection.
-            const propBody = preset && t.key === "body";
+          {/* A prop's carcass is the customer's own cabinet, not a board we
+              make, so it keeps the simple IKEA finish picker rather than the
+              part window. */}
+          {preset && (
+            <ColourRow
+              label="Your cabinet"
+              src={resolveColourSrc(colourImages, item, "carcass")}
+              name={item.prop_carcass_finish || "Tap Change to match yours"}
+              hex={ikeaCarcassHex(item.prop_carcass_finish) || item.colour_hex}
+              onChange={() => onChangeColour("body")} />
+          )}
+          {configurableParts.map((part) => {
+            const board = readPartBoard(item, part.key);
+            const done = partIsComplete(item, part.key);
+            const partSrc = resolveColourSrc(colourImages, item, slotForPart(part.key));
+            const label = board.colour
+              ? [materialLabelForType(board.material), board.thickness_mm ? `${board.thickness_mm}mm` : "", board.colour].filter(Boolean).join(" · ")
+              : "Not chosen yet";
             return (
-              <ColourRow key={t.key}
-                label={propBody ? "Your cabinet" : t.label}
-                src={resolveColourSrc(colourImages, item, slot)}
-                name={propBody
-                  ? (item.prop_carcass_finish || "Tap Change to match yours")
-                  : (nm || (t.key === "body" ? "White (standard)" : "Standard"))}
-                hex={propBody
-                  ? (ikeaCarcassHex(item.prop_carcass_finish) || item.colour_hex)
-                  : (t.key === "body" ? item.colour_hex : null)}
-                onChange={() => onChangeColour(t.key)} />
+              <button key={part.key} type="button" onClick={() => setConfigPart(part.key)}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", border: `1px solid ${C.edge}`,
+                  borderRadius: 9, background: "#fff", padding: "7px 9px", cursor: "pointer", font: "inherit",
+                  textAlign: "left", color: C.ink, marginBottom: 6 }}>
+                <span aria-hidden="true" style={{
+                  width: 32, height: 32, borderRadius: 7, flexShrink: 0,
+                  border: "1px solid rgba(0,0,0,0.12)",
+                  backgroundColor: "#e9e6df",
+                  ...(partSrc ? {
+                    backgroundImage: `url(${partSrc})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                  } : null),
+                }} />
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <b style={{ display: "block", fontSize: 12.5, fontWeight: 600 }}>{part.label}</b>
+                  <span style={{ display: "block", fontSize: 10.5, color: C.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {part.benchtop ? "Drawing only — not supplied" : label}
+                  </span>
+                </span>
+                <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                  background: part.benchtop ? "#c6c0b1" : done ? C.green : "#a03f2c" }} />
+              </button>
             );
           })}
         </div>
+        <p style={{ margin: "4px 0 0", fontSize: 11, color: C.soft, lineHeight: 1.45 }}>
+          Each part is its own board, so a profiled door can sit beside a plain end panel. Tap one to choose its board,
+          profile, edge and colour.
+        </p>
       </AccSection>
       )}
 
@@ -1973,8 +2052,8 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
       {roomRef && (
         <AccSection k="size" label="Size" summary={sizeSummary} openKey={open} setOpen={setOpen}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-            <NumberField label="Width" value={item.width_mm} onCommit={(v) => set({ width_mm: v })} />
             <NumberField label="Height" value={item.height_mm} onCommit={(v) => set({ height_mm: v })} />
+            <NumberField label="Width" value={item.width_mm} onCommit={(v) => set({ width_mm: v })} />
             <NumberField label="Depth" value={item.depth_mm} onCommit={(v) => set({ depth_mm: v })} />
           </div>
           {item.item_type === "window" && (
@@ -2170,7 +2249,7 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
       {/* Panels & finishing, a bookcase's sides and back are already finished
           board on show, so the only thing left to choose is the kickboard. */}
       {bookcase && (
-        <AccSection k="panels" label="Base" summary={item.has_kickboard ? "Kickboard" : "On the floor"} openKey={open} setOpen={setOpen}>
+        <AccSection k="panels" label="Base" summary={hasKickboard(item) ? "Kickboard" : "On the floor"} openKey={open} setOpen={setOpen}>
           <KickboardToggle item={item} set={set} />
         </AccSection>
       )}
@@ -2205,6 +2284,7 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
           )}
           {item.item_type === "base_cabinet" && item.has_benchtop && (
             <div style={{ marginTop: 6, paddingTop: 8, borderTop: `1px solid ${C.edge}` }}>
+              <BenchtopNote />
               <div style={{ fontSize: 11, color: C.soft, marginBottom: 6 }}>Waterfall benchtop end (drops to the floor):</div>
               <Toggle label="Left end" checked={item.benchtop_waterfall_left} onChange={(v) => set({ benchtop_waterfall_left: v })} />
               <Toggle label="Right end" checked={item.benchtop_waterfall_right} onChange={(v) => set({ benchtop_waterfall_right: v })} />
@@ -2244,6 +2324,19 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
           </p>
         )}
       </AccSection>
+      )}
+
+      {/* One part, configured completely. Rendered here rather than at the
+          top of the planner so it sits with the item and the setter it writes
+          through, instead of threading both up and back down again. */}
+      {configPart && (
+        <PartConfigWindow
+          item={item}
+          items={items}
+          partKey={configPart}
+          onUpdate={(patch) => onUpdate(item.id, patch)}
+          onClose={() => setConfigPart(null)}
+        />
       )}
 
       </div>
@@ -2389,6 +2482,23 @@ function KickboardToggle({ item, set }) {
         </p>
       ) : null}
     </>
+  );
+}
+
+// We don't supply benchtops. The tool draws one because a kitchen without one
+// reads wrong while you are planning, but every place a customer meets it has
+// to say so or we get asked to quote for one.
+function BenchtopNote({ compact = false }) {
+  return (
+    <p style={{
+      margin: compact ? "4px 0 8px" : "0 0 10px",
+      padding: "7px 9px", borderRadius: 8,
+      background: "#fdf6e7", border: "1px solid #e8d9b0",
+      fontSize: 11, color: "#7a5c1e", lineHeight: 1.45,
+    }}>
+      <strong>Benchtops aren&apos;t something we supply.</strong> This one is here so your kitchen looks
+      right while you plan it. It is never quoted or made.
+    </p>
   );
 }
 

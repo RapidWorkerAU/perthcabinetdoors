@@ -1,6 +1,7 @@
 import { requireAdminApiContext } from "@/lib/admin-api";
 import { graphStatus } from "@/lib/pcd-graph-mail";
-import { syncMailbox, FIRST_RUN_DAYS } from "@/lib/pcd-desk-sync";
+import { FIRST_RUN_DAYS } from "@/lib/pcd-desk-sync";
+import { runMailSync } from "@/lib/pcd-mail-catchup";
 import { listPendingSenders } from "@/lib/pcd-mail-senders";
 
 // Reading the mailbox and filing what is new.
@@ -41,8 +42,17 @@ export async function POST(request) {
   // mail in: the window is ignored entirely once any message has been filed.
   const firstRunDays = Math.min(Math.max(Number(body.firstRunDays) || FIRST_RUN_DAYS, 1), 365);
 
+  // Deliberately reaching further back than the cursor, to pick up mail an
+  // earlier run skipped. Only ever asked for on purpose.
+  const catchUpDays = Number(body.catchUpDays) > 0
+    ? Math.min(Math.max(Number(body.catchUpDays), 1), 365)
+    : 0;
+
   try {
-    const summary = await syncMailbox(context.supabase, { firstRunDays, limit: 50 });
+    // The same loop the nightly job runs, out of one module. Two copies would
+    // drift, and the one that runs while nobody is watching would be the one
+    // that got it wrong. See lib/pcd-mail-catchup.js.
+    const summary = await runMailSync(context.supabase, { firstRunDays, catchUpDays });
     if (!summary.ok) {
       // Not a server fault. The mailbox is unreachable and the message says
       // which of the three usual causes it is, so 409 rather than 500.

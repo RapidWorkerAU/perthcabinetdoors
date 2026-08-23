@@ -51,6 +51,9 @@ async function loadQuoteWithRelations(supabase, id) {
   };
 }
 
+// Set by the customer answering, or by staff answering for them. Never by a save.
+const OUTCOME_STATUSES = new Set(["approved", "rejected"]);
+
 async function normalizeQuotePayload(supabase, payload = {}) {
   const sourceLines = payload.lines || [];
   const businessDefaults = await getBusinessDefaults(supabase);
@@ -64,7 +67,14 @@ async function normalizeQuotePayload(supabase, payload = {}) {
   return {
     quote: {
       title: payload.title || "Cabinetry Quote",
-      status: payload.status || "draft",
+      // Approved and rejected are OUTCOMES and cannot be set by saving the
+      // quote. Writing "approved" here used to raise no order, leaving a quote
+      // that read as accepted with nothing for the workshop to make,
+      // permanently read only, and with no order to raise a variation against.
+      // Accepting on the customer's behalf goes through
+      // /api/admin/quotes/[id]/accept, which raises the order and records who
+      // accepted and how they said so.
+      status: OUTCOME_STATUSES.has(payload.status) ? undefined : payload.status || "draft",
       customer_id: customerId,
       customer_name: payload.customer_name || null,
       customer_email: payload.customer_email || null,

@@ -214,8 +214,20 @@ function metodWallLayouts(width, height) {
 }
 
 // A 2000 high cabinet is one 2000 door or a real pair that adds to 2000. A 2200
-// is a pair that adds to 2200, or a 2000 door with a drawer front over it, which
-// is how IKEA covers the extra 200.
+// is a pair that adds to 2200, or a 2000 door with a 200 drawer front under it,
+// which is how IKEA covers the extra 200.
+//
+// ORDER MATTERS HERE. A "rows" layout is drawn TOP PIECE FIRST, so the array
+// reads down the face of the cabinet. On a tall cabinet each short piece has one
+// place it belongs, and it is not wherever it happens to land:
+//   800 at the BOTTOM - the joint sits 880 off the floor, the same line as the
+//                       base cabinet doors next to it
+//   600 at the TOP    - the joint sits at 1480, the same line as the underside
+//                       of the wall cabinets
+//   200 drawer at the BOTTOM - it is a shallow bottom drawer. It cannot go on
+//                       top: a drawer 2000mm off the floor is not one anybody
+//                       can open, and there is no 200 high DOOR in the
+//                       catalogue to put up there instead.
 function metodTallLayouts(width, height) {
   if (width === 800) {
     return [L("2 tall doors", [door(400, 2000), door(400, 2000)], "columns")];
@@ -225,13 +237,13 @@ function metodTallLayouts(width, height) {
     return [
       L("1 tall door", [door(width, 2000)]),
       L("2 doors, 1200 over 800", [door(width, 1200), door(width, 800)], "rows"),
-      L("2 doors, 1400 over 600", [door(width, 1400), door(width, 600)], "rows"),
+      L("2 doors, 600 over 1400", [door(width, 600), door(width, 1400)], "rows"),
     ];
   }
 
   return [
     L("2 doors, 1400 over 800", [door(width, 1400), door(width, 800)], "rows"),
-    L("Tall door + drawer front", [drawer(width, 200), door(width, 2000)], "rows"),
+    L("Tall door over a drawer", [door(width, 2000), drawer(width, 200)], "rows"),
   ];
 }
 
@@ -372,7 +384,9 @@ const BESTA = [
       ]),
       size(600, 1280, [
         L("2 doors", [door(600, 640), door(600, 640)], "rows"),
-        L("1 door + 2 drawers", [door(600, 640), drawer(600, 380), drawer(600, 260)], "rows"),
+        // Drawers get deeper towards the floor, the same way the 640 frame above
+        // stacks 260 over 380.
+        L("1 door + 2 drawers", [door(600, 640), drawer(600, 260), drawer(600, 380)], "rows"),
       ]),
       size(1200, 380, [L("2 doors", [door(600, 380), door(600, 380)], "columns")]),
       size(1200, 640, [L("2 doors", [door(600, 640), door(600, 640)], "columns")]),
@@ -396,7 +410,7 @@ const KABOODLE_PANTRY_DOOR_HEIGHT = 2055;
 
 // Flagged so it is greppable rather than buried in a comment. Confirm the 3 and
 // 4 drawer sets against a Bunnings pack before we cut to them.
-export const KABOODLE_UNCONFIRMED = ["3 drawers", "4 drawers"];
+export const KABOODLE_UNCONFIRMED = ["1 drawer + 1 door", "3 drawers", "4 drawers"];
 
 function kaboodleDoorLayouts(width) {
   if (width === 900) {
@@ -410,7 +424,12 @@ function kaboodleBaseLayouts(width) {
 
   // Drawer panel sets are made 450, 600 and 900 wide.
   if (width === 450 || width === 600 || width === 900) {
-    layouts.push(L("1 drawer panel", [drawer(width, 287)]));
+    // A 287 panel on its own left two thirds of a 720 frame with no front on
+    // it. The real Kaboodle cabinet is a drawer over a door, so that is what
+    // this is now. The 424 door is NOT off a Bunnings pack - it is what is left
+    // of the 717 opening under a 287 panel, using the same 3mm gap the 2 panel
+    // set leaves. Confirm it before we cut one.
+    layouts.push(L("1 drawer + 1 door", [drawer(width, 287), door(width, 424)], "rows"));
     layouts.push(L("2 drawers", [drawer(width, 357), drawer(width, 357)], "rows"));
     layouts.push(L("3 drawers", [drawer(width, 177), drawer(width, 177), drawer(width, 357)], "rows"));
     layouts.push(

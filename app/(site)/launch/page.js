@@ -152,7 +152,7 @@ function LaunchGate() {
       form.reset();
       setEnquiryStatus({
         type: "success",
-        message: settings.enquirySuccessMessage,
+        message: [settings.enquirySuccessMessage, result.notice].filter(Boolean).join(" "),
       });
     } catch (error) {
       setEnquiryStatus({ type: "error", message: error?.message || "Could not send enquiry." });

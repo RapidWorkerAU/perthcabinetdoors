@@ -80,7 +80,7 @@ test("an applied change is live work, and says what it was", () => {
   const state = variationStateForItem(item, context);
   assert.equal(state.state, "approved");
   assert.match(state.flag, /Changed/);
-  assert.match(state.note.body, /347 x 697mm/);
+  assert.match(state.note.body, /697 x 347mm/);
   assert.match(state.note.body, /Cut to the specification on this row/);
 });
 
@@ -166,7 +166,7 @@ test("a piece proposed by a pending variation prints as a row, but is not counte
   // One cuttable row in the count, the proposed piece on the sheet as a row
   // with its own size and flag, and the summary saying it is not counted.
   assert.match(text, /1 rows to cut/);
-  assert.match(text, /497mm x 747mm/);
+  assert.match(text, /747mm x 497mm/);
   assert.match(text, /Proposed, PCD-V-2026-6120B2/);
   assert.match(text, /1 proposed piece listed at the end, not counted/);
 

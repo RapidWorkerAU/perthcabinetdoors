@@ -22,6 +22,7 @@ import {
   getDatabaseColourRows,
   getDatabaseColourSuppliers,
   normaliseColourMaterialKey,
+  normaliseSupplierName,
 } from "../../../lib/pcd-colour-library";
 
 export const dynamic = "force-dynamic";
@@ -74,8 +75,48 @@ export async function GET(request) {
 
   if (searchParams.get("availability") === "1") {
     const rows = await getDatabaseColourRows(supabase, { activeOnly: true });
+
+    // WHICH BRANDS STOCK WHICH MATERIAL, deduplicated to the pairs themselves
+    // rather than the rows, so this stays a handful of entries however many
+    // colours the library holds.
+    //
+    // Per material, not one flat list: a brand can stock decorative board and no
+    // thermolaminate, and offering it on a thermolaminate line would send
+    // somebody looking for colours that are not there.
+    //
+    // No cost, no name, nothing identifying. Just the pairs the quote form needs
+    // to ask "whose board is this?" before anything else.
+    // Each pair carries the thicknesses that brand stocks it in, because the
+    // brand is chosen BEFORE the thickness and the list below it has to be
+    // theirs. Offering Laminex 21mm is the same wrong turn the order was
+    // changed to prevent, one step later.
+    const brandPairs = [];
+    rows.forEach((row) => {
+      const supplier = normaliseSupplierName(row.supplier_name);
+      const material = String(row.material_type || "").trim();
+      if (!supplier || !material) return;
+      const thickness = String(row.thickness || "").trim();
+      let pair = brandPairs.find((entry) => entry.supplier_name === supplier && entry.material_type === material);
+      if (!pair) {
+        pair = { supplier_name: supplier, material_type: material, thicknesses: [] };
+        brandPairs.push(pair);
+      }
+      if (thickness && !pair.thicknesses.includes(thickness)) pair.thicknesses.push(thickness);
+    });
+    // Same order the material-wide list uses, so the two never disagree about
+    // which thickness comes first.
+    const materialOrder = buildColourAvailabilityFromLibraryRows(rows);
+    brandPairs.forEach((pair) => {
+      const order = materialOrder[normaliseColourMaterialKey(pair.material_type)] || [];
+      pair.thicknesses.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    });
+
     return NextResponse.json(
-      { ok: true, availability: buildColourAvailabilityFromLibraryRows(rows) },
+      {
+        ok: true,
+        availability: buildColourAvailabilityFromLibraryRows(rows),
+        brandPairs,
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   }

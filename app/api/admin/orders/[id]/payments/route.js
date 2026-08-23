@@ -1,39 +1,12 @@
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
+import { syncDepositFields } from "../../../../../../lib/pcd-order-deposit";
 
 const PAYMENT_TYPES = new Set(["deposit", "progress", "final", "other"]);
 
 async function orderIdFromParams(params) {
   const resolved = await params;
   return resolved?.id;
-}
-
-async function syncDepositFields(supabase, orderId) {
-  const { data: deposits, error } = await supabase
-    .from("pcd_order_payments")
-    .select("amount,is_paid,paid_at")
-    .eq("order_id", orderId)
-    .eq("payment_type", "deposit");
-
-  if (error) throw error;
-
-  const depositRows = deposits || [];
-  const depositRequired = depositRows.length > 0;
-  const depositAmount = depositRows.reduce((total, payment) => total + Number(payment.amount || 0), 0);
-  const depositPaid = depositRows.length > 0 && depositRows.every((payment) => payment.is_paid);
-  const paidAt = depositPaid ? depositRows.find((payment) => payment.paid_at)?.paid_at || new Date().toISOString() : null;
-
-  const { error: updateError } = await supabase
-    .from("pcd_orders")
-    .update({
-      deposit_required: depositRequired,
-      deposit_amount: depositAmount,
-      deposit_paid: depositPaid,
-      deposit_paid_at: paidAt,
-    })
-    .eq("id", orderId);
-
-  if (updateError) throw updateError;
 }
 
 async function assertPaymentWithinOrderTotal(supabase, orderId, amount) {

@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { formatMoney } from '../../../lib/pcd-quote-utils'
+import { formatMoney, ORDER_STATUSES } from '../../../lib/pcd-quote-utils'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 
-const STATUSES = ['active', 'on_hold', 'complete', 'cancelled']
+const STATUSES = ORDER_STATUSES
 const FILTERS  = ['all', ...STATUSES]
 
 function formatDate(value?: string | null) {
@@ -39,6 +39,9 @@ function sortedItems(order: Order) {
 }
 
 function getStatusPillClass(status: string) {
+  // Amber, because it is neither running nor finished: it is waiting on money.
+  if (status === 'pending_deposit')
+    return 'bg-[#fffdf0] text-[#8a6d0b] border-[#e8d68f]'
   if (status === 'active' || status === 'complete')
     return 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
   if (status === 'cancelled' || status === 'on_hold')
@@ -194,7 +197,11 @@ export default function OrdersManager() {
                       </span>
                     </td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(order.total_inc_gst, 'AUD')}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18] whitespace-nowrap">{formatDate(order.accepted_at || order.created_at)}</td>
+                    <td className="px-4 py-[11px] whitespace-nowrap">
+                      {order.accepted_at
+                        ? <span className="text-[#1a1a18]">{formatDate(order.accepted_at)}</span>
+                        : <span className="text-[#8b8a81] italic">Not yet</span>}
+                    </td>
                   </tr>
                 )
               })}

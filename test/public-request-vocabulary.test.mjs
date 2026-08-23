@@ -19,11 +19,18 @@ import { readFileSync } from "node:fs";
 import { PRODUCT_TYPES } from "../lib/pcd-materials.js";
 import {
   METOD_KICKBOARD_STYLE,
+  builtInPlinthMm,
   ikeaRangeOf,
   kickboardAllowedFor,
   kickboardOnPatch,
+  presetRef,
   resolveIkeaPreset,
 } from "../lib/pcd-ikea-presets.js";
+import { cabinetVerticalSpanMm, kickboardHeightMm } from "../lib/pcd-kickboard-utils.js";
+import { computeDoorSizes, frontSpanMm } from "../lib/pcd-door-utils.js";
+import { hasKickboard } from "../lib/pcd-kickboard-utils.js";
+import { publicPartsFor } from "../lib/pcd-public-config.js";
+import { computeCutList } from "../lib/pcd-cut-list.js";
 import { partsForItem } from "../lib/pcd-design-parts.js";
 import { requestLinesForItem } from "../lib/pcd-design-request-lines.js";
 
@@ -145,6 +152,168 @@ test("a Pax or Besta never offers a kickboard part, even carrying the old flag",
     const parts = partsForItem({ ...prop, has_kickboard: true, width_mm: 500, height_mm: 2010, depth_mm: 580, qty: 1 });
     assert.ok(!parts.some((part) => part.key === "kickboard"), `${ikeaRangeOf(prop)} must not offer one`);
   });
+});
+
+// ── the plinth a Pax already has ────────────────────────────────────────────
+//
+// It is sold at its overall height, base included: 2010 and 2360 frames take
+// 1950 and 2290 doors, and the difference is the recessed base it stands on.
+
+const paxItem = (w, h, extra = {}) => ({
+  id: "p", item_type: "tall_cabinet", preset_ref: presetRef("pax", "frame", w, h),
+  width_mm: w, height_mm: h, depth_mm: 580, ...extra,
+});
+
+test("a Pax carries its own plinth inside the height it is sold at", () => {
+  assert.equal(builtInPlinthMm(paxItem(500, 2010)), 60, "2010 frame less its 1950 door");
+  assert.equal(builtInPlinthMm(paxItem(1000, 2360)), 70, "2360 frame less its 2290 door");
+});
+
+test("a frame that stands on legs has no built-in plinth", () => {
+  assert.equal(builtInPlinthMm(metod), 0);
+  assert.equal(builtInPlinthMm(besta), 0);
+  assert.equal(builtInPlinthMm(CUSTOM_CABINET), 0, "cabinets we build have none either");
+});
+
+test("a Pax is never lifted by a kickboard, whatever the flag says", () => {
+  // The cut list already refused to MAKE the board. The geometry did not, so an
+  // item carrying the old flag was drawn standing a full 120mm plinth off the
+  // floor: a 2010 wardrobe reaching 2130.
+  const flagged = paxItem(500, 2010, { has_kickboard: true, kickboard_height_mm: 120 });
+  assert.equal(kickboardHeightMm(flagged), 0);
+  assert.deepEqual(cabinetVerticalSpanMm(flagged), [0, 2010]);
+});
+
+test("a cabinet we build is still lifted by its kickboard", () => {
+  const ours = { id: "o", item_type: "base_cabinet", height_mm: 720, has_kickboard: true };
+  assert.equal(kickboardHeightMm(ours), 120);
+  assert.deepEqual(cabinetVerticalSpanMm(ours), [120, 840]);
+});
+
+test("both views start a Pax's fronts above its plinth", () => {
+  // The elevation shortens the front area; 3D raises where the front cells
+  // begin. Both read the same number off the preset rather than each carrying
+  // their own idea of how far up a Pax door starts.
+  const elevation = read("app/admin/design/_components/FrontElevationView.js");
+  const has = (text, snippet, why) => assert.ok(text.includes(snippet), why || snippet);
+
+  has(elevation, "builtInPlinthMm(item)", "the elevation reads the plinth");
+  has(elevation, "const frontSvgH = Math.max(svgH - plinthMm * scale, 0)");
+  has(elevation, "const dH   = frontSvgH / rows", "doors stop above it");
+  has(elevation, "h={frontSvgH}", "so does a drawer bank");
+  has(elevation, "const pxPerMm = frontSvgH / totalMm", "so do mixed sections");
+
+  const threeD = read("app/admin/design/_components/Design3DView.js");
+  has(threeD, "const bottomMm = carcassBottomMm + builtInPlinthMm(item)");
+});
+
+test("nothing offers a Pax a kickboard to colour, flag or no flag", () => {
+  // has_kickboard on its own was the answer in eight places, and an item can
+  // still carry it from an older design. Reading it raw is what put a Kickboard
+  // swatch on a Pax, on a plinth that is part of the frame and already the
+  // colour of the wardrobe.
+  const flagged = { ...paxItem(500, 2010), has_kickboard: true, front_type: "doors", door_config: { columns: 1, rows: 1 }, qty: 1 };
+  assert.equal(hasKickboard(flagged), false);
+  assert.ok(!publicPartsFor(flagged).some((part) => part.key === "kickboard"), "no part to colour");
+  const cut = computeCutList(flagged, [flagged], null) || [];
+  assert.ok(!cut.some((row) => String(row.name || "").toLowerCase().includes("kick")), "no board cut either");
+});
+
+test("a Metod and a cabinet we build still get theirs", () => {
+  const metodOn = {
+    ...metod, has_kickboard: true, item_type: "tall_cabinet",
+    width_mm: 600, height_mm: 2000, depth_mm: 600, qty: 1,
+    front_type: "doors", door_config: { columns: 1, rows: 1 },
+  };
+  assert.equal(hasKickboard(metodOn), true);
+  assert.ok(publicPartsFor(metodOn).some((part) => part.key === "kickboard"));
+
+  const ours = {
+    id: "o", item_type: "base_cabinet", width_mm: 600, height_mm: 720, depth_mm: 560, qty: 1,
+    has_kickboard: true, front_type: "doors", door_config: { columns: 1, rows: 1 },
+  };
+  assert.equal(hasKickboard(ours), true);
+  const cut = computeCutList(ours, [ours], null) || [];
+  assert.ok(cut.some((row) => String(row.name || "").toLowerCase().includes("kick")), "still cut for a cabinet we build");
+});
+
+test("a wall cabinet never has one, wherever it is asked", () => {
+  assert.equal(hasKickboard({ item_type: "wall_cabinet", has_kickboard: true }), false);
+});
+
+test("a Pax door is cut to the door, not to the whole frame", () => {
+  // The size that reaches a quote. Sizing off the cabinet height alone made a
+  // Pax door 60mm too long: it would have covered the plinth that is built into
+  // the frame and shows in every photo of one.
+  const doors = computeDoorSizes({
+    ...paxItem(1000, 2010),
+    front_type: "doors",
+    door_config: { columns: 2, rows: 1 },
+  });
+  assert.equal(frontSpanMm(paxItem(1000, 2010)), 1950, "IKEA's own door height");
+  assert.equal(doors.length, 1, "a pair of identical doors is one line of qty 2");
+  assert.equal(doors[0].qty, 2);
+  // 3mm off each way is what we cut a nominal IKEA front to.
+  assert.equal(doors[0].height, 1947);
+  assert.equal(doors[0].width, 497);
+});
+
+test("a cabinet we build sizes its doors off its whole height", () => {
+  const ours = {
+    id: "o", item_type: "tall_cabinet", width_mm: 600, height_mm: 2000, depth_mm: 600,
+    front_type: "doors", door_config: { columns: 1, rows: 1 },
+  };
+  assert.equal(frontSpanMm(ours), 2000);
+  assert.equal(computeDoorSizes(ours)[0].height, 1997);
+});
+
+test("a frame's own base is painted as part of the cabinet, not as a board of ours", () => {
+  const elevation = read("app/admin/design/_components/FrontElevationView.js");
+  const has = (snippet, why) => assert.ok(elevation.includes(snippet), why || snippet);
+
+  // Two plinths sit inside the body and they are not the same thing. A
+  // bookcase's rail is a board we cut, in the kickboard colour, marked in the
+  // amber that means "this is on your cut list". A Pax base is part of the
+  // frame: it takes the carcass tile, which for a prop IS the IKEA finish it
+  // was given, and it is never amber.
+  has("const insetPlinthMm = kickboardIsInset(item) ? kickboardHeightMm(item) : 0");
+  has("const framePlinthMm = builtInPlinthMm(item)");
+  has('tileFillFor(item, insetPlinthMm > 0 ? "kickboard" : "carcass")');
+  has("{insetPlinthMm > 0 ? (", "only a board of ours gets the amber");
+});
+
+test("an open Pax closes its base off across the front", () => {
+  // Sides to the floor and a bottom board raised onto the base is only half of
+  // it. A Pax has a rail across the FRONT between the sides, floor to the
+  // underside of that board. Without it the base read as two legs with a shelf
+  // balanced across them.
+  const threeD = read("app/admin/design/_components/Design3DView.js");
+  const has = (snippet, why) => assert.ok(threeD.includes(snippet), why || snippet);
+  has("const baseRail = (rail) => { if (rt > 0) panels.push({ rect: rail, b: bottomMm, t: floorMm }); };");
+  has("builtInPlinthMm(item) > 0 ? carc : 0", "only a frame's own base draws it here");
+  // A bookcase's plinth is a board of ours in its own colour, drawn by
+  // KickboardMesh. Drawing it here as well would put two rails in one place.
+  has("const rt = baseGapMm > 0 ? baseRailT : 0;");
+});
+
+test("an open Pax is built with its base, not sat flat on the floor", () => {
+  // Sides to the floor, bottom board raised onto the base. openCarcassPanels
+  // already builds exactly that for a bookcase; it just needed telling that a
+  // Pax is the same construction.
+  const threeD = read("app/admin/design/_components/Design3DView.js");
+  assert.ok(
+    threeD.includes("return kickboardIsInset(item) ? kickboardHeightMm(item) : builtInPlinthMm(item);"),
+    "the open carcass lifts its bottom board onto a built-in base too"
+  );
+});
+
+test("the admin panel does not offer a kickboard on a frame that has one", () => {
+  const panel = read("app/admin/design/_components/DesignRightPanel.js");
+  assert.ok(
+    panel.includes('draft.item_type !== "wall_cabinet" && kickboardAllowedFor(draft)'),
+    "the panel group asks the same rule the planner and the cut list ask"
+  );
+  assert.ok(panel.includes("has its own plinth built into its height"), "and says why it is not there");
 });
 
 test("a Metod still offers one when it is switched on", () => {

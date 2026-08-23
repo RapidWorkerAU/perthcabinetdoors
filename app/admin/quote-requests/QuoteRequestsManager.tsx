@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { IconArrowRight, IconEye, IconTrash } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
+import { describeGaps, lineGaps } from '@/lib/pcd-quote-ready'
 import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -62,6 +63,13 @@ const FILTERS  = ['all', ...STATUSES]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function incompleteLines(request: QuoteRequest) {
+  const lines = request?.pcd_quote_request_line_items || []
+  return lines
+    .map((line, index) => ({ index, gaps: lineGaps(line, { requireSize: false }) }))
+    .filter(entry => entry.gaps.length > 0)
+}
+
 function isStatusLocked(request: QuoteRequest) {
   return (request?.status || 'new') === 'converted_to_quote'
 }
@@ -78,7 +86,7 @@ function cleanValue(value?: string | number | null) {
 
 function sizeText(line: LineItem) {
   if (!line.width_mm && !line.height_mm) return '-'
-  return `${line.width_mm || '-'} × ${line.height_mm || '-'} mm`
+  return `${line.height_mm || '-'} × ${line.width_mm || '-'} mm`
 }
 
 // ── Preview modal ─────────────────────────────────────────────────────────────
@@ -92,6 +100,7 @@ function QuoteRequestPreviewModal({
   onOpenQuote:    (quoteId: string) => void
   onUpdateStatus: (id: string, status: string) => void
 }) {
+  const incomplete = incompleteLines(request)
   const lineItems = [...(request.pcd_quote_request_line_items || [])].sort(
     (a, b) => (a.sort_order || 0) - (b.sort_order || 0)
   )
@@ -172,6 +181,16 @@ function QuoteRequestPreviewModal({
 
         {/* Line items table */}
         <div>
+          {incomplete.length > 0 && (
+            <div className="mb-2 px-3 py-2 rounded-[6px] border border-[#e7d3b0] bg-[#fdf7ec] text-[12px] text-[#7a5a2a] leading-[1.5]">
+              <strong className="font-semibold">
+                {incomplete.length} line{incomplete.length === 1 ? '' : 's'} cannot be priced as submitted.
+              </strong>{' '}
+              Confirm {incomplete.length === 1 ? 'it' : 'them'} with the customer before quoting:{' '}
+              {incomplete.map(entry => `line ${entry.index + 1} needs ${describeGaps(entry.gaps)}`).join('; ')}.
+              The form now asks for all of this up front, so newer requests arrive complete.
+            </div>
+          )}
           <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-2">Line items</p>
           <div className="overflow-x-auto rounded-[6px] border border-[#dbd8cc]">
             <table className="w-full text-[12px] min-w-[820px] border-collapse">
@@ -453,7 +472,17 @@ export default function QuoteRequestsManager() {
                 <td className="px-4 py-[11px] text-[13px] font-medium text-[#1a1a18]">{request.customer_name || '-'}</td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{request.delivery_suburb || '-'}</td>
                 <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{formatAdminLabel(request.source || '-')}</td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{request.pcd_quote_request_line_items?.length || 0}</td>
+                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">
+                  {request.pcd_quote_request_line_items?.length || 0}
+                  {incompleteLines(request).length > 0 && (
+                    <span
+                      title="Some lines cannot be priced as submitted. Open the request to see what is missing."
+                      className="ml-2 inline-flex items-center px-2 py-[1px] rounded-full text-[10px] font-semibold bg-[#fdf7ec] text-[#7a5a2a] border border-[#e7d3b0] align-middle"
+                    >
+                      {incompleteLines(request).length} to confirm
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
                   <select
                     value={request.status || 'new'}

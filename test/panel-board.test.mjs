@@ -49,16 +49,22 @@ test("a panel does NOT inherit the door's profile", () => {
 });
 
 test("a panel can carry a profile different from the fronts", () => {
-  const board = finishPanelBoard(cabinet({
-    finish_panel_style: {
-      material: "decorative board", colour: "Ecru Oak", thickness_mm: 18, cost_per_sqm: 90,
-      profile_type: "V-Groove", profile: "V-Groove 3",
-    },
-  }));
-  assert.equal(board.profile_type, "V-Groove");
-  assert.equal(board.profile, "V-Groove 3");
+  // The profile is keyed per panel, not stored on the style object, so the two
+  // ends of a cabinet can differ even though they share one finish_panel_style.
+  const item = cabinet({
+    finish_panel_style: { material: "decorative board", colour: "Ecru Oak", thickness_mm: 18, cost_per_sqm: 90 },
+    panel_options: { end_left: { profile_type: "V-Groove", profile: "V-Groove 3" } },
+  });
+  const left = finishPanelBoard(item, null, "end_left");
+  assert.equal(left.profile_type, "V-Groove");
+  assert.equal(left.profile, "V-Groove 3");
   // ...and it reaches the quote line.
-  assert.equal(panelBoardFields(board).profile, "V-Groove 3");
+  assert.equal(panelBoardFields(left).profile, "V-Groove 3");
+
+  // The other end shares the colour but not the profile.
+  const right = finishPanelBoard(item, null, "end_right");
+  assert.equal(right.colour, "Ecru Oak");
+  assert.equal(right.profile, "");
 });
 
 test("kickboards and fillers match the carcass until overridden", () => {
@@ -77,13 +83,49 @@ test("kickboards and fillers match the carcass until overridden", () => {
   assert.equal(over.thicknessMm, 18);
 });
 
+const plainBase = () => ({
+  material: "melamine", colour: "White", rate: 40, thicknessMm: 16,
+  supplier_name: "", finish: "", profile_type: "", profile: "",
+});
+
 test("an empty override changes nothing", () => {
-  // Every override starts blank and means "match". Only a picked colour
-  // counts, so a stray {} left on an item can not quietly reprice anything.
-  const base = { material: "melamine", colour: "White", rate: 40, thicknessMm: 16, supplier_name: "", finish: "", profile_type: "", profile: "" };
-  assert.deepEqual(applyPanelOverride(base, {}), base);
-  assert.deepEqual(applyPanelOverride(base, null), base);
-  assert.deepEqual(applyPanelOverride(base, { profile_type: "Shaker" }), base);
+  // Every override starts blank and means "match", so a stray {} left on an
+  // item can not quietly reprice anything.
+  assert.deepEqual(applyPanelOverride(plainBase(), {}), plainBase());
+  assert.deepEqual(applyPanelOverride(plainBase(), null), plainBase());
+});
+
+test("a profile with no colour routes the default board", () => {
+  // Colour and profile are set in two different screens, so a shaker kickboard
+  // in plain carcass colour has to be expressible: the profile applies and
+  // nothing about the board changes.
+  const board = carcassPanelBoard(
+    cabinet({ panel_options: { kickboard: { profile_type: "Shaker", profile: "Shaker 60" } } }),
+    "kickboard_style",
+    16,
+    "kickboard"
+  );
+  assert.equal(board.profile_type, "Shaker");
+  assert.equal(board.profile, "Shaker 60");
+  assert.equal(board.colour, "White");
+  assert.equal(board.rate, 40);
+  assert.equal(board.thicknessMm, 16);
+});
+
+test("a colour override keeps the panel's own profile", () => {
+  // The two are independent: recolouring a kickboard doesn't un-route it.
+  const board = carcassPanelBoard(
+    cabinet({
+      kickboard_style: { material: "decorative board", colour: "Black Wenge", thickness_mm: 18, cost_per_sqm: 88 },
+      panel_options: { kickboard: { profile_type: "Shaker", profile: "Shaker 60" } },
+    }),
+    "kickboard_style",
+    16,
+    "kickboard"
+  );
+  assert.equal(board.colour, "Black Wenge");
+  assert.equal(board.rate, 88);
+  assert.equal(board.profile, "Shaker 60");
 });
 
 test("a partial override keeps the default rate and thickness", () => {
@@ -100,15 +142,16 @@ test("a partial override keeps the default rate and thickness", () => {
   assert.equal(board.thicknessMm, 16);
 });
 
-test("an overridden panel is flat unless the override says otherwise", () => {
-  // The override replaces the piece outright, profile included: a back panel
-  // moved to a different colour doesn't keep the finishing panel's profile.
+test("a panel nobody routed is flat", () => {
+  // No entry for this panel means no profile — a back panel given its own
+  // colour doesn't inherit the ends' profile along with it.
   const board = finishPanelBoard(
     cabinet({
-      finish_panel_style: { material: "decorative board", colour: "Ecru Oak", thickness_mm: 18, cost_per_sqm: 90, profile_type: "Shaker", profile: "Shaker 60" },
+      panel_options: { end_left: { profile_type: "Shaker", profile: "Shaker 60" } },
       back_panel_style: { material: "melamine", colour: "White", thickness_mm: 16, cost_per_sqm: 40 },
     }),
-    "back_panel_style"
+    "back_panel_style",
+    "back"
   );
   assert.equal(board.colour, "White");
   assert.equal(board.profile_type, "");

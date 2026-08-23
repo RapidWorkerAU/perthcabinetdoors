@@ -122,7 +122,7 @@ function cabinetDescription(config: CabinetConfig): string {
     Number(config.shelf_qty) > 0
       ? `, ${config.shelf_qty} ${Number(config.shelf_qty) === 1 ? "shelf" : "shelves"}`
       : ""
-  return `${config.width_mm}mm wide x ${config.height_mm}mm high x ${config.depth_mm}mm deep - ${config.carcass_material || "cabinet board"} ${config.carcass_thickness_mm}mm carcass${shelfText}`
+  return `${config.height_mm}mm high x ${config.width_mm}mm wide x ${config.depth_mm}mm deep - ${config.carcass_material || "cabinet board"} ${config.carcass_thickness_mm}mm carcass${shelfText}`
 }
 
 function fieldId(prefix: string, name: string): string {
@@ -827,7 +827,7 @@ export default function CabinetConfigurator({
                     <tr key={`${piece.label}-${piece.material}`} className="border-b border-[#edf4eb] last:border-b-0">
                       <td className="px-2 py-[6px] font-medium text-[#1a1a18]">{piece.label}</td>
                       <td className="px-2 py-[6px] text-[#1a1a18]">{piece.qty}</td>
-                      <td className="px-2 py-[6px] font-mono text-[10px] whitespace-nowrap">{piece.width_mm} x {piece.height_mm}mm</td>
+                      <td className="px-2 py-[6px] font-mono text-[10px] whitespace-nowrap">{piece.height_mm} x {piece.width_mm}mm</td>
                       <td className="px-2 py-[6px] text-[#5a5a52]">{piece.material || "-"}</td>
                       <td className="px-2 py-[6px] font-mono text-[10px]">{unitArea.toFixed(4)} sqm</td>
                       <td className="px-2 py-[6px] font-mono text-[10px]">{money(unitCost)}</td>
@@ -1157,7 +1157,7 @@ export default function CabinetConfigurator({
                         <tr key={`${piece.label}-${piece.material}`} className="border-b border-[#edf4eb] last:border-b-0">
                           <td className="px-2 py-[6px] font-medium text-[#1a1a18]">{piece.label}</td>
                           <td className="px-2 py-[6px] text-[#1a1a18]">{piece.qty}</td>
-                          <td className="px-2 py-[6px] font-mono text-[10px] whitespace-nowrap">{piece.width_mm} × {piece.height_mm}mm</td>
+                          <td className="px-2 py-[6px] font-mono text-[10px] whitespace-nowrap">{piece.height_mm} × {piece.width_mm}mm</td>
                           <td className="px-2 py-[6px] text-[#5a5a52]">{piece.material || "—"}</td>
                           <td className="px-2 py-[6px] font-mono text-[10px]">{unitArea.toFixed(4)} sqm</td>
                           <td className="px-2 py-[6px] font-mono text-[10px]">{money(unitCost)}</td>

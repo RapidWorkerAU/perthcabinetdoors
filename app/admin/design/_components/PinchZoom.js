@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Touch pinch-to-zoom + drag-to-pan wrapper. Scales ONLY its children via a CSS
 // transform, so wrapping just the canvas/elevation SVG leaves the surrounding
@@ -20,6 +20,20 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
   tRef.current = t;
   const gesture = useRef({ mode: null });
   const containerRef = useRef(null);
+  // Whether a zoom is still in flight. See the transform style below — this is
+  // the difference between a crisp drawing and a blurry one.
+  const [moving, setMoving] = useState(false);
+  const settle = useRef(null);
+
+  // Every zoom marks itself as moving and then, a moment after the last change,
+  // settles. Cleared on unmount so a pending timer can't set state on a gone
+  // component.
+  useEffect(() => () => clearTimeout(settle.current), []);
+  function markMoving() {
+    setMoving(true);
+    clearTimeout(settle.current);
+    settle.current = setTimeout(() => setMoving(false), 180);
+  }
 
   if (!enabled) return children;
 
@@ -66,10 +80,12 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
       // the fingers' CURRENT midpoint — this zooms and pans together.
       const x = curMid.x - (g.startMid.x - g.startX) * ratio;
       const y = curMid.y - (g.startMid.y - g.startY) * ratio;
+      markMoving();
       setT({ scale, x, y });
     } else if (g.mode === "pan" && e.touches.length === 1) {
       e.preventDefault();
       const p = rel(e.touches[0]);
+      markMoving();
       setT({ scale: tRef.current.scale, x: g.startX + (p.x - g.startTouch.x), y: g.startY + (p.y - g.startTouch.y) });
     }
   }
@@ -100,6 +116,7 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
     const ratio = scale / cur.scale;
     const x = point.x - (point.x - cur.x) * ratio;
     const y = point.y - (point.y - cur.y) * ratio;
+    markMoving();
     setT(scale <= minScale + 0.01 ? { scale: minScale, x: 0, y: 0 } : { scale, x, y });
   }
 
@@ -138,13 +155,23 @@ export default function PinchZoom({ enabled = true, minScale = 1, maxScale = 5, 
         touchAction: "none",
       }}
     >
+      {/* will-change / translateZ promote this to its own compositor layer,
+          which is what makes a pinch smooth — but a promoted layer is a BITMAP,
+          rasterised once and then stretched, so zooming in on an SVG blurred
+          every line and label instead of redrawing them at the new size.
+
+          So the promotion only lasts as long as the gesture. The moment the
+          zoom settles the hints come off and the browser re-rasterises the SVG
+          at its real scale, sharp at any zoom. */}
       <div
         style={{
           width: "100%",
           height: "100%",
           transformOrigin: "0 0",
-          transform: `translate(${t.x}px, ${t.y}px) scale(${t.scale})`,
-          willChange: "transform",
+          transform: moving
+            ? `translate3d(${t.x}px, ${t.y}px, 0) scale(${t.scale})`
+            : `translate(${t.x}px, ${t.y}px) scale(${t.scale})`,
+          willChange: moving ? "transform" : "auto",
         }}
       >
         {children}

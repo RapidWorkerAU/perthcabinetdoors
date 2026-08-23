@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import AdminShell from "../../_components/AdminShell";
 import CustomerDeskClient from "./CustomerDeskClient";
 import { requireAdminSession } from "../../../../lib/admin-guard";
@@ -41,9 +41,17 @@ export default async function CustomerDeskPage({ params }) {
     notFound();
   }
 
+  // ONE DESK PER PERSON. Opening a linked contact's own record would show half
+  // their history on a page that looks complete, so it lands on the primary
+  // instead. The url changes, which is the point: there is one address for this
+  // customer and it is the one you can share.
+  if (desk.customer?.id && desk.customer.id !== id) {
+    redirect(`/admin/customers/${desk.customer.id}`);
+  }
+
   return (
     <AdminShell>
-      <CustomerDeskClient customerId={id} initial={desk} />
+      <CustomerDeskClient customerId={desk.customer?.id || id} initial={desk} />
     </AdminShell>
   );
 }

@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { edgeImageSrc as sharedEdgeImageSrc } from "../../../../lib/pcd-profile-images";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../../lib/quote-form-data";
@@ -52,8 +53,12 @@ function assetSlug(value) {
     .replace(/^-|-$/g, "");
 }
 
+// Where an edge photo lives. Asked of lib/pcd-profile-images.js rather than
+// worked out here: the rule has exceptions, and a copy of it that does not
+// know them is how the 1mm Bevel Edge showed a broken tile while the square
+// edge beside it was fine.
 function edgeOptionSrc(label) {
-  return `/images/edges/${assetSlug(label)}.png`;
+  return sharedEdgeImageSrc(label);
 }
 
 function profileOptionSrc(profileType, label) {
@@ -1631,8 +1636,8 @@ export default function ProductEditorForm({
                   <div className={productClass("productPreviewEnquiryBody")} aria-label="Read-only public quote enquiry form preview">
                     <p>Need a size not listed above, or want a firm quote? Fill in your details and we will get back to you promptly.</p>
                     <div className={productClass("productPreviewFieldRow")}>
-                      <label>Width (mm)<input type="text" placeholder="e.g. 600" disabled /></label>
                       <label>Height (mm)<input type="text" placeholder="e.g. 900" disabled /></label>
+                      <label>Width (mm)<input type="text" placeholder="e.g. 600" disabled /></label>
                     </div>
                     <div className={productClass("productPreviewFieldRow")}>
                       <label>Quantity<input type="text" placeholder="e.g. 6" disabled /></label>

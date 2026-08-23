@@ -1,6 +1,7 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
 import { ORDER_STATUSES } from "../../../../../lib/pcd-quote-utils";
+import { applySchedule, isTimeframe } from "../../../../../lib/pcd-order-schedule";
 
 async function orderIdFromParams(params) {
   const resolved = await params;
@@ -17,6 +18,15 @@ async function loadOrder(supabase, id) {
   if (error || !data) {
     throw error || new Error("Order not found.");
   }
+
+  // Loaded alongside the order so the panel tabs can mark a row without a
+  // second round trip, and so the Issues section arrives already filled.
+  const { data: issues } = await supabase
+    .from("pcd_order_issues")
+    .select("*")
+    .eq("order_id", id)
+    .order("raised_at", { ascending: false });
+  data.pcd_order_issues = issues || [];
 
   const quoteLineIds = (data.pcd_order_line_items || [])
     .map((item) => item.quote_line_item_id)
@@ -167,6 +177,8 @@ export async function PATCH(request, { params }) {
       "deposit_amount",
       "deposit_paid",
       "deposit_paid_at",
+      "scheduled_start_date",
+      "production_lead_days",
       "target_completion_date",
       "customer_comms",
       "internal_notes",
@@ -180,11 +192,26 @@ export async function PATCH(request, { params }) {
       return Response.json({ ok: false, error: "No order updates supplied." }, { status: 400 });
     }
 
+    // A timeframe is only ever one of the ones we offer. Anything else would
+    // produce a due date nobody could explain.
+    if (updates.production_lead_days !== undefined && updates.production_lead_days !== null) {
+      const days = Number(updates.production_lead_days);
+      if (!isTimeframe(days)) {
+        return Response.json({ ok: false, error: "Invalid production timeframe." }, { status: 400 });
+      }
+      updates.production_lead_days = days;
+    }
+
     const { data: beforeOrder } = await context.supabase
       .from("pcd_orders")
       .select("*")
       .eq("id", id)
       .maybeSingle();
+
+    // The due date follows from the schedule, and is settled HERE rather than
+    // in the browser so the stored date can never disagree with the start date
+    // and timeframe sitting beside it.
+    Object.assign(updates, applySchedule(beforeOrder || {}, updates));
 
     const { data, error } = await context.supabase
       .from("pcd_orders")
@@ -207,6 +234,8 @@ export async function PATCH(request, { params }) {
       deposit_amount: "Deposit amount",
       deposit_paid: "Deposit paid",
       deposit_paid_at: "Deposit paid at",
+      scheduled_start_date: "Scheduled start",
+      production_lead_days: "Production timeframe",
       target_completion_date: "Target completion",
       internal_notes: "Internal notes",
     });

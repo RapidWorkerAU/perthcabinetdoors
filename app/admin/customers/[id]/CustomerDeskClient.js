@@ -17,6 +17,8 @@ import TermsEditor from "../../_components/TermsEditor";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import { customerFieldLabel } from "../../../../lib/pcd-customer-utils";
+import { CLOSURE_REASONS, closureReasonLabel } from "../../../../lib/pcd-ticket-closure";
+import { Modal } from "@/components/ui/Modal";
 
 const KIND_MARK = { inbound: "↙", outbound: "↗", note: "★", system: "⚙" };
 const KIND_WORD = { inbound: "From customer", outbound: "Sent by us", note: "Internal note", system: "System" };
@@ -77,9 +79,53 @@ export default function CustomerDeskClient({ customerId, initial }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...initial.customer });
+  // Other records that read as this same person. Their quotes, orders and
+  // messages are already inside everything on this page; this is only so it is
+  // obvious which addresses reach them, and so a link can be undone from the
+  // same place it shows up.
+  const contacts = (initial.contacts || []).filter((c) => c.id !== initial.customer?.id);
+  const [separating, setSeparating] = useState("");
+  // The contact waiting on a yes or no. Nothing happens until it is confirmed.
+  const [confirmSeparate, setConfirmSeparate] = useState(null);
+
+  // Where a reply on the open conversation will actually go. A thread belongs to
+  // the record the message came in on, so answering the partner goes back to the
+  // partner rather than to the main contact. A new conversation has nobody to
+  // reply to, so it goes to the main contact.
+  const emailForTicket = (ticketId) => {
+    const ticket = (initial.tickets || []).filter((t) => t.id === ticketId)[0];
+    const owner = (initial.contacts || []).filter((c) => c.id === ticket?.customer_id)[0];
+    return owner?.email || initial.customer?.email || "";
+  };
 
   const { customer, entries, pendingChanges, quotes, orders, stats } = desk;
   const selected = entries.find((entry) => entry.id === selectedId) || entries[0] || null;
+
+  // Giving a linked contact its own record back. Nothing was moved when they
+  // were linked, so this is only deleting the link: every quote, order and
+  // message is already sitting where it was written.
+  async function separate(contactId) {
+    setConfirmSeparate(null);
+    setSeparating(contactId);
+    try {
+      const res = await fetch("/api/admin/customers/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "separate", customerId: contactId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        toast({ title: data.error || "Could not separate them.", variant: "error" });
+        return;
+      }
+      await refresh();
+      toast({ title: "Separated. It is its own record again, with everything it always had." });
+    } catch (error) {
+      toast({ title: error?.message || "Could not separate them.", variant: "error" });
+    } finally {
+      setSeparating("");
+    }
+  }
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/admin/customer-desk/${customerId}`, { cache: "no-store" });
@@ -111,6 +157,40 @@ export default function CustomerDeskClient({ customerId, initial }) {
     }
     return out;
   }, [visible]);
+
+  // Closing a conversation draws a line at today. It is not a dismissal: the
+  // mail sync reopens a ticket on any inbound message, so the same person
+  // writing next month brings this straight back.
+  const [closing, setClosing] = useState(false);
+  const [closeReason, setCloseReason] = useState("spam");
+  const [closeDetail, setCloseDetail] = useState("");
+
+  async function closeConversation() {
+    const ticketId = selected?.ticket_id;
+    if (!ticketId) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/tickets/${ticketId}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: closeReason, detail: closeDetail }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.ok) {
+        toast({ title: payload.error || "Could not close it.", variant: "error" });
+        return;
+      }
+      setClosing(false);
+      setCloseDetail("");
+      setCloseReason("spam");
+      await refresh();
+      toast({ title: "Closed. A new email from them brings it back." });
+    } catch (error) {
+      toast({ title: error?.message || "Could not close it.", variant: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function send() {
     const text = draft.replace(/<[^>]*>/g, "").trim();
@@ -191,6 +271,11 @@ export default function CustomerDeskClient({ customerId, initial }) {
   }
 
   const isNote = mode === "note";
+  const details = [
+    customer.email,
+    customer.phone,
+    [customer.site_suburb, customer.site_postcode].filter(Boolean).join(" "),
+  ].filter(Boolean);
 
   return (
     <div className="flex min-h-full flex-col md:h-full md:min-h-0 md:overflow-hidden">
@@ -209,10 +294,37 @@ export default function CustomerDeskClient({ customerId, initial }) {
             <div className="text-[18px] font-bold leading-tight tracking-[-0.02em] text-[#1a1a18]">
               {customer.name || customer.email || "Customer"}
             </div>
-            <div className="mt-[1px] text-[12.5px] text-[#56534b]">
-              {[customer.email, customer.phone, [customer.site_suburb, customer.site_postcode].filter(Boolean).join(" ")]
-                .filter(Boolean)
-                .join("  ·  ")}
+            {/* Everything that reaches this person, on one line. The other
+                addresses sit with the first one because that is what they are:
+                another way to reach the same customer, not a separate thing. */}
+            <div className="mt-[1px] flex flex-wrap items-center gap-x-[7px] gap-y-[2px] text-[12.5px] text-[#56534b]">
+              {details.map((detail, index) => (
+                <span key={detail} className="inline-flex items-center gap-x-[7px]">
+                  {index > 0 && <span className="text-[#c9c5b8]">·</span>}
+                  {detail}
+                </span>
+              ))}
+
+              {contacts.map((contact, index) => (
+                <span key={contact.id} className="inline-flex items-center gap-x-[7px]">
+                  {(details.length > 0 || index > 0) && <span className="text-[#c9c5b8]">·</span>}
+                  <span className="text-[#8b8a81]">
+                    also {contact.email || contact.name || "no email"}
+                  </span>
+                  {/* Quiet, and only sharpens on hover: undoing a link is rare
+                      and reversible, so it should never look like the point of
+                      the header. */}
+                  <button
+                    type="button"
+                    disabled={separating === contact.id}
+                    onClick={() => setConfirmSeparate(contact)}
+                    title="Give this contact its own record back. Nothing was moved when they were linked, so nothing is lost."
+                    className="text-[11px] text-[#b5b3aa] underline decoration-dotted underline-offset-2 transition-colors hover:text-[#1a1a18] disabled:opacity-50"
+                  >
+                    {separating === contact.id ? "separating" : "separate"}
+                  </button>
+                </span>
+              ))}
             </div>
           </div>
 
@@ -454,7 +566,9 @@ export default function CustomerDeskClient({ customerId, initial }) {
                 </span>
                 <span className="flex-1" />
                 <span className="text-[11.5px] text-[#9a978d]">
-                  {isNote ? "Saved here only. Never emailed." : `Goes to ${customer.email || "the customer"}`}
+                  {isNote
+                    ? "Saved here only. Never emailed."
+                    : `Goes to ${(composingNew ? customer.email : emailForTicket(selected?.ticket_id)) || "the customer"}`}
                 </span>
                 <button
                   type="button"
@@ -609,7 +723,9 @@ export default function CustomerDeskClient({ customerId, initial }) {
                   ))}
                   <span className="flex-1" />
                   <span className="text-[11.5px] text-[#9a978d]">
-                    {isNote ? "Saved here only. Never emailed." : `Goes to ${customer.email || "the customer"}`}
+                    {isNote
+                    ? "Saved here only. Never emailed."
+                    : `Goes to ${(composingNew ? customer.email : emailForTicket(selected?.ticket_id)) || "the customer"}`}
                   </span>
                 </div>
 
@@ -639,6 +755,16 @@ export default function CustomerDeskClient({ customerId, initial }) {
                   >
                     Clear
                   </button>
+                  {selected?.ticket_id && (
+                    <button
+                      type="button"
+                      onClick={() => setClosing(true)}
+                      disabled={busy}
+                      className="ml-auto h-[32px] rounded-[7px] border border-[#ddd9cf] bg-white px-3 text-[12.5px] font-semibold text-[#56534b] disabled:opacity-50"
+                    >
+                      No reply needed
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -689,6 +815,117 @@ export default function CustomerDeskClient({ customerId, initial }) {
           ) : null}
         </div>
       </div>
+    {/* Separating is reversible, but it changes what this page shows and the
+        button sits inches from the customer's name. Two steps, the same as
+        every other consequence in the admin. */}
+    <Modal
+      open={Boolean(confirmSeparate)}
+      onClose={() => setConfirmSeparate(null)}
+      title="Separate this contact?"
+      subtitle={confirmSeparate?.email || confirmSeparate?.name || ""}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={() => setConfirmSeparate(null)}
+            disabled={Boolean(separating)}
+            className="h-[34px] rounded-[7px] border border-[#ddd9cf] bg-white px-4 text-[12.5px] font-semibold text-[#56534b] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => separate(confirmSeparate.id)}
+            disabled={Boolean(separating)}
+            className="h-[34px] rounded-[7px] bg-[#1c2b1e] px-4 text-[12.5px] font-semibold text-white disabled:opacity-50"
+          >
+            {separating ? "Separating…" : "Separate them"}
+          </button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 text-[13px] leading-[1.55] text-[#56534b]">
+        <p>
+          <b className="text-[#1a1a18]">{confirmSeparate?.email || confirmSeparate?.name}</b> becomes its own
+          customer record again, with everything it always had on it.
+        </p>
+        <p>
+          This page stops showing that record&apos;s quotes, orders and messages, and they move to the customer
+          page for that address instead. They will also show as their own person on the board again.
+        </p>
+        <p className="rounded-[6px] border border-[#dbd8cc] bg-[#f5f8f4] px-3 py-[10px] text-[12px]">
+          Nothing is deleted and nothing moves. Linking them never moved a row, so this only stops the two
+          records being read together. <b className="text-[#1a1a18]">You can link them again at any time.</b>
+        </p>
+      </div>
+    </Modal>
+
+    <Modal
+      open={closing}
+      onClose={() => setClosing(false)}
+      title="Close this conversation"
+      subtitle={selected?.subject || ""}
+      size="lg"
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={() => setClosing(false)}
+            disabled={busy}
+            className="h-[34px] rounded-[7px] border border-[#ddd9cf] bg-white px-4 text-[12.5px] font-semibold text-[#56534b] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={closeConversation}
+            disabled={busy || (closeReason === "other" && closeDetail.trim().length < 4)}
+            className="h-[34px] rounded-[7px] bg-[#1c2b1e] px-4 text-[12.5px] font-semibold text-white disabled:opacity-50"
+          >
+            Close it
+          </button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-[6px]">
+          <span className="text-[11px] font-medium text-[#5a5a52]">Why <span className="text-[#991b1b]">*</span></span>
+          <div className="flex flex-wrap gap-[6px]">
+            {CLOSURE_REASONS.map(reason => (
+              <button
+                key={reason.key}
+                type="button"
+                onClick={() => setCloseReason(reason.key)}
+                className={`rounded-[6px] border px-3 py-[6px] text-[12px] font-medium ${
+                  closeReason === reason.key
+                    ? "border-[#1c2b1e] bg-[#1c2b1e] text-white"
+                    : "border-[#dbd8cc] bg-white text-[#5a5a52] hover:bg-[#f5f8f4]"
+                }`}
+              >
+                {reason.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]">
+          Anything to add{closeReason === "other" ? "" : " (optional)"}
+          <textarea
+            rows={2}
+            value={closeDetail}
+            onChange={event => setCloseDetail(event.target.value)}
+            placeholder={closeReason === "other" ? "Say why, in a few words." : "Only if it needs saying."}
+            className="w-full rounded-[6px] border border-[#dbd8cc] px-3 py-2 text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
+          />
+        </label>
+
+        <p className="rounded-[6px] border border-[#dbd8cc] bg-[#f5f8f4] px-3 py-[10px] text-[11.5px] leading-[1.5] text-[#5a5a52]">
+          This writes a note on the conversation saying it was closed as{" "}
+          <b className="text-[#1a1a18]">{closureReasonLabel(closeReason).toLowerCase()}</b>, and draws a line at today.
+          <b className="text-[#1a1a18]"> If they email again it comes straight back onto the board.</b>
+        </p>
+      </div>
+    </Modal>
     </div>
   );
 }

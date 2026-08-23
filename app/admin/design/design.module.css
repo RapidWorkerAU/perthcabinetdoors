@@ -1717,3 +1717,18 @@
   border-radius: 8px;
   cursor: pointer;
 }
+
+/* A field that states a fixed fact rather than asking for one — the item you
+   already chose from the catalogue. Sized and spaced like the input beside it
+   so a form reads as one column, but visibly not editable. */
+.fieldStaticValue {
+  padding: 6px 8px;
+  border: 1px solid var(--dt-border, rgba(0,0,0,0.14));
+  border-radius: var(--dt-radius-sm, 4px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dt-text, #1c1c1a);
+  background: var(--dt-bg, #f5f4f0);
+  width: 100%;
+  box-sizing: border-box;
+}

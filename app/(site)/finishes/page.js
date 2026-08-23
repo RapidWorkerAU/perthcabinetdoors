@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
+import { normaliseSupplierName } from "@/lib/pcd-colour-library";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import PublicSiteNav from "../PublicSiteNav";
 import styles from "../journey.module.css";
@@ -28,11 +29,9 @@ const FINISH_ORDER = [
 
 const SUPPLIER_ORDER = ["Polytec", "Laminex", "Formica"];
 
-function titleCaseSupplier(value) {
-  const name = String(value || "").trim();
-  if (!name) return "Other";
-  return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
-}
+// One speller for brand names, shared with the rest of the site. This page used
+// to carry its own, which is how a lower case "formica" reached a customer.
+const titleCaseSupplier = (value) => normaliseSupplierName(value) || "Other";
 
 // A colour can exist at several thicknesses. One tile per colour, with the
 // thicknesses collected onto it, sorted numerically so it never reads

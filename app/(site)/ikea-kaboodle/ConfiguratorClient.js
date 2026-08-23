@@ -6,7 +6,9 @@ import Link from "next/link";
 import { addEntry, removeEntry, useQuoteList } from "@/lib/pcd-quote-list";
 import PcdLoader from "@/components/public/PcdLoader";
 import { profileImageSrc } from "@/lib/pcd-profile-images";
-import { profileNamesForSelection, profileTypesForSelection } from "@/lib/quote-form-data";
+import { profilesForSupplier } from "@/lib/pcd-supplier-selection";
+import { THICKNESS_BY_MATERIAL } from "@/lib/quote-form-data";
+import { asSelectionRows, useProfileLibrary } from "@/lib/use-profile-library";
 import {
   CABINETS,
   frontLayoutsFor,
@@ -32,13 +34,19 @@ const CabinetPreview3D = dynamic(() => import("./CabinetPreview3D"), {
 // made in the chosen thickness is hidden rather than greyed out, and profiles
 // restricted to 21mm board disappear when 18mm is selected.
 
+// Steps 5 and 7 belong to the profiled path only. A flat door has no thickness
+// question, because 16 and 18mm decorative board take the same flat face and the
+// colour tile settles it, and it has no profile to pick. They are hidden rather
+// than greyed out, and the number on screen is the position in the VISIBLE list,
+// so a flat door still counts 1 to 5 with no gap where a hidden step used to be.
 const STEPS = [
   { id: 1, title: "Which cabinets have you got?" },
   { id: 2, title: "Which cabinet size?" },
   { id: 3, title: "How is that cabinet fronted?" },
   { id: 4, title: "Flat or profiled?" },
-  { id: 5, title: "Pick your colour" },
-  { id: 6, title: "Pick your door profile" },
+  { id: 5, title: "Which board thickness?" },
+  { id: 6, title: "Pick your colour" },
+  { id: 7, title: "Pick your door profile" },
 ];
 
 const MATERIAL_CHOICES = [
@@ -154,15 +162,20 @@ function DoorSwing({ x, y, w, h, hingeRight }) {
   );
 }
 
-// One profile tile, showing the real photo of the routed door from
-// /public/images/profiles. The 21mm-only profiles have no photo yet, and a
-// missing file should degrade to the drawn placeholder rather than a broken
-// image icon, handled on error as well as up front, so adding the photo later
-// is the only step needed to light it up.
+// One profile tile.
+//
+// The photo comes off the library row, so a profile shows its own photo whichever
+// brand it belongs to. profileImageSrc is the fallback for a row with no photo
+// recorded, and the drawn placeholder is the fallback for that - handled on error
+// as well as up front, so dropping a photo in is all it takes to light it up.
+//
+// The $ tier is a Polytec idea: it is keyed on their five families. A Laminex
+// series has no tier, so no tier is shown rather than a made-up one.
 function ProfileTile({ entry, selected, onSelect }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const src = profileImageSrc(entry.type, entry.name);
+  const src = entry.imageUrl || profileImageSrc(entry.type, entry.name);
   const showImage = src && !imageFailed;
+  const tier = PROFILE_TIERS[entry.type]?.tier;
 
   return (
     <button
@@ -184,29 +197,47 @@ function ProfileTile({ entry, selected, onSelect }) {
           <span className={`${styles.profileFace} ${PROFILE_SAMPLE_CLASS[entry.type] || ""}`} aria-hidden="true" />
         )}
       </span>
-      <span className={styles.profileTier}>{TIER_LABELS[entry.tier]}</span>
+      {tier ? <span className={styles.profileTier}>{TIER_LABELS[tier]}</span> : null}
       <strong>{entry.name}</strong>
       <span>{entry.type}</span>
     </button>
   );
 }
 
+// THE TWO FILTERS OVER THE COLOUR GRID: whose board, and which finish.
+//
+// The brand is a filter here rather than a step of its own. Every tile already
+// says whose board it is, so choosing a colour settles the brand on its own, and
+// the profile step reads the brand off the colour rather than asking twice. That
+// is what stops a Laminex colour ending up on a Polytec shape without a separate
+// question to answer.
+//
 // Polytec alone carries 14 finishes, so a row of pills ran to three lines and
-// read as clutter. A single control that opens a checklist grouped by brand
-// keeps the colour grid as the thing you look at, and lets someone tick two
-// finishes at once rather than flicking between them one at a time.
-function FinishFilter({ groups, selected, onToggle, onClear, total }) {
-  const [open, setOpen] = useState(false);
+// read as clutter. Both controls open a panel instead, and the finish list is
+// scoped to the chosen brand: a Polytec finish under a Laminex filter is a tick
+// that can only empty the grid.
+function ColourFilters({
+  brands,
+  brand,
+  onBrand,
+  groups,
+  selected,
+  onToggle,
+  onClear,
+  total,
+  poolTotal,
+}) {
+  const [openPanel, setOpenPanel] = useState("");
   const wrapRef = useRef(null);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!openPanel) return undefined;
 
     function handlePointerDown(event) {
-      if (!wrapRef.current?.contains(event.target)) setOpen(false);
+      if (!wrapRef.current?.contains(event.target)) setOpenPanel("");
     }
     function handleKeyDown(event) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") setOpenPanel("");
     }
 
     document.addEventListener("mousedown", handlePointerDown);
@@ -215,27 +246,78 @@ function FinishFilter({ groups, selected, onToggle, onClear, total }) {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open]);
+  }, [openPanel]);
 
-  const label = selected.length
+  const finishLabel = selected.length
     ? `${selected.length} finish${selected.length === 1 ? "" : "es"} selected`
     : "All finishes";
+  const toggle = (panel) => setOpenPanel((current) => (current === panel ? "" : panel));
 
   return (
-    <div className={styles.filterRow}>
-      <div className={styles.filterWrap} ref={wrapRef}>
+    <div className={styles.filterRow} ref={wrapRef}>
+      {/* One brand is not a choice, it is the answer, so the control only
+          appears when there is something to choose between. */}
+      {brands.length > 1 ? (
+        <div className={styles.filterWrap}>
+          <button
+            type="button"
+            className={`${styles.filterButton} ${openPanel === "brand" ? styles.filterButtonOpen : ""}`}
+            aria-expanded={openPanel === "brand"}
+            aria-haspopup="true"
+            onClick={() => toggle("brand")}
+          >
+            <span>{brand || "All brands"}</span>
+            <span className={styles.filterCaret} aria-hidden="true" />
+          </button>
+
+          {openPanel === "brand" ? (
+            <div className={styles.filterPanel} role="group" aria-label="Filter colours by brand">
+              <label className={styles.filterOption}>
+                <input
+                  type="radio"
+                  name="colour-brand"
+                  checked={!brand}
+                  onChange={() => {
+                    onBrand("");
+                    setOpenPanel("");
+                  }}
+                />
+                <span>All brands</span>
+                <em>{poolTotal}</em>
+              </label>
+              {brands.map((entry) => (
+                <label className={styles.filterOption} key={entry.name}>
+                  <input
+                    type="radio"
+                    name="colour-brand"
+                    checked={brand === entry.name}
+                    onChange={() => {
+                      onBrand(entry.name);
+                      setOpenPanel("");
+                    }}
+                  />
+                  <span>{entry.name}</span>
+                  <em>{entry.count}</em>
+                </label>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className={styles.filterWrap}>
         <button
           type="button"
-          className={`${styles.filterButton} ${open ? styles.filterButtonOpen : ""}`}
-          aria-expanded={open}
+          className={`${styles.filterButton} ${openPanel === "finish" ? styles.filterButtonOpen : ""}`}
+          aria-expanded={openPanel === "finish"}
           aria-haspopup="true"
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => toggle("finish")}
         >
-          <span>{label}</span>
+          <span>{finishLabel}</span>
           <span className={styles.filterCaret} aria-hidden="true" />
         </button>
 
-        {open ? (
+        {openPanel === "finish" ? (
           <div className={styles.filterPanel} role="group" aria-label="Filter colours by finish">
             {groups.map((group) => (
               <div className={styles.filterGroup} key={group.supplier}>
@@ -257,9 +339,9 @@ function FinishFilter({ groups, selected, onToggle, onClear, total }) {
         ) : null}
       </div>
 
-      {selected.length ? (
+      {selected.length || brand ? (
         <button type="button" className={styles.filterClear} onClick={onClear}>
-          Clear filter
+          Clear filters
         </button>
       ) : (
         <span className={styles.filterHint}>{total} colours available</span>
@@ -282,6 +364,15 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
   // there are 19 finishes across the three brands, so this is a grouped
   // multi-select rather than a row of pills.
   const [selectedFinishes, setSelectedFinishes] = useState([]);
+  // Whose board. A filter over the same grid rather than a step of its own,
+  // because every tile already carries the brand. "" is every brand.
+  const [brandFilter, setBrandFilter] = useState("");
+  // 18mm or 21mm, asked BEFORE the colour and on the profiled path only. Nearly
+  // every thermolaminate colour is stocked in both, so without this the same
+  // colour appeared in the grid twice and whichever tile somebody happened to
+  // tap decided, silently, whether the fluted and the deeper routed shapes were
+  // available to them at all.
+  const [thicknessChoice, setThicknessChoice] = useState("");
   const [colour, setColour] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [profile, setProfile] = useState(null);
@@ -294,61 +385,157 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
 
   const material = MATERIAL_CHOICES.find((choice) => choice.key === materialKey) || null;
 
-  // There is no thickness question any more. A customer at this point has no
-  // idea whether they want 16mm or 21mm board, so asking them to choose was a
-  // dead end. Every colour the material is made in is listed instead, once per
-  // thickness, with the thickness badged on the tile, picking the colour is
-  // what settles the thickness.
-  const thickness = colour?.thickness || null;
+  const needsProfile = Boolean(material?.profiled);
 
-  const colourPool = useMemo(
+  // THE DOOR PROFILE CATALOGUE, from the library the admin manages rather than a
+  // list in code. Each row carries the brand that makes the shape, its photo and
+  // whether it can be routed into 18mm or 21mm board, so the ranges cannot be
+  // crossed and a Laminex profile appears here the day its colours are added,
+  // with nothing in this file to change.
+  //
+  // The status matters as much as the rows: "this brand makes none" and "the
+  // library could not be read" both arrive as an empty list, and only one of
+  // them is an answer. See lib/use-profile-library.js.
+  const profileLibrary = useProfileLibrary();
+  const profileRows = useMemo(
+    () => asSelectionRows(profileLibrary.profiles),
+    [profileLibrary.profiles]
+  );
+
+  // FLAT: there is no thickness question. A customer at this point has no idea
+  // whether they want 16 or 18mm, both take the same flat face, so every colour
+  // is listed with its thickness badged on the tile and picking the colour is
+  // what settles it.
+  //
+  // PROFILED: the thickness is asked first, in step 5, because it decides which
+  // shapes can be routed at all.
+  const thickness = needsProfile ? thicknessChoice : colour?.thickness || null;
+
+  const materialPool = useMemo(
     () => colours.filter((entry) => entry.material === materialKey),
     [colours, materialKey]
   );
 
-  // Finishes grouped by the brand that makes them, for the filter dropdown.
+  const colourPool = useMemo(() => {
+    if (!needsProfile) return materialPool;
+    if (!thicknessChoice) return [];
+    return materialPool.filter((entry) => entry.thickness === thicknessChoice);
+  }, [materialPool, needsProfile, thicknessChoice]);
+
+  // The thicknesses this board is really stocked in, in the order the materials
+  // file lists them, each with what it actually buys: the colours behind it and
+  // the shapes that can be routed into it. Counted rather than described, so the
+  // step cannot claim a range we do not have.
+  const thicknessOptions = useMemo(() => {
+    if (!material) return [];
+    const stocked = new Set(materialPool.map((entry) => entry.thickness));
+    return (THICKNESS_BY_MATERIAL[material.material] || [])
+      .filter((value) => stocked.has(value))
+      .map((value) => ({
+        value,
+        colours: materialPool.filter((entry) => entry.thickness === value).length,
+        // Only shapes from brands that actually sell this board at this
+        // thickness. Counting a brand with profiles but no colours would promise
+        // a range nothing can be made in.
+        profiles: [...new Set(materialPool.filter((entry) => entry.thickness === value).map((entry) => entry.supplier))]
+          .reduce(
+            (total, supplier) =>
+              total + profilesForSupplier(profileRows, { supplier, thickness: value }).length,
+            0
+          ),
+      }));
+  }, [material, materialPool, profileRows]);
+
+  // WHICH BRANDS TO OFFER. On the profiled path a brand only counts if it also
+  // makes a door profile in this thickness: every Laminex shape is 18mm only, so
+  // offering Laminex board at 21mm would walk somebody into a last step with
+  // nothing in it. Same rule as the rest of the site - a combination we cannot
+  // build is not shown, rather than shown and refused at the end.
+  //
+  // While the library is still loading every brand is offered. Hiding one on the
+  // strength of rows we have not read yet would be guessing.
+  const brandOptions = useMemo(() => {
+    const counts = new Map();
+    colourPool.forEach((entry) => {
+      const name = entry.supplier || "Other";
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+
+    const order = ["Polytec", "Laminex", "Formica"];
+    return [...counts.entries()]
+      .filter(([name]) => {
+        if (!needsProfile || !profileLibrary.isReady) return true;
+        return profilesForSupplier(profileRows, { supplier: name, thickness: thicknessChoice }).length > 0;
+      })
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => {
+        const ai = order.indexOf(a.name);
+        const bi = order.indexOf(b.name);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.name.localeCompare(b.name);
+      });
+  }, [colourPool, needsProfile, profileLibrary.isReady, profileRows, thicknessChoice]);
+
+  const brandNames = useMemo(() => brandOptions.map((entry) => entry.name), [brandOptions]);
+
+  // A brand that did not survive that rule is out of the GRID as well as out of
+  // the dropdown. Leaving its colours on show while its name is gone is the same
+  // dead end one click further along.
+  const brandPool = useMemo(
+    () => colourPool.filter((entry) => brandNames.includes(entry.supplier || "Other")),
+    [colourPool, brandNames]
+  );
+
+  const shownColours = useMemo(() => {
+    const byBrand = brandFilter
+      ? brandPool.filter((entry) => (entry.supplier || "Other") === brandFilter)
+      : brandPool;
+    return selectedFinishes.length
+      ? byBrand.filter((entry) => selectedFinishes.includes(entry.finish))
+      : byBrand;
+  }, [brandPool, brandFilter, selectedFinishes]);
+
+  // Finishes grouped by the brand that makes them, scoped to the brand filter
+  // when one is on.
   const finishGroups = useMemo(() => {
     const bySupplier = new Map();
-    colourPool.forEach((entry) => {
+    brandPool.forEach((entry) => {
       if (!entry.finish) return;
       const supplier = entry.supplier || "Other";
+      if (brandFilter && supplier !== brandFilter) return;
       if (!bySupplier.has(supplier)) bySupplier.set(supplier, new Map());
       const finishes = bySupplier.get(supplier);
       finishes.set(entry.finish, (finishes.get(entry.finish) || 0) + 1);
     });
 
-    const order = ["Polytec", "Laminex", "Formica"];
-    return [...bySupplier.entries()]
-      .sort((a, b) => {
-        const ai = order.indexOf(a[0]);
-        const bi = order.indexOf(b[0]);
-        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-      })
-      .map(([supplier, finishes]) => ({
+    return brandNames
+      .filter((name) => bySupplier.has(name))
+      .map((supplier) => ({
         supplier,
-        finishes: [...finishes.entries()]
+        finishes: [...bySupplier.get(supplier).entries()]
           .sort((a, b) => b[1] - a[1])
           .map(([name, count]) => ({ name, count })),
       }));
-  }, [colourPool]);
+  }, [brandPool, brandFilter, brandNames]);
 
-  const shownColours = selectedFinishes.length
-    ? colourPool.filter((entry) => selectedFinishes.includes(entry.finish))
-    : colourPool;
-
-  // Fluted and the 21mm-only names come out of the list at 18mm. These are the
-  // same helpers the quote editor and design tool use, so the public page can
-  // never offer a combination we would have to ring the customer back about.
+  // THE SHAPES THIS COLOUR CAN BE ROUTED INTO: its own brand's, in the thickness
+  // chosen above. Both rules are read off the row rather than restated here,
+  // which is what lets them run in opposite directions between the ranges -
+  // thirteen Polytec shapes are 21mm only, every Laminex shape is 18mm only.
   const availableProfiles = useMemo(() => {
-    if (!material?.profiled || !thickness) return [];
-    return profileTypesForSelection(material.material, thickness).flatMap((type) =>
-      profileNamesForSelection(type, material.material, thickness).map((name) => ({
-        name,
-        type,
-        tier: PROFILE_TIERS[type]?.tier ?? 1,
-      }))
-    );
-  }, [material, thickness]);
+    if (!needsProfile || !colour?.supplier || !thickness) return [];
+    return profilesForSupplier(profileRows, { supplier: colour.supplier, thickness }).map((row) => ({
+      name: row.name,
+      type: row.category,
+      imageUrl: row.image_url || "",
+    }));
+  }, [needsProfile, colour, thickness, profileRows]);
+
+  // How many more this brand makes that this board cannot take, so the note can
+  // say it as a fact about the range rather than naming Polytec's families.
+  const profilesInOtherThickness = useMemo(() => {
+    if (!needsProfile || !colour?.supplier) return 0;
+    return profilesForSupplier(profileRows, { supplier: colour.supplier }).length - availableProfiles.length;
+  }, [needsProfile, colour, profileRows, availableProfiles.length]);
 
   const profileCategories = useMemo(() => {
     const found = [];
@@ -363,8 +550,6 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
       ? availableProfiles
       : availableProfiles.filter((entry) => entry.type === categoryFilter);
 
-  const needsProfile = Boolean(material?.profiled);
-
   // Flat fronts price themselves off the chosen colour's rate. Profiled fronts
   // never do - the rate is 0 on them by design, so they fall through to Quote.
   // The rate arrives already marked up and GST-inclusive from the server.
@@ -376,7 +561,14 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
     [isPriced, layout, ratePerSqm]
   );
 
-  const isComplete = Boolean(layout && material && thickness && colour && (!needsProfile || profile));
+  // A library we could not read is the one case where a profiled front goes on
+  // the list without a shape on it. The alternative is a dead end on the last
+  // step, so the line says "profile to confirm" and we settle it when we price
+  // it. Everything else still has to be answered.
+  const profileStepBlocked = needsProfile && profileLibrary.hasFailed;
+  const isComplete = Boolean(
+    layout && material && thickness && colour && (!needsProfile || profile || profileStepBlocked)
+  );
 
   function resetFrom(step) {
     // Any change to the configuration means the "added" confirmation no longer
@@ -384,9 +576,9 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
     setJustAdded(null);
     if (step <= 2) { setCabinet(null); setLayout(null); }
     if (step <= 3) setLayout(null);
-    if (step <= 4) { setColour(null); setProfile(null); setSelectedFinishes([]); setCategoryFilter("All"); }
-    if (step <= 5) setColour(null);
-    if (step <= 6) setProfile(null);
+    if (step <= 5) { setThicknessChoice(""); setBrandFilter(""); setSelectedFinishes([]); }
+    if (step <= 6) { setColour(null); setCategoryFilter("All"); }
+    if (step <= 7) setProfile(null);
   }
 
   function chooseSystem(id) {
@@ -412,9 +604,29 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
   function chooseMaterial(choice) {
     setMaterialKey(choice.key);
     resetFrom(5);
+    // Profiled asks the thickness first, because it decides which shapes can be
+    // routed. Flat has nothing to ask and goes straight to the colours.
+    setOpenStep(choice.profiled ? 5 : 6);
+  }
+
+  function chooseThickness(value) {
+    setThicknessChoice(value);
+    resetFrom(6);
+    setOpenStep(6);
+  }
+
+  // A finish belongs to a brand, so a tick left over from the old one can only
+  // empty the grid, and a colour from the old brand can only be the wrong brand.
+  // Both go, rather than being left to look chosen when they are not.
+  function chooseBrand(name) {
+    setBrandFilter(name);
     setSelectedFinishes([]);
-    setCategoryFilter("All");
-    setOpenStep(5);
+    setJustAdded(null);
+    if (name && colour && (colour.supplier || "Other") !== name) {
+      setColour(null);
+      setProfile(null);
+      setCategoryFilter("All");
+    }
   }
 
   function toggleFinish(name) {
@@ -426,9 +638,16 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
   function chooseColour(next) {
     setColour(next);
     setJustAdded(null);
-    // A flat door has no step 6, so stay on the colour grid rather than
+    // The shape belongs to the brand behind the colour, so a colour from another
+    // brand cannot keep the one already chosen. Its family may not exist in the
+    // new range either, so the category filter goes back to All.
+    if (next?.supplier !== colour?.supplier) {
+      setProfile(null);
+      setCategoryFilter("All");
+    }
+    // A flat door has no profile step, so stay on the colour grid rather than
     // collapsing the whole accordion and leaving nothing open.
-    if (needsProfile) setOpenStep(6);
+    if (needsProfile) setOpenStep(7);
   }
 
   // Writes into the site-wide list rather than a private array, so the header
@@ -439,8 +658,10 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
     addEntry({
       kind: "configured",
       qty: quantity,
-      title: `${layout.name}, ${cabinet.width} × ${cabinet.height}mm`,
-      detail: `${SYSTEMS.find((s) => s.id === systemId)?.name} · ${material.material} ${thickness} · ${colour.name}${profile ? ` · ${profile.name}` : " · flat slab"}`,
+      title: `${layout.name}, ${cabinet.height} × ${cabinet.width}mm`,
+      detail: `${SYSTEMS.find((s) => s.id === systemId)?.name} · ${colour.supplier} ${material.material} ${thickness} · ${colour.name}${
+        profile ? ` · ${profile.name}` : needsProfile ? " · profile to confirm" : " · flat slab"
+      }`,
       source: "ikea-kaboodle",
       cabinet: { width: cabinet.width, height: cabinet.height },
       arrangement: layout.arrangement,
@@ -463,7 +684,7 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
       // colour we have no rate for yet.
       price: unitPrice,
     });
-    setJustAdded({ title: `${layout.name}, ${cabinet.width} × ${cabinet.height}mm`, qty: quantity });
+    setJustAdded({ title: `${layout.name}, ${cabinet.height} × ${cabinet.width}mm`, qty: quantity });
     setQuantity(1);
   }
 
@@ -475,6 +696,8 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
     setCabinet(null);
     setLayout(null);
     setMaterialKey(null);
+    setThicknessChoice("");
+    setBrandFilter("");
     setColour(null);
     setProfile(null);
     setSelectedFinishes([]);
@@ -502,11 +725,16 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
 
   const summaries = {
     1: SYSTEMS.find((s) => s.id === systemId)?.name || "",
-    2: cabinet ? `${cabinet.width} × ${cabinet.height}mm` : "",
+    2: cabinet ? `${cabinet.height} × ${cabinet.width}mm` : "",
     3: layout?.name || "",
     4: material ? material.label : "",
-    5: colour?.name || "",
-    6: profile ? `${profile.name} ${TIER_LABELS[profile.tier]}` : "",
+    5: thicknessChoice,
+    // The brand belongs in the summary now that it is a real choice: two brands
+    // both sell something called Snow, and they are different boards.
+    6: colour ? `${colour.supplier} ${colour.name}` : "",
+    7: profile
+      ? [profile.name, TIER_LABELS[PROFILE_TIERS[profile.type]?.tier]].filter(Boolean).join(" ")
+      : "",
   };
 
   function isStepReachable(step) {
@@ -514,10 +742,12 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
     if (step === 2) return Boolean(systemId);
     if (step === 3) return Boolean(cabinet);
     if (step === 4) return Boolean(layout);
-    // Thickness now comes FROM the colour picked in this step, so requiring it
-    // here would make step 5 permanently unreachable.
-    if (step === 5) return Boolean(material);
-    return Boolean(colour && needsProfile);
+    if (step === 5) return Boolean(material && needsProfile);
+    // Flat settles the thickness with the colour tile, so the grid opens as soon
+    // as the board is chosen. Profiled has to know the thickness first, because
+    // the grid is narrowed to it.
+    if (step === 6) return Boolean(needsProfile ? thicknessChoice : material);
+    return Boolean(needsProfile && colour);
   }
 
   function renderStepBody(step) {
@@ -563,7 +793,7 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
                         onClick={() => chooseCabinet(group.group, item, group.depth)}
                       >
                         <strong>
-                          {item.width} × {item.height}
+                          {item.height} × {item.width}
                         </strong>
                         {/* Panels are boards, not carcasses, so the group says
                             what its sizes actually are. */}
@@ -617,18 +847,53 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
       case 5:
         return (
           <>
-            <FinishFilter
+            <div className={styles.tileGrid}>
+              {thicknessOptions.map((option) => (
+                <button
+                  type="button"
+                  key={option.value}
+                  className={`${styles.tile} ${thicknessChoice === option.value ? styles.tileActive : ""}`}
+                  onClick={() => chooseThickness(option.value)}
+                >
+                  <strong>{option.value} board</strong>
+                  {/* Counted off the library rather than described, so this
+                      cannot promise a range we do not hold. */}
+                  <span>
+                    {option.colours} colours
+                    {profileLibrary.isReady ? `, ${option.profiles} door profiles` : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className={styles.stepNote}>
+              Nearly every profiled colour is made in both, so this is about the shape you want rather than
+              the colour. The deeper routed shapes and the fluted range need 21mm board to cut into.
+            </p>
+          </>
+        );
+
+      case 6:
+        return (
+          <>
+            <ColourFilters
+              brands={brandOptions}
+              brand={brandFilter}
+              onBrand={chooseBrand}
               groups={finishGroups}
               selected={selectedFinishes}
               onToggle={toggleFinish}
-              onClear={() => setSelectedFinishes([])}
-              total={colourPool.length}
+              onClear={() => {
+                setSelectedFinishes([]);
+                chooseBrand("");
+              }}
+              total={brandFilter ? shownColours.length : brandPool.length}
+              poolTotal={brandPool.length}
             />
             <div className={styles.colourGrid}>
               {shownColours.map((entry) => (
                 <button
                   type="button"
-                  key={`${entry.finish}-${entry.name}-${entry.thickness}`}
+                  key={`${entry.supplier}-${entry.finish}-${entry.name}-${entry.thickness}`}
                   className={`${styles.colour} ${
                     colour?.name === entry.name && colour?.finish === entry.finish && colour?.thickness === entry.thickness
                       ? styles.colourActive
@@ -655,14 +920,40 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
               ))}
             </div>
             <p className={styles.stepNote}>
-              Showing {shownColours.length} of {colourPool.length} colours. The badge on each tile is the
-              board thickness that colour comes in. You do not need to choose one, picking the colour
-              settles it.
+              Showing {shownColours.length} of {brandPool.length} colours
+              {brandFilter ? ` from ${brandFilter}` : ""}.{" "}
+              {needsProfile
+                ? `All ${thicknessChoice} board, because that is the thickness you chose above.`
+                : "The badge on each tile is the board thickness that colour comes in. You do not need to choose one, picking the colour settles it."}
             </p>
           </>
         );
 
-      case 6:
+      case 7:
+        // Three different empty states, and they are not the same thing. A
+        // library we could not read is our problem, a brand with no shape in
+        // this board is a real answer, and neither should look like the other.
+        if (profileLibrary.hasFailed) {
+          return (
+            <p className={styles.stepNote}>
+              We could not load the door profiles just now. Reload the page to try again, or add this front
+              to your list as it is and we will go through the profiles with you when we price it.
+            </p>
+          );
+        }
+        if (!profileLibrary.isReady) {
+          return (
+            <PcdLoader variant="inline" label="Loading the profiles" steps={["Loading profiles"]} />
+          );
+        }
+        if (!availableProfiles.length) {
+          return (
+            <p className={styles.stepNote}>
+              {colour?.supplier} does not make a routed door in {thickness} board. Go back a step and choose
+              another brand, or change the thickness.
+            </p>
+          );
+        }
         return (
           <>
             <div className={styles.chipRow}>
@@ -680,7 +971,8 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
                   className={`${styles.chip} ${categoryFilter === type ? styles.chipActive : ""}`}
                   onClick={() => setCategoryFilter(type)}
                 >
-                  {type} <em>{TIER_LABELS[PROFILE_TIERS[type]?.tier ?? 1]}</em>
+                  {type}{" "}
+                  {PROFILE_TIERS[type] ? <em>{TIER_LABELS[PROFILE_TIERS[type].tier]}</em> : null}
                 </button>
               ))}
             </div>
@@ -698,10 +990,11 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
               ))}
             </div>
             <p className={styles.stepNote}>
-              Showing {shownProfiles.length} of {availableProfiles.length} profiles.{" "}
-              {thickness === "18mm"
-                ? "Fluted and the 21mm-only profiles are hidden because you chose 18mm board."
-                : "Every profile family is available at 21mm."}
+              Showing {shownProfiles.length} of {availableProfiles.length} {colour?.supplier} profiles in{" "}
+              {thickness} board.{" "}
+              {profilesInOtherThickness > 0
+                ? `${profilesInOtherThickness} more ${colour?.supplier} shapes are cut too deep for ${thickness} board.`
+                : ""}
             </p>
           </>
         );
@@ -711,12 +1004,13 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
     }
   }
 
-  const visibleSteps = STEPS.filter((step) => step.id !== 6 || needsProfile);
+  // The thickness and the profile are the profiled path's own two steps.
+  const visibleSteps = STEPS.filter((step) => (step.id !== 5 && step.id !== 7) || needsProfile);
 
   return (
     <div className={styles.configurator}>
       <div className={styles.steps} ref={stepsRef}>
-        {visibleSteps.map((step) => {
+        {visibleSteps.map((step, index) => {
           const reachable = isStepReachable(step.id);
           const open = openStep === step.id && reachable;
           return (
@@ -731,7 +1025,10 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
                 aria-expanded={open}
                 disabled={!reachable}
               >
-                <span className={styles.stepNumber}>{step.id}</span>
+                {/* Position in the visible list, not the step's id, so a flat
+                    door counts 1 to 5 rather than skipping the two profiled
+                    steps and leaving gaps in the numbering. */}
+                <span className={styles.stepNumber}>{index + 1}</span>
                 <span className={styles.stepTitle}>{step.title}</span>
                 {summaries[step.id] ? (
                   <span className={styles.stepSummary}>{summaries[step.id]}</span>
@@ -776,7 +1073,9 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
             </strong>
             <span>
               {isComplete
-                ? `${cabinet.width}×${cabinet.height}mm · ${material.material} ${thickness} · ${colour.name}${profile ? ` · ${profile.name} (${TIER_LABELS[profile.tier]})` : ""}`
+                ? `${cabinet.height}×${cabinet.width}mm · ${colour.supplier} ${material.material} ${thickness} · ${colour.name}${
+                    profile ? ` · ${profile.name}` : needsProfile ? " · profile to confirm" : ""
+                  }`
                 : !systemId
                   ? "Nothing selected yet"
                   : !cabinet
@@ -785,9 +1084,11 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
                       ? "Pick a front layout"
                       : !material
                         ? "Flat or profiled?"
-                        : !colour
-                          ? "Pick a colour"
-                          : "Pick a profile"}
+                        : needsProfile && !thicknessChoice
+                          ? "Pick 18mm or 21mm board"
+                          : !colour
+                            ? "Pick a colour"
+                            : "Pick a profile"}
             </span>
           </div>
           <div className={styles.quantity}>
@@ -838,11 +1139,19 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
             ) : (
               <p className={styles.previewEmpty}>Pick a cabinet to see it here</p>
             )}
-            {cabinet ? <span className={styles.previewHint}>Drag to rotate</span> : null}
+            {/* The wording splits on pointer type in CSS: a mouse scrolls, a
+                finger pinches, and telling a phone to scroll is no help. */}
+            {cabinet ? (
+              <span className={styles.previewHint}>
+                Drag to rotate
+                <span className={styles.hintMouse}> · scroll to zoom</span>
+                <span className={styles.hintTouch}> · pinch to zoom</span>
+              </span>
+            ) : null}
           </div>
           <p className={styles.previewMeta}>
             {[
-              cabinet ? `${cabinet.width} × ${cabinet.height}mm` : null,
+              cabinet ? `${cabinet.height} × ${cabinet.width}mm` : null,
               layout?.name,
               colour?.name,
               material ? `${material.material} ${thickness}` : null,

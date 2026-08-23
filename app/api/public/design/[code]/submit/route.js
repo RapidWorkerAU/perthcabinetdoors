@@ -14,9 +14,10 @@
 // A request with NO selection still means "all of it", so an older client, or a
 // design sent from anywhere else, behaves exactly as it did before.
 
+import { hasKickboard } from "../../../../../lib/pcd-kickboard-utils";
 import { createSupabaseAdminClient } from "../../../../../../lib/supabase/admin";
 import { resolvePublicProject } from "../../../../../../lib/pcd-public-design";
-import { insertQuoteRequest, sendQuoteRequestEmails } from "../../../../../../lib/pcd-quote-request";
+import { IncompleteQuoteRequestError, insertQuoteRequest, sendQuoteRequestEmails } from "../../../../../../lib/pcd-quote-request";
 import { isIkeaPreset } from "../../../../../../lib/pcd-ikea-presets";
 import {
   buildPreset,
@@ -25,6 +26,8 @@ import {
   selectedPartKeys,
 } from "../../../../../../lib/pcd-design-parts";
 import { requestLinesForItem } from "../../../../../../lib/pcd-design-request-lines";
+import { createSupplierGuard, firstSupplierConflict } from "../../../../../../lib/pcd-supplier-guard";
+import { customerNoticeFor, reportSendFailures } from "../../../../../../lib/pcd-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +86,7 @@ function propSummary(items) {
   const counts = new Map();
   for (const item of items || []) {
     if (!isIkeaPreset(item)) continue;
-    const key = `${item.label || "IKEA cabinet"} ${item.width_mm || "?"}×${item.height_mm || "?"}mm`;
+    const key = `${item.label || "IKEA cabinet"} ${item.height_mm || "?"}×${item.width_mm || "?"}mm`;
     counts.set(key, (counts.get(key) || 0) + (Number(item.qty) || 1));
   }
   if (!counts.size) return "";
@@ -144,7 +147,7 @@ function frontSummary(item) {
       depth ? `${depth}mm deep` : "",
       "solid back",
       shelfColour ? `shelves in ${shelfColour}` : "",
-      item.has_kickboard ? "kickboard" : "",
+      hasKickboard(item) ? "kickboard" : "",
     ].filter(Boolean).join(" · ");
   }
   if (ft === "mixed") {
@@ -166,7 +169,7 @@ function frontSummary(item) {
 function askedForSummary(chosen) {
   if (!chosen.length) return "";
   const rows = chosen.map(({ item, keys }) => {
-    const size = `${item.width_mm || "?"}×${item.height_mm || "?"}mm`;
+    const size = `${item.height_mm || "?"}×${item.width_mm || "?"}mm`;
     const detail = frontSummary(item);
     const label = item.label || "Item";
     return `- ${label} (${size}): ${partsWanted(keys)}${detail ? ` — ${detail}` : ""}`;
@@ -273,13 +276,58 @@ export async function POST(request, { params }) {
       productName: "Website room design",
     };
 
+    // ONE BRAND PER LINE, the same rule the website quote form is held to.
+    //
+    // The planner now narrows the colour, the shape and the edge to the brand
+    // chosen on the part, so a mixed line should never be built in the first
+    // place. This stays as the backstop: a design saved before that narrowing
+    // existed, or a payload that did not come from our own screen, can still
+    // carry a Laminex colour under a Polytec profile - two real things that
+    // cannot be made together, and nothing downstream would disagree.
+    // See lib/pcd-supplier-guard.js.
+    const checkSupplier = await createSupplierGuard(supabase);
+    const mixed = firstSupplierConflict(lines, checkSupplier, (line, index) => line.productType || `Piece ${index + 1}`);
+    if (mixed) {
+      return Response.json(
+        {
+          ok: false,
+          error: `${mixed.label}: ${mixed.problem} Please change that piece and send your design again.`,
+          incompleteLines: [{ index: mixed.index, label: mixed.label, missing: ["supplierName"] }],
+        },
+        { status: 400 }
+      );
+    }
+
     const requestRow = await insertQuoteRequest(supabase, payload);
     // Flag the design as submitted so staff can tell it's been sent in.
     await supabase.from("pcd_design_projects").update({ status: "submitted" }).eq("id", project.id);
-    try { await sendQuoteRequestEmails(payload); } catch { /* the request is saved; email is best-effort */ }
 
-    return Response.json({ ok: true, id: requestRow.id });
+    // The design is saved and marked submitted, so the customer is done. An
+    // email that will not send is ours to chase and is reported rather than
+    // thrown. See lib/pcd-notify.js.
+    const failures = reportSendFailures(
+      `design request ${requestRow.id}`,
+      await sendQuoteRequestEmails(payload).catch((thrown) => [
+        { label: "business", ok: false, error: thrown?.message || "Send failed." },
+      ])
+    );
+
+    return Response.json({ ok: true, id: requestRow.id, notice: customerNoticeFor(failures) });
   } catch (error) {
+    // Something on the design is not finished enough to be quoted. The colour
+    // check above catches the usual case with a friendlier message; this is the
+    // backstop for anything else, and it names the piece rather than failing as
+    // a server error the customer can do nothing with.
+    if (error instanceof IncompleteQuoteRequestError) {
+      return Response.json(
+        {
+          ok: false,
+          error: `${error.message} Please finish that piece and send your design again.`,
+          incompleteLines: error.incompleteLines,
+        },
+        { status: 422 }
+      );
+    }
     return Response.json({ ok: false, error: error?.message || "Could not send your design." }, { status: 500 });
   }
 }

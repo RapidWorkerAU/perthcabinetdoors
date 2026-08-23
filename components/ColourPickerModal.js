@@ -259,8 +259,14 @@ function AdminBody({ items, value, matchOptions, thicknessDefault, showCost, onP
   const [matchMode, setMatchMode] = useState(false); // show colours used in THIS design
   // Start in flat mode if a flat colour is already set and no library colour is.
   const [flatMode, setFlatMode] = useState(Boolean(allowFlat && flatValue && !value?.colour));
+  // The draft carries the library row's id and brand, not just its name. A
+  // colour name is not unique across suppliers, so a name on its own cannot be
+  // priced or repriced later without someone re-picking it by hand. The public
+  // side of this modal has always returned both; the admin side returned neither,
+  // which is why nothing staged out of the design tool could be matched back to
+  // the library it was picked from.
   const [draft, setDraft] = useState(value?.colour
-    ? { material: value.material, finish: value.finish, colour: value.colour, thicknessMm: value.thickness_mm || null, cost: value.cost_per_sqm ?? 0 }
+    ? { id: value.colour_library_id || null, supplier: value.supplier || "", material: value.material, finish: value.finish, colour: value.colour, thicknessMm: value.thickness_mm || null, cost: value.cost_per_sqm ?? 0 }
     : null);
 
   const suppliers = useMemo(() => sortBrands(distinct(items, "supplier")), [items]);
@@ -287,11 +293,11 @@ function AdminBody({ items, value, matchOptions, thicknessDefault, showCost, onP
   const usedTiles = useMemo(() => (matchOptions || []).map((o) => {
     const s = o.style || {};
     const lib = items.find((i) => i.material === s.material && (i.finish || "") === (s.finish || "") && i.colour === s.colour);
-    return { colour: s.colour, finish: s.finish, material: s.material, thickness: s.thickness_mm ? `${s.thickness_mm}mm` : "", thicknessMm: s.thickness_mm || null, cost: s.cost_per_sqm || 0, src: lib?.src || "", role: o.label };
+    return { id: s.colour_library_id || lib?.id || null, supplier: s.supplier || lib?.supplier || "", colour: s.colour, finish: s.finish, material: s.material, thickness: s.thickness_mm ? `${s.thickness_mm}mm` : "", thicknessMm: s.thickness_mm || null, cost: s.cost_per_sqm || 0, src: lib?.src || "", role: o.label };
   }).filter((t) => t.colour), [matchOptions, items]);
 
   function pickUsed(t) {
-    setDraft({ material: t.material, finish: t.finish, colour: t.colour, thicknessMm: t.thicknessMm, cost: t.cost });
+    setDraft({ id: t.id || null, supplier: t.supplier || "", material: t.material, finish: t.finish, colour: t.colour, thicknessMm: t.thicknessMm, cost: t.cost });
     setMatchMode(false);
   }
   function save() {
@@ -302,6 +308,9 @@ function AdminBody({ items, value, matchOptions, thicknessDefault, showCost, onP
       colour: draft.colour,
       thickness_mm: draft.thicknessMm || value?.thickness_mm || thicknessDefault,
       cost_per_sqm: showCost ? (Number(draft.cost) || 0) : 0,
+      // Same two keys the public picker returns. What the quote is priced from.
+      colour_library_id: draft.id || null,
+      supplier: draft.supplier || "",
     });
   }
   const isSelected = (c) => draft && draft.colour === c.colour && (draft.finish || "") === (c.finish || "") && draft.material === c.material && (draft.thicknessMm || null) === (c.thicknessMm || null);
@@ -346,7 +355,7 @@ function AdminBody({ items, value, matchOptions, thicknessDefault, showCost, onP
             : matchMode
               ? <SwatchGrid colours={usedTiles} showThickness showCost={showCost} empty="No colours used in this design yet." isSelected={isSelected} onClick={pickUsed} />
               : <SwatchGrid colours={colours} showThickness showCost={showCost} empty="No colours match — try a different filter or clear the search."
-                  isSelected={isSelected} onClick={(c) => setDraft({ material: c.material, finish: c.finish, colour: c.colour, thicknessMm: c.thicknessMm, cost: c.cost })} />}
+                  isSelected={isSelected} onClick={(c) => setDraft({ id: c.id || null, supplier: c.supplier || "", material: c.material, finish: c.finish, colour: c.colour, thicknessMm: c.thicknessMm, cost: c.cost })} />}
         </div>
       </div>
       {!flatMode && (

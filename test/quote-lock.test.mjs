@@ -8,21 +8,51 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { assertQuoteEditable, orderForQuote, unconfiguredCabinets } from "../lib/pcd-quote-lock.js";
 
-function fakeSupabase(order) {
+// The lock now asks two questions, so the stub has to answer both: has this
+// quote become an order, and is it currently sitting with a customer.
+function fakeSupabase(order, quoteStatus = "draft") {
   return {
     from(table) {
-      assert.equal(table, "pcd_orders");
+      const row = table === "pcd_orders" ? order : { status: quoteStatus };
       return {
         select: () => ({
-          eq: () => ({ maybeSingle: () => Promise.resolve({ data: order, error: null }) }),
+          eq: () => ({ maybeSingle: () => Promise.resolve({ data: row, error: null }) }),
         }),
       };
     },
   };
 }
 
-test("a quote with no order is editable", async () => {
-  await assertQuoteEditable(fakeSupabase(null), "quote-1");
+test("a draft quote with no order is editable", async () => {
+  await assertQuoteEditable(fakeSupabase(null, "draft"), "quote-1");
+});
+
+// The customer said no, so there is nothing of theirs left to protect and the
+// next version is a new proposal.
+test("a rejected quote is editable again", async () => {
+  await assertQuoteEditable(fakeSupabase(null, "rejected"), "quote-1");
+});
+
+// The fault this closed: a sent quote was as editable as a draft, so a customer
+// could approve a version that had changed since they read it.
+["sent", "viewed"].forEach((status) => {
+  test(`a ${status} quote is sealed while the customer holds it`, async () => {
+    await assert.rejects(
+      () => assertQuoteEditable(fakeSupabase(null, status), "quote-1"),
+      (error) => {
+        assert.equal(error.status, 409, "a rule, not a crash");
+        assert.equal(error.lockState, "sealed");
+        assert.equal(error.canOverride, true, "the screen has to know it can offer the override");
+        assert.match(error.message, /admin override/i, "and the message has to say the way through");
+        return true;
+      }
+    );
+  });
+});
+
+// A status nobody anticipated must not be a way past the rule.
+test("an unrecognised status is treated as sealed, not open", async () => {
+  await assert.rejects(() => assertQuoteEditable(fakeSupabase(null, "awaiting_something_new"), "quote-1"));
 });
 
 test("a quote behind an order is refused, and the message names the order", async () => {

@@ -1741,3 +1741,102 @@
     padding: 22px 16px;
   }
 }
+
+/* ── STEP ONE: WHAT ARE WE MAKING? ─────────────────────────────────────────
+   Cards rather than a dropdown. The answer decides every question after it,
+   and plenty of people filling this in have never ordered a cabinet door, so
+   a line of plain words is worth more than a tidier control. */
+.typeChooser {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  padding: 22px 24px;
+}
+
+.typeCard {
+  background: #fff;
+  border: 1px solid #e4dfd4;
+  border-radius: 10px;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 4px;
+  padding: 14px 16px;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.typeCard:hover {
+  border-color: #1f6f4a;
+}
+
+.typeCard:focus-visible {
+  outline: 2px solid #1f6f4a;
+  outline-offset: 2px;
+}
+
+.typeCard strong {
+  color: #2a2925;
+  font-size: 14.5px;
+}
+
+.typeCard span {
+  color: #7a766c;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.typeCardOn {
+  border-color: #1f6f4a;
+  box-shadow: inset 0 0 0 1px #1f6f4a;
+}
+
+.typeBackLink {
+  background: none;
+  border: 0;
+  color: #1f6f4a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 14px 24px 0;
+  text-align: left;
+  text-decoration: underline;
+}
+
+/* ── THE HARDWARE LIST ─────────────────────────────────────────
+   A Hardware line has no board, so this is the whole of its spec. Type then
+   item, the same shape as the profile pickers above it, because a wall of
+   cards reads fine at eight items and not at all at fifty. */
+.productModalWide {
+  display: grid;
+  gap: 6px;
+  grid-column: span 2;
+}
+
+.productModalWide > label {
+  color: #5a5a52;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.hardwareFields {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hardwareFields .field {
+  margin: 0;
+}
+
+.hardwarePickerError :global(.pcdSelect),
+.hardwarePickerError button {
+  border-color: #b42318;
+}
+
+@media (max-width: 640px) {
+  .typeChooser,
+  .productModalWide {
+    grid-column: span 1;
+  }
+}
