@@ -14,7 +14,7 @@
 // A request with NO selection still means "all of it", so an older client, or a
 // design sent from anywhere else, behaves exactly as it did before.
 
-import { hasKickboard } from "../../../../../lib/pcd-kickboard-utils";
+import { hasKickboard } from "../../../../../../lib/pcd-kickboard-utils";
 import { createSupabaseAdminClient } from "../../../../../../lib/supabase/admin";
 import { resolvePublicProject } from "../../../../../../lib/pcd-public-design";
 import { IncompleteQuoteRequestError, insertQuoteRequest, sendQuoteRequestEmails } from "../../../../../../lib/pcd-quote-request";
