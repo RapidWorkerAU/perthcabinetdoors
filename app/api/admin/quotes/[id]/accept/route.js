@@ -20,6 +20,7 @@ import {
   acceptanceGaps,
   acceptQuoteForCustomer,
 } from "../../../../../../lib/pcd-quote-acceptance";
+import { sendQuoteApprovedToCustomer } from "../../../../../../lib/pcd-customer-confirmations";
 import { editability } from "../../../../../../lib/pcd-document-lock";
 import { orderForQuote } from "../../../../../../lib/pcd-quote-lock";
 
@@ -103,14 +104,37 @@ export async function POST(request, { params }) {
       request,
     });
 
+    // ACCEPTED ON THEIR BEHALF STILL DESERVES A CONFIRMATION.
+    //
+    // They said yes on the phone, so nothing has been sent to them at all: no
+    // approval of their own to see, no payment page. A written confirmation with
+    // the order number on it is the only record they get, and it is the one they
+    // will look for. Never throws: the order is already raised.
+    //
+    // Sent whether or not a deposit is owed, unlike the customer's own
+    // approval. Nothing here takes them to a payment page, so there is no
+    // second email for this one to collide with.
+    const { data: raisedOrder } = orderId
+      ? await context.supabase.from("pcd_orders").select("order_number").eq("id", orderId).maybeSingle()
+      : { data: null };
+    const confirmation = await sendQuoteApprovedToCustomer({
+      quote,
+      orderNumber: raisedOrder?.order_number || "",
+    });
+
     return Response.json({
       ok: true,
       orderId,
       depositAmount,
+      confirmationSent: confirmation.ok,
+      confirmationError: confirmation.ok ? "" : confirmation.error,
       message:
-        depositAmount > 0
+        (depositAmount > 0
           ? `Order raised. A deposit of ${depositAmount.toFixed(2)} is recorded as owing and has not been requested.`
-          : "Order raised.",
+          : "Order raised.") +
+        (confirmation.ok
+          ? " The customer has been emailed a confirmation."
+          : ` The customer was NOT emailed: ${confirmation.error}`),
     });
   } catch (error) {
     return Response.json(

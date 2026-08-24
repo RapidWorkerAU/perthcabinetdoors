@@ -1,5 +1,6 @@
 import { createCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
 import { applyAcceptedVariation } from "../../../../lib/pcd-order-variations";
+import { sendVariationApprovedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { formatMoney, toNumber } from "../../../../lib/pcd-quote-utils";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { approvalEvidence } from "../../../../lib/pcd-approval-evidence";
@@ -227,6 +228,9 @@ export async function POST(request) {
       // The customer's answer IS recorded, so they are not asked to do it again.
       return Response.json({ ok: true, applied: false });
     }
+    // The change is on the order. Tell them it landed: approving a variation
+    // used to be completely silent.
+    await sendVariationApprovedToCustomer({ variation, order: variation.pcd_orders });
     return Response.json({ ok: true, applied: true });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not record variation response." }, { status: 500 });

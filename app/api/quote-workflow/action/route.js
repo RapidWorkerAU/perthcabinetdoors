@@ -1,4 +1,5 @@
 import { createOrderFromQuote } from "../../../../lib/pcd-order-from-quote";
+import { sendQuoteApprovedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { approvalEvidence } from "../../../../lib/pcd-approval-evidence";
 import { createCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
@@ -287,6 +288,22 @@ export async function POST(request) {
           client_name: String(payload.client_name || "").trim(),
         },
       });
+    }
+
+    // APPROVED, WITH NOTHING TO PAY YET.
+    //
+    // Reaching here on an approval means no deposit was owed: the deposit path
+    // returns further up, with the customer on their way to the payment page,
+    // and the payment confirmation follows the moment they pay. This is the
+    // other half of that, and it used to be silence.
+    //
+    // Never throws, so a refused email cannot undo an approval that is already
+    // recorded.
+    if (action === "approved") {
+      const { data: raisedOrder } = orderId
+        ? await supabase.from("pcd_orders").select("order_number").eq("id", orderId).maybeSingle()
+        : { data: null };
+      await sendQuoteApprovedToCustomer({ quote, orderNumber: raisedOrder?.order_number || "" });
     }
 
     return Response.json({ ok: true, orderId });

@@ -1,6 +1,7 @@
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { applyAcceptedVariation } from "../../../../lib/pcd-order-variations";
 import { sendPaymentReceivedSalesEmail } from "../../../../lib/pcd-payment-notifications";
+import { sendPaymentReceivedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { fromCents, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
 import { syncDepositFields } from "../../../../lib/pcd-order-deposit";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
@@ -150,6 +151,11 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
   } catch (emailError) {
     console.error("Could not send payment received notification email.", emailError);
   }
+
+  // AND THE CUSTOMER. sales@ has always been told; the person who just paid us
+  // was told nothing at all. It never throws, so a refused email cannot undo a
+  // payment that has already arrived.
+  await sendPaymentReceivedToCustomer({ payment, order, quote });
 }
 
 export async function POST(request) {

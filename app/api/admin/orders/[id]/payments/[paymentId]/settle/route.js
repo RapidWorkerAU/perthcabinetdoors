@@ -17,6 +17,7 @@ import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
 import { syncDepositFields } from "../../../../../../../../lib/pcd-order-deposit";
 import { settlementMethodLabel, settlementPatch, undoSettlementPatch } from "../../../../../../../../lib/pcd-payment-settlement";
+import { sendPaymentReceivedToCustomer } from "../../../../../../../../lib/pcd-customer-confirmations";
 import { expireCheckoutSession } from "../../../../../../../../lib/pcd-stripe";
 
 async function idsFromParams(params) {
@@ -143,11 +144,30 @@ export async function POST(request, { params }) {
         ? " The payment link has been cancelled."
         : " WARNING: the payment link could NOT be cancelled, so the customer could still pay it. Cancel it in Stripe.";
 
+    // THE CUSTOMER IS TOLD, WHICHEVER WAY THE MONEY ARRIVED.
+    //
+    // A Stripe payment has always emailed sales@ and nothing else. Money marked
+    // as received here emailed nobody at all, so the same event told the
+    // customer two different things depending on how they paid. It never
+    // throws: the money is already recorded by this point.
+    const { data: paidOrder } = await context.supabase
+      .from("pcd_orders")
+      .select("order_number, customer_name, customer_email, currency")
+      .eq("id", orderId)
+      .maybeSingle();
+    const confirmation = await sendPaymentReceivedToCustomer({ payment: settled, order: paidOrder });
+
     return Response.json({
       ok: true,
       payment: settled,
       linkClosed: linkClosure.expired || linkClosure.alreadyClosed,
-      message: `Marked as paid by ${settlementMethodLabel(payload.method).toLowerCase()}.${linkNote}`,
+      // Said on screen, because a receipt the customer never got is worth
+      // knowing about while you are still looking at the payment.
+      confirmationSent: confirmation.ok,
+      confirmationError: confirmation.ok ? "" : confirmation.error,
+      message:
+        `Marked as paid by ${settlementMethodLabel(payload.method).toLowerCase()}.${linkNote}` +
+        (confirmation.ok ? " The customer has been emailed a confirmation." : ` The customer was NOT emailed: ${confirmation.error}`),
     });
   } catch (error) {
     return Response.json(
