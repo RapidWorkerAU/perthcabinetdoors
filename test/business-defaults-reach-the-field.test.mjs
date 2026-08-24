@@ -43,13 +43,36 @@ const panel = (over = {}) => ({
 test("the calculated figure is what the boxes are filled with, not a placeholder", () => {
   assert.match(EDITOR, /value=\{labourFieldValue\}/);
   assert.match(EDITOR, /value=\{edgingFieldValue\}/);
-  assert.match(EDITOR, /labourFieldValue = labourOverridden \? form\.labour_hours : String\(totals\.calculated_labour_hours/);
-  assert.match(EDITOR, /edgingFieldValue = edgingOverridden[\s\S]{0,120}totals\.edging_calculated_cost_ex_gst/);
+  assert.match(EDITOR, /labourFieldValue = showsTyped\("labour_hours", labourOverridden\)[\s\S]{0,120}totals\.calculated_labour_hours/);
+  assert.match(EDITOR, /edgingFieldValue = showsTyped\("edging_cost_override_ex_gst", edgingOverridden\)[\s\S]{0,160}totals\.edging_calculated_cost_ex_gst/);
   // The placeholder that used to ghost the figure behind an empty box.
   assert.ok(
     !EDITOR.includes("placeholder={String(totals.edging_calculated_cost_ex_gst"),
     "the edging cost is a placeholder again"
   );
+});
+
+// ── and it has to be possible to empty it ─────────────────────────────────
+//
+// Showing the calculated figure whenever the box is blank made the box
+// impossible to clear: backspace over the last character and "blank" meant
+// "follow the lines", so the figure went straight back in on the next render.
+// Selecting the number and typing over it worked, because that never passes
+// through blank. Deleting it did not.
+test("a calculated box holds an empty box while somebody is clearing it", () => {
+  assert.match(EDITOR, /const showsTyped = \(field, overridden\) => overridden \|\| focusedField === field/);
+  assert.match(EDITOR, /onFocus=\{\(\) => setFocusedField\("labour_hours"\)\}/);
+  assert.match(EDITOR, /onFocus=\{\(\) => setFocusedField\("edging_cost_override_ex_gst"\)\}/);
+  // Leaving it empty is what puts it back to following the lines.
+  assert.match(EDITOR, /onBlur=\{\(\) => setFocusedField\(""\)\}/);
+});
+
+// A cost of nothing is an empty box. Stored as a number, a cleared cost came
+// back as "0" typed in the box, which is the same complaint one save later.
+test("a cost cleared to nothing comes back empty, not as a zero", () => {
+  assert.match(EDITOR, /function costForForm\(value\) \{[\s\S]{0,80}Number\(value\) > 0 \? value : ""/);
+  assert.match(EDITOR, /travel_cost_ex_gst: costForForm\(quote\.travel_cost_ex_gst\)/);
+  assert.match(EDITOR, /removal_cost_ex_gst: costForForm\(quote\.removal_cost_ex_gst\)/);
 });
 
 test("both boxes can be put back to the calculated figure", () => {

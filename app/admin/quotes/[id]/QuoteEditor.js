@@ -190,6 +190,16 @@ function hourlyRateForForm(value) {
   return Number(value) > 0 ? value : "";
 }
 
+// A COST OF NOTHING IS AN EMPTY BOX, NOT A ZERO.
+//
+// The costs are stored as numbers, so clearing one and saving stored 0 and the
+// quote came back with "0" typed in the box. Clear it again and it is 0 again:
+// the same "it will not let me delete it", one save slower. Nothing is charged
+// either way, so the box says nothing.
+function costForForm(value) {
+  return Number(value) > 0 ? value : "";
+}
+
 function lineFromQuoteLine(line) {
   return {
     ...emptyLine,
@@ -242,12 +252,14 @@ function formFromQuote(quote) {
     // box shows what the lines work out to and stays editable.
     labour_hours: quote.manual_labour_hours ?? "",
     worker_hourly_rate: hourlyRateForForm(quote.worker_hourly_rate),
-    travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
-    delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
-    installation_cost_ex_gst: quote.installation_cost_ex_gst ?? "",
-    painting_cost_ex_gst: quote.painting_cost_ex_gst ?? "",
-    glass_cost_ex_gst: quote.glass_cost_ex_gst ?? "",
-    removal_cost_ex_gst: quote.removal_cost_ex_gst ?? "",
+    travel_cost_ex_gst: costForForm(quote.travel_cost_ex_gst),
+    delivery_cost_ex_gst: costForForm(quote.delivery_cost_ex_gst),
+    installation_cost_ex_gst: costForForm(quote.installation_cost_ex_gst),
+    painting_cost_ex_gst: costForForm(quote.painting_cost_ex_gst),
+    glass_cost_ex_gst: costForForm(quote.glass_cost_ex_gst),
+    removal_cost_ex_gst: costForForm(quote.removal_cost_ex_gst),
+    // The override, not the total: a real 0 here means "charge nothing for
+    // edging" and has to survive, so this one keeps its own rule.
     edging_cost_override_ex_gst: quote.edging_cost_override_ex_gst ?? "",
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
@@ -282,12 +294,14 @@ function mergeQuoteIntoForm(current, quote) {
     // box shows what the lines work out to and stays editable.
     labour_hours: quote.manual_labour_hours ?? "",
     worker_hourly_rate: hourlyRateForForm(quote.worker_hourly_rate),
-    travel_cost_ex_gst: quote.travel_cost_ex_gst ?? "",
-    delivery_cost_ex_gst: quote.delivery_cost_ex_gst ?? "",
-    installation_cost_ex_gst: quote.installation_cost_ex_gst ?? "",
-    painting_cost_ex_gst: quote.painting_cost_ex_gst ?? "",
-    glass_cost_ex_gst: quote.glass_cost_ex_gst ?? "",
-    removal_cost_ex_gst: quote.removal_cost_ex_gst ?? "",
+    travel_cost_ex_gst: costForForm(quote.travel_cost_ex_gst),
+    delivery_cost_ex_gst: costForForm(quote.delivery_cost_ex_gst),
+    installation_cost_ex_gst: costForForm(quote.installation_cost_ex_gst),
+    painting_cost_ex_gst: costForForm(quote.painting_cost_ex_gst),
+    glass_cost_ex_gst: costForForm(quote.glass_cost_ex_gst),
+    removal_cost_ex_gst: costForForm(quote.removal_cost_ex_gst),
+    // The override, not the total: a real 0 here means "charge nothing for
+    // edging" and has to survive, so this one keeps its own rule.
     edging_cost_override_ex_gst: quote.edging_cost_override_ex_gst ?? "",
     other_cost_ex_gst: 0,
     markup_percent: quote.markup_percent ?? 0,
@@ -930,6 +944,9 @@ export default function QuoteEditor({ quoteId }) {
   const { toast } = useToast();
   const [publishEmail, setPublishEmail] = useState(null);
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
+  // Which calculated field the cursor is in, so it can hold an empty box while
+  // somebody is clearing it. See showsTyped.
+  const [focusedField, setFocusedField] = useState("");
   // Whether these are the REAL settings or still the built-in constants. Without
   // this the two are indistinguishable, which is how a line came to be stamped
   // with a markup nobody configured.
@@ -1012,9 +1029,26 @@ export default function QuoteEditor({ quoteId }) {
   // following the lines.
   const isOverridden = (value) => String(value ?? "").trim() !== "";
   const labourOverridden = isOverridden(form.labour_hours);
-  const labourFieldValue = labourOverridden ? form.labour_hours : String(totals.calculated_labour_hours ?? 0);
   const edgingOverridden = isOverridden(form.edging_cost_override_ex_gst);
-  const edgingFieldValue = edgingOverridden
+
+  // WHILE YOU ARE IN THE BOX, THE BOX IS YOURS.
+  //
+  // These two fields show what the lines work out to until somebody types over
+  // it, which is right, and it made them impossible to clear. Backspace over
+  // the last character and the field was empty for no time at all: empty means
+  // "follow the lines", so the calculated figure was put straight back, on the
+  // very next render. You could replace the number by selecting it and typing,
+  // because that never passes through empty, but you could not delete it. Which
+  // is exactly what it felt like.
+  //
+  // The calculated figure is what the field shows when nobody is in it. While
+  // the cursor is in it, it shows what has been typed, blank included, and
+  // leaving it empty goes back to following the lines on the way out.
+  const showsTyped = (field, overridden) => overridden || focusedField === field;
+  const labourFieldValue = showsTyped("labour_hours", labourOverridden)
+    ? form.labour_hours
+    : String(totals.calculated_labour_hours ?? 0);
+  const edgingFieldValue = showsTyped("edging_cost_override_ex_gst", edgingOverridden)
     ? form.edging_cost_override_ex_gst
     : String(totals.edging_calculated_cost_ex_gst ?? 0);
 
@@ -3317,6 +3351,8 @@ export default function QuoteEditor({ quoteId }) {
                     min="0"
                     step="0.01"
                     value={labourFieldValue}
+                    onFocus={() => setFocusedField("labour_hours")}
+                    onBlur={() => setFocusedField("")}
                     onChange={e => updateForm("labour_hours", e.target.value)}
                   />
                 </label>
@@ -3391,6 +3427,8 @@ export default function QuoteEditor({ quoteId }) {
                         min="0"
                         step="0.01"
                         value={edgingFieldValue}
+                        onFocus={() => setFocusedField("edging_cost_override_ex_gst")}
+                        onBlur={() => setFocusedField("")}
                         onChange={e => updateForm("edging_cost_override_ex_gst", e.target.value)}
                         className="flex-1 h-full px-3 text-[13px] text-[#1a1a18] focus:outline-none bg-white font-mono"
                       />
