@@ -2866,6 +2866,34 @@ export default function OrderDetail({ orderId }) {
     }
   }
 
+  // AN APPROVED VARIATION THAT NEVER REACHED THE ORDER.
+  //
+  // Approving records the customer's answer and then writes the variation onto
+  // the order. The second half can fail on its own, and when it does the
+  // variation sits at "approved" while the order still shows the old money: the
+  // balance owing is short by exactly what the customer agreed to, and nothing
+  // on the page says so. This finishes it.
+  async function applyVariation(variationId) {
+    setIsSavingOrder(true);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/variations/${variationId}/apply`, {
+        method: "POST",
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        // The message is whatever stopped it, which is the thing to fix before
+        // pressing it again.
+        window.alert(result?.error || "Could not write this variation onto the order.");
+        return;
+      }
+      router.refresh();
+    } catch (error) {
+      window.alert(error?.message || "Could not write this variation onto the order.");
+    } finally {
+      setIsSavingOrder(false);
+    }
+  }
+
   function renderVariations() {
     return (
       <div className={tw.card}>
@@ -2917,6 +2945,30 @@ export default function OrderDetail({ orderId }) {
                   <td className={tw.td + " font-mono"}>{formatMoney(variation.deposit_topup_required, variation.currency || order.currency || "AUD")}</td>
                   <td className={tw.td}>{formatDate(variation.sent_at)}</td>
                   <td className={tw.tdLast}>{formatDate(variation.approved_at || variation.applied_at)}</td>
+                </tr>
+              ))}
+              {/* Approved and never written onto the order. Said here, on the
+                  order, because this is the screen where the money looks right
+                  and is not. */}
+              {variations.filter((v) => v.status === "approved").map((variation) => (
+                <tr key={`stuck-${variation.id}`} onClick={(event) => event.stopPropagation()}>
+                  <td className={tw.tdLast} colSpan={7}>
+                    <div className="flex flex-wrap items-center gap-2 rounded-[6px] border border-[#fcd34d] bg-[#fffbeb] px-3 py-2">
+                      <span className="text-[12px] text-[#92400e]">
+                        <strong className="font-semibold">{variation.variation_number} was approved but has not been added to this order.</strong>{" "}
+                        The totals below do not include it
+                        {variation.apply_error ? `, because: ${variation.apply_error}` : "."}
+                      </span>
+                      <button
+                        type="button"
+                        className={tw.smBtn + " ml-auto"}
+                        disabled={isSavingOrder}
+                        onClick={() => applyVariation(variation.id)}
+                      >
+                        Add it to the order
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!variations.length ? (

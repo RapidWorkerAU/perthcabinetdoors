@@ -886,11 +886,17 @@ export default function VariationEditor({ orderId, variationId }) {
       setSendWarning("");
       setPublishEmail(null);
       setVariation((current) => ({ ...current, status: "sent", sent_at: new Date().toISOString(), viewed_at: null }));
+      // NOT SENT IS NOT ALWAYS "NOT CONFIGURED". A refused message came back
+      // from Resend as a quiet failure and this said the variation had gone.
+      // The variation IS published either way, so the link is offered rather
+      // than the whole thing reading as a failure.
       toast({
         title: payload.emailSent
           ? "Variation sent to customer."
-          : `Variation published. Resend is not configured, so use this link: ${payload.viewUrl}`,
-        variant: "success",
+          : payload.emailError
+            ? `Variation published, but the email did not go out: ${payload.emailError} Send it again, or use this link: ${payload.viewUrl}`
+            : `Variation published. Resend is not configured, so use this link: ${payload.viewUrl}`,
+        variant: payload.emailSent ? "success" : "error",
       });
     } catch (error) {
       toast({ title: error?.message || "Could not send variation.", variant: "error" });
@@ -1448,7 +1454,7 @@ export default function VariationEditor({ orderId, variationId }) {
                   </select>
                 </label>
                 <label className={tw.fieldLabel}>Deposit %
-                  <input className={tw.fieldInput} type="number" min="0" max="100" value={variation.deposit_percent || 0} disabled={!isEditable || !variation.deposit_required} onChange={(event) => setVariation((current) => ({ ...current, deposit_percent: event.target.value }))} onBlur={(event) => saveVariation({ deposit_percent: event.target.value })} />
+                  <input className={tw.fieldInput} type="number" min="0" max="100" value={variation.deposit_percent ?? ""} disabled={!isEditable || !variation.deposit_required} onChange={(event) => setVariation((current) => ({ ...current, deposit_percent: event.target.value }))} onBlur={(event) => saveVariation({ deposit_percent: event.target.value })} />
                 </label>
                 <label className={tw.fieldLabel}>Notes
                   <textarea className={tw.textarea} rows={4} value={variation.notes || ""} disabled={!isEditable} onChange={(event) => setVariation((current) => ({ ...current, notes: event.target.value }))} onBlur={(event) => saveVariation({ notes: event.target.value })} />

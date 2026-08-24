@@ -4,6 +4,7 @@ import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import { assertSendable } from "../../../../../../lib/pcd-document-lock";
 import { attachQuotePdf } from "../../../../../../lib/pcd-quote-pdf-attachment";
 import { agentForUser, recordOutboundEmail } from "../../../../../../lib/pcd-desk-outbound";
+import { sendEmail } from "../../../../../../lib/pcd-send-email";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -172,17 +173,23 @@ export async function POST(request, { params }) {
     });
 
     let emailSent = false;
+    // WHY IT DID NOT GO, when it did not go. Resend answers a refusal rather
+    // than throwing one, and this used to be read as success. See
+    // lib/pcd-send-email.js.
+    let emailError = "";
+    if (!quote.customer_email) emailError = "This quote has no customer email address on it.";
     if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && quote.customer_email) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const html = quoteEmailHtml({ quote, viewUrl, message: emailMessage, includePrice });
-      const sent = await resend.emails.send({
+      const sent = await sendEmail(resend, {
         from: process.env.RESEND_FROM_EMAIL,
         to: [quote.customer_email],
         subject: emailSubject,
         html,
         text: emailMessage,
       });
-      emailSent = true;
+      emailSent = sent.ok;
+      emailError = sent.error;
 
       // The email goes out through Resend, which never touches the mailbox the
       // desk syncs, so nothing about it reached the customer's conversation and
@@ -194,13 +201,13 @@ export async function POST(request, { params }) {
         subject: emailSubject,
         bodyHtml: html,
         bodyText: emailMessage,
-        providerMessageId: sent?.data?.id || null,
+        providerMessageId: sent.id,
         agentId: (await agentForUser(context.supabase, context.user?.email))?.id || null,
         newTicketSubject: emailSubject,
       });
     }
 
-    return Response.json({ ok: true, emailSent, viewUrl, pdfAttached, pdfError });
+    return Response.json({ ok: true, emailSent, emailError, viewUrl, pdfAttached, pdfError });
   } catch (error) {
     return Response.json(
       { ok: false, error: error?.message || "Could not send quote." },

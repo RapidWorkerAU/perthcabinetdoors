@@ -117,8 +117,13 @@ test("a line note and a production note both print", () => {
   const printed = build([
     thermoDoor({ notes: "Customer collecting", production_notes: "Check the hinge side" }),
   ]);
-  assert.match(printed, /Customer collecting/);
-  assert.match(printed, /Check the hinge side/, "these used to collapse to one, so writing one hid the other");
+  // Matched with the wrapping flattened. A note is wrapped to its column, so
+  // where a phrase breaks is a fact about the column width and changes whenever
+  // that does. What has to be true is that both notes are on the sheet, not
+  // that they landed on one line.
+  const flat = printed.replace(/\s+/g, " ");
+  assert.match(flat, /Customer collecting/);
+  assert.match(flat, /Check the hinge side/, "these used to collapse to one, so writing one hid the other");
 });
 
 // ── a blank is a question, not an instruction ──────────────────────────────

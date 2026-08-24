@@ -34,9 +34,14 @@ const VARIATION = readFileSync(new URL("../lib/pcd-order-variations.js", import.
 
 // The block that builds the order lines, so a mention of a field anywhere else
 // in the file cannot pass for carrying it.
+// Searched FROM the start of the block, not from the top of the file. A
+// mention of the table anywhere above it, in a comment on a helper for
+// instance, would otherwise end the slice before it began and this would check
+// an empty string while passing.
+const ORDER_LINES_START = CONVERSION.indexOf("const orderLines = lines.map(");
 const ORDER_LINES = CONVERSION.slice(
-  CONVERSION.indexOf("const orderLines = lines.map("),
-  CONVERSION.indexOf("pcd_order_line_items")
+  ORDER_LINES_START,
+  CONVERSION.indexOf("pcd_order_line_items", ORDER_LINES_START)
 );
 
 test("the order line builder was actually found", () => {
@@ -88,6 +93,9 @@ test("accepting a quote carries everything a variation carries", () => {
   const ONLY_ONE_PATH = new Set([
     "quote_line_item_id", // a variation line has no quote line behind it
     "variation_id", // says which variation added it
+    // Which LINE of it. Only the variation path can know that, and it is what
+    // lets a failed apply be retried without writing the lines a second time.
+    "variation_line_id",
     "variation_status", // says it was added rather than quoted
     "cabinet_config_snapshot", // taken from the quote's cabinet at acceptance
     "order_id",

@@ -183,9 +183,12 @@ function WallField({ draft, room, onChange, hint = true, rotationNote = null }) 
       {draft.wall === "island" && (
         <label className={styles.fieldLabel}>
           Rotation
+          {/* ?? rather than ||, so a rotation of 0 is a value and not a
+              fallback. It is a select today, but || is the pattern that makes
+              typed fields impossible to clear and it should not be anywhere. */}
           <select
             className={styles.fieldSelect}
-            value={draft.rotation || 0}
+            value={draft.rotation ?? 0}
             onChange={(e) => onChange({ rotation: Number(e.target.value) })}
           >
             {ROTATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -219,6 +222,26 @@ function WallField({ draft, room, onChange, hint = true, rotationNote = null }) 
 //
 // On failure this re-queues the fields (so the edit survives to a retry or to
 // navigating away) and surfaces the reason. On success it clears any error.
+// A NUMBER FIELD HAS TO LET YOU EMPTY IT.
+//
+// Coercing what was typed on its way INTO the box is what makes a field feel
+// broken. Backspace over the last character, the box is briefly empty, the
+// coercion turns that into 0 or into a minimum, and the number reappears under
+// the cursor. Selecting it and typing over it works, because that never passes
+// through empty. Deleting it does not. It reads as the screen fighting you.
+//
+// So nothing is coerced on the way in. The box holds exactly what was typed,
+// empty included, and whatever reads the value decides what an empty one means.
+// That is where the question belongs: only the reader knows whether nothing
+// means zero, means "work it out", or means "not set".
+const typedNumber = (raw, clamp) => {
+  const text = String(raw ?? "");
+  if (text.trim() === "") return "";
+  const value = Number(text);
+  if (!Number.isFinite(value)) return text;
+  return clamp ? clamp(value) : value;
+};
+
 function flushItemPatch({ pendingPatchRef, itemId, onItemChange, setSaving, setSaveError }) {
   const patch = pendingPatchRef.current;
   pendingPatchRef.current = {};
@@ -1241,6 +1264,14 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   const [draft, setDraft]         = useState(item);
   const [saving, setSaving]       = useState(false);
   const [saveError, setSaveError]  = useState(null);
+  // WHICH CALCULATED BOX THE CURSOR IS IN.
+  //
+  // A box that shows a worked-out figure whenever it is empty cannot be
+  // emptied: backspace over the last character and the figure is put straight
+  // back, on the very next render. While somebody is in the box it shows what
+  // they have typed, blank included, and it goes back to showing the
+  // calculation when they leave it.
+  const [focusedField, setFocusedField] = useState("");
   const timerRef                  = useRef(null);
   const latestRef                 = useRef(draft);
   const pendingPatchRef           = useRef({});
@@ -1815,11 +1846,12 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // millimetres — an oven bay is 600mm however tall the cabinet is. The
   // resolved millimetres are shown either way, so what actually gets cut is
   // never a mystery.
+  const holdsTyped = (key, typed) => focusedField === key || String(typed ?? "").trim() !== "";
+
   const renderBayHeightFields = (idx, sec) => {
     const pinned = bayIsPinned(sec);
     const resolvedMm = Math.round(Number(sec.height_mm) || 0);
     const resolvedPct = bayPercentOfCabinet(resolvedMm, draft.height_mm);
-    const typedPct = Number(sec.height_pct);
     return (
       <>
         <div className={styles.fieldRow}>
@@ -1827,12 +1859,14 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
             {pinned ? "Fixed height mm" : "Share of cabinet %"}
             {pinned ? (
               <input className={styles.fieldInput} type="number" min="1"
-                value={Math.round(Number(sec.height_lock_mm) || 0) || ""}
-                onChange={(e) => updateSection(idx, { height_lock_mm: Math.max(1, Number(e.target.value) || 0) }, false)} />
+                value={sec.height_lock_mm ?? ""}
+                onChange={(e) => updateSection(idx, { height_lock_mm: typedNumber(e.target.value) }, false)} />
             ) : (
               <input className={styles.fieldInput} type="number" min="0.1" step="0.1"
-                value={Number.isFinite(typedPct) && typedPct > 0 ? typedPct : resolvedPct}
-                onChange={(e) => updateSection(idx, { height_pct: Math.max(0.1, Number(e.target.value) || 0) }, false)} />
+                value={holdsTyped(`bay-pct-${idx}`, sec.height_pct) ? sec.height_pct ?? "" : resolvedPct}
+                onFocus={() => setFocusedField(`bay-pct-${idx}`)}
+                onBlur={() => setFocusedField("")}
+                onChange={(e) => updateSection(idx, { height_pct: typedNumber(e.target.value) }, false)} />
             )}
           </label>
           <label className={styles.fieldLabel}>
@@ -1876,13 +1910,17 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               {pinned ? (
                 <input className={styles.fieldInput} style={{ width: 78, flexShrink: 0 }} type="number" min="1"
                   title="Fixed height in millimetres"
-                  value={Math.round(Number(sec.height_lock_mm) || 0) || ""}
-                  onChange={(e) => updateSection(i, { height_lock_mm: Math.max(1, Number(e.target.value) || 0) }, false)} />
+                  value={sec.height_lock_mm ?? ""}
+                  onChange={(e) => updateSection(i, { height_lock_mm: typedNumber(e.target.value) }, false)} />
               ) : (
                 <input className={styles.fieldInput} style={{ width: 78, flexShrink: 0 }} type="number" min="0.1" step="0.1"
                   title="Share of the cabinet height, as a percentage"
-                  value={Number(sec.height_pct) > 0 ? Number(sec.height_pct) : bayPercentOfCabinet(resolvedMm, draft.height_mm)}
-                  onChange={(e) => updateSection(i, { height_pct: Math.max(0.1, Number(e.target.value) || 0) }, false)} />
+                  value={holdsTyped(`bay-pct-row-${i}`, sec.height_pct)
+                    ? sec.height_pct ?? ""
+                    : bayPercentOfCabinet(resolvedMm, draft.height_mm)}
+                  onFocus={() => setFocusedField(`bay-pct-row-${i}`)}
+                  onBlur={() => setFocusedField("")}
+                  onChange={(e) => updateSection(i, { height_pct: typedNumber(e.target.value) }, false)} />
               )}
               <button type="button" title={pinned ? `Fixed at ${resolvedMm}mm — click to size by share` : `${resolvedMm}mm — click to fix this height`}
                 onClick={() => setSectionPinned(i, !pinned)}
@@ -1944,8 +1982,8 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
             <label className={styles.fieldLabel}>
               Shelves in this bay
               <input className={styles.fieldInput} type="number" min="0" max="10"
-                value={Number(sec.shelf_qty) || 0}
-                onChange={(e) => updateSection(idx, { shelf_qty: Math.max(0, Math.min(10, parseInt(e.target.value, 10) || 0)) })} />
+                value={sec.shelf_qty ?? ""}
+                onChange={(e) => updateSection(idx, { shelf_qty: typedNumber(e.target.value, (n) => Math.max(0, Math.min(10, Math.round(n)))) })} />
             </label>
             <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
               {Number(sec.shelf_qty) > 0
@@ -2904,11 +2942,11 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                   </label>
                   <label className={styles.fieldLabel}>
                     W mm
-                    <input className={styles.fieldInput} type="number" min="1" value={cut.width_mm ?? ""} onChange={(e) => updCutout(idx, { width_mm: Number(e.target.value) || 0 })} />
+                    <input className={styles.fieldInput} type="number" min="1" value={cut.width_mm ?? ""} onChange={(e) => updCutout(idx, { width_mm: typedNumber(e.target.value) })} />
                   </label>
                   <label className={styles.fieldLabel}>
                     D mm
-                    <input className={styles.fieldInput} type="number" min="1" value={cut.depth_mm ?? ""} onChange={(e) => updCutout(idx, { depth_mm: Number(e.target.value) || 0 })} />
+                    <input className={styles.fieldInput} type="number" min="1" value={cut.depth_mm ?? ""} onChange={(e) => updCutout(idx, { depth_mm: typedNumber(e.target.value) })} />
                   </label>
                   <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ marginBottom: 2 }} onClick={() => removeCutout(idx)}>Remove</button>
                 </div>
@@ -3156,8 +3194,8 @@ function ShelfRailForm({ item, allItems, room, onItemChange, openSection, toggle
           {cfg.front_rail.on && (
             <label className={styles.fieldLabel}>
               Rail setback mm
-              <input className={styles.fieldInput} type="number" min="0" value={cfg.front_rail.setback_mm}
-                onChange={(e) => setCfg({ front_rail: { ...cfg.front_rail, setback_mm: parseInt(e.target.value, 10) || 0 } })} />
+              <input className={styles.fieldInput} type="number" min="0" value={cfg.front_rail.setback_mm ?? ""}
+                onChange={(e) => setCfg({ front_rail: { ...cfg.front_rail, setback_mm: typedNumber(e.target.value, Math.round) } })} />
             </label>
           )}
         </div>

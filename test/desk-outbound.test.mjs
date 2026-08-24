@@ -133,6 +133,13 @@ test("every route that emails a customer files it", () => {
   for (const route of routes) {
     const src = read(route);
     assert.ok(src.includes("recordOutboundEmail("), `${route} files the email it sent`);
-    assert.ok(src.includes("resend.emails.send"), `${route} still sends it`);
+    // Through sendEmail, which reads the answer. Resend returns a refusal
+    // rather than throwing one, and calling it directly is how every send in
+    // this app used to report "sent" whatever actually happened. See
+    // lib/pcd-send-email.js.
+    assert.ok(
+      src.includes("sendEmail(resend, {") || src.includes("resend.emails.send"),
+      `${route} still sends it`
+    );
   }
 });

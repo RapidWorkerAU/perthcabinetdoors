@@ -2,6 +2,7 @@ import { Resend } from "resend";
 import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
 import { agentForUser, recordOutboundEmail } from "../../../../../../../../lib/pcd-desk-outbound";
+import { sendEmail } from "../../../../../../../../lib/pcd-send-email";
 import { formatMoney, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
 import { JOB_COST_ACTION, orderJobCostAmount } from "../../../../../../../../lib/pcd-order-costs";
 import { recalcVariation, variationLineDelta } from "../../../../../../../../lib/pcd-order-variations";
@@ -261,18 +262,24 @@ export async function POST(request, { params }) {
     });
 
     let emailSent = false;
+    // WHY IT DID NOT GO, when it did not go. Resend answers a refusal rather
+    // than throwing one, and this used to be read as success. See
+    // lib/pcd-send-email.js.
+    let emailError = "";
     const toEmail = variation.customer_email || variation.pcd_orders?.customer_email;
+    if (!toEmail) emailError = "This order has no customer email address on it.";
     if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && toEmail) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const html = variationEmailHtml({ variation, order: variation.pcd_orders || {}, viewUrl, message: emailMessage, includePrice });
-      const sent = await resend.emails.send({
+      const sent = await sendEmail(resend, {
         from: process.env.RESEND_FROM_EMAIL,
         to: [toEmail],
         subject: emailSubject,
         html,
         text: emailMessage,
       });
-      emailSent = true;
+      emailSent = sent.ok;
+      emailError = sent.error;
 
       // Filed on the customer's conversation, or the board goes on saying they
       // are waiting on us. See lib/pcd-desk-outbound.js.
@@ -282,13 +289,13 @@ export async function POST(request, { params }) {
         subject: emailSubject,
         bodyHtml: html,
         bodyText: emailMessage,
-        providerMessageId: sent?.data?.id || null,
+        providerMessageId: sent.id,
         agentId: (await agentForUser(context.supabase, context.user?.email))?.id || null,
         newTicketSubject: emailSubject,
       });
     }
 
-    return Response.json({ ok: true, emailSent, viewUrl });
+    return Response.json({ ok: true, emailSent, emailError, viewUrl });
   } catch (error) {
     // A refusal carries its own status. Reporting a rule as a 500 leaves the
     // person unable to tell "you cannot do this" from "something is broken".

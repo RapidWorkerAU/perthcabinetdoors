@@ -2178,11 +2178,17 @@ export default function QuoteEditor({ quoteId }) {
         return;
       }
       setPublishEmail(null);
+      // NOT SENT IS NOT ALWAYS "NOT CONFIGURED". A refused message came back
+      // from Resend as a quiet failure and this said the quote had gone. The
+      // quote IS published either way, so the link is offered rather than the
+      // whole thing reading as a failure.
       toast({
         title: payload.emailSent
           ? "Quote published and sent to customer."
-          : `Quote published. Resend is not configured, so use this link: ${payload.viewUrl}`,
-        variant: "success",
+          : payload.emailError
+            ? `Quote published, but the email did not go out: ${payload.emailError} Send it again, or use this link: ${payload.viewUrl}`
+            : `Quote published. Resend is not configured, so use this link: ${payload.viewUrl}`,
+        variant: payload.emailSent ? "success" : "error",
       });
       // The quote still went out, so this is a warning rather than a failure.
       // Said out loud all the same: the customer's copy is not in Attachments

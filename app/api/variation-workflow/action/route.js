@@ -194,8 +194,40 @@ export async function POST(request) {
       description: variation.variation_number,
       metadata: { variation_number: variation.variation_number, client_name: clientName },
     });
-    await applyAcceptedVariation(supabase, variation.id, { actorType: "system" });
-    return Response.json({ ok: true });
+    // APPROVING IS TWO THINGS, AND THE SECOND ONE USED TO BE ABLE TO VANISH.
+    //
+    // The status is claimed first so two approvals cannot race, then the
+    // variation is applied: its lines are written onto the order and the order
+    // totals move. If applying threw, the catch below answered the customer
+    // with a 500 and the variation was left saying "approved" with the order
+    // untouched. Nothing retried it and nothing said so, so the job carried on
+    // at the old price and the balance owing was wrong on every screen.
+    //
+    // Now the failure is recorded on the variation. The customer is told their
+    // answer is in, which is true, and the order page and the board can both
+    // see that something is owed a repair. See applyAcceptedVariation.
+    try {
+      await applyAcceptedVariation(supabase, variation.id, { actorType: "system" });
+    } catch (applyError) {
+      console.error("[variation] approved but not applied:", applyError?.message || applyError);
+      await supabase
+        .from("pcd_order_variations")
+        .update({ apply_error: applyError?.message || "Could not apply this variation to the order." })
+        .eq("id", variation.id);
+      await logOrderActivity(supabase, {
+        order_id: variation.order_id,
+        variation_id: variation.id,
+        actor_type: "system",
+        action_type: "variation_apply_failed",
+        title: "Variation approved but not applied",
+        description:
+          `${variation.variation_number} was approved by the customer and could not be written onto the order: ` +
+          `${applyError?.message || "unknown error"}. The order still shows the old figures.`,
+      });
+      // The customer's answer IS recorded, so they are not asked to do it again.
+      return Response.json({ ok: true, applied: false });
+    }
+    return Response.json({ ok: true, applied: true });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not record variation response." }, { status: 500 });
   }
