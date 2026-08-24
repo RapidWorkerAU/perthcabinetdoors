@@ -29,6 +29,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { CARRIED_SPEC_COLUMNS } from "../lib/pcd-order-from-quote.js";
+
 const CONVERSION = readFileSync(new URL("../lib/pcd-order-from-quote.js", import.meta.url), "utf8");
 const VARIATION = readFileSync(new URL("../lib/pcd-order-variations.js", import.meta.url), "utf8");
 
@@ -236,4 +238,68 @@ test("a variation line records which cabinet its piece belongs to", () => {
       `${label} must still save the line on a database without the column`
     );
   });
+});
+
+// ── THE NOTES TYPED ON A QUOTE LINE ─────────────────────────────────────────
+//
+// A quote line carries two notes. The internal one, labelled "production,
+// mitres, hinges, runners", was carried. The other, "Note shown on public
+// quote", was not carried anywhere, so a decision agreed on the phone and
+// written in the only box the customer ever sees reached the workshop nowhere:
+// not on the order, not on either production view, not on the printed sheet.
+
+test("accepting a quote carries both notes on the line, not just the internal one", () => {
+  assert.ok(/notes:\s*line\.notes/.test(ORDER_LINES), "the internal note comes across");
+  assert.ok(/client_note:\s*line\.client_note/.test(ORDER_LINES), "so does what the customer was told");
+});
+
+test("a database without the note column loses the note, never the order", () => {
+  // The customer has already accepted by the time this runs. Dropping a column
+  // the database has not heard of and still raising the order is the right
+  // trade; failing the whole acceptance over a note is not.
+  assert.ok(
+    CARRIED_SPEC_COLUMNS.includes("client_note"),
+    "client_note is in the list of columns a stale database may drop"
+  );
+});
+
+test("the orders already raised are filled in, and nothing already written is overwritten", () => {
+  const migration = readFileSync(
+    new URL("../supabase/202608241800_pcd_order_line_notes_from_quote.sql", import.meta.url),
+    "utf8"
+  );
+  assert.ok(/add column if not exists client_note/.test(migration), "the column is added");
+  assert.ok(/o\.quote_line_item_id = q\.id/.test(migration), "the backfill reads through the link to the quote line");
+
+  // A note edited on the order since it was raised must survive the migration,
+  // so every update only fills a note that is empty.
+  const updates = migration.match(/update public\.pcd_order_line_items[\s\S]*?;/g) || [];
+  assert.equal(updates.length, 2, "both notes are backfilled");
+  for (const statement of updates) {
+    assert.ok(
+      /coalesce\(o\.(client_note|notes), ''\) = ''/.test(statement),
+      "a backfill may only fill an empty note"
+    );
+  }
+});
+
+test("the screen and the production sheet read notes through one definition", () => {
+  // They disagreed: the sheet added every note up, the screen took the first it
+  // found, so writing a note against a panel silently hid what the quote said.
+  // The one the workshop reads was the one nobody was checking.
+  const screen = readFileSync(new URL("../app/admin/orders/[id]/OrderDetail.js", import.meta.url), "utf8");
+  const sheet = readFileSync(new URL("../lib/pcd-cabinet-pdf.js", import.meta.url), "utf8");
+
+  assert.ok(screen.includes("pcd-line-notes"), "the screen reads notes through the shared helper");
+  assert.ok(sheet.includes("pcd-line-notes"), "so does the production sheet");
+
+  // The old first-one-wins chain must not come back on either side.
+  assert.ok(
+    !/plan\.notes \?\? item\.production_notes \?\? item\.notes/.test(screen),
+    "no fallback chain: notes add up, they do not replace each other"
+  );
+  assert.ok(
+    !/\[plan\.notes, item\.production_notes, item\.notes\]/.test(sheet),
+    "the sheet builds its own no longer"
+  );
 });

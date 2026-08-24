@@ -3,6 +3,14 @@ import { buildCutListRows, buildMadeToOrderRows, generateOrderCutListPdf } from 
 import { buildVariationContext } from "../../../../../../lib/pcd-cut-list-variations";
 import { loadOrderProductionData } from "../../../../../../lib/pcd-order-production-data";
 import { ensurePanelNumbers } from "../../../../../../lib/pcd-order-panel-numbers";
+import { loadOrderReference, loadReferenceLibraries } from "../../../../../../lib/pcd-order-reference-images";
+
+// The sheet now fetches the colour and profile pictures for its reference page.
+// Each one is capped at six seconds and they go six at a time, so the worst
+// realistic case is a few seconds rather than the default ten second budget.
+// A fetch that times out costs one tile, never the sheet. See
+// lib/pcd-order-reference-images.js.
+export const maxDuration = 30;
 
 async function orderIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -56,7 +64,46 @@ export async function GET(_request, { params }) {
       issues = issuesResult.data || [];
     }
 
-    const pdfBuffer = generateOrderCutListPdf({ order, items, quoteLines, variations, variationLines, panelNumbers: numbers, issues });
+    // The colours and profiles this order uses, with their pictures, for the
+    // reference page. Read soft for the same reason the issues above are: a
+    // library that cannot be read, or a bucket having a bad minute, costs that
+    // page and never the sheet the workshop is waiting on.
+    let reference = null;
+    try {
+      const libraries = await loadReferenceLibraries(context.supabase);
+      reference = await loadOrderReference(items, libraries);
+    } catch (referenceError) {
+      console.error(
+        "[cut-list-pdf] could not build the colour and profile reference for " + orderId +
+          ", so this sheet printed without it: " + (referenceError?.message || referenceError)
+      );
+    }
+
+    // Said out loud, because the failure this replaces was a silent one: the
+    // sheet printed perfectly with a dash in the supplier column and a page of
+    // boxes saying no picture, and looked exactly like a sheet that had worked.
+    if (reference) {
+      const missing = reference.sections
+        .flatMap((section) => section.entries)
+        .filter((entry) => !reference.images[entry.key]);
+      if (missing.length) {
+        console.warn(
+          "[cut-list-pdf] " + orderId + ": no picture for " +
+            missing.map((entry) => entry.kind + " " + entry.name).join(", ")
+        );
+      }
+    }
+
+    const pdfBuffer = generateOrderCutListPdf({
+      order,
+      items,
+      quoteLines,
+      variations,
+      variationLines,
+      panelNumbers: numbers,
+      issues,
+      reference,
+    });
     const orderNumber = cleanFilePart(order.order_number, "order");
     const fileName = `production-sheet-${orderNumber}.pdf`;
 

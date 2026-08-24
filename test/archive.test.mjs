@@ -137,3 +137,48 @@ test("archiving an order with money on it has to be said out loud", () => {
   assert.ok(route.includes("needsAcknowledgement"), "it refuses once and asks");
   assert.ok(route.includes("acknowledge_outstanding"), "and takes the answer");
 });
+
+// ── Archiving is never one careless click ───────────────────────────────────
+//
+// It takes a record off the board, out of the financials and out of the lists
+// all at once. Reversible, but not something to do by brushing past a button,
+// and there are only two places in the admin that can start it.
+
+test("both archive controls go through a confirmation, and nothing else archives", () => {
+  const order = read("app/admin/orders/[id]/OrderDetail.js");
+  const quote = read("app/admin/quotes/[id]/QuoteEditor.js");
+
+  // The button opens the question. It must not do the thing.
+  assert.ok(order.includes("onClick={() => setArchiveOpen(true)}"), "the order button asks first");
+  assert.ok(quote.includes("onClick={() => setArchiveOpen(true)}"), "the quote button asks first");
+
+  // Only the modal's own onConfirm may call setArchived. A stray
+  // onClick={() => setArchived(...)} would be a one click archive again.
+  for (const [name, source] of [["order", order], ["quote", quote]]) {
+    assert.ok(
+      !/onClick=\{\(\) => setArchived\(/.test(source),
+      `${name}: no control may archive straight from a click`
+    );
+  }
+
+  // A browser dialog is not the confirmation step: it looks like it came from
+  // somewhere else and cannot say what archiving costs.
+  assert.ok(!/window\.confirm/.test(order), "the order asks in the app, not in a browser dialog");
+
+  // The money question is asked separately. Agreeing to archive is not the same
+  // as agreeing to walk away from a balance.
+  assert.ok(order.includes("archiveOutstanding"), "an order with money owed is asked about twice");
+
+  // Nowhere else offers it. The list pages only filter by archived.
+  for (const path of ["app/admin/orders/OrdersManager.tsx", "app/admin/quotes/QuotesTable.tsx"]) {
+    assert.ok(!read(path).includes("setArchived"), `${path} must not archive from a list row`);
+  }
+});
+
+test("archiving is an action on the record, not a field on the form", () => {
+  // It used to sit in the order's details card between the job name and the
+  // schedule, as though it were another detail to fill in.
+  const order = read("app/admin/orders/[id]/OrderDetail.js");
+  assert.ok(!order.includes("Archive this order"), "the old field button is gone");
+  assert.ok(!order.includes("Restore this order"), "and so is its restore twin");
+});

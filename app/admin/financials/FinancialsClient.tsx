@@ -141,7 +141,7 @@ function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      className={`h-[26px] px-[10px] text-[11px] font-medium rounded-[6px] border transition-colors ${
+      className={`min-h-[40px] px-3 text-[13px] md:min-h-0 md:h-[26px] md:px-[10px] md:text-[11px] font-medium rounded-[6px] border transition-colors ${
         on ? 'bg-[#1c2b1e] text-white border-[#1c2b1e]' : 'bg-white text-[#5a5a52] border-[#dbd8cc] hover:border-[#6b9e61]'
       }`}
     >
@@ -311,14 +311,14 @@ export default function FinancialsClient({
             type="date"
             value={customFrom}
             onChange={e => setCustomFrom(e.target.value)}
-            className="h-[28px] px-2 text-[11px] border border-[#dbd8cc] rounded-[6px] text-[#1a1a18]"
+            className="h-[40px] px-3 text-[16px] md:h-[28px] md:px-2 md:text-[11px] border border-[#dbd8cc] rounded-[6px] text-[#1a1a18]"
           />
           <span className="text-[11px] text-[#8b8a81]">to</span>
           <input
             type="date"
             value={customTo}
             onChange={e => setCustomTo(e.target.value)}
-            className="h-[28px] px-2 text-[11px] border border-[#dbd8cc] rounded-[6px] text-[#1a1a18]"
+            className="h-[40px] px-3 text-[16px] md:h-[28px] md:px-2 md:text-[11px] border border-[#dbd8cc] rounded-[6px] text-[#1a1a18]"
           />
         </div>
       )}
@@ -454,12 +454,12 @@ export default function FinancialsClient({
         <div className={`${CARD} overflow-hidden`}>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-[10px] border-b border-[#dbd8cc]">
-            <div className="inline-flex rounded-[7px] border border-[#dbd8cc] overflow-hidden self-start">
+            <div className="inline-flex max-w-full rounded-[7px] border border-[#dbd8cc] overflow-hidden self-start">
               <button
                 type="button"
                 onClick={() => setTab('orders')}
                 aria-pressed={isOrders}
-                className={`px-3 py-[5px] text-[11.5px] font-medium transition-colors ${
+                className={`min-h-[40px] px-3 text-[13px] md:min-h-0 md:py-[5px] md:text-[11.5px] font-medium transition-colors ${
                   isOrders ? 'bg-[#1c2b1e] text-white' : 'bg-white text-[#5a5a52] hover:bg-[#faf9f5]'
                 }`}
               >
@@ -469,7 +469,7 @@ export default function FinancialsClient({
                 type="button"
                 onClick={() => setTab('quotes')}
                 aria-pressed={!isOrders}
-                className={`px-3 py-[5px] text-[11.5px] font-medium border-l border-[#dbd8cc] transition-colors ${
+                className={`min-h-[40px] px-3 text-[13px] md:min-h-0 md:py-[5px] md:text-[11.5px] font-medium border-l border-[#dbd8cc] transition-colors ${
                   !isOrders ? 'bg-[#1c2b1e] text-white' : 'bg-white text-[#5a5a52] hover:bg-[#faf9f5]'
                 }`}
               >
@@ -480,7 +480,7 @@ export default function FinancialsClient({
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={isOrders ? 'Search order or customer' : 'Search quote or customer'}
-              className="h-[28px] px-2.5 text-[12px] border border-[#dbd8cc] rounded-[6px] w-full sm:w-[220px] text-[#1a1a18] placeholder:text-[#b5b3aa] sm:ml-auto"
+              className="h-[40px] px-3 text-[16px] md:h-[28px] md:px-2.5 md:text-[12px] border border-[#dbd8cc] rounded-[6px] w-full sm:w-[220px] text-[#1a1a18] placeholder:text-[#b5b3aa] sm:ml-auto"
             />
             <span className="hidden lg:block text-[10px] text-[#8b8a81] whitespace-nowrap">
               Totals inc GST, profit ex GST
@@ -553,11 +553,11 @@ export default function FinancialsClient({
                   on a 390px screen is a horizontal scroll nobody wins. */}
               <div className="md:hidden flex flex-col">
                 {shown.map(row => (
-                  <article key={row.id} className="px-3 py-3 border-b border-[#edf4eb] last:border-b-0">
+                  <article key={row.id} className="px-3 py-[14px] border-b border-[#edf4eb] last:border-b-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <Link href={row.href} className="text-[13px] font-semibold text-[#2d5e28] hover:underline">{row.ref}</Link>
-                        <p className="text-[12px] text-[#5a5a52] truncate">{row.customer || '·'}</p>
+                        <Link href={row.href} className="block break-words text-[13px] font-semibold text-[#2d5e28] hover:underline">{row.ref}</Link>
+                        <p className="truncate text-[12px] text-[#5a5a52]">{row.customer || '·'}</p>
                       </div>
                       <div className={`${NUM} text-[14px] font-medium text-[#1a1a18] whitespace-nowrap`}>{money2(row.amount)}</div>
                     </div>

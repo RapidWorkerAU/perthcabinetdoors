@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { paymentTypeLabel } from "../../../lib/pcd-payment-notifications";
 import { SETTLEMENT_METHODS, settlementWantsReference } from "../../../lib/pcd-payment-settlement";
 
 const tone = {
@@ -86,7 +87,7 @@ export default function SettlePaymentModal({ payment, hadLink = false, onClose, 
       open
       onClose={busy ? () => {} : onClose}
       title="Mark payment as received"
-      subtitle={`${payment.payment_type || "Payment"} of ${amount.toFixed(2)}`}
+      subtitle={`${paymentTypeLabel(payment.payment_type)} of ${amount.toFixed(2)}`}
       size="md"
       footer={
         <>

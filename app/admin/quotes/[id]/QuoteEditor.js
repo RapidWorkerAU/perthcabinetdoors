@@ -22,6 +22,7 @@ import {
 } from "../../../../lib/pcd-supplier-selection";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney } from "../../../../lib/pcd-quote-utils";
 import AddressFields from "../../../../components/admin/AddressFields";
+import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNote";
 import OverrideModal from "../../_components/OverrideModal";
 import LockedRegion from "../../_components/LockedRegion";
 import AcceptForCustomerModal from "../../_components/AcceptForCustomerModal";
@@ -2429,6 +2430,9 @@ export default function QuoteEditor({ quoteId }) {
               <label className={tw.fieldLabel}>
                 Contact email
                 <input className={tw.fieldInput} type="email" value={form.customer_email} onChange={e => updateForm("customer_email", e.target.value)} />
+                <span className="mt-[3px] text-[11px] leading-[1.45] text-[#8b8a81]">
+                  Where this quote is sent. It does not change who the quote belongs to.
+                </span>
               </label>
               <label className={tw.fieldLabel}>
                 Contact phone
@@ -2439,6 +2443,7 @@ export default function QuoteEditor({ quoteId }) {
                 onChange={(key, value) => updateForm(`site_${key}`, value)}
               />
             </div>
+            <JobDetailsScopeNote customerId={form.customer_id} what="quote" />
             <div className={tw.saveBar}>
               <button type="submit" className={tw.primaryBtn} disabled={isSaving || isLoading}>
                 {isSaving ? "Saving..." : "Save information"}
@@ -3769,6 +3774,8 @@ export default function QuoteEditor({ quoteId }) {
   const isAccepted = Boolean(form.order_id);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   // Everything below is the part a person types into. When the quote is locked
   // it all goes read only in one place, so a field added later is covered
@@ -3832,7 +3839,44 @@ export default function QuoteEditor({ quoteId }) {
             <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{form.quote_number || "Draft quote"}</p>
             <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">{"<- Quotes"}</Link>
           </div>
+          {/* THE ORDER THESE ARE IN IS THE ORDER THE WORK HAPPENS IN.
+              Build it, send it, close it, then the things you only ever look at,
+              and archiving last because it is the one that takes the quote away.
+              It used to open with Generate PDF and bury Save under Accept, which
+              put the button pressed a hundred times a day below the one pressed
+              once. */}
           <div className="px-3 py-3 border-b border-[#edf4eb] flex flex-col gap-2">
+
+            {/* Building it. */}
+            <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+
+            {/* Sending it. */}
+            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || isAccepted || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
+              {isSealed ? "Send again" : "Publish quote"}
+            </button>
+
+            {/* Closing it. The customer said yes on the phone and will never open
+                the link; this raises the order exactly as their own acceptance
+                would. */}
+            {!isAccepted && form.status !== "rejected" ? (
+              <button type="button" onClick={() => setAcceptOpen(true)} className="h-[32px] flex items-center justify-center px-3 border border-[#a8c5a0] bg-[#edf4eb] rounded-[6px] text-[12px] font-medium text-[#2d5e28] hover:bg-[#e2ecdf] transition-colors">
+                Accept for the customer
+              </button>
+            ) : null}
+
+            {/* Getting back in. Only ever shown on a quote that is out with the
+                customer, and directly under the actions it is the way past. */}
+            {isSealed ? (
+              <button type="button" onClick={() => setOverrideOpen(true)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors">
+                Edit with override
+              </button>
+            ) : null}
+
+            <div className="h-px bg-[#edf4eb] my-[2px]" />
+
+            {/* Looking at it. Neither changes anything. */}
             {publicUrl ? (
               <a href={publicUrl} target="_blank" rel="noreferrer" className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors">
                 View public quote
@@ -3841,38 +3885,25 @@ export default function QuoteEditor({ quoteId }) {
             <button type="button" onClick={generateQuotePdf} disabled={isSaving || isLoading || isAccepted || Boolean(loadError) || isGeneratingQuotePdf} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
               {isGeneratingQuotePdf ? "Generating..." : "Generate PDF"}
             </button>
-            <button type="button" onClick={publishQuote} disabled={isSaving || isLoading || isAccepted || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors">
-              {isSealed ? "Send again" : "Publish quote"}
-            </button>
-            {isSealed ? (
-              <button type="button" onClick={() => setOverrideOpen(true)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors">
-                Edit with override
-              </button>
-            ) : null}
-            {/* The customer said yes on the phone and will never open the link.
-                Raises the order exactly as their own acceptance would. */}
-            {!isAccepted && form.status !== "rejected" ? (
-              <button type="button" onClick={() => setAcceptOpen(true)} className="h-[32px] flex items-center justify-center px-3 border border-[#a8c5a0] bg-[#edf4eb] rounded-[6px] text-[12px] font-medium text-[#2d5e28] hover:bg-[#e2ecdf] transition-colors">
-                Accept for the customer
-              </button>
-            ) : null}
-            <button type="button" onClick={saveQuote} disabled={isSaving || isLoading || isLocked || Boolean(loadError)} className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors">
-              {isSaving ? "Saving..." : "Save"}
-            </button>
-            {/* Not offered on a quote that has become an order: the order and the
-                financials behind it still read from this quote. */}
+
+            {/* Taking it away. Last, and behind a confirmation. Not offered on a
+                quote that has become an order: the order and the financials
+                behind it still read from this quote. */}
             {!form.order_id && (
-              <button
-                type="button"
-                onClick={() => setArchived(!isArchived)}
-                disabled={isLoading || Boolean(loadError)}
-                title={isArchived
-                  ? "Put it back the way it was before it was archived."
-                  : "Takes it out of the lists, the board and the financials. Nothing is deleted and it can be restored."}
-                className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
-              >
-                {isArchived ? "Restore" : "Archive"}
-              </button>
+              <>
+                <div className="h-px bg-[#edf4eb] my-[2px]" />
+                <button
+                  type="button"
+                  onClick={() => setArchiveOpen(true)}
+                  disabled={isLoading || Boolean(loadError)}
+                  title={isArchived
+                    ? "Put it back the way it was before it was archived."
+                    : "Takes it out of the lists, the board and the financials. Nothing is deleted and it can be restored."}
+                  className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
+                >
+                  {isArchived ? "Restore" : "Archive"}
+                </button>
+              </>
             )}
           </div>
           <nav className="p-3 flex flex-col gap-[2px] overflow-y-auto flex-1" aria-label="Quote builder sections">
@@ -4075,6 +4106,32 @@ export default function QuoteEditor({ quoteId }) {
           </div>
         </Modal>
       )}
+      {/* Archiving takes a quote out of the lists, the board and the financials
+          all at once. Reversible, but not something to do by brushing past a
+          button. */}
+      <ConfirmModal
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        title={isArchived
+          ? `Restore ${form.quote_number || "this quote"}?`
+          : `Archive ${form.quote_number || "this quote"}?`}
+        description={isArchived
+          ? "It goes back to the status it had before it was archived, and starts counting in the lists, the board and the financials again."
+          : "It comes out of the lists, the board and the financials. Nothing is deleted and you can restore it from the Archived tab."}
+        variant={isArchived ? "default" : "warning"}
+        confirmLabel={isArchived ? "Restore it" : "Archive it"}
+        cancelLabel="Keep it as it is"
+        loading={isArchiving}
+        onConfirm={async () => {
+          setIsArchiving(true);
+          try {
+            await setArchived(!isArchived);
+          } finally {
+            setIsArchiving(false);
+            setArchiveOpen(false);
+          }
+        }}
+      />
       <ConfirmModal
         open={deleteLineConfirmIndex !== null}
         onClose={() => setDeleteLineConfirmIndex(null)}

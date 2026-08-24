@@ -11,6 +11,7 @@
 // enquiries and quote requests all sit in it, in time order, because "what has
 // happened with these people" is one question and it used to need four screens.
 
+import PushDetailsModal from "../../_components/PushDetailsModal";
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import TermsEditor from "../../_components/TermsEditor";
@@ -249,6 +250,12 @@ export default function CustomerDeskClient({ customerId, initial }) {
     }
   }
 
+  // Saved, then asked. The record is the thing being edited, so it is written
+  // first and unconditionally; whether the customer's JOBS should follow is a
+  // separate question with a separate answer, and one that has to be asked
+  // because a job is allowed to have its own address on purpose.
+  const [pushOpen, setPushOpen] = useState(false);
+
   async function saveCustomer() {
     setBusy(true);
     try {
@@ -265,6 +272,10 @@ export default function CustomerDeskClient({ customerId, initial }) {
       await refresh();
       setEditing(false);
       toast({ title: "Customer saved.", variant: "success" });
+      // The modal works out for itself whether anything would actually change,
+      // and closes with "nothing to push" when nothing would. Opening it
+      // unconditionally keeps that decision in one place.
+      setPushOpen(true);
     } finally {
       setBusy(false);
     }
@@ -381,6 +392,16 @@ export default function CustomerDeskClient({ customerId, initial }) {
                 title="Every message and form match is filed against this address, so it cannot be changed here."
                 className="h-[32px] rounded-[6px] border border-[#ddd9cf] bg-[#f4f3ee] px-2.5 text-[13px] text-[#56534b]"
               />
+              {/* THE ONE FIELD THAT IS NOT A DETAIL. It is the identity every
+                  message and form match is filed against, which is why it is
+                  locked here while a quote and an order each let you change
+                  where THEIR paperwork goes. Same word, different job, and the
+                  two screens looked like they contradicted each other until
+                  both of them said so. */}
+              <span className="mt-[3px] text-[10.5px] leading-[1.45] text-[#9a978d]">
+                Locked: every message and form match is filed against it. A quote or an order can still be sent to a
+                different address without changing this.
+              </span>
             </label>
             <div className="flex items-end">
               <button
@@ -926,6 +947,22 @@ export default function CustomerDeskClient({ customerId, initial }) {
         </p>
       </div>
     </Modal>
+
+    <PushDetailsModal
+      open={pushOpen}
+      onClose={() => setPushOpen(false)}
+      customerId={customerId}
+      customerName={customer?.name}
+      onDone={(updated) => {
+        if (updated) {
+          toast({
+            title: `${updated} ${updated === 1 ? "job" : "jobs"} updated with the new details.`,
+            variant: "success",
+          });
+        }
+        refresh();
+      }}
+    />
     </div>
   );
 }

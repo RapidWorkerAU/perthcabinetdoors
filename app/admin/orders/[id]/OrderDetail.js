@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { addressColumns, addressFromRecord } from "../../../../lib/pcd-contact-details";
 import AddressFields from "../../../../components/admin/AddressFields";
+import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNote";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { IconMessage } from "@tabler/icons-react";
 import {
@@ -16,10 +17,22 @@ import {
 import { canRefreshPaymentRequest, canRequestPayment, hasPaymentRequest } from "../../../../lib/pcd-payment-requests";
 import { canSettleOutsideLink, canUndoSettlement } from "../../../../lib/pcd-payment-settlement";
 import SettlePaymentModal from "../../_components/SettlePaymentModal";
-import { Modal } from '@/components/ui/Modal';
+import RefundModal from "../../_components/RefundModal";
+import {
+  canProcessRefund,
+  defaultRefundMessage,
+  defaultRefundSubject,
+  isRefund,
+  refundAmount,
+  refundMethodLabel,
+  refundablePayments,
+} from "../../../../lib/pcd-refunds";
+import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import AdminLoading from "@/components/admin/AdminLoading";
 import { panelNumberKey } from "../../../../lib/pcd-order-panel-numbers";
 import { groupProductionRows } from "../../../../lib/pcd-production-groups";
+import { lineNotes, lineNotesText } from "../../../../lib/pcd-line-notes";
+import { supplierFromColour, supplierLookupKey } from "../../../../lib/pcd-line-supplier";
 import { historyGaps, orderVersions } from "../../../../lib/pcd-order-history";
 import {
   ISSUE_KINDS,
@@ -217,7 +230,13 @@ function panelPlanFor(item, panelKey) {
     supplier_eta: plan.supplier_eta ?? item.supplier_eta ?? "",
     board_required: typeof plan.board_required === "boolean" ? plan.board_required : !!item.board_required,
     production_stage: plan.production_stage || item.production_stage || "Not Started",
-    notes: plan.notes ?? item.production_notes ?? item.notes ?? "",
+    // THE PANEL'S OWN NOTE, and only that. It used to fall back through the
+    // line's notes, which did two bad things at once: a note written on the
+    // quote appeared to be a note written against this panel, and opening the
+    // notes box to add something copied that quote note into the panel. What
+    // else is written against the line is read through lineNotes, which adds
+    // them up rather than picking one. See lib/pcd-line-notes.js.
+    notes: plan.notes ?? "",
   };
 }
 
@@ -333,7 +352,10 @@ function buildOrderPlanningRows(items) {
               edging: cutEdgingDisplay(item, piece),
               // The piece's own cutting instruction (e.g. a diagonal corner's
               // chamfer) comes first, then any manual per-panel planning note.
-              notes: [piece.notes, panelPlanFor(item, panelKey).notes].filter(Boolean).join(" — "),
+              // The piece's own cutting instruction first, then everything
+              // written against this panel and this line. Same helper the
+              // production sheet uses, so the screen and the print agree.
+              notes: [piece.notes, lineNotesText(item, panelPlanFor(item, panelKey))].filter(Boolean).join(" · "),
             });
           }
         });
@@ -357,7 +379,7 @@ function buildOrderPlanningRows(items) {
       thickness: item.thickness || "-",
       material: cutMaterialDisplay(item),
       edging: cutEdgingDisplay(item),
-      notes: panelPlanFor(item, panelKey).notes,
+      notes: lineNotesText(item, panelPlanFor(item, panelKey)),
     }];
   });
 }
@@ -428,6 +450,17 @@ export default function OrderDetail({ orderId }) {
   }, [sectionParam]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [refundModalOpen, setRefundModalOpen] = useState(false);
+  const [makingDeliveryLabel, setMakingDeliveryLabel] = useState(false);
+  const [savingRefund, setSavingRefund] = useState(false);
+  // The email shown before a refund is processed. Same two step shape as a
+  // payment request: nothing moves until this is sent.
+  const [refundEmailModal, setRefundEmailModal] = useState(null);
+  // Set when the route refuses because money is still owed. Holding the reason
+  // rather than a boolean means the second question can say what the first one
+  // found rather than repeating itself.
+  const [archiveOutstanding, setArchiveOutstanding] = useState("");
   const [savingItemId, setSavingItemId] = useState("");
   const [savingPaymentId, setSavingPaymentId] = useState("");
   const [editingPaymentId, setEditingPaymentId] = useState("");
@@ -966,6 +999,78 @@ export default function OrderDetail({ orderId }) {
   }
 
 
+  // Raising a refund line. Nothing moves and nobody is told: see RefundModal.
+  async function addRefund(input) {
+    if (!order) return;
+    setSavingRefund(true);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/refunds`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        toast({ title: payload.error || "Could not raise the refund.", variant: "error" });
+        return;
+      }
+      setRefundModalOpen(false);
+      toast({ title: "Refund line added. Process it when you are ready to send it.", variant: "success" });
+      await loadOrder();
+    } catch (error) {
+      toast({ title: error?.message || "Could not raise the refund.", variant: "error" });
+    } finally {
+      setSavingRefund(false);
+    }
+  }
+
+  // Processing: the money goes back, then the customer is told. The route does
+  // them in that order and reports the email separately, because a refund that
+  // was sent and an email that was not is a different thing from a refund that
+  // never happened.
+  async function processRefund(refund, emailData) {
+    if (!order || !refund?.id) return;
+    setSavingPaymentId(refund.id);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/payments/${refund.id}/process-refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailData || {}),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        toast({ title: payload.error || "Could not process the refund.", variant: "error" });
+        return;
+      }
+      if (payload.emailSent) {
+        toast({ title: "Refund processed and the customer has been told.", variant: "success" });
+      } else {
+        toast({
+          title: "Refund processed. The customer was NOT told.",
+          description: payload.emailError || "The email did not send.",
+          variant: "warning",
+        });
+      }
+      await loadOrder();
+    } catch (error) {
+      toast({ title: error?.message || "Could not process the refund.", variant: "error" });
+    } finally {
+      setSavingPaymentId(null);
+    }
+  }
+
+  function openRefundEmail(refund) {
+    setRefundEmailModal({
+      refund,
+      subject: defaultRefundSubject(order),
+      message: defaultRefundMessage({
+        order,
+        amount: refundAmount(refund),
+        reason: refund.refund_reason,
+      }),
+    });
+  }
+
   async function requestPayment(payment, emailData) {
     if (!order || !payment?.id) return;
     const { message, subject } = emailData || {};
@@ -1047,6 +1152,38 @@ export default function OrderDetail({ orderId }) {
   // Labels are one per physical piece, so a line with qty 4 downloads 4 of
   // them. The PDF prints straight to the Brother QL on a 62mm roll; the CSV is
   // there for P-touch Editor if the driver argues about the page size.
+  // The label that goes on the OUTSIDE of the bundle: who it is for and where
+  // it goes, rather than which panel it is. Same roll and same masthead as the
+  // production labels, so a job carries one family of labels.
+  async function downloadDeliveryLabel() {
+    setMakingDeliveryLabel(true);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/delivery-label`, { cache: "no-store" });
+      if (!response.ok) {
+        let message = "Could not make the delivery label.";
+        if ((response.headers.get("content-type") || "").includes("application/json")) {
+          const payload = await response.json();
+          message = payload.error || message;
+        }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const sent = (response.headers.get("content-disposition") || "").match(/filename="([^"]+)"/);
+      link.download = sent ? sent[1] : `delivery-label-${order?.order_number || "order"}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({ title: error?.message || "Could not make the delivery label.", variant: "error" });
+    } finally {
+      setMakingDeliveryLabel(false);
+    }
+  }
+
   async function downloadLabels(format) {
     setGeneratingLabels(format);
     try {
@@ -1191,7 +1328,11 @@ export default function OrderDetail({ orderId }) {
   }
 
   function panelNotesButton(row, className = "") {
-    const hasNotes = Boolean(row.plan.notes);
+    // Every note against this line, not just the one typed against this panel.
+    // A quote line that said "mitre the return, customer has seen it" used to
+    // leave this button looking empty.
+    const notes = lineNotes(row.item, row.plan);
+    const hasNotes = notes.length > 0;
     const disabled = savingItemId === row.item.id;
     return (
       <button
@@ -1203,8 +1344,8 @@ export default function OrderDetail({ orderId }) {
         } ${className}`}
         onClick={() => openPanelNotes(row)}
         disabled={disabled}
-        title={hasNotes ? row.plan.notes : "No notes attached"}
-        aria-label={hasNotes ? `View notes for ${row.piece}` : `Add notes for ${row.piece}`}
+        title={hasNotes ? notes.map(note => `${note.label}: ${note.text}`).join("\n") : "No notes attached"}
+        aria-label={hasNotes ? `View ${notes.length} note${notes.length === 1 ? "" : "s"} for ${row.piece}` : `Add notes for ${row.piece}`}
       >
         <span className="relative inline-flex">
           <IconMessage size={13} />
@@ -1216,44 +1357,12 @@ export default function OrderDetail({ orderId }) {
     );
   }
 
-  function supplierLookupKey(value) {
-    return String(value || "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ");
-  }
-
+  // The same answer the production sheet prints, out of the same function. The
+  // screen used to work this out on its own and the sheet knew nothing about
+  // it, so a row read "Polytec" here and a dash on the paper the workshop was
+  // holding. See lib/pcd-line-supplier.js.
   function defaultSupplierForItem(item) {
-    if (item.supplier_name) return item.supplier_name;
-
-    const lookupValues = [
-      item.colour,
-      item.finish,
-      item.thickness,
-      item.material,
-      [item.finish, item.colour].filter(Boolean).join(" - "),
-      [item.material, item.thickness].filter(Boolean).join(" - "),
-      [item.material, item.finish].filter(Boolean).join(" - "),
-      [item.material, item.colour].filter(Boolean).join(" - "),
-      [item.material, item.thickness, item.finish].filter(Boolean).join(" - "),
-      [item.material, item.thickness, item.colour].filter(Boolean).join(" - "),
-      [item.material, item.finish, item.colour].filter(Boolean).join(" - "),
-      [item.material, item.thickness, item.finish, item.colour].filter(Boolean).join(" - "),
-    ].filter(Boolean);
-
-    for (const value of lookupValues) {
-      const supplier = colourSupplierMap[supplierLookupKey(value)];
-      if (supplier) return supplier;
-    }
-
-    const normalisedValues = lookupValues.map(supplierLookupKey).filter(Boolean);
-    const supplierEntries = Object.entries(colourSupplierMap).filter(([key]) => key.length > 2);
-    for (const value of normalisedValues) {
-      const match = supplierEntries.find(([key]) => value.includes(key) || key.includes(value));
-      if (match?.[1]) return match[1];
-    }
-
-    return "";
+    return supplierFromColour(item, colourSupplierMap);
   }
 
   if (isLoading) return <AdminLoading steps={["Opening the order", "Loading the line items", "Almost there"]} label="Loading order" />;
@@ -1302,29 +1411,10 @@ export default function OrderDetail({ orderId }) {
                   {order.status === "archived" && <option value="archived">Archived</option>}
                 </select>
               </label>
-              <label className={tw.fieldLabel}>
-                Archive
-                {order.status === "archived" ? (
-                  <button
-                    type="button"
-                    className={tw.smBtn}
-                    disabled={isSavingOrder}
-                    onClick={() => setArchived(false)}
-                  >
-                    Restore this order
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={tw.smBtn}
-                    disabled={isSavingOrder}
-                    title="Takes it off the board, out of the financials and out of the lists. Nothing is deleted and it can be restored."
-                    onClick={() => setArchived(true)}
-                  >
-                    Archive this order
-                  </button>
-                )}
-              </label>
+              {/* Archiving used to be a field in here, sitting between the job
+                  name and the schedule as though it were another detail to fill
+                  in. It is an action on the whole order, so it lives with the
+                  other order actions in the sidebar. */}
               <label className={tw.fieldLabel}>
                 Scheduled start
                 <input
@@ -1365,6 +1455,10 @@ export default function OrderDetail({ orderId }) {
               <label className={tw.fieldLabel}>
                 Email
                 <input className={tw.fieldInput} type="email" value={order.customer_email || ""} onChange={e => updateOrderField("customer_email", e.target.value)} onBlur={e => saveOrder({ customer_email: e.target.value })} />
+                <span className="mt-[3px] text-[11px] leading-[1.45] text-[#8b8a81]">
+                  Where this order&apos;s payment requests, refunds and variations are sent. It does not change who the
+                  order belongs to.
+                </span>
               </label>
               <label className={tw.fieldLabel}>
                 Phone
@@ -1380,6 +1474,7 @@ export default function OrderDetail({ orderId }) {
                 onBlur={() => saveOrder(addressColumns(addressFromRecord(order)))}
               />
             </div>
+            <JobDetailsScopeNote customerId={order.customer_id} what="order" />
             <p className={tw.muted + " mt-3"}>Fields save automatically when you leave them.</p>
           </div>
         </div>
@@ -2260,6 +2355,19 @@ export default function OrderDetail({ orderId }) {
               >
                 Add payment
               </button>
+              {/* Only where there is money to give back. Offering it against an
+                  order nobody has paid would be offering something that cannot
+                  be done. */}
+              {refundablePayments(payments).length > 0 && (
+                <button
+                  type="button"
+                  className="h-[26px] px-3 text-[11px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#5a5a52] hover:bg-[#f5f8f4] transition-colors"
+                  onClick={() => setRefundModalOpen(true)}
+                  title="Give money back on this order"
+                >
+                  Add refund
+                </button>
+              )}
             </div>
           </div>
           <div className="hidden md:block">
@@ -2283,7 +2391,7 @@ export default function OrderDetail({ orderId }) {
                     return (
                       <tr key={payment.id}>
                         <td className={tw.td}>
-                          {isEditing ? (
+                          {isEditing && !isRefund(payment) ? (
                             <select
                               className={tw.inlineSelect}
                               style={{minWidth: "120px"}}
@@ -2294,7 +2402,14 @@ export default function OrderDetail({ orderId }) {
                               {paymentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
                             </select>
                           ) : (
-                            <span className="text-[12px] font-medium text-[#1a1a18]">{paymentTypeText(payment.payment_type)}</span>
+                            <span className="text-[12px] font-medium text-[#1a1a18]">
+                              {isRefund(payment) ? "Refund" : paymentTypeText(payment.payment_type)}
+                              {isRefund(payment) && (
+                                <span className="block text-[10.5px] font-normal text-[#8b8a81]">
+                                  {refundMethodLabel(payment.refund_method)}
+                                </span>
+                              )}
+                            </span>
                           )}
                         </td>
                         <td className={tw.td}>
@@ -2388,7 +2503,7 @@ export default function OrderDetail({ orderId }) {
                                 Undo
                               </button>
                             )}
-                            {canSettleOutsideLink(payment) && (
+                            {!isRefund(payment) && canSettleOutsideLink(payment) && (
                               <button
                                 type="button"
                                 className={tw.smBtn}
@@ -2399,7 +2514,18 @@ export default function OrderDetail({ orderId }) {
                                 Mark received
                               </button>
                             )}
-                            {canRequestPaymentLine(payment) && (
+                            {canProcessRefund(payment) && (
+                              <button
+                                type="button"
+                                className={tw.smBtn}
+                                disabled={isSaving}
+                                onClick={() => openRefundEmail(payment)}
+                                title="Send the money back and tell the customer"
+                              >
+                                Process
+                              </button>
+                            )}
+                            {!isRefund(payment) && canRequestPaymentLine(payment) && (
                               <button
                                 type="button"
                                 className={tw.smBtn}
@@ -2511,7 +2637,7 @@ export default function OrderDetail({ orderId }) {
                     {canUndoSettlement(payment) && (
                       <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => undoSettlement(payment)}>Undo</button>
                     )}
-                    {canSettleOutsideLink(payment) && (
+                    {!isRefund(payment) && canSettleOutsideLink(payment) && (
                       <button
                         type="button"
                         className={tw.smBtn}
@@ -2522,7 +2648,18 @@ export default function OrderDetail({ orderId }) {
                         Mark received
                       </button>
                     )}
-                    {canRequestPaymentLine(payment) && (
+                    {canProcessRefund(payment) && (
+                      <button
+                        type="button"
+                        className={tw.smBtn}
+                        disabled={isSaving}
+                        onClick={() => openRefundEmail(payment)}
+                        title="Send the money back and tell the customer"
+                      >
+                        Process
+                      </button>
+                    )}
+                    {!isRefund(payment) && canRequestPaymentLine(payment) && (
                       <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => setPaymentRequestModal({
                         payment,
                         subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
@@ -2639,6 +2776,91 @@ export default function OrderDetail({ orderId }) {
               rows={3}
               value={paymentModal.notes}
               onChange={(event) => setPaymentModal((current) => ({ ...current, notes: event.target.value }))}
+            />
+          </label>
+        </div>
+      </Modal>
+    );
+  }
+
+  function renderRefundEmailModal() {
+    if (!refundEmailModal) return null;
+    const { refund, message, subject } = refundEmailModal;
+    const hasEmail = !!order.customer_email;
+    const isSending = savingPaymentId === refund.id;
+
+    return (
+      <Modal
+        open={true}
+        onClose={() => setRefundEmailModal(null)}
+        title="Process refund"
+        subtitle="The money goes back and the customer is told"
+        size="lg"
+        footer={
+          <>
+            <button
+              type="button"
+              className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
+              onClick={() => setRefundEmailModal(null)}
+              disabled={isSending}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
+              disabled={isSending}
+              onClick={() => {
+                setRefundEmailModal(null);
+                processRefund(refund, { message, subject });
+              }}
+            >
+              {isSending ? "Processing…" : "Process refund and send"}
+            </button>
+          </>
+        }
+      >
+        <div className={styles.customerModalGrid}>
+          {/* What is about to happen, before the email that describes it. A card
+              refund cannot be taken back, so it is worth reading twice. */}
+          <div className={`${styles.fieldWide} rounded-[6px] border border-[#f0d060] bg-[#fffef0] px-3 py-2`}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[12px] text-[#8a6d0b]">
+                {refundMethodLabel(refund.refund_method)}
+              </span>
+              <strong className="font-mono text-[14px] text-[#1a1a18]">
+                {formatMoney(refundAmount(refund), order.currency || "AUD")}
+              </strong>
+            </div>
+            <p className="mt-[3px] text-[11.5px] leading-[1.5] text-[#8a6d0b]">
+              Once this is sent it cannot be undone from here.
+            </p>
+          </div>
+
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            To
+            <input className={styles.fieldInput} value={order.customer_email || ""} disabled />
+          </label>
+          {!hasEmail && (
+            <p className={`${styles.fieldWide} text-[12px] text-[#991b1b]`}>
+              This order has no customer email. The refund can still be processed, but nobody will be told.
+            </p>
+          )}
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            Subject
+            <input
+              className={styles.fieldInput}
+              value={subject}
+              onChange={(event) => setRefundEmailModal((current) => ({ ...current, subject: event.target.value }))}
+            />
+          </label>
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            Email message
+            <textarea
+              className={`${styles.textareaInput} ${styles.fieldWide}`}
+              rows={10}
+              value={message}
+              onChange={(event) => setRefundEmailModal((current) => ({ ...current, message: event.target.value }))}
             />
           </label>
         </div>
@@ -2848,19 +3070,30 @@ export default function OrderDetail({ orderId }) {
         body: JSON.stringify({ archived, acknowledge_outstanding: acknowledge }),
       });
       const result = await response.json();
+
+      // Money still owed on it. Not a refusal, a second question, and it is
+      // asked in the same modal language as the first rather than in a browser
+      // dialog that looks like it came from somewhere else.
       if (result?.needsAcknowledgement) {
-        if (window.confirm(`${result.error}\n\nArchive it anyway?`)) {
-          await setArchived(true, true);
-        }
+        setArchiveOutstanding(result.error || "There is still money owed on this order.");
         return;
       }
       if (!response.ok || !result.ok) {
-        window.alert(result?.error || "Could not archive that order.");
+        toast({ title: result?.error || "Could not archive that order.", variant: "error" });
         return;
       }
+
+      setArchiveOutstanding("");
+      toast({
+        title: archived
+          ? "Archived. It stops counting anywhere until you restore it."
+          : "Restored. It is back the way it was before it was archived.",
+        variant: "success",
+      });
+      await loadOrder();
       router.refresh();
     } catch (error) {
-      window.alert(error?.message || "Could not archive that order.");
+      toast({ title: error?.message || "Could not archive that order.", variant: "error" });
     } finally {
       setIsSavingOrder(false);
     }
@@ -3007,11 +3240,29 @@ export default function OrderDetail({ orderId }) {
           </>
         }
       >
+        {/* WHAT IS ALREADY WRITTEN AGAINST THIS LINE, before the box you type
+            in. These come from the quote and from the order and are read only
+            here: the quote is the record of what was agreed, and the way to
+            change what the customer was told is to raise a variation. Showing
+            them means a note about a mitre written when the job was sold is in
+            front of the person deciding what to write now. */}
+        {lineNotes(row.item, {}).length > 0 && (
+          <div className="mb-3 flex flex-col gap-2">
+            {lineNotes(row.item, {}).map((note) => (
+              <div key={note.key} className="rounded-[6px] border border-[#dbd8cc] bg-[#faf9f5] px-3 py-2">
+                <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">{note.label}</div>
+                <p className="mt-[2px] whitespace-pre-wrap text-[12.5px] leading-[1.5] text-[#1a1a18]">{note.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
-          Notes
+          Note for this panel
           <textarea
             className={styles.textareaInput}
-            rows={6}
+            rows={5}
+            placeholder="Anything about cutting this piece that is not already said above."
             value={panelNotesModal.notes}
             onChange={(event) => setPanelNotesModal((current) => ({ ...current, notes: event.target.value }))}
           />
@@ -3297,6 +3548,44 @@ export default function OrderDetail({ orderId }) {
             <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{order.order_number || "Order"}</p>
             <Link href="/admin/orders" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Orders</Link>
           </div>
+
+          {/* THE ACTIONS ON THE WHOLE ORDER, in the same place the quote builder
+              keeps its own, so the two pages are learned once rather than twice.
+              There are fewer of them here on purpose: an order has no draft to
+              save, because every field writes as you leave it, and its documents
+              are numbered off the production list so they live beside it. */}
+          <div className="px-3 py-3 border-b border-[#edf4eb] flex flex-col gap-2">
+            {order.pcd_quote?.id ? (
+              <Link
+                href={`/admin/quotes/${order.pcd_quote.id}`}
+                className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] transition-colors"
+                title={`The quote this order was raised from${order.pcd_quote.quote_number ? `, ${order.pcd_quote.quote_number}` : ""}`}
+              >
+                Open the quote
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              onClick={downloadDeliveryLabel}
+              disabled={makingDeliveryLabel}
+              title="A 62mm label for the outside of the bundle: who it is for, where it goes and how many pieces"
+              className="h-[32px] flex items-center justify-center px-3 bg-[#1c2b1e] rounded-[6px] text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors"
+            >
+              {makingDeliveryLabel ? "Making…" : "Print Delivery Label"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setArchiveOpen(true)}
+              disabled={isSavingOrder}
+              title={order.status === "archived"
+                ? "Put it back the way it was before it was archived."
+                : "Takes it off the board, out of the financials and out of the lists. Nothing is deleted and it can be restored."}
+              className="h-[32px] flex items-center justify-center px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
+            >
+              {order.status === "archived" ? "Restore" : "Archive"}
+            </button>
+          </div>
+
           <nav className="p-3 flex flex-col gap-[2px] overflow-y-auto flex-1" aria-label="Order sections">
             {sections.map((section) => (
               <button
@@ -3324,6 +3613,38 @@ export default function OrderDetail({ orderId }) {
                 <p className="text-[15px] font-semibold text-[#1a1a18]">{order.order_number || "Order"}</p>
                 <Link href="/admin/orders" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Orders</Link>
               </div>
+
+              {/* The same order actions as the sidebar. Archiving was reachable
+                  on a phone only by scrolling into Overview and finding it among
+                  the fields; here it sits with the sections, where the desktop
+                  keeps it. */}
+              <div className="px-4 py-3 bg-white border-b border-[#edf4eb] flex flex-wrap gap-2">
+                {order.pcd_quote?.id ? (
+                  <Link
+                    href={`/admin/quotes/${order.pcd_quote.id}`}
+                    className="min-h-[40px] flex items-center justify-center px-4 border border-[#dbd8cc] rounded-[6px] text-[13px] font-medium text-[#1a1a18]"
+                  >
+                    Open the quote
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={downloadDeliveryLabel}
+                  disabled={makingDeliveryLabel}
+                  className="min-h-[40px] flex items-center justify-center px-4 bg-[#1c2b1e] rounded-[6px] text-[13px] font-medium text-white disabled:opacity-50"
+                >
+                  {makingDeliveryLabel ? "Making…" : "Print Delivery Label"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setArchiveOpen(true)}
+                  disabled={isSavingOrder}
+                  className="min-h-[40px] flex items-center justify-center px-4 border border-[#dbd8cc] rounded-[6px] text-[13px] font-medium text-[#5a5a52] disabled:opacity-50"
+                >
+                  {order.status === "archived" ? "Restore" : "Archive"}
+                </button>
+              </div>
+
               {sections.map((section) => (
                 <button
                   key={section.key}
@@ -3369,6 +3690,16 @@ export default function OrderDetail({ orderId }) {
 
       {renderPaymentModal()}
       {renderPaymentRequestModal()}
+      {renderRefundEmailModal()}
+
+      <RefundModal
+        open={refundModalOpen}
+        onClose={() => setRefundModalOpen(false)}
+        onSubmit={addRefund}
+        payments={payments}
+        currency={order.currency || "AUD"}
+        saving={savingRefund}
+      />
 
       <SettlePaymentModal
         payment={settlingPayment}
@@ -3396,6 +3727,48 @@ export default function OrderDetail({ orderId }) {
       {renderPanelNotesModal()}
       {issueModal}
       {resolveModal}
+
+      {/* Archiving takes an order off the board, out of the financials and out
+          of the lists all at once. Reversible, but not something to do by
+          brushing past a button. */}
+      <ConfirmModal
+        open={archiveOpen && !archiveOutstanding}
+        onClose={() => setArchiveOpen(false)}
+        title={order.status === "archived"
+          ? `Restore ${order.order_number || "this order"}?`
+          : `Archive ${order.order_number || "this order"}?`}
+        description={order.status === "archived"
+          ? "It goes back to the status it had before it was archived, and starts counting on the board, in the lists and in the financials again."
+          : "It comes off the board, out of the financials and out of the lists. Nothing is deleted and you can restore it from the Archived tab."}
+        variant={order.status === "archived" ? "default" : "warning"}
+        confirmLabel={order.status === "archived" ? "Restore it" : "Archive it"}
+        cancelLabel="Keep it as it is"
+        loading={isSavingOrder}
+        onConfirm={async () => {
+          await setArchived(order.status !== "archived");
+          setArchiveOpen(false);
+        }}
+      />
+
+      {/* The second question, asked only when the route says there is money
+          still owed. Separate rather than a warning inside the first, because
+          agreeing to archive is not the same as agreeing to walk away from a
+          balance, and the two should not be answered with one click. */}
+      <ConfirmModal
+        open={Boolean(archiveOutstanding)}
+        onClose={() => { setArchiveOutstanding(""); setArchiveOpen(false); }}
+        title="There is still money owed on this order"
+        description={`${archiveOutstanding} Archiving it takes that balance out of the financials, so it will stop being chased and stop being counted.`}
+        variant="danger"
+        confirmLabel="Archive it anyway"
+        cancelLabel="Leave it where it is"
+        loading={isSavingOrder}
+        onConfirm={async () => {
+          setArchiveOutstanding("");
+          await setArchived(true, true);
+          setArchiveOpen(false);
+        }}
+      />
     </>
   );
 }
