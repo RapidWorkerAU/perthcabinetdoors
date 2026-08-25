@@ -2,6 +2,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   COLUMNS,
@@ -33,7 +34,10 @@ import {
   lateCards,
   chaseCards,
   buildBoard,
+  requestAnswered,
+  collapseReplies,
 } from "../lib/pcd-board.js";
+import { outstandingOnOrder, refundedOnOrder } from "../lib/pcd-board-money.js";
 
 const TODAY = "2026-08-19";
 
@@ -553,4 +557,286 @@ test("sorting never loses a column or a card", () => {
 test("age columns never reorder", () => {
   const rows = [c({ id: "a", days: 30 }), c({ id: "b", days: 30 }), c({ id: "d", days: 0 })];
   assert.deepEqual(groupByAge(rows, new Set()).map((col) => col.key), AGE_COLS.map((col) => col.key));
+});
+
+// ── READING THE MAIL IS NOT THE SAME AS REFRESHING ──────────────────────────
+//
+// The board re-reads the DATABASE every sixty seconds. It cannot know about a
+// reply typed in Outlook two minutes ago, because nothing has fetched it yet.
+// So a card saying a customer is waiting on us stayed up all afternoon after
+// somebody had already answered them, and no amount of refreshing shifted it.
+
+test("the board can go and read the mailbox, not just re-read itself", () => {
+  const board = readFileSync(new URL("../app/admin/board/BoardClient.tsx", import.meta.url), "utf8");
+
+  assert.match(board, /async function checkMailbox/, "there is a way to force the read");
+  assert.match(board, /"\/api\/admin\/customer-desk\/sync"|'\/api\/admin\/customer-desk\/sync'/, "through the one sync everything else uses");
+  assert.match(board, /Check mailbox/, "and it is a control, not a hidden shortcut");
+});
+
+test("the mail read and the plain refresh stay separate", () => {
+  // The sixty second timer must never fetch the mailbox: that would be a
+  // mailbox read a minute, all day, for every open board.
+  const board = readFileSync(new URL("../app/admin/board/BoardClient.tsx", import.meta.url), "utf8");
+  const refresh = board.slice(board.indexOf("function refresh()"), board.indexOf("async function checkMailbox"));
+  assert.ok(!/customer-desk\/sync/.test(refresh), "refresh only re-reads what is already here");
+
+  const timer = board.slice(board.indexOf("setInterval(() => router.refresh()"));
+  assert.ok(!/checkMailbox/.test(timer.slice(0, 200)), "and the timer calls refresh, not the mail read");
+});
+
+test("the board re-reads itself only after the mail has landed", () => {
+  // Refreshing before the sync returns shows the same board again and looks
+  // like the button did nothing.
+  const board = readFileSync(new URL("../app/admin/board/BoardClient.tsx", import.meta.url), "utf8");
+  const fn = board.slice(board.indexOf("async function checkMailbox"), board.indexOf("finally {", board.indexOf("async function checkMailbox")));
+  const awaited = fn.indexOf("await response.json()");
+  const refreshed = fn.indexOf("router.refresh()");
+  assert.ok(awaited > 0 && refreshed > awaited, "the refresh comes after the sync answers");
+});
+
+test("a run that ran out of road says so rather than saying done", () => {
+  // The exact failure the mail sync was rewritten to stop making.
+  const board = readFileSync(new URL("../app/admin/board/BoardClient.tsx", import.meta.url), "utf8");
+  assert.match(board, /payload\.capped/, "a capped run is reported as unfinished");
+  assert.match(board, /more still to read/);
+});
+
+// ── A REQUEST IS ANSWERED BY ANY QUOTE THAT WENT TO THEM ────────────────────
+//
+// The board followed converted_quote_id, the link the "convert this request"
+// button writes. Nothing else writes it. So a quote raised off the back of a
+// design, or straight from the quotes page, left the request looking
+// unanswered for ever.
+//
+// Dylan Yarwood had a request, two quotes, one of them approved and already an
+// order, and a card telling somebody to send him a formal quote.
+
+test("a quote sent after they asked answers the request, however it was raised", () => {
+  const request = { id: "r1", created_at: "2026-08-18T02:00:00Z" };
+  assert.equal(requestAnswered(request, ["2026-08-19T12:17:00Z"]), true, "sent the next day");
+  assert.equal(requestAnswered(request, ["2026-08-18T02:00:00Z"]), true, "sent the same moment counts");
+});
+
+test("a quote from before they asked is not an answer to it", () => {
+  // Last month's quote for a different job does not answer a question asked
+  // this week.
+  const request = { id: "r1", created_at: "2026-08-18T02:00:00Z" };
+  assert.equal(requestAnswered(request, ["2026-07-02T00:00:00Z"]), false);
+  // But one of several does.
+  assert.equal(requestAnswered(request, ["2026-07-02T00:00:00Z", "2026-08-20T00:00:00Z"]), true);
+});
+
+test("nothing sent means the card stays up", () => {
+  const request = { id: "r1", created_at: "2026-08-18T02:00:00Z" };
+  assert.equal(requestAnswered(request, []), false);
+  assert.equal(requestAnswered(request, [null, undefined, ""]), false, "a draft has no sent date");
+  assert.equal(requestAnswered(request, ["not a date"]), false);
+});
+
+test("a request with no date on it is never silently cleared", () => {
+  assert.equal(requestAnswered({ id: "r1" }, ["2026-08-19T00:00:00Z"]), false);
+  assert.equal(requestAnswered(null, ["2026-08-19T00:00:00Z"]), false);
+});
+
+test("the board looks past the convert link, and past its own quote list", () => {
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /requestAnswered/, "the widened rule is actually used");
+  // The board's own quotes are sent and viewed only. An APPROVED quote that has
+  // become an order is the clearest evidence a price went out, and it is
+  // exactly the one that list leaves out.
+  assert.match(page, /\.not\('sent_at', 'is', null\)/, "sent quotes are read on their own terms");
+  assert.ok(!/if \(!r\.converted_quote_id\) return true/.test(page), "the old link-only rule is gone");
+});
+
+test("a failed read leaves the card up rather than clearing it", () => {
+  // Not knowing about a quote has to fail towards the card staying, which is
+  // what it did before. Silently clearing on an error would hide real work.
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /sentQuoteQueries\.some\(q => q\.error\)/);
+  assert.match(page, /failed\.add\('requests'\)/);
+});
+
+// ══ AUDIT FIXES ═════════════════════════════════════════════════════════════
+
+// ── F1: a refunded job must not come back asking to be paid ─────────────────
+
+test("a refund comes off the total as well as off the payments", () => {
+  // It only came off the payments, so the amount owed ROSE by exactly what had
+  // been given back and the board asked you to collect from a settled job.
+  const paidInFull = [{ payment_type: "deposit", amount: 1000, is_paid: true }];
+  assert.equal(outstandingOnOrder(1000, paidInFull), 0);
+
+  const refunded = [...paidInFull, { payment_type: "refund", amount: -150, is_paid: true }];
+  assert.equal(outstandingOnOrder(1000, refunded), 0, "square is square, refund or not");
+  assert.equal(refundedOnOrder(refunded), 150);
+});
+
+test("a refund on a part paid job leaves the right balance", () => {
+  const rows = [
+    { payment_type: "deposit", amount: 500, is_paid: true },
+    { payment_type: "refund", amount: -100, is_paid: true },
+  ];
+  // The job was worth 900 once 100 came off it, and they have net paid 400.
+  assert.equal(outstandingOnOrder(1000, rows), 500);
+});
+
+test("a refund raised and not yet sent changes nothing", () => {
+  // The money is still where it was. Counting it early would make a job look
+  // square before anybody had given anything back.
+  const rows = [
+    { payment_type: "deposit", amount: 1000, is_paid: true },
+    { payment_type: "refund", amount: -150, is_paid: false },
+  ];
+  assert.equal(refundedOnOrder(rows), 0);
+  assert.equal(outstandingOnOrder(1000, rows), 0);
+});
+
+test("an overpaid job never asks for a negative amount", () => {
+  assert.equal(outstandingOnOrder(1000, [{ amount: 1200, is_paid: true }]), 0);
+});
+
+// ── F2: a quote you have answered leaves the reply column ──────────────────
+
+test("a quote stops being a reply once you have answered them", () => {
+  const base = { id: "q1", quote_number: "Q-1", sent_at: "2026-08-01T00:00:00Z", customerId: "c1" };
+
+  const unanswered = chaseCards(
+    { quotes: [{ ...base, repliedAt: "2026-08-02T00:00:00Z", answeredAt: null }] },
+    "2026-08-10"
+  )[0];
+  assert.equal(unanswered.cat, "reply", "they wrote and nobody has answered");
+
+  const answered = chaseCards(
+    { quotes: [{ ...base, repliedAt: "2026-08-02T00:00:00Z", answeredAt: "2026-08-03T00:00:00Z" }] },
+    "2026-08-10"
+  )[0];
+  assert.equal(answered.cat, "chase", "we answered on the 3rd, so it is a chase again");
+  assert.equal(answered.theirs, true, "and the ball is back with them");
+});
+
+test("answering before they wrote does not count as answering them", () => {
+  const card = chaseCards(
+    {
+      quotes: [{
+        id: "q1", sent_at: "2026-08-01T00:00:00Z",
+        repliedAt: "2026-08-05T00:00:00Z",
+        answeredAt: "2026-08-02T00:00:00Z",
+      }],
+    },
+    "2026-08-10"
+  )[0];
+  assert.equal(card.cat, "reply", "their message is the newer of the two");
+});
+
+// ── F3: one person, one reply ───────────────────────────────────────────────
+
+const personReply = (customerId, extra = {}) => ({
+  id: `reply:${customerId}`, cat: "reply", subjectType: "customer", customerId,
+  why: "The last thing that passed between us was theirs, and nothing has gone back.",
+  tags: [], ...extra,
+});
+const quoteReply = (customerId, ref) => ({
+  id: `quote:${ref}`, cat: "reply", subjectType: "quote", customerId,
+  what: "Cabinetry Quote", why: "They wrote back.", tags: [[ref, "ref"]],
+});
+
+test("a quote reply folds into the person's reply card and is named on it", () => {
+  const out = collapseReplies([personReply("c1"), quoteReply("c1", "PCD-Q-1")]);
+  assert.equal(out.length, 1, "one person, one reply");
+  assert.equal(out[0].subjectType, "customer");
+  assert.match(out[0].why, /PCD-Q-1/, "nothing is hidden by the collapse");
+  assert.ok(out[0].tags.some((t) => t[0] === "PCD-Q-1"), "and it is tagged with the quote");
+});
+
+test("two quotes waiting on one person are both named", () => {
+  const out = collapseReplies([personReply("c1"), quoteReply("c1", "Q-1"), quoteReply("c1", "Q-2")]);
+  assert.equal(out.length, 1);
+  assert.match(out[0].why, /Q-1, Q-2/);
+});
+
+test("a quote reply with no person card behind it is never collapsed", () => {
+  // The safety net. A closed ticket, or an email that never filed, means no
+  // person card exists, and dropping the quote would be work disappearing
+  // because something that does not exist was assumed to cover it.
+  const out = collapseReplies([quoteReply("c1", "Q-1")]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].subjectType, "quote");
+});
+
+test("a quote reply for a different person is left alone", () => {
+  const out = collapseReplies([personReply("c1"), quoteReply("c2", "Q-9")]);
+  assert.equal(out.length, 2, "c2 has no reply card of their own");
+});
+
+test("collapsing never touches a chase, an enquiry or anything else", () => {
+  const chase = { id: "quote:x", cat: "chase", subjectType: "quote", customerId: "c1", tags: [] };
+  const enquiry = { id: "enquiry:x", cat: "reply", subjectType: "enquiry", customerId: "c1", tags: [] };
+  const out = collapseReplies([personReply("c1"), chase, enquiry]);
+  assert.equal(out.length, 3, "only a quote's own REPLY card folds");
+});
+
+test("collapsing an empty board, or one with nobody owed a reply, changes nothing", () => {
+  assert.deepEqual(collapseReplies([]), []);
+  const chaseOnly = [{ id: "a", cat: "chase", subjectType: "quote", customerId: "c1", tags: [] }];
+  assert.deepEqual(collapseReplies(chaseOnly), chaseOnly);
+});
+
+test("the collapse runs after set aside, so setting a reply aside frees the quote", () => {
+  // Collapsing first would let somebody set the reply aside and take the quote
+  // chase with it, leaving the quote waiting with nothing anywhere saying so.
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const dismiss = page.indexOf("applyDismissals(built");
+  const collapse = page.indexOf("collapseReplies(standing)");
+  assert.ok(dismiss > 0 && collapse > dismiss, "set aside first, collapse second");
+});
+
+// ── F5 and F6: an enquiry is another thing they sent ───────────────────────
+
+test("an enquiry from somebody already owed a reply folds into their card", () => {
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /foldedEnquiryIds/, "enquiries join the per person grouping");
+  // Folded BEFORE the cards are built from the groups, or the card would carry
+  // the counts and dates from before the fold.
+  const fold = page.indexOf("foldedEnquiryIds.add");
+  const build = page.indexOf("const openTickets = Array.from(byCustomer.values())");
+  assert.ok(fold > 0 && build > fold, "folded before the cards are built");
+});
+
+test("an enquiry with nobody to fold into still gets its own card", () => {
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /!foldedEnquiryIds\.has\(e\.id as string\)/, "the ungrouped ones survive");
+});
+
+// ── F7: on hold keeps the money, drops the work ────────────────────────────
+
+test("a held job's requested payment still chases", () => {
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /'pending_deposit', 'active', 'complete', 'on_hold'/, "held orders are read");
+  assert.match(page, /\['active', 'on_hold'\]\.includes/, "and their payments chase");
+});
+
+test("a held job raises no work cards at all", () => {
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  // Planning, materials and workshop all come from this one list.
+  assert.match(page, /const active = orders\.filter\(o => o\.status === 'active'\)/);
+  // And issues are scoped away from held jobs explicitly.
+  assert.match(page, /order\?\.status !== 'on_hold'/);
+});
+
+test("an issue on an archived job stops asking to be fixed", () => {
+  // Issues were never scoped to the board's orders, so an unresolved issue on
+  // an archived job kept its card, with no order number on it because the order
+  // was not there to name it.
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /return Boolean\(order\) && order\?\.status !== 'on_hold'/);
+});
+
+// ── F9: a job booked to start with nothing on it ───────────────────────────
+
+test("an order booked to start with no panels at all is not silent", () => {
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /const nothingOnIt = panels\.length === 0/);
+  assert.match(page, /startPassed && \(nothingMoved \|\| nothingOnIt\)/);
+  assert.match(page, /'Nothing on it'/, "and it says which of the two it is");
 });

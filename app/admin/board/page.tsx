@@ -1,10 +1,11 @@
 import AdminShell from '../_components/AdminShell'
 import { requireAdminSession } from '../../../lib/admin-guard'
 import { createSupabaseAdminClient } from '../../../lib/supabase/admin'
-import { buildBoard, daysUntil } from '../../../lib/pcd-board'
+import { buildBoard, collapseReplies, daysUntil, requestAnswered } from '../../../lib/pcd-board'
 import { applyDismissals } from '../../../lib/pcd-board-dismissal'
 import { primaryIdIndex } from '../../../lib/pcd-customer-links'
 import { issueKindLabel } from '../../../lib/pcd-order-issues'
+import { outstandingOnOrder } from '../../../lib/pcd-board-money'
 import BoardClient from './BoardClient'
 
 export const dynamic = 'force-dynamic'
@@ -54,7 +55,15 @@ export default async function AdminBoardPage() {
   // the orders that are.
   const ordersQ = await supabase.from('pcd_orders')
     .select('id, order_number, name, customer_id, customer_name, customer_email, status, accepted_at, created_at, completed_at, total_inc_gst, scheduled_start_date, production_lead_days, target_completion_date, deposit_amount')
-    .in('status', ['pending_deposit', 'active', 'complete'])
+    // on_hold is read but never worked. Being paused does not mean a customer
+    // stopped owing you, so a payment already requested keeps its chase card
+    // (see chasePayments below). Everything else is gated on 'active', so no
+    // planning, materials, workshop or issue card can come from a held job.
+    .in('status', ['pending_deposit', 'active', 'complete', 'on_hold'])
+  // Every order the board reads, which is what the payment, item and issue
+  // queries are scoped to. A held job is in here so its payments can be read;
+  // nothing downstream treats it as work, because every work column filters on
+  // status 'active' first.
   const liveOrderIds = (ordersQ.data || []).map(o => o.id)
 
   const [
@@ -281,6 +290,31 @@ export default async function AdminBoardPage() {
   // forth, because our reply had started a new thread and the old one could not
   // see it. Judging the turn per thread is what made that possible; asking it
   // of the PERSON is what fixes it.
+  // AN ENQUIRY IS ANOTHER THING THEY SENT.
+  //
+  // It used to raise its own card outside the per person grouping, so somebody
+  // who filled in the form and then emailed got two cards asking for the one
+  // reply. Folded into the same group now: it counts as one of their waiting
+  // conversations, and its arrival is eligible to be the oldest, which is what
+  // the clock runs from.
+  //
+  // An enquiry from somebody with no customer record, or with no waiting
+  // threads, still gets its own card below. There is no group to fold it into,
+  // and dropping it would be work disappearing.
+  const unansweredEnquiries = enquiries.filter(e => !answered(e.customer_email, e.created_at))
+  const foldedEnquiryIds = new Set<string>()
+
+  unansweredEnquiries.forEach(e => {
+    const customerId = whoIsIt(e.customer_id as string, e.customer_email as string)
+    const group = customerId ? byCustomer.get(`customer:${customerId}`) : null
+    if (!group) return
+    const at = String(e.created_at || '')
+    group.subjects.push(String(e.topic || 'Website enquiry'))
+    if (at && at < group.oldest) group.oldest = at
+    if (at && at > group.newest) group.newest = at
+    foldedEnquiryIds.add(e.id as string)
+  })
+
   const openTickets = Array.from(byCustomer.values())
     .map(group => ({
       ...group.ticket,
@@ -292,8 +326,8 @@ export default async function AdminBoardPage() {
       newestInbound: group.newest,
     }))
 
-  const openEnquiries = enquiries
-    .filter(e => !answered(e.customer_email, e.created_at))
+  const openEnquiries = unansweredEnquiries
+    .filter(e => !foldedEnquiryIds.has(e.id as string))
     .map(e => ({ ...e, customerId: whoIsIt(e.customer_id as string, e.customer_email as string) }))
 
   // When each customer last wrote to us, whatever thread it was on. Used to flip
@@ -323,12 +357,63 @@ export default async function AdminBoardPage() {
   // "I will get you a price next week" is not a price. The card now goes when
   // one is sent, when the request is closed or marked waiting on them, or when
   // somebody sets it aside with a reason.
+  // ANY QUOTE THAT WENT TO THEM, not only one raised through the convert
+  // button. converted_quote_id is written by that button and by nothing else,
+  // so a quote raised off the back of a design, or straight from the quotes
+  // page, left the request looking unanswered forever.
+  //
+  // Read separately because the board's own quotes list is only the sent and
+  // viewed ones: a quote that has since been APPROVED and become an order is
+  // the clearest possible evidence that a price went out, and it is exactly the
+  // one that list leaves out.
+  const requestEmails = [...new Set(
+    requests.map(r => String(r.customer_email || '').trim().toLowerCase()).filter(Boolean)
+  )]
+  const requestCustomerIds = [...new Set(requests.map(r => r.customer_id).filter(Boolean) as string[])]
+
+  const sentQuoteQueries = await Promise.all([
+    requestEmails.length
+      ? supabase.from('pcd_quotes').select('customer_id, customer_email, sent_at')
+          .not('sent_at', 'is', null).in('customer_email', requestEmails)
+      : Promise.resolve({ data: [] as Json[], error: null }),
+    requestCustomerIds.length
+      ? supabase.from('pcd_quotes').select('customer_id, customer_email, sent_at')
+          .not('sent_at', 'is', null).in('customer_id', requestCustomerIds)
+      : Promise.resolve({ data: [] as Json[], error: null }),
+  ])
+  // A read that failed must not clear a card. Not knowing about a quote is the
+  // safe direction here: the worst case is the card staying up, which is what
+  // it did before.
+  if (sentQuoteQueries.some(q => q.error)) failed.add('requests')
+
+  // Keyed the same way a card is, so two customer records that have been merged
+  // count as one person. Falls back to the address when there is no record yet.
+  const identityOf = (customerId: unknown, email: unknown) =>
+    whoIsIt(customerId as string, email as string) || String(email || '').trim().toLowerCase() || null
+
+  const sentToIdentity = new Map<string, string[]>()
+  for (const query of sentQuoteQueries) {
+    for (const quote of (query.data || []) as Json[]) {
+      const key = identityOf(quote.customer_id, quote.customer_email)
+      if (!key) continue
+      const list = sentToIdentity.get(key) || []
+      list.push(String(quote.sent_at))
+      sentToIdentity.set(key, list)
+    }
+  }
+
   const openRequests = requests
     .filter(r => {
-      if (!r.converted_quote_id) return true
-      const quote = quoteById.get(r.converted_quote_id as string)
-      // A quote we cannot find is not a quote that was sent.
-      return !quote?.sent_at
+      // Whatever the convert button linked, if anything.
+      if (r.converted_quote_id) {
+        const quote = quoteById.get(r.converted_quote_id as string)
+        // A quote we cannot find is not a quote that was sent.
+        if (quote?.sent_at) return false
+      }
+      // And anything else that actually went to them since they asked.
+      const key = identityOf(r.customer_id, r.customer_email)
+      const sent = key ? sentToIdentity.get(key) || [] : []
+      return !requestAnswered(r, sent)
     })
     .map(r => {
       const quote = r.converted_quote_id ? quoteById.get(r.converted_quote_id as string) : null
@@ -410,6 +495,11 @@ export default async function AdminBoardPage() {
       const at = p.production_stage || p.status
       return !at || START_OF_LIST.has(String(at))
     })
+    // An order with NO panels at all was silent here, because "every panel is
+    // still at the start" is trivially true of no panels and the length guard
+    // above then dropped it. A job booked to start with nothing on it to make
+    // is a worse problem than one that has not moved, not a lesser one.
+    const nothingOnIt = panels.length === 0
 
     if (overdue > 0) {
       late.push({
@@ -419,13 +509,15 @@ export default async function AdminBoardPage() {
         reasonTag: 'Past due date',
         why: `Past its due date and still active.${nothingMoved ? ' Nothing on it has moved at all.' : ''}`,
       })
-    } else if (startPassed && nothingMoved) {
+    } else if (startPassed && (nothingMoved || nothingOnIt)) {
       late.push({
         ...order,
         customerId: whoIsIt(order.customer_id as string, order.customer_email as string),
         overdueDays: Math.abs(until as number),
-        reasonTag: 'Never started',
-        why: 'Booked to start and every panel is still at the start of its list: Not Started for ours, Not Ordered for the supplier\'s.',
+        reasonTag: nothingOnIt ? 'Nothing on it' : 'Never started',
+        why: nothingOnIt
+          ? 'Booked to start and there is nothing on the order to make.'
+          : 'Booked to start and every panel is still at the start of its list: Not Started for ours, Not Ordered for the supplier\'s.',
       })
     }
   })
@@ -436,17 +528,18 @@ export default async function AdminBoardPage() {
   // Worked out from the total rather than from the payment rows, because the
   // rows are the problem: only a deposit is ever raised automatically, so a
   // balance nobody has asked for has no row to be found by.
-  const paidByOrder = new Map<string, number>()
+  const paymentsByOrder = new Map<string, Json[]>()
   const askedByOrder = new Map<string, Json>()
   const paymentMovedAt = new Map<string, string>()
   allPayments.forEach(p => {
     const orderId = p.order_id as string
+    const forOrder = paymentsByOrder.get(orderId) || []
+    forOrder.push(p as Json)
+    paymentsByOrder.set(orderId, forOrder)
+
     const moved = String(p.requested_at || p.created_at || '')
     if (moved > (paymentMovedAt.get(orderId) || '')) paymentMovedAt.set(orderId, moved)
-    if (p.is_paid) {
-      paidByOrder.set(orderId, (paidByOrder.get(orderId) || 0) + Number(p.amount || 0))
-      return
-    }
+    if (p.is_paid) return
     // The unpaid row that has been asked for, newest request first.
     const held = askedByOrder.get(orderId)
     if (p.requested_at && (!held || String(p.requested_at) > String(held.requested_at || ''))) {
@@ -457,8 +550,10 @@ export default async function AdminBoardPage() {
   const balances = orders
     .filter(o => o.status === 'complete')
     .map(o => {
-      const paid = paidByOrder.get(o.id as string) || 0
-      const outstanding = Math.round((Number(o.total_inc_gst || 0) - paid) * 100) / 100
+      // A REFUND CHANGES THE TOTAL, NOT JUST THE PAYMENTS. See
+      // lib/pcd-board-money.js: taking it off one side only is how a job you
+      // deliberately refunded comes back asking to be paid what you gave back.
+      const outstanding = outstandingOnOrder(o.total_inc_gst, paymentsByOrder.get(o.id as string) || [])
       const asked = askedByOrder.get(o.id as string)
       return {
         ...o,
@@ -467,7 +562,7 @@ export default async function AdminBoardPage() {
         requestedAt: asked?.requested_at || null,
         // Moves when a payment is raised, requested or paid, so a card set
         // aside comes back if the money situation changes.
-        stamp: [String(o.completed_at || ''), paymentMovedAt.get(o.id as string) || '', String(paid)]
+        stamp: [String(o.completed_at || ''), paymentMovedAt.get(o.id as string) || '', String(outstanding)]
           .filter(Boolean).sort().slice(-1)[0] || null,
       }
     })
@@ -477,7 +572,10 @@ export default async function AdminBoardPage() {
   // ── things sitting with the customer ──────────────────────────────────────
   const chasePayments = payments
     .filter(p => p.payment_type !== 'deposit' && p.requested_at)
-    .filter(p => orderById.get(p.order_id)?.status === 'active')
+    // Active or on hold. A held job's requested payment used to vanish with the
+    // job, which is money asked for and then forgotten. A completed job's
+    // balance is covered by its own column instead.
+    .filter(p => ['active', 'on_hold'].includes(String(orderById.get(p.order_id)?.status || '')))
     .map(p => ({
       ...p,
       orderNumber: orderById.get(p.order_id)?.order_number || null,
@@ -499,7 +597,19 @@ export default async function AdminBoardPage() {
   }))
 
   // ── issues, named ─────────────────────────────────────────────────────────
-  const issueRows = issues.map(i => ({
+  // SCOPED TO THE JOBS BEING WORKED, which it never was. Every unresolved
+  // issue raised a card whatever had happened to its order, so a problem on an
+  // ARCHIVED job kept asking to be fixed, with no order number on it because
+  // the order was not in the board's data to name it.
+  //
+  // A held job's issues come off too: the work is paused, and that is the whole
+  // meaning of the status. Its money still chases, in the payments column.
+  const issueRows = issues
+    .filter(i => {
+      const order = orderById.get(i.order_id)
+      return Boolean(order) && order?.status !== 'on_hold'
+    })
+    .map(i => ({
     ...i,
     kindLabel: issueKindLabel(i.kind),
     orderNumber: orderById.get(i.order_id)?.order_number || null,
@@ -526,6 +636,12 @@ export default async function AdminBoardPage() {
         ...q,
         customerId: whoIsIt(q.customer_id as string, q.customer_email as string),
         repliedAt: inboundByEmail.get(String(q.customer_email || '').toLowerCase()) || null,
+        // What we sent BACK, so a quote they wrote about stops being a reply
+        // the moment somebody has answered them. Without this the card sat in
+        // the reply column ageing for weeks after the conversation was over.
+        answeredAt: lastReplyTo(q.customer_id as string)
+          || outboundByEmail.get(String(q.customer_email || '').toLowerCase())
+          || null,
       })),
       payments: chasePayments,
       variations: chaseVariations,
@@ -541,7 +657,12 @@ export default async function AdminBoardPage() {
     .from('pcd_board_dismissals')
     .select('cat, subject_id, seen_stamp')
   if (dismissalsQ.error) failed.add('set aside')
-  const { cards, setAsideCount } = applyDismissals(built, dismissalsQ.data || [])
+  const { cards: standing, setAsideCount } = applyDismissals(built, dismissalsQ.data || [])
+  // LAST, and after set aside on purpose. A card that has been set aside is not
+  // on the board, so it cannot stand in for anything: collapsing first would let
+  // somebody set a reply aside and take the quote chase with it, leaving the
+  // quote waiting with nothing anywhere saying so. See collapseReplies.
+  const cards = collapseReplies(standing)
 
   return (
     <AdminShell>

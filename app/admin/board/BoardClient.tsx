@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { IconRefresh, IconAlertTriangle } from '@tabler/icons-react'
+import { IconRefresh, IconAlertTriangle, IconMail } from '@tabler/icons-react'
 import {
   ACTORS,
   AGE_COLS,
@@ -135,6 +135,7 @@ export default function BoardClient({ cards, failed, loadedAt, setAsideCount = 0
   const [cross, setCross] = useState('')
   const [stamp, setStamp] = useState(loadedAt)
   const [refreshing, setRefreshing] = useState(false)
+  const [checkingMail, setCheckingMail] = useState(false)
   const [mobileCol, setMobileCol] = useState(0)
   const strip = useRef<HTMLDivElement | null>(null)
   const { toast } = useToast()
@@ -240,10 +241,58 @@ export default function BoardClient({ cards, failed, loadedAt, setAsideCount = 0
     if (strip.current) strip.current.scrollTo({ left: 0 })
   }
 
+  // REFRESH IS NOT THE SAME AS READING THE MAIL, and the difference is the
+  // whole reason this button exists. refresh() re-reads the DATABASE, which is
+  // what the sixty second timer does; it cannot know about a reply typed in
+  // Outlook two minutes ago, because nothing has fetched it yet.
+  //
+  // So a card saying a customer is waiting on us stayed up all afternoon after
+  // somebody had already answered them, and no amount of pressing "Updated"
+  // would shift it. This goes and gets the mail first.
   function refresh() {
     setRefreshing(true)
     router.refresh()
     setTimeout(() => setRefreshing(false), 800)
+  }
+
+  async function checkMailbox() {
+    setCheckingMail(true)
+    toast({ title: 'Reading the mailbox. This can take a minute.' })
+    try {
+      const response = await fetch('/api/admin/customer-desk/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload.ok) {
+        toast({ title: payload.error || 'Could not read the mailbox.', variant: 'error' })
+        return
+      }
+
+      // Only now is the board looking at anything new.
+      router.refresh()
+      setStamp(new Date().toISOString())
+
+      toast({
+        // A run that stopped at its ceiling has left mail unread, and saying
+        // "done" at that point is the exact failure the mail sync was rewritten
+        // to stop making. See lib/pcd-desk-sync.js.
+        title: payload.capped
+          ? `${payload.added} message${payload.added === 1 ? '' : 's'} filed, and there is more still to read. Run it again.`
+          : payload.added
+            ? `${payload.added} new message${payload.added === 1 ? '' : 's'} filed.`
+            : 'Nothing new in the mailbox.',
+        variant: payload.capped ? 'error' : 'success',
+      })
+    } catch (error: unknown) {
+      toast({
+        title: error instanceof Error ? error.message : 'Could not read the mailbox.',
+        variant: 'error',
+      })
+    } finally {
+      setCheckingMail(false)
+    }
   }
 
   // On a phone one column fills the screen and the strip snaps between them,
@@ -289,10 +338,23 @@ export default function BoardClient({ cards, failed, loadedAt, setAsideCount = 0
               · {setAsideCount} set aside
             </span>
           )}
+          {/* Two controls, because they do two different things. The left one
+              goes and gets the mail; the right one re-reads what is already
+              here, which is also what the timer does on its own. */}
+          <button
+            type="button"
+            onClick={checkMailbox}
+            disabled={checkingMail}
+            title="Read the sales mailbox now, so a reply you have just sent stops the card asking for one"
+            className="ml-auto inline-flex min-h-[28px] items-center gap-1.5 rounded-[6px] border border-[#dbd8cc] px-2.5 text-[11.5px] font-semibold text-[#5a5a52] transition-colors hover:bg-[#f5f8f4] hover:text-[#1a1a18] disabled:opacity-50"
+          >
+            <IconMail size={13} className={checkingMail ? 'animate-pulse' : ''} />
+            {checkingMail ? 'Reading…' : 'Check mailbox'}
+          </button>
           <button
             type="button"
             onClick={refresh}
-            className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] text-[#8b8a81] transition-colors hover:text-[#1a1a18]"
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-[#8b8a81] transition-colors hover:text-[#1a1a18]"
           >
             <IconRefresh size={13} className={refreshing ? 'animate-spin' : ''} />
             Updated {ago(stamp)}
