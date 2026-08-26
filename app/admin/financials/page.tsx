@@ -1,4 +1,4 @@
-import AdminShell from '../_components/AdminShell'
+import ReportingShell from '../reporting/ReportingShell'
 import { requireAdminSession } from '../../../lib/admin-guard'
 import { createSupabaseAdminClient } from '../../../lib/supabase/admin'
 import FinancialsClient from './FinancialsClient'
@@ -123,7 +123,7 @@ export default async function AdminFinancialsPage() {
   const today = new Date().toISOString().slice(0, 10)
 
   return (
-    <AdminShell>
+    <ReportingShell>
       <FinancialsClient
         loadFailed={loadFailed}
         payments={payments}
@@ -133,6 +133,6 @@ export default async function AdminFinancialsPage() {
         orderQuoteIds={orderQuoteIds}
         today={today}
       />
-    </AdminShell>
+    </ReportingShell>
   )
 }

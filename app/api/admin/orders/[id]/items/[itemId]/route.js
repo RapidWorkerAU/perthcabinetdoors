@@ -1,5 +1,5 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
-import { describeChanges, logOrderActivity } from "../../../../../../../lib/pcd-activity-log";
+import { describeChanges, formatActivityValue, logOrderActivity } from "../../../../../../../lib/pcd-activity-log";
 import { ORDER_LINE_STATUSES, ORDER_PRODUCTION_STAGES } from "../../../../../../../lib/pcd-quote-utils";
 
 async function idsFromParams(params) {
@@ -17,6 +17,47 @@ function isThermolaminatedItem(item) {
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes("thermolaminate"));
+}
+
+
+// WHAT CHANGED INSIDE panel_planning, in the same words describeChanges uses.
+//
+// The order page writes the ordered date, the ETA and the per panel status
+// into this blob rather than into the columns beside it. Whatever the merits
+// of that, it is where the truth is, so it has to be described or the order
+// history is missing the part of production a customer most wants to hear.
+//
+// The phrasing matches the column labels deliberately: lib/pcd-weekly-updates.js
+// reads these descriptions back, and one wording means one parser.
+//
+// An item usually has one panel. Where it has several and they all moved the
+// same way, that is one line rather than the same sentence five times.
+const PLANNING_LABELS = {
+  status: 'Status',
+  production_stage: 'Production stage',
+  supplier_ordered_at: 'Supplier ordered',
+  supplier_eta: 'Supplier ETA',
+  supplier_name: 'Supplier',
+  supplier_order_ref: 'Supplier ref',
+};
+
+function describePlanningChanges(before, after) {
+  if (!after || typeof after !== 'object') return [];
+  const was = before && typeof before === 'object' ? before : {};
+  const seen = new Set();
+
+  Object.entries(after).forEach(([panelKey, panel]) => {
+    if (!panel || typeof panel !== 'object') return;
+    const previous = was[panelKey] && typeof was[panelKey] === 'object' ? was[panelKey] : {};
+    Object.entries(PLANNING_LABELS).forEach(([field, label]) => {
+      const from = formatActivityValue(previous[field], field);
+      const to = formatActivityValue(panel[field], field);
+      if (from === to) return;
+      seen.add(`${label} changed from ${from} to ${to}`);
+    });
+  });
+
+  return [...seen];
 }
 
 export async function PATCH(request, { params }) {
@@ -127,7 +168,7 @@ export async function PATCH(request, { params }) {
     // history, and it would have reached customers through the weekly update
     // report, which reads this log. Dropped from the description only: the
     // column is still written above.
-    const { status_updated_at: _stamp, ...described } = updates;
+    const { status_updated_at: _stamp, panel_planning: nextPlanning, ...described } = updates;
 
     const changes = describeChanges(beforeItem || {}, described, {
       status: "Status",
@@ -142,6 +183,18 @@ export async function PATCH(request, { params }) {
       board_available: "Board available",
       production_notes: "Production notes",
     });
+
+    // AND THE PLANNING BLOB, which is where the order page actually writes the
+    // ordered date, the ETA and the per panel status.
+    //
+    // describeChanges could not see any of it. It compares values with
+    // String(value), and String(anObject) is "[object Object]" on both sides, so
+    // every planning change compared EQUAL and was silently never logged. Ten
+    // doors were marked ordered with a date and an ETA and the order history
+    // recorded nothing at all, which meant the weekly update report had nothing
+    // to tell the customer either.
+    changes.push(...describePlanningChanges(beforeItem?.panel_planning, nextPlanning));
+
     if (changes.length) {
       await logOrderActivity(context.supabase, {
         order_id: id,

@@ -1,4 +1,4 @@
-import AdminShell from '../_components/AdminShell'
+import WorkShell from '../work-management/WorkShell'
 import { requireAdminSession } from '../../../lib/admin-guard'
 import { createSupabaseAdminClient } from '../../../lib/supabase/admin'
 import { buildBoard, collapseReplies, daysUntil, requestAnswered } from '../../../lib/pcd-board'
@@ -665,7 +665,7 @@ export default async function AdminBoardPage() {
   const cards = collapseReplies(standing)
 
   return (
-    <AdminShell>
+    <WorkShell>
       <BoardClient
         cards={cards}
         setAsideCount={setAsideCount}
@@ -673,6 +673,6 @@ export default async function AdminBoardPage() {
         today={today}
         loadedAt={new Date().toISOString()}
       />
-    </AdminShell>
+    </WorkShell>
   )
 }

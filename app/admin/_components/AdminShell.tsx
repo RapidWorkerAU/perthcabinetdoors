@@ -23,6 +23,13 @@ interface NavItem {
   href:  string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   icon:  React.ComponentType<any>
+  /**
+   * The other routes this row covers, for a section whose screens do not share
+   * a path prefix. Option Libraries is one row over four libraries that each
+   * kept their original address, so without this the row would look inactive on
+   * three of the four pages it owns.
+   */
+  covers?: string[]
 }
 
 // ── PCD colour constants (sidebar uses dark green bg) ─────────────────────────
@@ -41,24 +48,85 @@ const BORDER_LIGHT   = '#edf4eb'
 
 // ── Nav data ──────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS: NavItem[] = [
-  { label: 'The Board',      href: '/admin/board',          icon: IconLayoutColumns   },
-  { label: 'Dashboard',      href: '/admin/dashboard',      icon: IconLayoutDashboard },
-  { label: 'Calendar',       href: '/admin/calendar',       icon: IconCalendar        },
-  { label: 'Customers',      href: '/admin/customers',      icon: IconUsers           },
-  { label: 'Enquiries',      href: '/admin/enquiries',      icon: IconMail            },
-  { label: 'Quote Requests', href: '/admin/quote-requests', icon: IconFileText        },
-  { label: 'Quotes',         href: '/admin/quotes',         icon: IconFileInvoice     },
-  { label: 'Orders',         href: '/admin/orders',         icon: IconPackage         },
-  { label: 'Financials',     href: '/admin/financials',     icon: IconCoin            },
-  { label: 'Reporting',      href: '/admin/reporting',      icon: IconChartBar        },
-  { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure    },
-  { label: 'Products',       href: '/admin/products',       icon: IconBox             },
-  { label: 'Board Library',  href: '/admin/options',        icon: IconPalette         },
-  { label: 'Profile Library', href: '/admin/profiles',      icon: IconPalette         },
-  { label: 'Benchtop Library', href: '/admin/benchtop-materials', icon: IconRulerMeasure },
-  { label: 'Hardware Library', href: '/admin/hardware',     icon: IconBox             },
-  { label: 'Settings',       href: '/admin/settings',       icon: IconSettings        },
+// ── How the rail is grouped ──────────────────────────────────────────────────
+//
+// Eleven rows in one column is a list you read every time rather than a shape
+// you learn. Grouped under quiet headings it becomes four short lists, and the
+// heading tells you which one to look in before you start reading names.
+//
+// The headings are deliberately faint. They are signposts, not rows: anything
+// louder competes with the items under it, which are the things you actually
+// click.
+//
+// Dashboard sits above the first heading, ungrouped, because it is the way back
+// rather than a part of the business.
+interface NavGroup {
+  heading: string | null
+  items:   NavItem[]
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    heading: null,
+    items: [{ label: 'Dashboard', href: '/admin/dashboard', icon: IconLayoutDashboard }],
+  },
+  {
+    heading: 'Day to day',
+    items: [
+      // THE BOARD AND THE CALENDAR ARE ONE THING. What the workshop is doing and
+      // where everybody has to be are both the question of what is happening
+      // now. Neither route moved, so `covers` keeps this row lit on both.
+      { label: 'Work Management', href: '/admin/board', icon: IconLayoutColumns, covers: ['/admin/calendar'] },
+      { label: 'Customers', href: '/admin/customers', icon: IconUsers },
+    ],
+  },
+  {
+    // The pipeline, in the order the work moves through it: somebody asks, we
+    // price it, they say yes, we make it.
+    heading: 'Winning work',
+    items: [
+      { label: 'Enquiries', href: '/admin/enquiries', icon: IconMail },
+      { label: 'Quote Requests', href: '/admin/quote-requests', icon: IconFileText },
+      { label: 'Quotes', href: '/admin/quotes', icon: IconFileInvoice },
+      { label: 'Orders', href: '/admin/orders', icon: IconPackage },
+    ],
+  },
+  {
+    heading: 'Insight',
+    items: [
+      // FINANCIALS LIVES HERE NOW, inside Reporting. It is a report, and it was
+      // its own row next to Reporting, which meant two rows for one idea. Its
+      // route did not move.
+      { label: 'Reporting', href: '/admin/reporting', icon: IconChartBar, covers: ['/admin/financials'] },
+    ],
+  },
+  {
+    // The things you set up once and change rarely.
+    heading: 'Set up',
+    items: [
+      { label: 'Design Tool', href: '/admin/design', icon: IconRulerMeasure },
+      { label: 'Products', href: '/admin/products', icon: IconBox },
+      // ONE ROW OVER FOUR LIBRARIES. Board, profile, benchtop and hardware are
+      // the same kind of thing: the lists everything else is priced and built
+      // from. Each kept its original address, so `covers` keeps the row lit.
+      {
+        label: 'Option Libraries', href: '/admin/options', icon: IconPalette,
+        covers: ['/admin/profiles', '/admin/benchtop-materials', '/admin/hardware'],
+      },
+    ],
+  },
+]
+
+// Flattened, for the notification panel and anything else that wants the rows
+// without caring how they are grouped.
+const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap(group => group.items)
+
+
+// Pinned under the divider at the bottom of the rail, above Log out. These are
+// about your own account rather than about the work, so they do not belong in
+// the scrolling list of sections above.
+const FOOTER_ITEMS: NavItem[] = [
+  { label: 'Settings', href: '/admin/settings', icon: IconSettings },
 ]
 
 const BOTTOM_PRIMARY: NavItem[] = [
@@ -69,17 +137,29 @@ const BOTTOM_PRIMARY: NavItem[] = [
 ]
 
 const BOTTOM_MORE: NavItem[] = [
-  { label: 'Calendar',       href: '/admin/calendar',       icon: IconCalendar    },
-  { label: 'Financials',     href: '/admin/financials',     icon: IconCoin        },
-  { label: 'Reporting',      href: '/admin/reporting',      icon: IconChartBar    },
+  // THE BOARD AND THE CALENDAR ARE ONE THING. What the workshop is doing and
+  // where everybody has to be are both the question of what is happening now,
+  // and the rail is a list of parts of the business rather than of screens.
+  // Neither route moved, so `covers` keeps this row lit on both.
+  { label: 'Work Management', href: '/admin/board', icon: IconLayoutColumns, covers: ['/admin/calendar'] },
+  // FINANCIALS LIVES HERE NOW. It is a report, and it was its own row next
+  // to Reporting, which meant two rows for one idea. Its route did not move,
+  // so `covers` keeps this row lit while you are on it.
+  { label: 'Reporting',      href: '/admin/reporting',      icon: IconChartBar, covers: ['/admin/financials'] },
   { label: 'Enquiries',      href: '/admin/enquiries',      icon: IconMail        },
   { label: 'Quote Requests', href: '/admin/quote-requests', icon: IconFileText    },
   { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure},
   { label: 'Products',       href: '/admin/products',       icon: IconBox         },
-  { label: 'Board Library',  href: '/admin/options',        icon: IconPalette     },
-  { label: 'Profile Library', href: '/admin/profiles',      icon: IconPalette     },
-  { label: 'Benchtop Library', href: '/admin/benchtop-materials', icon: IconRulerMeasure },
-  { label: 'Hardware Library', href: '/admin/hardware',     icon: IconBox         },
+  // ONE ROW OVER FOUR LIBRARIES. Board, profile, benchtop and hardware are
+  // the same kind of thing: the lists everything else is priced and built
+  // from. Four rows for them made a rail where a quarter of it was one idea
+  // repeated. `covers` keeps the row lit on all four, because each library
+  // kept its original address so no bookmark or link had to change.
+  { label: 'Option Libraries', href: '/admin/options', icon: IconPalette,
+    covers: ['/admin/profiles', '/admin/benchtop-materials', '/admin/hardware'] },
+  // Last, directly above Log out, which is the same place it sits at the bottom
+  // of the desktop rail. The sheet has no divider to put it under, so the order
+  // is what carries the grouping.
   { label: 'Settings',       href: '/admin/settings',       icon: IconSettings    },
 ]
 
@@ -87,6 +167,9 @@ const BOTTOM_MORE: NavItem[] = [
 
 const PAGE_TITLES: Record<string, string> = {
   '/admin/dashboard':      'Dashboard',
+  // The board had no entry at all, so the busiest screen in the admin has
+  // always breadcrumbed as "Admin".
+  '/admin/board':          'The Board',
   '/admin/calendar':       'Calendar',
   '/admin/customers':      'Customers',
   '/admin/enquiries':      'Enquiries',
@@ -118,9 +201,14 @@ function getPageTitle(pathname: string): string {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function isActive(pathname: string, href: string): boolean {
-  if (href === '/admin/dashboard') return pathname === href
+function matches(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href + '/')
+}
+
+function isActive(pathname: string, href: string, covers?: string[]): boolean {
+  if (href === '/admin/dashboard') return pathname === href
+  if (matches(pathname, href)) return true
+  return (covers || []).some(route => matches(pathname, route))
 }
 
 // ── PcdNotificationsPanel ─────────────────────────────────────────────────────
@@ -292,21 +380,55 @@ function PcdSidebar({
         </div>
       )}
 
-      {/* Nav */}
+      {/* Nav.
+          Grouped under quiet headings. Collapsed to the icon rail there is no
+          room for a heading, so a hairline rule carries the same break: the
+          grouping survives, it just stops being named. */}
       <nav className="flex-1 overflow-y-auto py-2">
-        {NAV_ITEMS.map(item => (
+        {NAV_GROUPS.map(group => (
+          <div key={group.heading ?? 'top'}>
+            {group.heading && (
+              collapsed ? (
+                <div className="mx-3 my-2 h-px" style={{ backgroundColor: SIDEBAR_BORDER }} />
+              ) : (
+                <p
+                  className="px-[14px] pt-[14px] pb-[5px] text-[10px] font-semibold uppercase tracking-[0.1em]"
+                  style={{ color: TEXT_SUBTLE }}
+                >
+                  {group.heading}
+                </p>
+              )
+            )}
+            {group.items.map(item => (
+              <SidebarNavLink
+                key={item.href}
+                item={item}
+                active={isActive(pathname, item.href, item.covers)}
+                collapsed={collapsed}
+                count={notifications[item.href] ?? 0}
+              />
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      {/* Footer.
+          BELOW THE DIVIDER, WITH LOG OUT. Settings used to sit at the bottom of
+          the scrolling nav, among the parts of the business, which is not what
+          it is: it is about your own account rather than about the work. Down
+          here it keeps the company it belongs in, and it stays put when the nav
+          above it scrolls. */}
+      <div className="flex-shrink-0 py-2" style={{ borderTop: `1px solid ${SIDEBAR_BORDER}` }}>
+        {FOOTER_ITEMS.map(item => (
           <SidebarNavLink
             key={item.href}
             item={item}
-            active={isActive(pathname, item.href)}
+            active={isActive(pathname, item.href, item.covers)}
             collapsed={collapsed}
             count={notifications[item.href] ?? 0}
           />
         ))}
-      </nav>
 
-      {/* Footer */}
-      <div className="flex-shrink-0 py-2" style={{ borderTop: `1px solid ${SIDEBAR_BORDER}` }}>
         {collapsed ? (
           <div className="group/navitem relative">
             <button
@@ -396,7 +518,7 @@ function PcdBottomNav({
   onLogout:      () => void
 }) {
   const [moreOpen, setMoreOpen] = React.useState(false)
-  const moreActive = BOTTOM_MORE.some(item => isActive(pathname, item.href))
+  const moreActive = BOTTOM_MORE.some(item => isActive(pathname, item.href, item.covers))
 
   return (
     <>
@@ -405,7 +527,7 @@ function PcdBottomNav({
         style={{ borderTop: `1px solid ${BORDER}` }}
       >
         {BOTTOM_PRIMARY.map(item => {
-          const active = isActive(pathname, item.href)
+          const active = isActive(pathname, item.href, item.covers)
           const count  = notifications[item.href] ?? 0
           return (
             <Link
@@ -450,7 +572,7 @@ function PcdBottomNav({
           <div className="flex md:hidden mx-auto w-[36px] h-[4px] rounded-full mb-3" style={{ backgroundColor: BORDER }} aria-hidden="true" />
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ba7b8] mb-2 px-1">More</p>
           {BOTTOM_MORE.map(item => {
-            const active = isActive(pathname, item.href)
+            const active = isActive(pathname, item.href, item.covers)
             const count  = notifications[item.href] ?? 0
             return (
               <Link

@@ -1,4 +1,4 @@
-import AdminShell from "../_components/AdminShell";
+import LibrariesShell from "../option-libraries/LibrariesShell";
 import { requireAdminSession } from "../../../lib/admin-guard";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 import { getDatabaseColourRows } from "../../../lib/pcd-colour-library";
@@ -18,8 +18,8 @@ export default async function AdminOptionsPage() {
   }
 
   return (
-    <AdminShell>
+    <LibrariesShell>
       <ColourLibraryManager initialRows={colourRows} initialError={colourRowsError} />
-    </AdminShell>
+    </LibrariesShell>
   );
 }

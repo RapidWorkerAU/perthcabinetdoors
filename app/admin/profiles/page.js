@@ -1,4 +1,4 @@
-import AdminShell from "../_components/AdminShell";
+import LibrariesShell from "../option-libraries/LibrariesShell";
 import { requireAdminSession } from "../../../lib/admin-guard";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 import { getProfileLibraryRows } from "../../../lib/pcd-profile-library";
@@ -38,8 +38,8 @@ export default async function AdminProfileLibraryPage() {
   }
 
   return (
-    <AdminShell>
+    <LibrariesShell>
       <ProfileLibraryManager initialRows={rows} initialError={error} />
-    </AdminShell>
+    </LibrariesShell>
   );
 }

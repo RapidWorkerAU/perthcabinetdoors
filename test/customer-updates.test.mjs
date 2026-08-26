@@ -310,3 +310,129 @@ test("the email body sent is the one that was on screen", () => {
   // And it is what gets rendered, rather than being logged and then ignored.
   assert.match(SEND_ROUTE, /customerUpdateHtml\(\{ customerName, body \}\)/);
 });
+
+// ── the planning blob ───────────────────────────────────────────────────────
+
+test("a change inside panel_planning is described, not silently dropped", () => {
+  // THE BUG THIS PINS. The order page writes the ordered date, the ETA and the
+  // per panel status into panel_planning, a JSON blob, rather than into the
+  // columns beside it. describeChanges compares values with String(value), and
+  // String(anObject) is "[object Object]" on both sides, so EVERY ONE of those
+  // changes compared equal and was never logged.
+  //
+  // Ian Brennan's ten line items were all marked Ordered on 24 August with a 9
+  // September ETA. The order history recorded nothing, so the weekly report had
+  // nothing to tell him, and it looked as though the report was broken when in
+  // fact the event had never been written down.
+  const route = read("app/api/admin/orders/[id]/items/[itemId]/route.js");
+  assert.match(route, /function describePlanningChanges/);
+  assert.match(route, /changes\.push\(\.\.\.describePlanningChanges/);
+  // Described field by field, not as one object.
+  assert.match(route, /formatActivityValue\(previous\[field\], field\)/);
+  assert.ok(
+    !/describeChanges\([^)]*panel_planning/.test(route),
+    "the blob must not be handed to describeChanges, which cannot see inside it"
+  );
+});
+
+test("the ordered date belongs to the ordered line, not beside it", () => {
+  // Marking a batch ordered sets the status AND the date together. Two lines
+  // would say the same thing twice, and the date the customer cares about is
+  // when they were ordered, not when somebody ticked the box.
+  const ordered = sentenceFor({
+    kind: "item_status", to: "Ordered", qty: 10, itemLabel: "Door", on: "2026-08-24",
+  });
+  assert.equal(ordered, "10 x Door ordered on 24 August 2026");
+  assert.match(WEEKLY, /on: orderedOn \|\| dayOf\(at\)/, "the real date wins over the row's timestamp");
+  assert.match(
+    WEEKLY,
+    /if \(!\/Status changed from\/i\.test\(desc\)/,
+    "a date set alongside a status change is not repeated on its own line"
+  );
+});
+
+test("an ordered date on its own still says something", () => {
+  assert.equal(
+    sentenceFor({ kind: "item_ordered", to: "2026-08-24", qty: 3, itemLabel: "Drawer front" }),
+    "3 x Drawer front ordered on 24 August 2026"
+  );
+});
+
+// ── bookings ────────────────────────────────────────────────────────────────
+
+test("a delivery being booked reaches the customer", () => {
+  // THE GAP THIS CLOSES. A delivery or install being booked is the single thing
+  // a customer most wants to hear, and it was the one event this report could
+  // not see: bookings lived in pcd_calendar_events and never touched
+  // pcd_order_activity. It was agreed as part of the curated list and had never
+  // been built.
+  assert.ok(CUSTOMER_FACING_ACTIONS.includes("order_booking_updated"));
+  assert.equal(
+    sentenceFor({ kind: "booking_made", bookingKind: "delivery", to: "2026-09-12" }),
+    "Your delivery is booked for 12 September 2026."
+  );
+  assert.equal(
+    sentenceFor({ kind: "booking_made", bookingKind: "install", to: "2026-09-15" }),
+    "Your install is booked for 15 September 2026."
+  );
+});
+
+test("a booked date is stated plainly, unlike a supplier estimate", () => {
+  // Rule one hedges every future date, and this is the deliberate exception: a
+  // booking is an appointment WE control, so hedging it would be evasive rather
+  // than careful. A supplier ETA is not ours, and stays hedged.
+  const booked = sentenceFor({ kind: "booking_made", bookingKind: "delivery", to: "2026-09-12" });
+  assert.ok(!/around|estimate|can move/i.test(booked));
+  const eta = sentenceFor({ kind: "item_eta_set", to: "2026-09-12" });
+  assert.match(eta, /estimate/);
+});
+
+test("a booking that moves says so, and one that is cancelled promises a call", () => {
+  // Somebody may have taken the day off for the old date.
+  assert.match(
+    sentenceFor({ kind: "booking_moved", bookingKind: "delivery", from: "2026-09-12", to: "2026-09-15" }),
+    /has moved from 12 Sep to 15 September 2026/
+  );
+  const cancelled = sentenceFor({ kind: "booking_cancelled", bookingKind: "delivery" });
+  assert.match(cancelled, /cancelled/);
+  assert.match(cancelled, /be in touch to rebook/, "a cancellation without a next step is just bad news");
+});
+
+test("only the bookings somebody has to be home for are reported", () => {
+  const activity = read("lib/pcd-booking-activity.js");
+  assert.match(activity, /BOOKED_KINDS = new Set\(\["measure", "delivery", "install"\]\)/);
+  // A reminder is a note to ourselves; "other" has no description written with
+  // a customer in mind.
+  assert.ok(!/"reminder"|"other"/.test(activity.split("BOOKED_KINDS")[1].split("\n")[0]));
+});
+
+test("a booking with no order is not an order update", () => {
+  const activity = read("lib/pcd-booking-activity.js");
+  assert.match(activity, /if \(!booking\?\.order_id\) return/);
+});
+
+test("recording a booking can never fail the booking", () => {
+  // The appointment is the thing. A history line that could not be written is a
+  // missing line, not a reason for the calendar to refuse.
+  const activity = read("lib/pcd-booking-activity.js");
+  assert.match(activity, /catch \(error\)/);
+  assert.match(activity, /console\.error/);
+  const create = read("app/api/admin/calendar/route.js");
+  assert.match(create, /await logBookingActivity\(context\.supabase, fresh \|\| data, \{ action: "created" \}\)/);
+});
+
+test("a save that did not move the date records nothing", () => {
+  // Editing a booking's title or notes is not news, and a history saying
+  // "Delivery changed from 12 September to 12 September" is noise.
+  assert.match(read("lib/pcd-booking-activity.js"), /if \(action === "moved" && before === when\) return/);
+});
+
+test("approving a variation is its own line", () => {
+  // The artefact listed variation_approved alongside variation_applied and only
+  // applied was wired up, so pressing approve was never confirmed to them.
+  assert.ok(CUSTOMER_FACING_ACTIONS.includes("variation_approved"));
+  assert.equal(
+    sentenceFor({ kind: "variation_approved", reference: "PCD-V-2026-5051F3" }),
+    "Thanks for approving change PCD-V-2026-5051F3."
+  );
+});

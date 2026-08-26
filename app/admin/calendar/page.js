@@ -1,4 +1,4 @@
-import AdminShell from "../_components/AdminShell";
+import WorkShell from "../work-management/WorkShell";
 import { requireAdminSession } from "../../../lib/admin-guard";
 import CalendarManager from "./CalendarManager";
 
@@ -6,8 +6,8 @@ export default async function AdminCalendarPage() {
   await requireAdminSession();
 
   return (
-    <AdminShell>
+    <WorkShell>
       <CalendarManager />
-    </AdminShell>
+    </WorkShell>
   );
 }

@@ -613,3 +613,43 @@ test("a label with every cue on it at once still fits the die-cut stock", () => 
   assert.ok(labels.some((label) => label.band && label.counter), "the fixture carries them at once");
   assert.doesNotThrow(() => generateOrderLabelsPdf({ labels, stock: "62x90" }));
 });
+
+// ── which letter goes with which number ─────────────────────────────────────
+
+test("H is against the height and W against the width, height on top", () => {
+  // THE BUG THIS PINS. Every size in this business is written height first, and
+  // sizeOf builds the label's size string that way. The label PDF read it the
+  // other way round, so the two numbers were printed in the right order with
+  // the letters swapped: the top box said W beside the height.
+  //
+  // It could not be spotted by looking, because a 600 x 508 door and a 508 x
+  // 600 door are both perfectly ordinary. The only way to catch it is to know
+  // which number belongs on top, which is why it is written down here.
+  const pdf = generateOrderLabelsPdf({
+    labels: [{
+      // Deliberately not square, and deliberately taller than wide.
+      size: "600mm x 508mm",
+      customer: "Test Customer", orderNumber: "PCD-O-TEST",
+      orderDate: "26/08/2026", manufacturingDate: "26/08/2026",
+      colourHeadline: "Polar White", materialAbove: "MDF 18mm", materialBelow: "Matt",
+    }],
+  }).toString("latin1");
+
+  const drawn = drawnText(pdf);
+  const markers = drawn.filter((item) => item.value === "H" || item.value === "W");
+  assert.equal(markers.length, 2, "both markers must be drawn");
+
+  const numbers = drawn.filter((item) => /^\d+mm$/.test(item.value));
+  const beside = (marker) =>
+    numbers
+      .slice()
+      .sort((a, b) => Math.abs(a.pdfY - marker.pdfY) - Math.abs(b.pdfY - marker.pdfY))[0];
+
+  const h = markers.find((item) => item.value === "H");
+  const w = markers.find((item) => item.value === "W");
+  assert.equal(beside(h).value, "600mm", "H must sit against the height");
+  assert.equal(beside(w).value, "508mm", "W must sit against the width");
+
+  // pdfY counts UP from the bottom, so a bigger pdfY is higher on the label.
+  assert.ok(h.pdfY > w.pdfY, "height is the top box, width underneath");
+});

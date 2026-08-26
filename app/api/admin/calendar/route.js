@@ -7,6 +7,7 @@ import {
   startOfWeek,
 } from "../../../../lib/pcd-calendar";
 import { pushBooking } from "../../../../lib/pcd-calendar-sync";
+import { logBookingActivity } from "../../../../lib/pcd-booking-activity";
 
 // What is on between two dates, and booking something new.
 //
@@ -134,6 +135,12 @@ export async function POST(request) {
       .select("*")
       .eq("id", data.id)
       .maybeSingle();
+
+    // Into the ORDER's history too, so a delivery being booked reaches the
+    // customer through the weekly update report. Bookings used to live only in
+    // the calendar, which meant the one thing a customer most wants to hear was
+    // the one thing the report could not see.
+    await logBookingActivity(context.supabase, fresh || data, { action: "created" });
 
     return Response.json({ ok: true, event: fresh || data, sync });
   } catch (error) {

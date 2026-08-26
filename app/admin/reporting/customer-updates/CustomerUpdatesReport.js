@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/Modal'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
+import { AdminPagination, useAdminPagination, REPORT_PAGE_SIZE } from '../../_components/AdminPagination'
 
 import {
   internalLabelFor,
@@ -119,6 +120,10 @@ export default function CustomerUpdatesReport() {
     }
   }
 
+  // Keyed on the range: changing it and staying on page three would show a
+  // slice of a list that no longer exists.
+  const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(rows, `${from}|${to}`, REPORT_PAGE_SIZE)
+
   const sentCount = rows.filter(row => row.lastSentAt && row.lastSentAt.slice(0, 10) >= from).length
 
   if (loading && !rows.length) {
@@ -199,7 +204,7 @@ export default function CustomerUpdatesReport() {
                   </td>
                 </tr>
               )}
-              {rows.map(row => (
+              {pageItems.map(row => (
                 <tr
                   key={row.key}
                   className="cursor-pointer border-b border-[#edf4eb] transition-colors last:border-b-0 hover:bg-[#f5f8f4]"
@@ -265,6 +270,14 @@ export default function CustomerUpdatesReport() {
             </tbody>
           </table>
         </div>
+        <AdminPagination
+          label="customers"
+          pageSize={REPORT_PAGE_SIZE}
+          page={page}
+          pageCount={pageCount}
+          totalItems={totalItems}
+          onPageChange={setPage}
+        />
       </div>
 
       {/* Mobile cards. A six column table on a phone is unreadable. */}
@@ -274,7 +287,7 @@ export default function CustomerUpdatesReport() {
             No customers had order updates in this period.
           </p>
         )}
-        {rows.map(row => (
+        {pageItems.map(row => (
           <button
             key={row.key}
             type="button"
@@ -336,12 +349,15 @@ function UpdateModal({ state, setState, onSend, from, to }) {
                 : 'No update has been sent to this customer'}
             </span>
             <Button variant="secondary" onClick={() => setState(null)}>Close</Button>
+            {/* Two words. "Compose update email" wrapped onto a second line in
+                the footer, which makes the button taller than the one beside
+                it and reads as a mistake. */}
             <Button
               onClick={() => setState(current => ({ ...current, step: 2 }))}
               disabled={!row.email}
               tooltip={row.email ? undefined : 'This customer has no email address on file'}
             >
-              Compose update email
+              Write update
             </Button>
           </>
         ) : (
@@ -418,9 +434,12 @@ function UpdateDetail({ row }) {
                     </div>
                     {/* THE ACTUAL SENTENCE. Shown against the change it came
                         from so what is approved here is exactly what a customer
-                        reads, rather than being assembled out of sight. */}
+                        reads, rather than being assembled out of sight.
+                        Set in the ordinary body grey: green read as a status,
+                        as though these lines were themselves good news, when
+                        all they are is the wording. */}
                     {line && (
-                      <div className="mt-1 border-l-2 border-[#a8c5a0] pl-[9px] text-[12.5px] text-[#2f6b3b]">
+                      <div className="mt-1 border-l-2 border-[#dbd8cc] pl-[9px] text-[12.5px] text-[#5a5a52]">
                         {line}
                       </div>
                     )}

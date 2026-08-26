@@ -4,37 +4,49 @@ import * as React from 'react'
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 
+// The default every table in the admin has always used. Left alone so that
+// making the page size adjustable changed nothing about the sixteen tables
+// that were already relying on it.
 export const PAGE_SIZE = 8
 
-export function useAdminPagination<T>(items: T[], resetKey: unknown = '') {
+// Reports are read down rather than clicked through, so they get a longer
+// page: fifteen rows is about a screen, and paging every eight turns reading
+// a colour list into a chore.
+export const REPORT_PAGE_SIZE = 15
+
+export function useAdminPagination<T>(items: T[], resetKey: unknown = '', pageSize: number = PAGE_SIZE) {
   const [page, setPage] = React.useState(1)
   const totalItems = items.length
-  const pageCount  = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+  const pageCount  = Math.max(1, Math.ceil(totalItems / pageSize))
   const safePage   = Math.min(Math.max(page, 1), pageCount)
 
   React.useEffect(() => { setPage(1) }, [String(resetKey)])
   React.useEffect(() => { if (page !== safePage) setPage(safePage) }, [page, safePage])
 
   const pageItems = React.useMemo(() => {
-    const start = (safePage - 1) * PAGE_SIZE
-    return items.slice(start, start + PAGE_SIZE)
-  }, [items, safePage])
+    const start = (safePage - 1) * pageSize
+    return items.slice(start, start + pageSize)
+  }, [items, safePage, pageSize])
 
   return { page: safePage, pageCount, pageItems, setPage, totalItems }
 }
 
 interface AdminPaginationProps {
   label?:       string
+  /** Defaults to PAGE_SIZE, so every table that already used this keeps its size. */
+  pageSize?:    number
   page:         number
   pageCount:    number
   totalItems:   number
   onPageChange: (page: number) => void
 }
 
-export function AdminPagination({ label = 'records', page, pageCount, totalItems, onPageChange }: AdminPaginationProps) {
-  const isPaginated = totalItems > PAGE_SIZE
-  const start = totalItems ? (page - 1) * PAGE_SIZE + 1 : 0
-  const end   = totalItems ? Math.min(page * PAGE_SIZE, totalItems) : 0
+export function AdminPagination({
+  label = 'records', pageSize = PAGE_SIZE, page, pageCount, totalItems, onPageChange,
+}: AdminPaginationProps) {
+  const isPaginated = totalItems > pageSize
+  const start = totalItems ? (page - 1) * pageSize + 1 : 0
+  const end   = totalItems ? Math.min(page * pageSize, totalItems) : 0
 
   return (
     <div className="flex items-center justify-between px-4 py-[10px] border-t border-[#edf4eb] text-[13px] text-[#5a5a52]">

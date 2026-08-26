@@ -1,6 +1,7 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { bookingRowFromInput } from "../../../../../lib/pcd-calendar";
 import { pushBooking } from "../../../../../lib/pcd-calendar-sync";
+import { logBookingActivity } from "../../../../../lib/pcd-booking-activity";
 
 // Changing or cancelling one booking.
 //
@@ -61,6 +62,13 @@ export async function PATCH(request, { params }) {
       .single();
     if (error) throw error;
 
+    // A booking that MOVED goes into the order's history, so the customer hears
+    // "Delivery moved from 12 to 15 September" rather than finding out on the
+    // day. `existing` is the row as it was before the update above, which is
+    // what makes the two dates comparable; a save that did not move the date
+    // records nothing.
+    await logBookingActivity(context.supabase, data, { action: "moved", previous: existing });
+
     const sync = await pushBooking(context.supabase, data);
 
     const { data: fresh } = await context.supabase
@@ -98,6 +106,8 @@ export async function DELETE(request, { params }) {
       .select("*")
       .single();
     if (error) throw error;
+
+    await logBookingActivity(context.supabase, data, { action: "cancelled" });
 
     const sync = await pushBooking(context.supabase, data);
     return Response.json({ ok: true, sync });

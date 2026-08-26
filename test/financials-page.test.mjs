@@ -111,9 +111,17 @@ test("the dashboard's payment query is still only the unpaid count", () => {
   assert.match(DASH_PAGE, /from\('pcd_order_payments'\)[\s\S]{0,200}\.eq\('is_paid', false\)/);
 });
 
-test("Financials has its own place in the nav", () => {
+test("Financials is reachable, as a report rather than a row of its own", () => {
+  // It used to be its own row in the main rail, directly beside Reporting,
+  // which was two rows for one idea: a financial summary IS a report. It now
+  // sits in Reporting's second sidebar, and the rail's Reporting row stays lit
+  // while you are on it because the two share no path prefix.
   const shell = readFileSync(new URL("../app/admin/_components/AdminShell.tsx", import.meta.url), "utf8");
-  assert.match(shell, /label: 'Financials',\s+href: '\/admin\/financials'/);
+  const reporting = readFileSync(new URL("../app/admin/reporting/ReportingShell.tsx", import.meta.url), "utf8");
+
+  assert.match(reporting, /href: '\/admin\/financials', label: 'Financials'/);
+  assert.match(shell, /covers: \['\/admin\/financials'\]/);
+  assert.ok(!/label: 'Financials'/.test(shell), "and it is no longer a row of its own");
 });
 
 // ── the ledger ──────────────────────────────────────────────────────────────

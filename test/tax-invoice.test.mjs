@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 
 import {
   ORDER_COST_LINES,
+  DETAIL_SEPARATOR,
   lineDescription,
   orderCostLines,
   taxInvoiceFileName,
@@ -145,7 +146,7 @@ test("the lines reproduce the invoice we were asked to match, to the cent", () =
   assert.deepEqual(
     invoice.lines.map((line) => [line.description, line.qty, line.unitPriceExGst, line.totalExGst]),
     [
-      ["Door Height: 600mm Width: 508mm Colour: Polar White Matt with Square edges with 2 hinge holes", 2, 60, 120],
+      ["Door - Height: 600mm - Width: 508mm - Colour: Polar White Matt - Square edges - 2 hinge holes", 2, 60, 120],
       ["Hinge holes drilling", 4, 5, 20],
       ["110 full cover hinge and plates", 4, 5.85, 23.4],
       ["Delivery", 1, 58, 58],
@@ -216,7 +217,7 @@ test("consumables is called what the business calls it", () => {
 test("a line reads the way the invoices we are replacing read", () => {
   assert.equal(
     lineDescription(ITEMS[0]),
-    "Door Height: 600mm Width: 508mm Colour: Polar White Matt with Square edges with 2 hinge holes"
+    "Door - Height: 600mm - Width: 508mm - Colour: Polar White Matt - Square edges - 2 hinge holes"
   );
 });
 
@@ -233,7 +234,7 @@ test("a line says only what it has", () => {
 });
 
 test("the handing is named on a drilled door", () => {
-  assert.match(lineDescription({ ...ITEMS[0], hinge_side: "Left" }), /2 hinge holes hinged left/);
+  assert.match(lineDescription({ ...ITEMS[0], hinge_side: "Left" }), /2 hinge holes, hinged left/);
 });
 
 // ── what is deliberately not on it ──────────────────────────────────────────
@@ -355,6 +356,13 @@ function drawnOn(pdf) {
       x2: x + textWidth(hit[5], size, { bold: hit[1] === "F2" }),
       top: baseline - size * 0.72,
       bottom: baseline + size * 0.21,
+      baseline,
+      size,
+      // F1 plain, F2 Helvetica-Bold, F3 Helvetica-Oblique. Carried so a test can
+      // check that the item name is bold and its detail italic, rather than only
+      // that the words are present somewhere.
+      bold: hit[1] === "F2",
+      italic: hit[1] === "F3",
     });
   }
   return { rules, texts };
@@ -437,10 +445,19 @@ test("no cell's text crosses into the column beside it", () => {
   const quantity = texts.find((item) => item.text === "Quantity");
   assert.ok(quantity, "no Quantity heading found");
 
+  // The name on its own row and every wrapped line of the detail under it. Both
+  // halves are checked: the bold title and the small italic print are drawn
+  // separately now, so testing only one of them would leave the other free to
+  // run into the Quantity column.
   const spilling = texts.filter(
-    (item) => item.text.startsWith("Door ") || item.text.includes("Nostalgia")
+    (item) =>
+      item.text === "Door" ||
+      /Height:|Width:|Colour:|Nostalgia|Pencil Round|hinge holes/.test(item.text)
   );
-  assert.ok(spilling.length >= 2, "expected the description to wrap over more than one line");
+  assert.ok(
+    spilling.length >= 3,
+    "expected a title row plus a detail that wraps over more than one line"
+  );
   spilling.forEach((item) => {
     assert.ok(
       item.x2 < quantity.x1,
@@ -638,7 +655,12 @@ test("a real order's costs reconcile once labour is counted", () => {
   assert.equal(invoice.subtotal, 405);
   assert.deepEqual(
     invoice.lines.map((line) => line.description),
-    ["Drawer front Height: 177mm Width: 897mm", "Drawer front Height: 356mm Width: 897mm", "Labour", "Delivery"]
+    [
+      "Drawer front - Height: 177mm - Width: 897mm",
+      "Drawer front - Height: 356mm - Width: 897mm",
+      "Labour",
+      "Delivery",
+    ]
   );
 });
 
@@ -665,4 +687,62 @@ test("a refusal talks in money, not bare numbers", () => {
   // makes a costing problem look like a system fault.
   assert.match(LOADER, /money\(invoice\.subtotal \+ invoice\.difference, order\.currency\)/);
   assert.match(LOADER, /money\(invoice\.subtotal, order\.currency\)/);
+});
+
+// ── the description cell ────────────────────────────────────────────────────
+
+test("the item name sits on its own row, bold, above its detail", () => {
+  // THE SHAPE THIS PINS. It all used to run together into one sentence: "Door
+  // Height: 600mm Width: 508mm Colour: Polar White Matt with Square edges with
+  // 2 hinge holes". Nothing in it was wrong, but somebody scanning an invoice
+  // for what they bought had to read a whole line to find the word "Door", and
+  // two lines like that in a row look identical at a glance.
+  const { texts } = drawnOn(generateTaxInvoicePdf({ invoice: model() }));
+
+  const name = texts.find((item) => item.text === "Door");
+  assert.ok(name, "the item name must be its own piece of text");
+  assert.ok(name.bold, "the name carries the row, so it is bold");
+
+  const detail = texts.filter((item) => item.italic && /Height:|Colour:/.test(item.text));
+  assert.ok(detail.length >= 1, "the detail must be drawn separately");
+
+  detail.forEach((part) => {
+    assert.ok(part.italic, `"${part.text}" should be italic`);
+    assert.ok(part.size < name.size, "the detail is sub text, so it is smaller than the name");
+    assert.ok(part.baseline > name.baseline, "the detail sits under the name, not beside it");
+    assert.ok(
+      Math.abs(part.x1 - name.x1) < 0.5,
+      "the detail starts at the same left edge as the name"
+    );
+  });
+});
+
+test("the detail groups are separated by a spaced dash", () => {
+  const [line] = model().lines;
+  assert.equal(line.title, "Door");
+  assert.deepEqual(line.details, [
+    "Height: 600mm",
+    "Width: 508mm",
+    "Colour: Polar White Matt",
+    "Square edges",
+    "2 hinge holes",
+  ]);
+  // HEIGHT BEFORE WIDTH, the same way round as every size in the business.
+  assert.ok(
+    line.details.indexOf("Height: 600mm") < line.details.indexOf("Width: 508mm"),
+    "height comes before width"
+  );
+  assert.equal(DETAIL_SEPARATOR, " - ");
+});
+
+test("a line with nothing to describe draws a name and no detail", () => {
+  // Labour, Delivery, the drilling: one word each, and an empty italic row
+  // under them would be a gap with no reason.
+  const { texts } = drawnOn(generateTaxInvoicePdf({ invoice: model() }));
+  const delivery = texts.find((item) => item.text === "Delivery" && item.bold);
+  assert.ok(delivery, "a cost line is still a bold name");
+  const strays = texts.filter(
+    (item) => item.italic && Math.abs(item.baseline - delivery.baseline) < 14
+  );
+  assert.deepEqual(strays, [], "nothing italic belongs under a line with no detail");
 });
