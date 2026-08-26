@@ -142,7 +142,6 @@ export default function EmailSignatureCard() {
                   reference: "PCD-Q-2026-4A7C21",
                   dateLabel: "Sent",
                   date: "18 February 2026",
-                  amount: "$4,182.00",
                 },
               })}
             />

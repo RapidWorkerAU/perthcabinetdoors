@@ -118,7 +118,32 @@ test("the message, the signature and the reference all still come through", () =
   assert.match(reply, /Ashleigh/);
   assert.match(reply, /This conversation relates to/);
   assert.match(reply, /PCD-Q-2026-4A7C21/);
-  assert.match(reply, /\$4,182\.00/);
+});
+
+test("a reply never carries a money figure", () => {
+  // It used to print "Total inc GST" under the reference. A reply is a
+  // conversation, and a figure stapled to the bottom turns every exchange about
+  // a delivery date into an exchange about a price.
+  //
+  // It is also a number we would then have to keep true: a variation approved
+  // on Tuesday makes Monday's reply wrong, and nothing goes back to correct an
+  // email that has already been read. The quote and the invoice are where a
+  // figure belongs, because those carry a date and a version.
+  const reply = desk();
+  assert.doesNotMatch(reply, /\$[\d,]/, "no amount in the html");
+  assert.doesNotMatch(reply, /Total inc GST/i);
+
+  const text = deskReplyEmailText({
+    bodyText: "Hello",
+    reference: { kind: "Order", reference: "PCD-O-1", dateLabel: "Placed", date: "1 August 2026" },
+  });
+  assert.doesNotMatch(text, /\$[\d,]/, "and none in the plain text version either");
+  assert.doesNotMatch(text, /Total inc GST/i);
+
+  // The builder must not even produce one for a caller to print by accident.
+  const source = readFileSync(new URL("../lib/pcd-desk-email.js", import.meta.url), "utf8");
+  assert.ok(!/amount:/.test(source), "referenceFor must not return an amount");
+  assert.ok(!/function money\(/.test(source), "and the formatter it used is gone with it");
 });
 
 test("a reply with no signature or reference does not render empty boxes", () => {

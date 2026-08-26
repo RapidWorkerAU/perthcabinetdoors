@@ -442,12 +442,17 @@ export default function BoardClient({ cards, failed, loadedAt, setAsideCount = 0
           return (
             <section
               key={col.key}
-              // Grouped by action there are eight columns, so they hold a set
-              // width and the row scrolls sideways. The four age columns fit,
-              // so they stretch to fill instead of leaving a gap.
+              // ONE COLUMN WIDTH, BOTH VIEWS. The row scrolls sideways rather
+              // than the columns resizing to whatever space is left.
+              //
+              // The age view used to stretch its four columns to fill, on the
+              // grounds that four fit and stretching beat leaving a gap. That
+              // stopped being true the moment the second sidebar took 220px:
+              // the same four columns were then squeezed into the remainder, so
+              // a card said less on the age view than on the category view for
+              // no reason a person could see. A column that changes width
+              // depending on which tab you are on is a column you cannot learn.
               className={`flex min-h-0 w-[86vw] flex-shrink-0 snap-start flex-col rounded-[11px] border bg-white md:w-[320px] md:snap-align-none ${
-                view === 'age' ? 'md:flex-1' : ''
-              } ${
                 col.failed ? 'border-[#fca5a5]'
                   : col.incomplete ? 'border-[#e8d68f]'
                   : col.urgent && split.ours.length ? 'border-[#f0bcbc]' : 'border-[#dbd8cc]'

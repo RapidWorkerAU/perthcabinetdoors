@@ -219,7 +219,7 @@ test("a booking form's answers become an instant, and a bad date is refused", ()
   });
   assert.equal(row.starts_at, "2026-09-01T00:00:00.000Z", "eight in the morning in Perth");
   assert.equal(row.ends_at, "2026-09-01T04:00:00.000Z");
-  assert.equal(row.title, "Install, Nguyen");
+  assert.equal(row.title, "Install, Tran Nguyen");
   assert.equal(row.sync_state, "pending");
 
   const bad = bookingRowFromInput({ kind: "measure", day: "not a date" });
@@ -236,8 +236,66 @@ test("choosing to keep a booking off Outlook is a decision, not a failure", () =
 });
 
 test("the title follows the kind and the customer until somebody writes their own", () => {
-  assert.equal(defaultTitle("measure", "Marta Ferreira"), "Site measure, Ferreira");
+  // THE WHOLE NAME, not the surname. It took the surname alone, which reads
+  // fine on a calendar with one Brennan on it and not at all on one with three.
+  // The title also lands in Outlook, where it is all somebody standing in a
+  // driveway has to go on.
+  assert.equal(defaultTitle("measure", "Marta Ferreira"), "Site measure, Marta Ferreira");
+  assert.equal(defaultTitle("install", "Rebecca Casey"), "Install, Rebecca Casey");
   assert.equal(defaultTitle("delivery", ""), "Delivery");
+  // Whatever whitespace the record carries, one space between the names.
+  assert.equal(defaultTitle("measure", "  Ian   Brennan "), "Site measure, Ian Brennan");
+});
+
+// ── the booking modal's job dropdown ────────────────────────────────────────
+
+test("the job dropdown offers only the chosen customer's jobs", () => {
+  // THE BUG THIS PINS. It listed the `orders` the calendar page already had
+  // loaded, unfiltered, so choosing Rebecca Casey offered Ian Brennan's raw
+  // profiled doors. She has no orders at all. Picking one would have filed her
+  // site measure against a stranger's job.
+  const route = readFileSync(new URL("../app/api/admin/calendar/jobs/route.js", import.meta.url), "utf8");
+  assert.match(route, /\.eq\("customer_id", customerId\)/, "orders are asked for by customer");
+  assert.equal((route.match(/\.eq\("customer_id", customerId\)/g) || []).length, 2, "and so are quotes");
+
+  // A blank id returns nothing rather than everything, which is how the
+  // original bug would come back.
+  assert.match(route, /if \(!UUID\.test\(customerId\)\) return Response\.json\(\{ ok: true, jobs: \[\] \}\)/);
+
+  const modal = readFileSync(new URL("../app/admin/calendar/BookingModal.tsx", import.meta.url), "utf8");
+  const select = modal.slice(modal.indexOf('label="About which job"'), modal.indexOf("{/* ── When"));
+  assert.match(select, /\.\.\.jobs\.map\(job =>/, "the dropdown reads the fetched jobs");
+  assert.ok(!/\.\.\.orders\.map/.test(select), "and never the calendar's whole order list");
+});
+
+test("quotes and orders are both offered, and tellable apart", () => {
+  // A measure is booked against a quote and an install against an order, so
+  // offering orders only left the most common booking with nothing to attach to.
+  const route = readFileSync(new URL("../app/api/admin/calendar/jobs/route.js", import.meta.url), "utf8");
+  assert.match(route, /kind: "order"/);
+  assert.match(route, /kind: "quote"/);
+  assert.match(route, /from\("pcd_quotes"\)/);
+
+  const modal = readFileSync(new URL("../app/admin/calendar/BookingModal.tsx", import.meta.url), "utf8");
+  const select = modal.slice(modal.indexOf('label="About which job"'), modal.indexOf("{/* ── When"));
+  assert.match(select, /job\.kind === 'order' \? 'Order' : 'Quote'/, "said in words, not by the letter in the reference");
+});
+
+test("choosing a different customer drops the job picked for the last one", () => {
+  // Otherwise a booking keeps the previous customer's job id while showing the
+  // new customer's name, which is the same wrong link with nothing on screen
+  // to give it away.
+  const modal = readFileSync(new URL("../app/admin/calendar/BookingModal.tsx", import.meta.url), "utf8");
+  assert.match(modal, /orderId: customer\?\.id === prev\.customerId \? prev\.orderId : null/);
+});
+
+test("the address fills itself in, from the customer or from the job", () => {
+  // Half the customer list has no address on it, and it is usually on the quote
+  // instead, which is where it was typed. Neither ever overwrites something
+  // already in the box: the job is not always at the address on file.
+  const modal = readFileSync(new URL("../app/admin/calendar/BookingModal.tsx", import.meta.url), "utf8");
+  assert.match(modal, /siteAddress: customer \? addressOf\(customer\) \|\| prev\.siteAddress : prev\.siteAddress/);
+  assert.match(modal, /siteAddress: prev\.siteAddress \|\| job\?\.siteAddress \|\| ''/);
 });
 
 // ── Two bookings on one day do not sit on top of each other ─────────────────

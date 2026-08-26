@@ -84,7 +84,7 @@ export default function MaterialsReport() {
       />
 
       <div className="mb-[14px] flex flex-wrap items-end gap-[10px] rounded-[8px] border border-[#dbd8cc] bg-white px-[14px] py-3">
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-[140px] flex-1 flex-col gap-1 sm:flex-none">
           <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">From</span>
           <input
             type="date" value={from} max={to || today}
@@ -92,7 +92,7 @@ export default function MaterialsReport() {
             className="h-[34px] rounded-[6px] border border-[#dbd8cc] bg-white px-[9px] text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
           />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-[140px] flex-1 flex-col gap-1 sm:flex-none">
           <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">To</span>
           <input
             type="date" value={to} min={from}
@@ -100,7 +100,7 @@ export default function MaterialsReport() {
             className="h-[34px] rounded-[6px] border border-[#dbd8cc] bg-white px-[9px] text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
           />
         </label>
-        <div className="ml-auto flex gap-[6px]">
+        <div className="flex w-full flex-wrap gap-[6px] sm:ml-auto sm:w-auto">
           <Button variant="secondary" size="sm" onClick={() => { setFrom(monthsBack(today, 3)); setTo(today) }}>Last 3 months</Button>
           <Button variant="secondary" size="sm" onClick={() => { setFrom(monthsBack(today, 12)); setTo(today) }}>Last 12 months</Button>
           <Button variant="secondary" size="sm" onClick={() => { setFrom(''); setTo('') }}>All time</Button>
@@ -220,7 +220,25 @@ function Ranked({ rows, total, view, label }) {
 
   return (
     <>
-    <div className="overflow-x-auto">
+    {/* Phone: a card each. A four column table at 375px either scrolls
+        sideways, which nobody discovers, or squeezes the name down to two
+        words. The house pattern on the quotes and orders lists is a table above
+        md and cards below it, and this follows it. */}
+    <div className="flex flex-col gap-2 p-3 md:hidden">
+      {pageItems.map(row => (
+        <div key={row.key} className="rounded-[6px] border border-[#edf4eb] p-3">
+          <div className="text-[13px] font-medium text-[#1a1a18]">{row.key}</div>
+          <Bar percent={shareOf(row.pieces, total)} />
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[#5a5a52]">
+            <span><b className="font-semibold text-[#1a1a18] tabular-nums">{row.pieces}</b> pieces</span>
+            <span className="tabular-nums">{row.orders} {row.orders === 1 ? 'order' : 'orders'}</span>
+            <span className="tabular-nums">{money(row.value)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <div className="hidden overflow-x-auto md:block">
       <table className="w-full min-w-[420px] text-[13px]">
         <thead>
           <tr className="border-b border-[#edf4eb]">

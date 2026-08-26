@@ -32,6 +32,17 @@ interface Customer {
   site_suburb?:  string
 }
 
+/** One of the customer's own jobs, from /api/admin/calendar/jobs. */
+interface JobOption {
+  kind:        'order' | 'quote'
+  becameOrder?: boolean
+  id:          string
+  reference:   string
+  name:        string
+  status:      string
+  siteAddress: string
+}
+
 interface OrderOption {
   id:            string
   order_number?: string
@@ -90,6 +101,8 @@ export default function BookingModal({ open, onClose, onSaved, draft, orders }: 
   const [form, setForm]           = React.useState<BookingDraft | null>(draft)
   const [isSaving, setIsSaving]   = React.useState(false)
   const [customers, setCustomers] = React.useState<Customer[]>([])
+  const [jobs, setJobs]           = React.useState<JobOption[]>([])
+  const [jobsLoading, setJobsLoading] = React.useState(false)
   const [search, setSearch]       = React.useState('')
   const [showList, setShowList]   = React.useState(false)
   // Whether the person has typed their own title. Until they do, the title
@@ -124,6 +137,22 @@ export default function BookingModal({ open, onClose, onSaved, draft, orders }: 
       .slice(0, 8)
   }, [customers, search])
 
+  // THE CUSTOMER'S OWN JOBS, asked for rather than filtered out of whatever
+  // the calendar happened to have loaded. That list is windowed by date for
+  // the production bars, so filtering it would still miss an older job.
+  React.useEffect(() => {
+    const customerId = form?.customerId
+    if (!open || !customerId) { setJobs([]); return }
+    let cancelled = false
+    setJobsLoading(true)
+    fetch(`/api/admin/calendar/jobs?customerId=${customerId}`, { cache: 'no-store' })
+      .then(response => response.json())
+      .then(payload => { if (!cancelled) setJobs(payload.jobs || []) })
+      .catch(() => { if (!cancelled) setJobs([]) })
+      .finally(() => { if (!cancelled) setJobsLoading(false) })
+    return () => { cancelled = true }
+  }, [open, form?.customerId])
+
   if (!form) return null
 
   function set<K extends keyof BookingDraft>(key: K, value: BookingDraft[K]) {
@@ -144,6 +173,7 @@ export default function BookingModal({ open, onClose, onSaved, draft, orders }: 
     })
   }
 
+
   function chooseCustomer(customer: Customer | null) {
     setForm(prev => {
       if (!prev) return prev
@@ -152,6 +182,8 @@ export default function BookingModal({ open, onClose, onSaved, draft, orders }: 
         ...prev,
         customerId: customer?.id || null,
         customerName: name,
+        // A job chosen for the last customer is not this customer's job.
+        orderId: customer?.id === prev.customerId ? prev.orderId : null,
         // The address comes across so nobody types it twice, and stays editable
         // because the job is not always at the address on file.
         siteAddress: customer ? addressOf(customer) || prev.siteAddress : prev.siteAddress,
@@ -296,13 +328,47 @@ export default function BookingModal({ open, onClose, onSaved, draft, orders }: 
           label="About which job"
           optional
           value={form.orderId || ''}
-          onChange={e => set('orderId', e.target.value || null)}
-          helper="Only orders. A measure booked before the job exists is linked later from the booking."
+          onChange={e => {
+            const jobId = e.target.value || null
+            const job = jobs.find(entry => entry.id === jobId)
+            setForm(prev => prev && ({
+              ...prev,
+              orderId: jobId,
+              // THE JOB'S ADDRESS, when the customer record has none. Half the
+              // customer list has no address on it, and the address is usually
+              // on the quote instead, which is where it was typed. Never
+              // overwrites something already in the box.
+              siteAddress: prev.siteAddress || job?.siteAddress || '',
+            }))
+          }}
+          disabled={!form.customerId}
+          helper={
+            !form.customerId
+              ? 'Choose a customer first, then their jobs appear here.'
+              : jobsLoading
+                ? 'Looking up their jobs...'
+                : jobs.length
+                  ? 'A measure goes against a quote, an install against an order. Both are listed.'
+                  : 'This customer has no open quote or order yet. Book it anyway and link it later.'
+          }
           options={[
             { value: '', label: 'Nothing yet, just the customer' },
-            ...orders.map(order => ({
-              value: order.id,
-              label: [order.order_number, order.name || order.customer_name].filter(Boolean).join('  '),
+            // ONLY THIS CUSTOMER'S JOBS. This used to list every order the
+            // calendar had loaded, for everyone, so choosing Rebecca Casey
+            // offered Ian Brennan's raw profiled doors and picking one would
+            // have filed her site measure against his job.
+            ...jobs.map(job => ({
+              value: job.id,
+              // WHICH KIND, SAID OUT LOUD. A measure is booked against a
+              // quote and an install against an order, so the two have to be
+              // tellable apart at a glance rather than by reading the letter
+              // in the middle of a reference number.
+              label: [
+                job.kind === 'order' ? 'Order' : 'Quote',
+                job.reference,
+                job.name,
+                job.becameOrder ? '(now an order)' : '',
+              ].filter(Boolean).join('  '),
             })),
           ]}
         />

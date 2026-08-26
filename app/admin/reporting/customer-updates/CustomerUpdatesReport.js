@@ -139,7 +139,7 @@ export default function CustomerUpdatesReport() {
 
       {/* Date range */}
       <div className="mb-[14px] flex flex-wrap items-end gap-[10px] rounded-[8px] border border-[#dbd8cc] bg-white px-[14px] py-3">
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-[140px] flex-1 flex-col gap-1 sm:flex-none">
           <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">From</span>
           <input
             type="date"
@@ -149,7 +149,7 @@ export default function CustomerUpdatesReport() {
             className="h-[34px] rounded-[6px] border border-[#dbd8cc] bg-white px-[9px] text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
           />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-[140px] flex-1 flex-col gap-1 sm:flex-none">
           <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">To</span>
           <input
             type="date"
@@ -159,7 +159,7 @@ export default function CustomerUpdatesReport() {
             className="h-[34px] rounded-[6px] border border-[#dbd8cc] bg-white px-[9px] text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
           />
         </label>
-        <div className="ml-auto flex gap-[6px]">
+        <div className="flex w-full flex-wrap gap-[6px] sm:ml-auto sm:w-auto">
           <Button variant="secondary" size="sm" onClick={() => preset(7)}>Last 7 days</Button>
           <Button variant="secondary" size="sm" onClick={() => preset(14)}>Last 14 days</Button>
           <Button variant="secondary" size="sm" onClick={() => preset(30)}>Last 30 days</Button>

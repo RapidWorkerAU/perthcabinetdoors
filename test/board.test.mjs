@@ -840,3 +840,33 @@ test("an order booked to start with no panels at all is not silent", () => {
   assert.match(page, /startPassed && \(nothingMoved \|\| nothingOnIt\)/);
   assert.match(page, /'Nothing on it'/, "and it says which of the two it is");
 });
+
+// ── the column strip ────────────────────────────────────────────────────────
+
+test("a column is the same width on both views", () => {
+  // THE BUG THIS PINS. The age view stretched its four columns to fill the
+  // space, which was fine while the board had the whole page. The second
+  // sidebar then took 220px and the same four columns were squeezed into the
+  // remainder, so a card said less on the age view than on the category view
+  // for no reason a person could see.
+  //
+  // A column that changes width depending on which tab you are on is a column
+  // you cannot learn. One width, and the row scrolls sideways instead.
+  const client = readFileSync(new URL("../app/admin/board/BoardClient.tsx", import.meta.url), "utf8");
+
+  const section = client.slice(client.indexOf("{columns.map(col => {"), client.indexOf("<header"));
+  assert.match(section, /md:w-\[320px\]/, "columns hold a set width on desktop");
+  assert.match(section, /flex-shrink-0/, "and do not shrink to fit");
+  assert.ok(
+    !/md:flex-1/.test(section),
+    "no view may stretch its columns to fill: that is what squeezed the age view"
+  );
+  assert.ok(
+    !/view === 'age' \?/.test(section),
+    "and the width must not depend on which view is showing"
+  );
+
+  // The strip itself is what scrolls, so the page never does.
+  const strip = client.slice(client.indexOf("ref={strip}"), client.indexOf("{columns.map(col => {"));
+  assert.match(strip, /overflow-x-auto/);
+});
