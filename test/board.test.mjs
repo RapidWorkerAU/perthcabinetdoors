@@ -870,3 +870,53 @@ test("a column is the same width on both views", () => {
   const strip = client.slice(client.indexOf("ref={strip}"), client.indexOf("{columns.map(col => {"));
   assert.match(strip, /overflow-x-auto/);
 });
+
+// ── where a panel's truth actually lives ────────────────────────────────────
+
+test("every tile counts panels, never the column beside them", () => {
+  // THE BUG THIS PINS. The order page writes a panel's status, its ordered date
+  // and its ETA into panel_planning, a JSON blob. The columns on the line item
+  // are left as they were, so status stays "Not Ordered" forever.
+  //
+  // The materials tile read that column. Ian Brennan's ten doors were all
+  // marked ordered on 24 August with a 9 September ETA, and his card still read
+  // "10 panels still Not Ordered, and the job is booked to start already".
+  // Three of fourteen active orders were being reported wrongly.
+  //
+  // A board that tells you to do something already done is worse than no board,
+  // because the one time it is right nobody believes it.
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+
+  // Everything that decides a tile runs off `panels`, which comes from panelsOf.
+  const build = page.slice(page.indexOf("active.forEach(order => {"), page.indexOf("const built = buildBoard("));
+  assert.match(build, /const panels = lines\.flatMap\(panelsOf\)/, "the panels are resolved once, at the top");
+
+  [
+    ["materials", /const notOrdered = panels\.filter/],
+    ["planning", /const undecided = panels\.filter\(p => !p\.fulfilment_method\)/],
+    ["late", /panels\.every\(p => \{/],
+  ].forEach(([tile, pattern]) => {
+    assert.match(build, pattern, `the ${tile} tile must count panels`);
+  });
+
+  // And none of them may read the line's own column instead.
+  assert.ok(
+    !/lines\.filter\(l => l\.status/.test(build),
+    "a tile reading l.status is reading the field the order page never writes"
+  );
+  assert.ok(
+    !/lines\.filter\(l => l\.production_stage/.test(build),
+    "same for the production stage"
+  );
+});
+
+test("a panel nobody has decided on counts as not done", () => {
+  // panelsOf deliberately does NOT fall back to the line's column when a plan
+  // exists: an undecided panel has to read as undecided rather than borrowing a
+  // guess from the row above it. So the tiles have to treat a missing status as
+  // outstanding, or a half filled plan would read as finished work.
+  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /panels\.filter\(p => !p\.status \|\| p\.status === 'Not Ordered'\)/);
+  // The late card already took the same direction, and the two must agree.
+  assert.match(page, /return !at \|\| START_OF_LIST\.has\(String\(at\)\)/);
+});

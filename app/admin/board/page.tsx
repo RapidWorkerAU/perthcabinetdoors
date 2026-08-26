@@ -482,8 +482,22 @@ export default async function AdminBoardPage() {
     }
 
     // Materials: starting within a week with panels still unordered.
+    //
+    // COUNTED OFF THE PANELS, like everything else on this board.
+    //
+    // This read l.status, the column on the line. The order page writes the
+    // ordered date, the ETA and the status into panel_planning instead, so the
+    // column stays "Not Ordered" forever: Ian Brennan's ten doors were all
+    // marked ordered on 24 August with a 9 September ETA and this card still
+    // said "10 panels still Not Ordered, and the job is booked to start
+    // already". A board that tells you to do something already done is worse
+    // than no board, because the one time it is right nobody believes it.
+    //
+    // A panel with no status at all still counts: nobody has said it is
+    // ordered, and undecided is not the same as done. That is the same
+    // direction panelsOf takes and the same one the late card takes below.
     const until = daysUntil(order.scheduled_start_date, today)
-    const notOrdered = lines.filter(l => l.status === 'Not Ordered').length
+    const notOrdered = panels.filter(p => !p.status || p.status === 'Not Ordered').length
     if (notOrdered && until !== null && until <= 7) {
       materials.push({ ...order, notOrdered, customerId: whoIsIt(order.customer_id as string, order.customer_email as string) })
     }

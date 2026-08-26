@@ -721,3 +721,45 @@ test("Vercel still runs the calendar daily as a floor", () => {
   const mail = config.crons.find((job) => job.path === "/api/cron/mail-sync");
   assert.notEqual(calendar.schedule, mail.schedule);
 });
+
+// ── the hours a week is drawn against ───────────────────────────────────────
+
+test("the week runs to 6pm, and nothing is drawn off either end", () => {
+  const manager = readFileSync(new URL("../app/admin/calendar/CalendarManager.tsx", import.meta.url), "utf8");
+
+  // The last row was 4pm, which is earlier than deliveries and installs
+  // actually run. END IS EXCLUSIVE: the last row drawn is DAY_END_HOUR - 1.
+  assert.match(manager, /const DAY_START_HOUR = 7/);
+  assert.match(manager, /const DAY_END_HOUR = 19/, "so the last row is 6pm");
+
+  // Only the top was clamped, so a booking after the last row was drawn below
+  // the grid and clipped away entirely. A late install is no less real than an
+  // early one, and a booking you cannot see is worse than one in the wrong row.
+  assert.match(manager, /const gridHeight = hours\.length \* hourH/);
+  assert.match(manager, /Math\.max\(0, gridHeight - height\)/, "the bottom is clamped too");
+});
+
+// ── the stage quote modal's dropdown ────────────────────────────────────────
+
+test("a dropdown inside a design modal opens in front of it", () => {
+  // THE BUG THIS PINS. .modalBox is z-index 1101 and the shared Dropdown's
+  // panel defaults to 60, so the list opened BEHIND the modal it was sitting
+  // in. Clicking the field did nothing anybody could see, and the only way to
+  // link a design to an existing quote looked broken.
+  //
+  // The same thing had already been hit and fixed in ImportModal, which is why
+  // this checks both rather than the one that was reported.
+  const css = readFileSync(new URL("../app/admin/design/design.module.css", import.meta.url), "utf8");
+  const box = css.slice(css.indexOf(".modalBox {"), css.indexOf("}", css.indexOf(".modalBox {")));
+  const modalZ = Number(box.match(/z-index:\s*(\d+)/)?.[1]);
+  assert.ok(modalZ > 60, "the modal really does sit above the dropdown's default");
+
+  ["StageQuoteModal", "ImportModal"].forEach((name) => {
+    const source = readFileSync(
+      new URL(`../app/admin/design/_components/${name}.js`, import.meta.url), "utf8"
+    );
+    const z = Number(source.match(/contentZIndex=\{(\d+)\}/)?.[1]);
+    assert.ok(z, `${name} must lift its dropdown panel`);
+    assert.ok(z > modalZ, `${name} lifts it to ${z}, which must beat the modal's ${modalZ}`);
+  });
+});

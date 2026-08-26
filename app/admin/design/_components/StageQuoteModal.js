@@ -532,6 +532,12 @@ export default function StageQuoteModal({ projectId, onClose }) {
                       onChange={(value) => setSelectedId(String(value || ""))}
                       containerClassName="min-w-[260px]"
                       triggerClassName="!h-[32px] !text-[12px]"
+                      // ABOVE THE MODAL. .modalBox is z-index 1101 and the
+                      // dropdown's panel defaults to 60, so the list opened
+                      // BEHIND the modal it was sitting in: clicking the field
+                      // did nothing anybody could see, and the only way to link
+                      // a design to an existing quote looked broken.
+                      contentZIndex={1200}
                     />
                   </label>
                   <button type="button" style={btnPrimary} disabled={committing || !selectedId || lineCount === 0} onClick={() => commit()}>

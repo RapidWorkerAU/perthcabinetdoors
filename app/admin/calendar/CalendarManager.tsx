@@ -84,8 +84,12 @@ const VIEW_KEYS = VIEWS.map(view => view.key)
 
 // The clock a work week is drawn against. Nothing is booked at four in the
 // morning, and drawing the hours nobody works just makes the rest smaller.
+//
+// END IS EXCLUSIVE: the last row drawn is DAY_END_HOUR - 1, and it covers the
+// hour after it. At 17 the last label was 4pm, which is earlier than deliveries
+// and installs actually run.
 const DAY_START_HOUR = 7
-const DAY_END_HOUR = 17
+const DAY_END_HOUR = 19
 
 // How far a booking's label may run past its own day before it is cut short.
 // The coloured block is always exactly one day: the words are the only thing
@@ -1177,8 +1181,17 @@ function WorkWeek({
               // Anything before the working day starts is pinned to the top
               // rather than drawn off the grid: an early delivery is exactly the
               // thing you must not lose.
-              const top = Math.max(0, (booking.startMinutes - DAY_START_HOUR * 60) / 60 * hourH)
+              //
+              // AND THE SAME AT THE OTHER END. Only the top was clamped, so a
+              // booking after the last row was drawn below the grid and clipped
+              // away entirely. A late install is no less real than an early one,
+              // and a booking you cannot see is worse than one in the wrong row.
+              const gridHeight = hours.length * hourH
               const height = Math.max(20, (booking.minutes / 60) * hourH - 3)
+              const top = Math.min(
+                Math.max(0, ((booking.startMinutes - DAY_START_HOUR * 60) / 60) * hourH),
+                Math.max(0, gridHeight - height),
+              )
               const detail = bookingTileDetail(booking)
               return (
                 <button
