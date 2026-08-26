@@ -1,0 +1,64 @@
+name: Scheduled sync
+
+# THE SECOND SCHEDULER, because Vercel's Hobby plan only runs a cron once a day.
+#
+# WHY THIS EXISTS. The calendar wants a pass more than once a day, and asking
+# Vercel for "0 22,6 * * *" is refused on Hobby and blocks the whole deployment.
+# GitHub will run the same job on any schedule we like at no cost, so the
+# schedule lives here and Vercel keeps a single daily pass as a floor.
+#
+# BOTH SCHEDULERS RUNNING IS THE POINT, not a mistake. Every one of these jobs
+# is safe to run twice: the mail sync reads oldest first from where it stopped,
+# and the calendar's delta link only advances when Graph says a read finished.
+# So an overlap costs a few seconds and nothing else, and if GitHub disables
+# this workflow (it does that on a repo with no pushes for 60 days) the Vercel
+# cron carries on alone and the subscription still gets renewed inside the three
+# days Microsoft gives it.
+#
+# WHAT IT NEEDS. Two repository secrets, under Settings, Secrets and variables,
+# Actions:
+#   SITE_URL      https://www.perthcabinetdoors.com.au  (no trailing slash)
+#   CRON_SECRET   the same value as the CRON_SECRET environment variable in
+#                 Vercel. The routes check it, so a wrong one gets a 401 and
+#                 this workflow goes red.
+
+on:
+  schedule:
+    # UTC. Perth is UTC+8 all year with no daylight saving, so these are
+    # 06:00 and 14:00 Perth every day of the year, with nothing to adjust.
+    - cron: "0 22 * * *"
+    - cron: "0 6 * * *"
+  # So it can be run by hand from the Actions tab when something looks stale.
+  workflow_dispatch:
+
+# A second run starting while the first is still going would have both reading
+# the same mailbox. Let the one in flight finish.
+concurrency:
+  group: scheduled-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the calendar
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 120 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/calendar-sync"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      # Only on the late pass. The mailbox read is the heavier of the two and
+      # once a day is what it was always doing; this workflow is here for the
+      # calendar's extra pass, not to double the mail sync.
+      - name: Check the mailbox
+        if: github.event.schedule == '0 22 * * *' || github.event_name == 'workflow_dispatch'
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 120 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/mail-sync"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

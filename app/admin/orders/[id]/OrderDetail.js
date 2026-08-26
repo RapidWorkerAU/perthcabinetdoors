@@ -32,6 +32,10 @@ import AdminLoading from "@/components/admin/AdminLoading";
 import { panelNumberKey } from "../../../../lib/pcd-order-panel-numbers";
 import { groupProductionRows } from "../../../../lib/pcd-production-groups";
 import { lineNotes, lineNotesText } from "../../../../lib/pcd-line-notes";
+// Every cup from the bottom edge, worked out the one way. See lib/pcd-hinges.js.
+import { cupPositions, hingeSummaryLines } from "../../../../lib/pcd-hinges";
+import { taxInvoiceReadiness } from "../../../../lib/pcd-tax-invoice";
+import TaxInvoiceModal from "./TaxInvoiceModal";
 import { supplierFromColour, supplierLookupKey } from "../../../../lib/pcd-line-supplier";
 import { historyGaps, orderVersions } from "../../../../lib/pcd-order-history";
 import {
@@ -451,6 +455,7 @@ export default function OrderDetail({ orderId }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [refundModalOpen, setRefundModalOpen] = useState(false);
   const [makingDeliveryLabel, setMakingDeliveryLabel] = useState(false);
   const [savingRefund, setSavingRefund] = useState(false);
@@ -568,6 +573,9 @@ export default function OrderDetail({ orderId }) {
 
   const quoteLines = useMemo(() => sortedQuoteLines(order), [order]);
   const payments = useMemo(() => sortedPayments(order), [order]);
+  // Whether a tax invoice can go out yet, and why not when it cannot. The same
+  // rule the route applies, so the button and the boundary cannot disagree.
+  const invoiceReady = useMemo(() => taxInvoiceReadiness(order, payments), [order, payments]);
   const activity = useMemo(() => sortedActivity(order), [order]);
   const variations = useMemo(() => sortedVariations(order), [order]);
   const paymentTotals = useMemo(() => {
@@ -1512,13 +1520,41 @@ export default function OrderDetail({ orderId }) {
                   return (
                     <tr key={line.id || index}>
                       <td className={tw.td}>{index + 1}</td>
-                      <td className={tw.td}>{lineValue(quoteLineTitle(line))}</td>
+                      <td className={tw.td}>
+                        {lineValue(quoteLineTitle(line))}
+                        {/* Whose carcass it goes on. Under the type rather than
+                            in a column of its own: this table is already wide,
+                            and it belongs with what the thing IS. */}
+                        {line.cabinet_brand ? (
+                          <span className="block text-[11px] text-[#8b8a81] mt-[2px]">{line.cabinet_brand}</span>
+                        ) : null}
+                      </td>
                       <td className={tw.td}>{[lineValue(line.material), lineValue(line.colour)].filter(v => v !== "-").join(" — ") || "—"}</td>
                       <td className={tw.td + " whitespace-nowrap"}>{lineValue(quoteLineSize(line))}</td>
                       <td className={tw.td}>{line.qty || 1}</td>
                       <td className={tw.td}>{lineValue(line.edge_mould)}</td>
-                      <td className={tw.td}>{hingesApplicable ? (line.hinge_holes ? "Yes" : "No") : "N/A"}</td>
-                      <td className={tw.td}>{hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</td>
+                      {/* HANDING AND CUPS, in the two columns that already exist
+                          rather than in two more. Which side is the one that
+                          costs a remake, so it sits next to whether we drill at
+                          all instead of behind a click. */}
+                      <td className={tw.td}>
+                        {hingesApplicable ? (line.hinge_holes ? "Yes" : "No") : "N/A"}
+                        {hingesApplicable && line.hinge_holes && line.hinge_side ? (
+                          <span className="block text-[11px] font-semibold text-[#2d5e28] mt-[2px]">
+                            {line.hinge_side}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className={tw.td}>
+                        {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}
+                        {hingesApplicable && line.hinge_holes ? (
+                          <span className="block text-[11px] text-[#8b8a81] mt-[2px] whitespace-nowrap">
+                            {(cupPositions(line) || []).length
+                              ? `${cupPositions(line).join(", ")}mm`
+                              : "standard"}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className={tw.td + " " + tw.mono}>{formatMoney(line.product_unit_cost_ex_gst || 0, quoteCurrency)}</td>
                       {/* The markup this line was actually quoted at. It used to
                           print the built-in 40% whenever the line had none,
@@ -3573,6 +3609,30 @@ export default function OrderDetail({ orderId }) {
             >
               {makingDeliveryLabel ? "Making…" : "Print Delivery Label"}
             </button>
+            {/* THE TAX INVOICE. Only once the money is all in: it is a record
+                of a completed transaction rather than a request for payment, so
+                a button that worked earlier would be offering to tell somebody
+                their job is settled when it is not. The reason why sits on the
+                disabled button rather than appearing after it is pressed. */}
+            <button
+              type="button"
+              onClick={() => setInvoiceOpen(true)}
+              disabled={!invoiceReady.ok}
+              title={
+                invoiceReady.ok
+                  ? order.invoice_issued_at
+                    ? `Already issued. Sends ${order.order_number} again, still dated the day it was first issued.`
+                    : `Emails the customer their tax invoice for ${order.order_number}, as a PDF.`
+                  : invoiceReady.reason
+              }
+              className={`h-[32px] flex items-center justify-center px-3 rounded-[6px] text-[12px] font-medium transition-colors ${
+                invoiceReady.ok
+                  ? "border border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28] hover:bg-[#e2ecdf]"
+                  : "border border-[#dbd8cc] bg-white text-[#a8a69c] cursor-not-allowed"
+              }`}
+            >
+              {order.invoice_issued_at ? "Send tax invoice again" : "Send tax invoice"}
+            </button>
             <button
               type="button"
               onClick={() => setArchiveOpen(true)}
@@ -3731,6 +3791,17 @@ export default function OrderDetail({ orderId }) {
       {/* Archiving takes an order off the board, out of the financials and out
           of the lists all at once. Reversible, but not something to do by
           brushing past a button. */}
+      {invoiceOpen && (
+        <TaxInvoiceModal
+          orderId={order.id}
+          order={order}
+          onClose={() => setInvoiceOpen(false)}
+          // The issued date is stamped server side on the first send, so the
+          // page is reloaded rather than patched: anything cleverer would be a
+          // second copy of what the route just wrote.
+          onSent={() => loadOrder()}
+        />
+      )}
       <ConfirmModal
         open={archiveOpen && !archiveOutstanding}
         onClose={() => setArchiveOpen(false)}

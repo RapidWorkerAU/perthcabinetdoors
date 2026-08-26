@@ -10,7 +10,11 @@ import { runMailSync } from "../../../../lib/pcd-mail-catchup";
 // SIX IN THE MORNING, PERTH. Schedules are UTC, and Perth is UTC+8 with no
 // daylight saving at all, so 22:00 UTC is 06:00 the next morning in Perth every
 // day of the year. Nothing to adjust twice a year and nothing to drift.
-// See vercel.json.
+//
+// Called from vercel.json and again from .github/workflows/scheduled-sync.yml,
+// which is there because Vercel's Hobby plan will not run the calendar sync as
+// often as it needs. Both hitting this within the same hour is harmless: see
+// below, a run reads on from where the last one stopped.
 //
 // A RUN THAT IS CUT SHORT IS SAFE. Every pass reads oldest first from where the
 // last one stopped, so a timeout mid-run is a pause, not a hole: tomorrow's run

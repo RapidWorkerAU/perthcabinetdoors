@@ -10,3 +10,13 @@ yarn-error.log*
 pnpm-debug.log*
 .DS_Store
 .next-verify/
+# BUILD OUTPUT UNDER ANOTHER NAME.
+#
+# A build can be pointed at a different directory with PCD_DIST_DIR, which is
+# how a verification build runs while a dev server still holds .next. Those
+# directories are ordinary build output and must never be committed: each one
+# carries a webpack cache of 300MB or so, well past what GitHub will accept,
+# and a push carrying them is refused outright.
+.nv-*/
+.nv*/
+

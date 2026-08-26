@@ -3,6 +3,7 @@ import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, ed
 import { isEdgeProfileSelectionAvailable, profileTypesForSelection, profileNamesForSelection } from "../../../../../lib/quote-form-data";
 import { createSupplierGuard } from "../../../../../lib/pcd-supplier-guard";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
+import { normaliseHingeSide, readMiddles } from "../../../../../lib/pcd-hinges";
 
 export async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -71,6 +72,21 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     hinge_holes: Boolean(line.hinge_holes),
     hinge_supply: false,
     hinge_qty: dbText(line.hinge_qty),
+    // Whose cabinet the front goes on. Read only on the quote screen: it comes
+    // from the customer's own answer on the request form or from the design
+    // they drew, so it is carried rather than re-decided here.
+    cabinet_brand: dbText(line.cabinet_brand),
+    // WHERE THE HINGES GO, and only while the line is actually drilled. An
+    // untick that left a measurement behind would put one on a workshop sheet
+    // for a door with no holes in it.
+    //
+    // Handing goes through the shared rule rather than dbText, so a spreadsheet
+    // or an old client cannot get "pair" past the database check and fail the
+    // whole save over a word the form never offered.
+    hinge_side: line.hinge_holes ? normaliseHingeSide(line.hinge_side) || null : null,
+    hinge_from_bottom_mm: line.hinge_holes ? dbNullableNumber(line.hinge_from_bottom_mm) : null,
+    hinge_from_top_mm: line.hinge_holes ? dbNullableNumber(line.hinge_from_top_mm) : null,
+    hinge_middles_mm: line.hinge_holes ? readMiddles(line.hinge_middles_mm) : [],
     product_unit_cost_ex_gst: dbNumber(line.product_unit_cost_ex_gst),
     unit_cost_mode: line.unit_cost_mode === "auto" ? "auto" : "manual",
     unit_cost_source_id: line.unit_cost_source_id || null,
@@ -98,14 +114,27 @@ export function quoteLineRow(line, quoteId, sortOrder) {
   };
 }
 
+// COLUMNS A LATER MIGRATION ADDED. A database that has not run one answers
+// PGRST204 naming the column, and the save is retried without it rather than
+// losing the whole line over a field that did not exist yet.
+const LATE_COLUMNS = [
+  "supplier_name",
+  "cabinet_brand",
+  "hinge_side",
+  "hinge_from_bottom_mm",
+  "hinge_from_top_mm",
+  "hinge_middles_mm",
+];
+
 export function isMissingSupplierNameSchemaError(error) {
   const message = String(error?.message || "");
-  return error?.code === "PGRST204" && message.includes("supplier_name") && message.includes("pcd_quote_line_items");
+  return error?.code === "PGRST204" && LATE_COLUMNS.some((column) => message.includes(column));
 }
 
 export function withoutSupplierName(row) {
-  const { supplier_name: _supplierName, ...rest } = row;
-  return rest;
+  const stripped = { ...row };
+  LATE_COLUMNS.forEach((column) => { delete stripped[column]; });
+  return stripped;
 }
 
 async function saveQuoteLineRow(supabase, row, { lineId, quoteId }) {

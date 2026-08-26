@@ -609,3 +609,57 @@ test("the pill that said nothing useful is gone", () => {
   assert.ok(code.includes("Last synced with Outlook"), "replaced by the answer to the question people actually have");
   assert.ok(code.includes("<SyncLine sync={sync} />"), "as a line under the buttons rather than among them");
 });
+
+// ── WHO ACTUALLY RUNS THE SYNC ──────────────────────────────────────────────
+//
+// Vercel's Hobby plan refuses a cron that runs more than once a day, and it
+// refuses the whole DEPLOYMENT along with it. The calendar wanted two passes
+// and asked Vercel for "0 22,6 * * *", and nothing shipped until it was found.
+// The real schedule lives on GitHub now, where the frequency costs nothing.
+
+test("no Vercel cron asks for more than one run a day", () => {
+  // The guard on the thing that actually broke. A list or a step in any field
+  // ("22,6", "*/6", "1-5") is more than once a day, and a deployment that will
+  // not go out is a worse failure than a stale calendar.
+  const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
+  config.crons.forEach((job) => {
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = job.schedule.split(/\s+/);
+    assert.ok(!/[,*/-]/.test(minute) || minute === "*", `${job.path}: minute "${minute}" is not a single value`);
+    assert.ok(/^\d+$/.test(hour), `${job.path}: hour "${hour}" would run more than once a day`);
+    // Every day. Restricting the day is allowed by Vercel, but nothing here
+    // wants it, and a calendar that silently skips weekends is the sort of gap
+    // that takes a fortnight to notice.
+    assert.equal(dayOfMonth, "*", `${job.path}: runs only on some days of the month`);
+    assert.equal(month, "*", `${job.path}: runs only in some months`);
+    assert.equal(dayOfWeek, "*", `${job.path}: runs only on some days of the week`);
+  });
+});
+
+test("the calendar still gets its second pass, from GitHub", () => {
+  // Halving the frequency to fit the plan would have been the easy answer and
+  // the wrong one: the point of the second pass is that a lost notification
+  // costs hours rather than a day.
+  const workflow = readFileSync(new URL("../.github/workflows/scheduled-sync.yml", import.meta.url), "utf8");
+  assert.match(workflow, /- cron: "0 22 \* \* \*"/);
+  assert.match(workflow, /- cron: "0 6 \* \* \*"/);
+  assert.match(workflow, /api\/cron\/calendar-sync/);
+  // With the secret, or the route refuses it and the run goes red rather than
+  // failing quietly.
+  assert.match(workflow, /Authorization: Bearer \$CRON_SECRET/);
+  assert.match(workflow, /--fail-with-body/, "a non-2xx answer has to fail the run");
+});
+
+test("Vercel still runs the calendar daily as a floor", () => {
+  // GitHub switches a scheduled workflow off on a repo nobody has pushed to for
+  // 60 days. Microsoft expires the calendar subscription in three days and says
+  // nothing when it lapses, so something has to keep renewing it that cannot be
+  // switched off by inactivity.
+  const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
+  const calendar = config.crons.find((job) => job.path === "/api/cron/calendar-sync");
+  assert.ok(calendar, "the calendar has no Vercel cron at all");
+  assert.equal(calendar.schedule, "0 21 * * *");
+  // An hour apart from the mail sync, so two jobs with a 60 second ceiling are
+  // not competing for the same cold start.
+  const mail = config.crons.find((job) => job.path === "/api/cron/mail-sync");
+  assert.notEqual(calendar.schedule, mail.schedule);
+});

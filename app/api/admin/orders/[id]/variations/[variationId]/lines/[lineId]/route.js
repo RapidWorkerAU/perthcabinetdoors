@@ -10,6 +10,7 @@ import {
 } from "../../../../../../../../../lib/pcd-order-costs";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../../../lib/pcd-business-defaults";
+import { normaliseHingeSide, readMiddles } from "../../../../../../../../../lib/pcd-hinges";
 import { createSupplierGuard } from "../../../../../../../../../lib/pcd-supplier-guard";
 
 async function idsFromParams(params) {
@@ -89,6 +90,15 @@ function originalItemSnapshot(sourceLine) {
     profile_type: sourceLine.profile_type || null,
     profile: sourceLine.profile || null,
     edge_mould: sourceLine.edge_mould || null,
+    // The drilling as it stands, so a variation that changes the handing shows
+    // a difference between before and after instead of two identical rows.
+    cabinet_brand: sourceLine.cabinet_brand || null,
+    hinge_holes: sourceLine.hinge_holes ?? null,
+    hinge_qty: sourceLine.hinge_qty || null,
+    hinge_side: sourceLine.hinge_side || null,
+    hinge_from_bottom_mm: sourceLine.hinge_from_bottom_mm ?? null,
+    hinge_from_top_mm: sourceLine.hinge_from_top_mm ?? null,
+    hinge_middles_mm: sourceLine.hinge_middles_mm || [],
     qty: sourceLine.qty ?? 1,
     line_total_ex_gst: sourceLine.line_total_ex_gst ?? 0,
   };
@@ -203,15 +213,29 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
     "profile_type",
     "profile",
     "edge_mould",
+    "cabinet_brand",
+    "hinge_qty",
     "unit_cost_source_id",
     "unit_cost_source_label",
     "notes",
   ].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = payload[field] === "" ? null : cleanText(payload[field]);
   });
-  ["width_mm", "height_mm"].forEach((field) => {
+  ["width_mm", "height_mm", "hinge_from_bottom_mm", "hinge_from_top_mm"].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = nullableNumber(payload[field]);
   });
+  // Handing goes through the shared rule rather than cleanText, so a spreadsheet
+  // or an old client cannot get "pair" past the database check and fail the
+  // whole update over a word the form never offered.
+  if (Object.prototype.hasOwnProperty.call(payload, "hinge_side")) {
+    updates.hinge_side = normaliseHingeSide(payload.hinge_side) || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "hinge_holes")) {
+    updates.hinge_holes = Boolean(payload.hinge_holes);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "hinge_middles_mm")) {
+    updates.hinge_middles_mm = readMiddles(payload.hinge_middles_mm);
+  }
   ["qty", "original_line_total_ex_gst", "proposed_line_total_ex_gst", "unit_cost_per_sqm_ex_gst", "calculated_unit_cost_ex_gst", "product_unit_cost_ex_gst", "markup_percent"].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = toNumber(payload[field]);
   });

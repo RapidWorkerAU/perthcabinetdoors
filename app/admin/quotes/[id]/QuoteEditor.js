@@ -24,6 +24,7 @@ import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, fo
 import AddressFields from "../../../../components/admin/AddressFields";
 import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNote";
 import OverrideModal from "../../_components/OverrideModal";
+import ImportOrderFormModal from "./ImportOrderFormModal";
 import LockedRegion from "../../_components/LockedRegion";
 import AcceptForCustomerModal from "../../_components/AcceptForCustomerModal";
 import { editability } from "../../../../lib/pcd-document-lock";
@@ -39,6 +40,9 @@ import {
   profileTypesForSelection,
   thicknessOptionsForMaterial,
 } from "../../../../lib/quote-form-data";
+// Handing and cup positions. Shared with the website form, the order and the
+// Excel sheet so none of them can answer differently about the same door.
+import { HINGE_SIDES, cupPositions, evenMiddles, hingeCount, readMiddles } from "../../../../lib/pcd-hinges";
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { Dropdown } from "@/components/ui/Dropdown";
@@ -88,6 +92,14 @@ const emptyLine = {
   qty: 1,
   hinge_holes: false,
   hinge_qty: "",
+  // Whose cabinet the front goes on, and where the cups go. Blank positions
+  // mean our standard ones, which is what almost every door wants, so none of
+  // these is a gap when it is empty.
+  cabinet_brand: "",
+  hinge_side: "",
+  hinge_from_bottom_mm: "",
+  hinge_from_top_mm: "",
+  hinge_middles_mm: [],
   product_unit_cost_ex_gst: "",
   unit_cost_mode: "manual",
   unit_cost_source_id: null,
@@ -218,6 +230,11 @@ function lineFromQuoteLine(line) {
     supplier_name: line.supplier_name || supplierFromSourceLabel(line.unit_cost_source_label) || "",
     profile_type: line.profile_type ?? "",
     hinge_holes: Boolean(line.hinge_holes),
+    cabinet_brand: line.cabinet_brand || "",
+    hinge_side: line.hinge_side || "",
+    hinge_from_bottom_mm: line.hinge_from_bottom_mm ?? "",
+    hinge_from_top_mm: line.hinge_from_top_mm ?? "",
+    hinge_middles_mm: readMiddles(line.hinge_middles_mm),
     hinge_qty: line.hinge_qty ?? "",
     product_unit_cost_ex_gst: line.product_unit_cost_ex_gst ?? "",
     unit_cost_mode: line.unit_cost_mode === "auto" ? "auto" : "manual",
@@ -434,16 +451,48 @@ function colourSrcForLine(line, swatchesById = null, swatchesByName = null) {
   return swatchesByName.get(`${finish}|${colour}`) || swatchesByName.get(`|${colour}`) || "";
 }
 
+/**
+ * The middle cups a hinge modal should store: what was typed, or even spacing.
+ *
+ * Stored rather than worked out again downstream, so the order and the
+ * production sheet read one list of cups instead of each recomputing the
+ * middles and possibly disagreeing about them.
+ */
+function hingeMiddlesFromModal(modal) {
+  if (modal.middles_touched && modal.hinge_middles_mm.length) {
+    return modal.hinge_middles_mm.map((mm) => Number(mm) || 0).filter((mm) => mm > 0);
+  }
+  return evenMiddles({
+    height: modal.height_mm,
+    count: hingeCount(modal.hinge_qty),
+    fromBottom: modal.hinge_from_bottom_mm,
+    fromTop: modal.hinge_from_top_mm,
+  });
+}
+
 function hasHingeConfig(line) {
   return Boolean(line?.hinge_holes);
 }
 
 function hingeConfigLines(line) {
   if (!hasHingeConfig(line)) return [];
+  const cups = cupPositions(line);
   return [
     `Drilling: ${line.hinge_holes ? "Required" : "Not required"}`,
+    ...(line.hinge_side ? [`Hinged ${String(line.hinge_side).toLowerCase()}`] : []),
     `Qty: ${line.hinge_qty || "Per door"}`,
+    // Every cup from the bottom edge, which is the one datum the whole door
+    // shares. Said here as well as on the sheet so a wrong pattern is visible
+    // on the quote rather than first noticed at the machine.
+    ...(cups ? [`Cups: ${cups.join(", ")}mm`] : ["Cups: standard positions"]),
   ];
+}
+
+// WHOSE CABINET. Read only on the quote: the answer comes from the customer on
+// the request form or from the design they drew, and re-allocating it here
+// would be staff overruling what they told us.
+function cabinetConfigLines(line) {
+  return line?.cabinet_brand ? [`Cabinet: ${line.cabinet_brand}`] : [];
 }
 
 function hasProfileConfig(line) {
@@ -922,6 +971,7 @@ export default function QuoteEditor({ quoteId }) {
   const [termsToAdd, setTermsToAdd] = useState([]);
   const [benchtopMaterialRows, setBenchtopMaterialRows] = useState([]);
   const [hingeModal, setHingeModal] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [profileModal, setProfileModal] = useState(null);
   const [lineNoteModal, setLineNoteModal] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1490,6 +1540,18 @@ export default function QuoteEditor({ quoteId }) {
       lineIndex: index,
       hinge_holes: Boolean(line.hinge_holes),
       hinge_qty: line.hinge_qty || "",
+      hinge_side: line.hinge_side || "",
+      hinge_from_bottom_mm: line.hinge_from_bottom_mm ?? "",
+      hinge_from_top_mm: line.hinge_from_top_mm ?? "",
+      hinge_middles_mm: readMiddles(line.hinge_middles_mm),
+      // Whether anybody has typed over a middle cup. Until they have, the
+      // middles follow the two ends; once they have, the number they typed
+      // stays put while the others move around it.
+      middles_touched: readMiddles(line.hinge_middles_mm).length > 0,
+      // The door's own height, which is what the even spacing is worked out
+      // across. Read here rather than looked up later so the modal does not
+      // have to reach back into the line it came from.
+      height_mm: line.height_mm ?? "",
     });
   }
 
@@ -1498,7 +1560,22 @@ export default function QuoteEditor({ quoteId }) {
       if (!current) return current;
       const next = { ...current, [field]: value };
       if (field === "hinge_holes" && !next.hinge_holes) {
+        // Everything about the drilling goes, not just the count. A measurement
+        // left behind on an undrilled door is one that reaches a workshop sheet
+        // for a door with no holes in it.
         next.hinge_qty = "";
+        next.hinge_side = "";
+        next.hinge_from_bottom_mm = "";
+        next.hinge_from_top_mm = "";
+        next.hinge_middles_mm = [];
+        next.middles_touched = false;
+      }
+      // A different number of cups, or a different pair of ends, means the ones
+      // in between move. What was typed for the old shape is not an answer for
+      // the new one.
+      if (field === "hinge_qty" || field === "hinge_from_bottom_mm" || field === "hinge_from_top_mm") {
+        next.hinge_middles_mm = [];
+        next.middles_touched = false;
       }
       return next;
     });
@@ -1510,6 +1587,13 @@ export default function QuoteEditor({ quoteId }) {
     const patch = {
       hinge_holes: Boolean(hingeModal.hinge_holes),
       hinge_qty: hasRequirements ? hingeModal.hinge_qty : "",
+      hinge_side: hasRequirements ? hingeModal.hinge_side : "",
+      hinge_from_bottom_mm: hasRequirements ? hingeModal.hinge_from_bottom_mm : "",
+      hinge_from_top_mm: hasRequirements ? hingeModal.hinge_from_top_mm : "",
+      // Whatever was typed, or the even spacing. Stored either way, so the
+      // order and the production sheet read one list of cups rather than each
+      // working the middles out again and possibly differently.
+      hinge_middles_mm: hasRequirements ? hingeMiddlesFromModal(hingeModal) : [],
     };
     if (hingeModal.lineIndex === editableLineIndex) {
       setEditableLineDraft((current) => ({ ...(current || form.lines[hingeModal.lineIndex] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)), ...patch }));
@@ -2627,6 +2711,15 @@ export default function QuoteEditor({ quoteId }) {
               title="Look every board line up in the colour library again and apply the current price"
             >
               {isRepricing ? 'Repricing...' : 'Reprice from colour library'}
+            </button>
+            <button
+              type="button"
+              className="h-[32px] px-3 bg-white border border-[#a8c5a0] text-[12px] font-semibold rounded-[6px] text-[#2d5e28] hover:bg-[#edf4eb] disabled:opacity-50 transition-colors"
+              onClick={() => setImportOpen(true)}
+              disabled={isLocked}
+              title="Read a completed PCD order form spreadsheet into this quote"
+            >
+              Upload order form
             </button>
             <button
               type="button"
@@ -4246,7 +4339,35 @@ export default function QuoteEditor({ quoteId }) {
           </div>
         </Modal>
       )}
-      {hingeModal && (
+      {importOpen && (
+        <ImportOrderFormModal
+          quoteId={quoteId}
+          onClose={() => setImportOpen(false)}
+          // The lines are in the database, not in this component's state, so the
+          // page is reloaded rather than patched. Anything cleverer would be a
+          // second copy of what the import just wrote.
+          onImported={() => loadQuote()}
+        />
+      )}
+      {hingeModal && (() => {
+        // Shown only once there are two ends to space between, so a door with
+        // three hinges and no measurements does not sprout empty boxes nobody
+        // has to fill in.
+        const hingeMiddlesReady =
+          Number(hingeModal.height_mm) > 0 &&
+          Number(hingeModal.hinge_from_bottom_mm) > 0 &&
+          Number(hingeModal.hinge_from_top_mm) > 0;
+        const evenly = evenMiddles({
+          height: hingeModal.height_mm,
+          count: hingeCount(hingeModal.hinge_qty),
+          fromBottom: hingeModal.hinge_from_bottom_mm,
+          fromTop: hingeModal.hinge_from_top_mm,
+        });
+        const middleCount = Math.max(0, hingeCount(hingeModal.hinge_qty) - 2);
+        const hingeMiddleCups = Array.from({ length: middleCount }, (unused, index) =>
+          hingeModal.middles_touched ? hingeModal.hinge_middles_mm[index] ?? "" : evenly[index] ?? ""
+        );
+        return (
         <Modal
           open={true}
           onClose={() => setHingeModal(null)}
@@ -4290,10 +4411,90 @@ export default function QuoteEditor({ quoteId }) {
                 <option>4 hinges</option>
               </select>
             </label>
-            <p className={styles.tableMeta}>Leave drilling unticked when no hinge holes are required. Add supplied hinges as separate hardware line items.</p>
+
+            {/* HANDING. Left or right and nothing else: a pair is two doors
+                drilled as mirror images, so it is two lines. This is the one
+                that costs a remake when it is wrong. */}
+            <label className={styles.fieldLabel}>
+              Hinge side
+              <select
+                className={styles.fieldInput}
+                value={hingeModal.hinge_side}
+                onChange={(event) => updateHingeModal("hinge_side", event.target.value)}
+                disabled={!hingeModal.hinge_holes}
+              >
+                <option value="">Not recorded</option>
+                {HINGE_SIDES.map((side) => <option key={side}>{side}</option>)}
+              </select>
+            </label>
+
+            {/* THE POSITIONS. Both blank is the normal answer and means we set
+                them, so the placeholder says so rather than looking unfinished. */}
+            <div className={quoteStyles.hingeConfigLines}>
+              <label className={styles.fieldLabel}>
+                Bottom hinge, mm from bottom
+                <input
+                  className={styles.fieldInput}
+                  type="number"
+                  min="1"
+                  placeholder="Standard"
+                  value={hingeModal.hinge_from_bottom_mm}
+                  onChange={(event) => updateHingeModal("hinge_from_bottom_mm", event.target.value)}
+                  disabled={!hingeModal.hinge_holes}
+                />
+              </label>
+              <label className={styles.fieldLabel}>
+                Top hinge, mm from top
+                <input
+                  className={styles.fieldInput}
+                  type="number"
+                  min="1"
+                  placeholder="Standard"
+                  value={hingeModal.hinge_from_top_mm}
+                  onChange={(event) => updateHingeModal("hinge_from_top_mm", event.target.value)}
+                  disabled={!hingeModal.hinge_holes}
+                />
+              </label>
+            </div>
+
+            {hingeMiddleCups.length ? (
+              <div className={quoteStyles.hingeConfigLines}>
+                {hingeMiddleCups.map((mm, index) => (
+                  <label className={styles.fieldLabel} key={`cup-${index}`}>
+                    {index === 0 ? "2nd" : "3rd"} hinge, mm from bottom
+                    <input
+                      className={styles.fieldInput}
+                      type="number"
+                      min="1"
+                      value={mm}
+                      disabled={!hingeModal.hinge_holes || !hingeMiddlesReady}
+                      placeholder={hingeMiddlesReady ? "" : "Fill in the two above"}
+                      onChange={(event) => {
+                        const next = hingeMiddleCups.slice();
+                        next[index] = event.target.value;
+                        setHingeModal((current) =>
+                          current ? { ...current, hinge_middles_mm: next, middles_touched: true } : current
+                        );
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+            ) : null}
+
+            <p className={styles.tableMeta}>
+              {!hingeModal.hinge_holes
+                ? "Leave drilling unticked when no hinge holes are required. Add supplied hinges as separate hardware line items."
+                : hingeMiddleCups.length && !hingeMiddlesReady
+                  ? "Give the bottom and the top and the cups in between space evenly."
+                  : hingeMiddleCups.length && hingeModal.middles_touched
+                    ? "A middle cup has been set by hand, so it will not move when the others do."
+                    : "Blank positions mean our standard ones. Measured to the centre of the cup. A matched pair is two lines, one left and one right."}
+            </p>
           </div>
         </Modal>
-      )}
+        );
+      })()}
       {editableLineIndex !== null && typeof document !== 'undefined' ? createPortal(
         (() => {
           const idx = editableLineIndex
@@ -4451,13 +4652,22 @@ export default function QuoteEditor({ quoteId }) {
                           </button>
                         </div>
                       )}
+                      {line.cabinet_brand ? (
+                        <div className="col-span-2">
+                          <span className={mfl}>Cabinet</span>
+                          <p className="text-[13px] text-[#1a1a18] m-0 py-[10px]">
+                            {line.cabinet_brand}
+                            <span className="text-[12px] text-[#8b8a81] ml-2">from the customer</span>
+                          </p>
+                        </div>
+                      ) : null}
                       {hingesApplicable && (
                         <div className="col-span-2">
                           <span className={mfl}>Hinges</span>
                           <button type="button" onClick={() => openHingeModal(idx)}
                             className="inline-flex items-center gap-2 text-[13px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[6px] px-3 h-[44px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
                           >
-                            <span>{hasHingeConfig(line) ? `Drill: ${line.hinge_holes ? 'yes' : 'no'}` : 'Configure drilling'}</span>
+                            <span>{hasHingeConfig(line) ? hingeConfigLines(line).slice(0, 2).join(' · ') : 'Configure drilling'}</span>
                             <span>open</span>
                           </button>
                         </div>

@@ -15,10 +15,26 @@ import { runCalendarSync } from "../../../../lib/pcd-calendar-sync";
 // costs one change. A pass every few hours means the worst case is a few hours
 // stale rather than permanently wrong.
 //
-// TWICE A DAY IS ENOUGH given the webhook does the real work. See vercel.json:
-// 22:00 and 06:00 UTC, which are six in the morning and two in the afternoon in
-// Perth, because Perth is UTC+8 all year with no daylight saving to drift
-// against.
+// TWICE A DAY IS ENOUGH given the webhook does the real work: 22:00 and 06:00
+// UTC, which are six in the morning and two in the afternoon in Perth, because
+// Perth is UTC+8 all year with no daylight saving to drift against.
+//
+// WHO ACTUALLY CALLS IT. Two schedulers, on purpose.
+//
+//   .github/workflows/scheduled-sync.yml  both passes. Vercel's Hobby plan
+//                                         refuses a cron that runs more than
+//                                         once a day, and refuses the whole
+//                                         DEPLOYMENT with it, so the real
+//                                         schedule lives on GitHub where it
+//                                         costs nothing.
+//   vercel.json                           one daily pass, as a floor. GitHub
+//                                         switches a scheduled workflow off on
+//                                         a repo nobody has pushed to for 60
+//                                         days, and a subscription that lapses
+//                                         does so silently.
+//
+// Running twice is harmless. See the note below: a pass that overlaps another
+// costs a few seconds and cannot lose a change.
 //
 // A RUN THAT IS CUT SHORT IS SAFE. The delta link only advances when Graph says
 // a read finished, so a timeout mid-pull is a pause and not a hole.

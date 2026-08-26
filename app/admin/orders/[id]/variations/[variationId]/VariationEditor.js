@@ -14,6 +14,8 @@ import { useToast } from "@/components/ui/Toast";
 import { QuoteColourCombobox, QuoteImageCombobox, QuoteTileCombobox } from "@/components/admin/QuoteComboboxes";
 import styles from "../../../../admin-content.module.css";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, formatItemSpecs, formatMoney, roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
+import { HINGE_SIDES, readMiddles } from "../../../../../../lib/pcd-hinges";
+import { cabinetBrandOptions } from "../../../../../../lib/quote-form-data";
 import {
   edgeProfilesForMaterial,
   MATERIAL_OPTIONS,
@@ -257,6 +259,17 @@ function emptyLine() {
     profile_type: "",
     profile: "",
     edge_mould: "",
+    // WHOSE CABINET, AND THE DRILLING. A variation line reaches the workshop
+    // the same way an original one does and is exactly as easy to drill the
+    // wrong way round. It used to carry none of this at all, so the label
+    // printed "Not recorded" and somebody had to go and ask.
+    cabinet_brand: "",
+    hinge_holes: false,
+    hinge_qty: "",
+    hinge_side: "",
+    hinge_from_bottom_mm: "",
+    hinge_from_top_mm: "",
+    hinge_middles_mm: [],
     qty: 1,
     original_line_total_ex_gst: 0,
     proposed_line_total_ex_gst: "",
@@ -740,6 +753,15 @@ export default function VariationEditor({ orderId, variationId }) {
       profile_type: item?.profile_type || "",
       profile: item?.profile || "",
       edge_mould: item?.edge_mould || "",
+      // Carried in from the line being changed, so a variation that moves a
+      // price does not quietly wipe the drilling off the door it is changing.
+      cabinet_brand: item?.cabinet_brand || "",
+      hinge_holes: Boolean(item?.hinge_holes),
+      hinge_qty: item?.hinge_qty || "",
+      hinge_side: item?.hinge_side || "",
+      hinge_from_bottom_mm: item?.hinge_from_bottom_mm ?? "",
+      hinge_from_top_mm: item?.hinge_from_top_mm ?? "",
+      hinge_middles_mm: readMiddles(item?.hinge_middles_mm),
       qty: item?.qty || 1,
       unit_cost_mode: item?.unit_cost_source_id ? "auto" : "manual",
       unit_cost_source_id: item?.unit_cost_source_id || null,
@@ -1086,6 +1108,9 @@ export default function VariationEditor({ orderId, variationId }) {
     const boardFieldsLocked = isRemove || isPriceAdjustment || isHardware || isBaseCabinet;
     const showEdges = !boardFieldsLocked && brandDoesEdges && lineDraftEdgeOptions.length > 0;
     const showProfiles = !boardFieldsLocked && brandDoesProfiles && lineDraftProfileTypeOptions.length > 0;
+    // A panel has no handing and a drawer front has no hinge cups. Same rule the
+    // quote editor and the website form apply.
+    const isDoorLine = lineDraft.product_type === "Door";
     const canResetUnitCost =
       isBoardLine &&
       lineDraft.unit_cost_mode === "manual" &&
@@ -1268,6 +1293,90 @@ export default function VariationEditor({ orderId, variationId }) {
             />
           ) : notApplicable}
         </label>
+
+        <label className={tw.fieldLabel}>Cabinet
+          <select
+            className={tw.fieldInput}
+            disabled={isRemove}
+            value={lineDraft.cabinet_brand}
+            onChange={(event) => updateLineDraft({ cabinet_brand: event.target.value })}
+          >
+            <option value="">Not applicable</option>
+            {cabinetBrandOptions(lineDraft.cabinet_brand).map((brand) => <option key={brand}>{brand}</option>)}
+          </select>
+        </label>
+
+        {/* THE DRILLING. Only on a door, and only shown once drilling is on,
+            for the same reason the quote editor does it: a panel has no
+            handing and a door that is not drilled has no cups. */}
+        <label className={tw.fieldLabel}>Drill hinge holes
+          {isDoorLine ? (
+            <select
+              className={tw.fieldInput}
+              disabled={isRemove}
+              value={lineDraft.hinge_holes ? "Yes" : "No"}
+              onChange={(event) => updateLineDraft(
+                event.target.value === "Yes"
+                  ? { hinge_holes: true }
+                  : { hinge_holes: false, hinge_qty: "", hinge_side: "", hinge_from_bottom_mm: "", hinge_from_top_mm: "", hinge_middles_mm: [] }
+              )}
+            >
+              <option>No</option>
+              <option>Yes</option>
+            </select>
+          ) : notApplicable}
+        </label>
+
+        {isDoorLine && lineDraft.hinge_holes ? (
+          <>
+            <label className={tw.fieldLabel}>Hinges per door
+              <select
+                className={tw.fieldInput}
+                disabled={isRemove}
+                value={lineDraft.hinge_qty}
+                onChange={(event) => updateLineDraft({ hinge_qty: event.target.value, hinge_middles_mm: [] })}
+              >
+                <option value="">Per door</option>
+                <option>2 hinges</option>
+                <option>3 hinges</option>
+                <option>4 hinges</option>
+              </select>
+            </label>
+            <label className={tw.fieldLabel}>Hinge side
+              <select
+                className={tw.fieldInput}
+                disabled={isRemove}
+                value={lineDraft.hinge_side}
+                onChange={(event) => updateLineDraft({ hinge_side: event.target.value })}
+              >
+                <option value="">Not recorded</option>
+                {HINGE_SIDES.map((side) => <option key={side}>{side}</option>)}
+              </select>
+            </label>
+            <label className={tw.fieldLabel}>Bottom hinge, mm from bottom
+              <input
+                className={tw.fieldInput}
+                type="number"
+                min="1"
+                placeholder="Standard"
+                disabled={isRemove}
+                value={lineDraft.hinge_from_bottom_mm}
+                onChange={(event) => updateLineDraft({ hinge_from_bottom_mm: event.target.value, hinge_middles_mm: [] })}
+              />
+            </label>
+            <label className={tw.fieldLabel}>Top hinge, mm from top
+              <input
+                className={tw.fieldInput}
+                type="number"
+                min="1"
+                placeholder="Standard"
+                disabled={isRemove}
+                value={lineDraft.hinge_from_top_mm}
+                onChange={(event) => updateLineDraft({ hinge_from_top_mm: event.target.value, hinge_middles_mm: [] })}
+              />
+            </label>
+          </>
+        ) : null}
 
         <label className={tw.fieldLabel}>Unit cost ex GST
           <input

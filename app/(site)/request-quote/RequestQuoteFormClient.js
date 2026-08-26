@@ -15,9 +15,13 @@ import {
 } from "@/lib/pcd-supplier-selection";
 import { clearList as clearQuoteList, entriesToQuoteLines, readQuoteList } from "@/lib/pcd-quote-list";
 import { describeGaps, lineGaps, missingFields } from "@/lib/pcd-quote-ready";
+// Handing and cup positions. Shared so the form, the quote editor, the order
+// and the Excel sheet cannot come to different answers about the same door.
+import { HINGE_SIDES, evenMiddles, hingeCount, hingeProblems } from "@/lib/pcd-hinges";
 import styles from "../contact/contact.module.css";
 import {
   CABINET_BRANDS,
+  cabinetBrandOptions,
   edgeProfilesForMaterial,
   isEdgeProfileSelectionAvailable,
   MATERIAL_OPTIONS,
@@ -66,12 +70,45 @@ function emptyItem(id) {
     profile: "",
     preDrill: false,
     hingeQty: "",
+    // WHERE THE HINGES GO. Blank throughout means our standard positions, which
+    // is what almost every door wants. A number means they are matching an
+    // existing run, and that is the only case where any of this matters.
+    hingeSide: "",
+    hingeFromBottomMm: "",
+    hingeFromTopMm: "",
+    // The cups between the bottom and the top. Spaced evenly unless somebody
+    // types over one, which is what hingeMiddlesTouched marks: once they have,
+    // the number stays put while the others move around it.
+    hingeMiddlesMm: [],
+    hingeMiddlesTouched: false,
+    // Whose cabinet this front is going on. Per line, because a kitchen is
+    // routinely Metod fronts with a custom panel closing the end of a run.
+    cabinetBrand: "",
     saved: false,
   };
 }
 
 function value(formData, key) {
   return String(formData.get(key) || "").trim();
+}
+
+/**
+ * The middle cups for a line: whatever was typed, or evenly spaced.
+ *
+ * Even spacing is what the workshop does anyway, so a customer who has given
+ * us the two ends has already told us where the rest go. Asking again would be
+ * asking them to do our arithmetic.
+ */
+function hingeMiddlesFor(item) {
+  if (item.hingeMiddlesTouched && item.hingeMiddlesMm.length) {
+    return item.hingeMiddlesMm.map((mm) => Number(mm) || 0).filter((mm) => mm > 0);
+  }
+  return evenMiddles({
+    height: item.height,
+    count: hingeCount(item.hingeQty),
+    fromBottom: item.hingeFromBottomMm,
+    fromTop: item.hingeFromTopMm,
+  });
 }
 
 function numberOrUndefined(raw) {
@@ -961,6 +998,14 @@ export default function RequestQuoteFormClient() {
       // customer for something no part of the system can act on only sets an
       // expectation nobody meant to set.
       hingeQty: item.type === "Door" && item.preDrill ? item.hingeQty : "",
+      // Only sent when the line is actually drilled. An untick that left a
+      // measurement behind would put one on a workshop sheet for a door that
+      // has no holes in it.
+      hingeSide: item.type === "Door" && item.preDrill ? item.hingeSide : "",
+      hingeFromBottomMm: item.type === "Door" && item.preDrill ? item.hingeFromBottomMm : "",
+      hingeFromTopMm: item.type === "Door" && item.preDrill ? item.hingeFromTopMm : "",
+      hingeMiddlesMm: item.type === "Door" && item.preDrill ? hingeMiddlesFor(item) : [],
+      cabinetBrand: item.cabinetBrand || "",
       notes: item.note || "",
     }));
 
@@ -1187,6 +1232,25 @@ export default function RequestQuoteFormClient() {
         const showProfiles =
           Boolean(supplier) && editingItem.material === "Thermolaminate" && profileTypes.length > 0;
         const hingesApplicable = editingItem.type === "Door";
+        // The cups between the two ends. Shown only once there are two ends to
+        // space between, so a door with three hinges and no measurements does
+        // not sprout a row of empty boxes nobody has to fill in.
+        const middleCupsReady =
+          Number(editingItem.height) > 0 &&
+          Number(editingItem.hingeFromBottomMm) > 0 &&
+          Number(editingItem.hingeFromTopMm) > 0;
+        const evenly = evenMiddles({
+          height: editingItem.height,
+          count: hingeCount(editingItem.hingeQty),
+          fromBottom: editingItem.hingeFromBottomMm,
+          fromTop: editingItem.hingeFromTopMm,
+        });
+        const middleCount = Math.max(0, hingeCount(editingItem.hingeQty) - 2);
+        const middleCups = Array.from({ length: middleCount }, (unused, index) =>
+          editingItem.hingeMiddlesTouched
+            ? editingItem.hingeMiddlesMm[index] ?? ""
+            : evenly[index] ?? ""
+        );
 
         return (
           <div className={styles.productModalOverlay} role="dialog" aria-modal="true" aria-labelledby="product-line-modal-title" onMouseDown={() => cancelEdit(editingItem.id)}>
@@ -1225,6 +1289,24 @@ export default function RequestQuoteFormClient() {
                         this unfinishable: the material list was empty because
                         hardware has no material, and there was nothing else to
                         fill in. */}
+                    {/* WHOSE CABINET. First, because it is the thing a customer
+                        already knows before they know anything else, and because
+                        it decides nothing below it so it is safe to answer or
+                        skip. Defaults to whatever they told us for the job. */}
+                    <div className={styles.productModalWide}>
+                      <label>Which cabinet is this for?</label>
+                      <select
+                        className="pcdSelect"
+                        value={editingItem.cabinetBrand}
+                        onChange={(event) => updateItem(editingItem.id, { cabinetBrand: event.target.value })}
+                      >
+                        <option value="">Not applicable</option>
+                        {cabinetBrandOptions(editingItem.cabinetBrand).map((brand) => (
+                          <option key={brand}>{brand}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     {fields.hardware ? (
                       <div className={styles.productModalWide}>
                         <label>Which hardware?<Required /></label>
@@ -1354,15 +1436,102 @@ export default function RequestQuoteFormClient() {
                           </label>
                         </div>
                         {editingItem.preDrill ? (
-                          <div className={styles.field}>
-                            <label>Hinge quantity</label>
-                            <select className="pcdSelect" value={editingItem.hingeQty} onChange={(event) => updateItem(editingItem.id, { hingeQty: event.target.value })}>
-                              <option value="">Per door</option>
-                              <option>2 hinges</option>
-                              <option>3 hinges</option>
-                              <option>4 hinges</option>
-                            </select>
-                          </div>
+                          <>
+                            <div className={styles.field}>
+                              <label>Hinge quantity</label>
+                              <select
+                                className="pcdSelect"
+                                value={editingItem.hingeQty}
+                                onChange={(event) =>
+                                  updateItem(editingItem.id, {
+                                    hingeQty: event.target.value,
+                                    // A different number of cups means the ones
+                                    // in between move. Anything typed for the
+                                    // old count is not an answer for the new one.
+                                    hingeMiddlesMm: [],
+                                    hingeMiddlesTouched: false,
+                                  })
+                                }
+                              >
+                                <option value="">Per door</option>
+                                <option>2 hinges</option>
+                                <option>3 hinges</option>
+                                <option>4 hinges</option>
+                              </select>
+                            </div>
+
+                            {/* HANDING. Left or right, and nothing else: a pair
+                                is two doors drilled as mirror images, so it is
+                                two lines. Said under the field, because getting
+                                it wrong is what turns a pair into two identical
+                                doors and nobody finds out until they are made. */}
+                            <div className={styles.field}>
+                              <label>Hinge side</label>
+                              <select
+                                className="pcdSelect"
+                                value={editingItem.hingeSide}
+                                onChange={(event) => updateItem(editingItem.id, { hingeSide: event.target.value })}
+                              >
+                                <option value="" disabled>Which side</option>
+                                {HINGE_SIDES.map((side) => <option key={side}>{side}</option>)}
+                              </select>
+                              <small className={styles.fieldNote}>
+                                Ordering a matched pair? Add it as two lines, one hinged left and one hinged right.
+                              </small>
+                            </div>
+
+                            {/* THE POSITIONS. Both blank is the normal answer and
+                                means we set them, so neither is required and the
+                                placeholder says so rather than looking unfinished. */}
+                            <div className={styles.field}>
+                              <label>Bottom hinge (mm from bottom)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Leave blank for our standard"
+                                value={editingItem.hingeFromBottomMm}
+                                onChange={(event) => updateItem(editingItem.id, { hingeFromBottomMm: event.target.value, hingeMiddlesTouched: false })}
+                              />
+                            </div>
+                            <div className={styles.field}>
+                              <label>Top hinge (mm from top)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Leave blank for our standard"
+                                value={editingItem.hingeFromTopMm}
+                                onChange={(event) => updateItem(editingItem.id, { hingeFromTopMm: event.target.value, hingeMiddlesTouched: false })}
+                              />
+                            </div>
+
+                            {middleCups.map((mm, index) => (
+                              <div className={styles.field} key={"middle-" + index}>
+                                <label>{index === 0 ? "2nd" : "3rd"} hinge (mm from bottom)</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={mm}
+                                  disabled={!middleCupsReady}
+                                  placeholder={middleCupsReady ? "" : "Fill in the two above first"}
+                                  onChange={(event) => {
+                                    const next = middleCups.slice();
+                                    next[index] = event.target.value;
+                                    updateItem(editingItem.id, { hingeMiddlesMm: next, hingeMiddlesTouched: true });
+                                  }}
+                                />
+                              </div>
+                            ))}
+
+                            {middleCups.length ? (
+                              <p className={styles.productModalWide} style={{ margin: 0, fontSize: 12, color: "#7a766c" }}>
+                                {!middleCupsReady
+                                  ? "Give us the bottom and the top and we will space the rest evenly."
+                                  : editingItem.hingeMiddlesTouched
+                                    ? "Set by hand, so these will not move when the others do."
+                                    : "Spaced evenly between the bottom and the top. Type over one to set it yourself."}
+                              </p>
+                            ) : null}
+                          </>
                         ) : null}
                       </>
                     ) : null}
@@ -1373,6 +1542,21 @@ export default function RequestQuoteFormClient() {
                     // filled in, so pressing Save is never the first anyone hears
                     // of a missing field. Turns green when the line is complete.
                     const gaps = lineGaps(editingItem);
+                    const drilling = hingeProblems({
+                      hinge_holes: editingItem.type === "Door" && editingItem.preDrill,
+                      hinge_qty: editingItem.hingeQty,
+                      hinge_side: editingItem.hingeSide,
+                      hinge_from_bottom_mm: editingItem.hingeFromBottomMm,
+                      hinge_from_top_mm: editingItem.hingeFromTopMm,
+                      height_mm: editingItem.height,
+                    });
+                    if (!gaps.length && drilling.length) {
+                      return (
+                        <p style={{ padding: "0 18px", margin: 0, fontSize: 12.5, color: "#7a766c" }}>
+                          We can price this line. Before we make it we will need {describeGaps(drilling.map((message) => ({ message })))}.
+                        </p>
+                      );
+                    }
                     if (!gaps.length) {
                       return (
                         <p style={{ padding: "0 18px", margin: 0, fontSize: 12.5, color: "#2d5e28" }}>

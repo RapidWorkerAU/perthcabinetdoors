@@ -10,6 +10,7 @@ import {
 } from "../../../../../../../../lib/pcd-order-costs";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../../lib/pcd-business-defaults";
+import { normaliseHingeSide, readMiddles } from "../../../../../../../../lib/pcd-hinges";
 import { createSupplierGuard } from "../../../../../../../../lib/pcd-supplier-guard";
 
 async function idsFromParams(params) {
@@ -89,6 +90,16 @@ function originalItemSnapshot(sourceLine) {
     profile_type: sourceLine.profile_type || null,
     profile: sourceLine.profile || null,
     edge_mould: sourceLine.edge_mould || null,
+    // The drilling as it stands. A variation that changes the handing has to
+    // show a difference between before and after, and it cannot if the before
+    // does not carry it.
+    cabinet_brand: sourceLine.cabinet_brand || null,
+    hinge_holes: sourceLine.hinge_holes ?? null,
+    hinge_qty: sourceLine.hinge_qty || null,
+    hinge_side: sourceLine.hinge_side || null,
+    hinge_from_bottom_mm: sourceLine.hinge_from_bottom_mm ?? null,
+    hinge_from_top_mm: sourceLine.hinge_from_top_mm ?? null,
+    hinge_middles_mm: sourceLine.hinge_middles_mm || [],
     qty: sourceLine.qty ?? 1,
     line_total_ex_gst: sourceLine.line_total_ex_gst ?? 0,
   };
@@ -214,6 +225,15 @@ function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSI
     profile_type: cleanText(payload.profile_type ?? sourceLine?.profile_type),
     profile: cleanText(payload.profile ?? sourceLine?.profile),
     edge_mould: cleanText(payload.edge_mould ?? sourceLine?.edge_mould),
+    // Falls back to the line being changed, so a variation that only moves a
+    // price does not quietly wipe the drilling off the door it is changing.
+    cabinet_brand: cleanText(payload.cabinet_brand ?? sourceLine?.cabinet_brand),
+    hinge_holes: Boolean(payload.hinge_holes ?? sourceLine?.hinge_holes ?? false),
+    hinge_qty: cleanText(payload.hinge_qty ?? sourceLine?.hinge_qty),
+    hinge_side: normaliseHingeSide(payload.hinge_side ?? sourceLine?.hinge_side) || null,
+    hinge_from_bottom_mm: nullableNumber(payload.hinge_from_bottom_mm ?? sourceLine?.hinge_from_bottom_mm),
+    hinge_from_top_mm: nullableNumber(payload.hinge_from_top_mm ?? sourceLine?.hinge_from_top_mm),
+    hinge_middles_mm: readMiddles(payload.hinge_middles_mm ?? sourceLine?.hinge_middles_mm),
     qty: Math.max(0, toNumber(payload.qty ?? sourceLine?.qty, 1)),
     unit_cost_source_id: pricingSource?.id || payload.unit_cost_source_id || null,
     unit_cost_source_label: cleanText(

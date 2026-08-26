@@ -12,6 +12,7 @@ import { AdminPagination, useAdminPagination } from '../_components/AdminPaginat
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
+import OrderFormActions from '../_components/OrderFormActions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -385,11 +386,12 @@ export default function QuoteRequestsManager() {
 
   return (
     <div className="p-4 md:p-6">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Quote Requests</h1>
           <p className="text-[13px] text-[#5a5a52] mt-[2px]">Manage incoming quote requests</p>
         </div>
+        <OrderFormActions />
       </div>
 
       {/* Status filter bar */}
