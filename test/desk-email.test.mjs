@@ -36,7 +36,9 @@ const desk = (extra = {}) =>
 // The structural pieces that make one email look like another: the ground, the
 // header band, the card width and its border. If these match, they read as the
 // same sender.
-const FRAME = ["background:#f4efe7", "background:#0d3550", "max-width:640px", "border:1px solid #e2e8f0"];
+// The CREAM frame. A desk reply goes to a customer, so it wears the look every
+// other customer email wears rather than the navy one we use among ourselves.
+const FRAME = ["background:#f4f0e8", "background:#eef7ed", "max-width:640px", "border:1px solid #d8cbb8"];
 
 test("a desk reply is built in the same frame as the website emails", () => {
   const reply = desk();
@@ -50,8 +52,8 @@ test("a desk reply is built in the same frame as the website emails", () => {
 
 test("it is the shell itself, not a copy that happens to match", () => {
   const source = readFileSync(new URL("../lib/pcd-desk-email.js", import.meta.url), "utf8");
-  assert.match(source, /import \{ emailShell \} from "\.\/pcd-email-templates"/);
-  assert.match(source, /return emailShell\(\{/);
+  assert.match(source, /import \{ quoteShell \} from "\.\/pcd-email-templates"/);
+  assert.match(source, /return quoteShell\(\{/);
   // A copy would drift the first time either is touched.
   assert.doesNotMatch(source, /<!doctype html>/i, "the desk template must not build its own document");
 });

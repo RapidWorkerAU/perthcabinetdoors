@@ -47,7 +47,7 @@ test("an approval confirmation carries the quote and the order number", () => {
     quoteNumber: "PCD-Q-88",
     orderNumber: "PCD-O-12",
   });
-  assert.match(html, /thanks for approving quote PCD-Q-88/);
+  assert.match(html, /Thanks for approving quote PCD-Q-88/);
   assert.match(html, /order number is PCD-O-12/);
 });
 
@@ -74,8 +74,8 @@ test("all three use the same shell as every other email we send", () => {
     customerVariationApprovedHtml({}),
   ].forEach((html) => {
     assert.match(html, /Perth Cabinet Doors/);
-    assert.match(html, /sales@perthcabinetdoors\.com\.au/, "the footer of the shared shell");
-    assert.match(html, /background:#0d3550/, "and its header");
+    assert.match(html, /background:#f4f0e8/, "the page of the shared shell");
+    assert.match(html, /background:#eef7ed/, "the cream shell every customer email uses");
   });
 });
 

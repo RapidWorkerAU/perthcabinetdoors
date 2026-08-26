@@ -3,6 +3,7 @@ import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
 import { agentForUser, recordOutboundEmail } from "../../../../../../../../lib/pcd-desk-outbound";
 import { createRefund } from "../../../../../../../../lib/pcd-stripe";
+import { quoteFacts, quoteParagraphs, quoteShell } from "../../../../../../../../lib/pcd-email-templates";
 import {
   canProcessRefund,
   defaultRefundMessage,
@@ -54,28 +55,22 @@ function formatMoney(value, currency = "AUD") {
 // The same shape as the payment request email, so the two read as coming from
 // the same business. Green heading rather than a payment button: there is
 // nothing for them to do here.
+// The same shape as the payment request email, so the two read as coming
+// from the same business. No button: there is nothing for them to do here.
+// Both now share one shell rather than each carrying a copy of it.
 function refundHtml({ order, refund, message }) {
-  const bodyHtml = String(message)
-    .split("\n")
-    .map((line) =>
-      line.trim() === ""
-        ? `<p style="margin:0 0 6px;">&nbsp;</p>`
-        : `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;">${escapeHtml(line)}</p>`
-    )
-    .join("");
-
-  return `<!doctype html><html><body style="margin:0;background:#f4f0e8;padding:28px 14px;font-family:Arial,sans-serif;color:#18221b;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fffaf3;border:1px solid #d8cbb8;">
-    <tr><td style="background:#eef7ed;padding:26px 30px;border-bottom:1px solid #d5e4d1;"><div style="color:#2f6b3b;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;">Perth Cabinet Doors</div><h1 style="margin:8px 0 0;color:#001f36;font-family:Arial,sans-serif;font-size:28px;font-weight:400;">Refund processed</h1></td></tr>
-    <tr><td style="padding:26px 30px;">
-    ${bodyHtml}
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f7f2ea;border:1px solid #e3d7c6;">
-    <tr><td style="padding:12px 14px;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Order</td><td style="padding:12px 14px;text-align:right;color:#001f36;font-weight:800;">${escapeHtml(order.order_number || "")}</td></tr>
-    <tr><td style="padding:12px 14px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Refund amount</td><td style="padding:12px 14px;border-top:1px solid #e3d7c6;text-align:right;color:#001f36;font-weight:800;">${formatMoney(refund.amount)}</td></tr>
-    <tr><td style="padding:12px 14px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Sent by</td><td style="padding:12px 14px;border-top:1px solid #e3d7c6;text-align:right;color:#001f36;font-weight:800;">${escapeHtml(refundMethodLabel(refund.refund_method))}</td></tr>
-    </table></td></tr>
-    </table></td></tr></table></body></html>`;
+  return quoteShell({
+    title: "Refund processed",
+    footerNote: `This email was sent about order ${order.order_number || "with us"}.`,
+    children: [
+      quoteParagraphs(message),
+      quoteFacts([
+        ["Order", order.order_number || "-"],
+        ["Refund amount", formatMoney(refund.amount)],
+        ["Sent by", refundMethodLabel(refund.refund_method)],
+      ]),
+    ].join(""),
+  });
 }
 
 export async function POST(request, { params }) {

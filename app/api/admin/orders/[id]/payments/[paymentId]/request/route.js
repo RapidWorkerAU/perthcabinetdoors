@@ -5,6 +5,7 @@ import { agentForUser, recordOutboundEmail } from "../../../../../../../../lib/p
 import { hasPaymentRequest } from "../../../../../../../../lib/pcd-payment-requests";
 import { createCheckoutSession, siteUrl } from "../../../../../../../../lib/pcd-stripe";
 import { paymentTypeLabel } from "../../../../../../../../lib/pcd-payment-notifications";
+import { quoteButton, quoteFacts, quoteParagraphs, quoteShell } from "../../../../../../../../lib/pcd-email-templates";
 
 async function idsFromParams(params) {
   const resolved = await params;
@@ -50,30 +51,24 @@ function defaultEmailMessage(order) {
   ].join("\n");
 }
 
+// ON THE SHARED QUOTE SHELL. It used to carry its own copy of the cream
+// layout, which is how four near identical versions of one email came to
+// exist and quietly drift apart from each other.
 function paymentRequestHtml({ order, payment, checkoutUrl, message }) {
-  const fullMessage = message || defaultEmailMessage(order);
-  const bodyHtml = String(fullMessage)
-    .split("\n")
-    .map((line) =>
-      line.trim() === ""
-        ? `<p style="margin:0 0 6px;">&nbsp;</p>`
-        : `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;">${escapeHtml(line)}</p>`
-    )
-    .join("");
-
-  return `<!doctype html><html><body style="margin:0;background:#f4f0e8;padding:28px 14px;font-family:Arial,sans-serif;color:#18221b;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fffaf3;border:1px solid #d8cbb8;">
-    <tr><td style="background:#eef7ed;padding:26px 30px;border-bottom:1px solid #d5e4d1;"><div style="color:#2f6b3b;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;">Perth Cabinet Doors</div><h1 style="margin:8px 0 0;color:#001f36;font-family:Arial,sans-serif;font-size:28px;font-weight:400;">Payment request</h1></td></tr>
-    <tr><td style="padding:26px 30px;">
-    ${bodyHtml}
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f7f2ea;border:1px solid #e3d7c6;margin-bottom:20px;">
-    <tr><td style="padding:12px 14px;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Payment type</td><td style="padding:12px 14px;text-align:right;color:#001f36;font-weight:800;">${escapeHtml(paymentTypeLabel(payment.payment_type))}</td></tr>
-    <tr><td style="padding:12px 14px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;font-weight:700;text-transform:uppercase;">Amount</td><td style="padding:12px 14px;border-top:1px solid #e3d7c6;text-align:right;color:#001f36;font-weight:800;">${formatMoney(payment.amount)}</td></tr>
-    </table>
-    <p style="margin:0 0 18px;"><a href="${escapeHtml(checkoutUrl)}" style="display:inline-block;background:#17321f;color:#ffffff;text-decoration:none;padding:14px 20px;font-size:14px;font-weight:700;">Make payment</a></p>
-    <p style="margin:0;color:#7c725f;font-size:13px;line-height:1.5;word-break:break-all;">${escapeHtml(checkoutUrl)}</p></td></tr>
-    </table></td></tr></table></body></html>`;
+  return quoteShell({
+    title: "Payment request",
+    footerNote: `This email was sent about order ${order.order_number || "with us"}.`,
+    children: [
+      quoteParagraphs(message || defaultEmailMessage(order)),
+      quoteFacts([
+        ["Payment type", paymentTypeLabel(payment.payment_type)],
+        ["Amount", formatMoney(payment.amount)],
+      ], { emphasiseLast: true }),
+      quoteButton(checkoutUrl, "Make payment"),
+      // The raw link under the button, for a client that strips it.
+      `<p style="margin:0;color:#7c725f;font-size:13px;line-height:1.5;word-break:break-all;">${escapeHtml(checkoutUrl)}</p>`,
+    ].join(""),
+  });
 }
 
 export async function POST(request, { params }) {

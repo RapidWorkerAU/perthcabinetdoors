@@ -8,6 +8,7 @@ import { JOB_COST_ACTION, orderJobCostAmount } from "../../../../../../../../lib
 import { recalcVariation, variationLineDelta } from "../../../../../../../../lib/pcd-order-variations";
 import { unpricedVariationLines, unpricedWarning } from "../../../../../../../../lib/pcd-variation-pricing";
 import { assertSendable } from "../../../../../../../../lib/pcd-document-lock";
+import { quoteButton, quoteFacts, quoteParagraphs, quoteShell } from "../../../../../../../../lib/pcd-email-templates";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -143,39 +144,30 @@ async function refreshJobCostBaselines(supabase, variationId, lines, order) {
   if (changed) await recalcVariation(supabase, variationId);
 }
 
+// ON THE SHARED QUOTE SHELL, the same one the quote email uses. A variation
+// is a follow up to a quote they already approved, so it has to look like it
+// came from the same place. It used to carry its own copy of that layout.
 function variationEmailHtml({ variation, order, viewUrl, message, includePrice }) {
   const paragraphs = String(message || "")
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 
-  return `<!doctype html>
-<html>
-  <body style="margin:0;background:#f4f0e8;padding:28px 14px;font-family:Arial,sans-serif;color:#18221b;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;border-collapse:collapse;background:#fffaf3;border:1px solid #d8cbb8;">
-          <tr><td style="background:#eef7ed;border-bottom:1px solid #d5e4d1;padding:28px 30px;">
-            <div style="color:#2f6b3b;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;">Perth Cabinet Doors</div>
-            <h1 style="margin:8px 0 0;color:#001f36;font-family:Arial,sans-serif;font-size:30px;line-height:1.1;font-weight:400;">Order variation ready</h1>
-          </td></tr>
-          <tr><td style="padding:28px 30px 12px;">
-            ${paragraphs.map((paragraph) => `<p style="margin:0 0 14px;color:#263226;font-size:15px;line-height:1.6;">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("")}
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0;border-collapse:collapse;background:#f7f2ea;border:1px solid #e3d7c6;">
-              <tr><td style="padding:14px 16px;color:#7c725f;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Order</td><td style="padding:14px 16px;color:#001f36;font-size:14px;font-weight:700;text-align:right;">${escapeHtml(order.order_number || "-")}</td></tr>
-              <tr><td style="padding:14px 16px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Variation</td><td style="padding:14px 16px;border-top:1px solid #e3d7c6;color:#001f36;font-size:14px;font-weight:700;text-align:right;">${escapeHtml(variation.variation_number)}</td></tr>
-              ${includePrice ? `<tr><td style="padding:14px 16px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Variation total inc GST</td><td style="padding:14px 16px;border-top:1px solid #e3d7c6;color:#001f36;font-size:16px;font-weight:800;text-align:right;">${escapeHtml(formatMoney(variation.total_inc_gst, variation.currency || "AUD"))}</td></tr>` : ""}
-            </table>
-            <p style="margin:0 0 18px;"><a href="${escapeHtml(viewUrl)}" style="display:inline-block;background:#17321f;color:#ffffff;text-decoration:none;padding:14px 20px;font-size:14px;font-weight:700;">View and approve variation</a></p>
-            <p style="margin:0 0 6px;color:#7c725f;font-size:13px;line-height:1.5;">If the button does not work, copy and paste this link into your browser:</p>
-            <p style="margin:0 0 18px;color:#001f36;font-size:13px;line-height:1.5;word-break:break-all;">${escapeHtml(viewUrl)}</p>
-          </td></tr>
-          <tr><td style="border-top:1px solid #e3d7c6;padding:18px 30px;color:#7c725f;font-size:12px;line-height:1.5;">Perth Cabinet Doors<br>This email was sent because a variation was prepared for ${escapeHtml(variation.customer_name || order.customer_name || "you")}.</td></tr>
-        </table>
-      </td></tr>
-    </table>
-  </body>
-</html>`;
+  return quoteShell({
+    title: "Order variation ready",
+    footerNote: `This email was sent because a variation was prepared for ${variation.customer_name || order.customer_name || "you"}.`,
+    children: [
+      paragraphs.map((paragraph) => quoteParagraphs(paragraph)).join(""),
+      quoteFacts([
+        ["Order", order.order_number || "-"],
+        ["Variation", variation.variation_number],
+        includePrice ? ["Variation total inc GST", formatMoney(variation.total_inc_gst, variation.currency || "AUD")] : null,
+      ], { emphasiseLast: includePrice }),
+      quoteButton(viewUrl, "View and approve variation"),
+      `<p style="margin:0 0 6px;color:#7c725f;font-size:13px;line-height:1.5;">If the button does not work, copy and paste this link into your browser:</p>`,
+      `<p style="margin:0 0 18px;color:#001f36;font-size:13px;line-height:1.5;word-break:break-all;">${escapeHtml(viewUrl)}</p>`,
+    ].join(""),
+  });
 }
 
 export async function POST(request, { params }) {
