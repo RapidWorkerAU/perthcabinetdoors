@@ -19,6 +19,7 @@ import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import { editability, pullBackToDraftPatch } from "../../../../../../lib/pcd-document-lock";
 import { orderForQuote } from "../../../../../../lib/pcd-quote-lock";
+import { cancelOpenCheckouts } from "../../../../../../lib/pcd-deposit-gate";
 
 function makeAccessCode() {
   return randomBytes(4).toString("hex").toUpperCase();
@@ -72,6 +73,19 @@ export async function POST(request, { params }) {
       return Response.json({ ok: false, error: "This quote can no longer be edited." }, { status: 409 });
     }
 
+    // A NEW ACCESS CODE MEANS NOTHING TO STRIPE.
+    //
+    // Rotating the code below kills the customer's quote link, which is what
+    // makes this safe for a sent or viewed quote. A quote awaiting a deposit
+    // has a second door: the payment page, which is a Stripe url the customer
+    // may still have open and which knows nothing about our access codes. Left
+    // alone they could pay a price that is in the middle of being withdrawn.
+    //
+    // Closed BEFORE the pull back, so there is no window where the quote is
+    // editable and the old figure is still payable. Never throws: it is
+    // housekeeping, and it must not be able to fail the override.
+    const closed = await cancelOpenCheckouts(context.supabase, quoteId, { status: "superseded" });
+
     const previousCode = quote.access_code;
     const { data: updated, error: updateError } = await context.supabase
       .from("pcd_quotes")
@@ -94,6 +108,8 @@ export async function POST(request, { params }) {
         // Recorded so a question later about "which link did they have" can be
         // answered. The code itself is dead, so keeping it costs nothing.
         cancelled_access_code: previousCode,
+        // So a question later about "could they still have paid" is answerable.
+        cancelled_payment_pages: closed,
         actor_email: context.user?.email || null,
       },
     });
@@ -101,7 +117,9 @@ export async function POST(request, { params }) {
     return Response.json({
       ok: true,
       quote: updated,
-      message: "The customer's link has been cancelled and the quote is back in draft. Send it again when you are done.",
+      message:
+        "The customer's link has been cancelled and the quote is back in draft. Send it again when you are done." +
+        (closed ? " Their payment page has been cancelled too." : ""),
     });
   } catch (error) {
     return Response.json(

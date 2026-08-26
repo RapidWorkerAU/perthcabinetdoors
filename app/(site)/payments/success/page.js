@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { retrieveCheckoutSession } from "../../../../lib/pcd-stripe";
+import { finaliseDepositAcceptance } from "../../../../lib/pcd-deposit-gate";
+import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import styles from "../../quotes/quote-public.module.css";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,29 @@ export default async function PaymentSuccessPage({ searchParams }) {
   if (sessionId) {
     try {
       session = await retrieveCheckoutSession(sessionId);
+
+      // THE SECOND OF THREE WAYS A DEPOSIT BECOMES AN ORDER.
+      //
+      // The Stripe webhook is the normal one and is usually already done by the
+      // time this page renders. This exists for the times it is not: a slow
+      // webhook, a dropped one, a retry still in flight. Doing it here means the
+      // order exists before the customer has finished reading this page, rather
+      // than whenever the next sweep runs.
+      //
+      // Safe to run when the webhook already won, because finalising claims the
+      // quote conditionally and a second caller simply finds it done. Never
+      // throws outwards: this page's job is to tell someone their payment
+      // worked, and it must say so even if the bookkeeping behind it stumbles.
+      if (session?.metadata?.flow === "quote_deposit_gate") {
+        try {
+          await finaliseDepositAcceptance(createSupabaseAdminClient(), session);
+        } catch (finaliseError) {
+          console.error(
+            `[payments/success] could not finalise ${sessionId}: ${finaliseError?.message || finaliseError}. ` +
+              "The twice daily sweep will pick it up."
+          );
+        }
+      }
     } catch (err) {
       error = err?.message || "We could not confirm the payment session.";
     }

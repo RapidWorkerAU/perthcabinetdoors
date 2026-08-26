@@ -4,6 +4,7 @@ import { sendPaymentReceivedSalesEmail } from "../../../../lib/pcd-payment-notif
 import { sendPaymentReceivedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { fromCents, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
 import { syncDepositFields } from "../../../../lib/pcd-order-deposit";
+import { finaliseDepositAcceptance, markCheckoutExpired } from "../../../../lib/pcd-deposit-gate";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -158,13 +159,78 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
   await sendPaymentReceivedToCustomer({ payment, order, quote });
 }
 
+/**
+ * A deposit paid on a quote that has no order yet.
+ *
+ * Everything happens inside finaliseDepositAcceptance so that the webhook, the
+ * thank you page and the sweep cannot disagree. See lib/pcd-deposit-gate.js.
+ */
+async function completeDepositGateSession(session, { baseUrl = "", request = null } = {}) {
+  const supabase = createSupabaseAdminClient();
+  const result = await finaliseDepositAcceptance(supabase, session, { request });
+  if (!result.ok || result.alreadyDone) return;
+
+  // Told the same way a deposit on an existing order is, so a customer's inbox
+  // does not depend on which flow their payment happened to take.
+  try {
+    const { data: order } = await supabase
+      .from("pcd_orders")
+      .select("*")
+      .eq("id", result.orderId)
+      .maybeSingle();
+    await sendPaymentReceivedSalesEmail({
+      payment: result.payment,
+      order,
+      quote: result.quote,
+      flow: "quote_deposit_gate",
+      adminOrderUrl: baseUrl && result.orderId ? `${baseUrl}/admin/orders/${result.orderId}` : "",
+    });
+    await sendPaymentReceivedToCustomer({ payment: result.payment, order, quote: result.quote });
+  } catch (emailError) {
+    // The money is in and the order exists. A refused email is a missing email.
+    console.error("Could not send deposit confirmation email.", emailError);
+  }
+}
+
 export async function POST(request) {
   const rawBody = await request.text();
   try {
     const event = verifyStripeWebhook(rawBody, request.headers.get("stripe-signature"));
+    const session = event.data?.object || {};
+    const baseUrl = siteUrl(request.url);
+    const isDepositGate = session?.metadata?.flow === "quote_deposit_gate";
+
     if (event.type === "checkout.session.completed") {
-      await completeCheckoutSession(event.data.object, { baseUrl: siteUrl(request.url) });
+      // The deposit gate sessions carry no order_id or payment_id, because
+      // neither exists until this runs. The old handler needs both, so the two
+      // are kept apart rather than one being taught to cope with the other.
+      if (isDepositGate) await completeDepositGateSession(session, { baseUrl, request });
+      else await completeCheckoutSession(session, { baseUrl });
     }
+
+    // A PAYMENT METHOD THAT SETTLES LATER.
+    //
+    // Some methods report the session complete while the money is still on its
+    // way, and only later say whether it arrived. Without these two, a customer
+    // paying that way was treated as if they never paid at all.
+    if (event.type === "checkout.session.async_payment_succeeded") {
+      if (isDepositGate) await completeDepositGateSession(session, { baseUrl, request });
+      else await completeCheckoutSession(session, { baseUrl });
+    }
+
+    if (event.type === "checkout.session.async_payment_failed" && isDepositGate) {
+      // It bounced. The quote stays held and the customer can try again, which
+      // is exactly where they were before they tried.
+      await markCheckoutExpired(createSupabaseAdminClient(), session.id);
+    }
+
+    // The 24 hour payment page ran out. Closed off so the sweep is not still
+    // watching it, and so the customer's next click mints a fresh one instead
+    // of landing on a page Stripe has already killed.
+    if (event.type === "checkout.session.expired" && isDepositGate) {
+      await markCheckoutExpired(createSupabaseAdminClient(), session.id);
+    }
+
     return Response.json({ received: true });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Invalid Stripe webhook." }, { status: 400 });

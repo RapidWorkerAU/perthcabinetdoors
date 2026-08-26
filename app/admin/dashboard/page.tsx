@@ -44,7 +44,11 @@ export default async function AdminDashboardPage() {
     { data: pendingPaymentsData },
   ] = await Promise.all([
     supabase.from('pcd_enquiries').select('*', { count: 'exact', head: true }).eq('status', 'new'),
-    supabase.from('pcd_quotes').select('*', { count: 'exact', head: true }).in('status', ['draft', 'sent', 'viewed']),
+    // awaiting_deposit counts as an open quote. It is neither won nor lost: the
+    // customer has said yes and the deposit has not arrived. Leaving it out
+    // would drop a quote off the dashboard at the exact moment somebody said
+    // yes to it. See lib/pcd-deposit-gate.js.
+    supabase.from('pcd_quotes').select('*', { count: 'exact', head: true }).in('status', ['draft', 'sent', 'viewed', 'awaiting_deposit']),
     supabase.from('pcd_orders').select('*', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('pcd_orders').select('*', { count: 'exact', head: true }).eq('status', 'on_hold'),
     supabase.from('pcd_quote_requests').select('*', { count: 'exact', head: true }).in('status', ['new', 'reviewing']),

@@ -5,6 +5,7 @@ import { assertSendable } from "../../../../../../lib/pcd-document-lock";
 import { attachQuotePdf } from "../../../../../../lib/pcd-quote-pdf-attachment";
 import { agentForUser, recordOutboundEmail } from "../../../../../../lib/pcd-desk-outbound";
 import { sendEmail } from "../../../../../../lib/pcd-send-email";
+import { quoteButton, quoteFacts, quoteShell } from "../../../../../../lib/pcd-email-templates";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -35,66 +36,41 @@ function defaultEmailBody(quote, viewUrl) {
   ].join("\n");
 }
 
+// THE LOOK LIVES IN lib/pcd-email-templates.js, not here.
+//
+// It used to be written out inline in this file, which was fine while this
+// was the only email that used it. The deposit reminders have to look like
+// they came from the same place, and a second copy is how the navy shell and
+// this one came to disagree in the first place.
 function quoteEmailHtml({ quote, viewUrl, message, includePrice }) {
   const paragraphs = String(message || "")
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 
-  return `<!doctype html>
-<html>
-  <body style="margin:0;background:#f4f0e8;padding:28px 14px;font-family:Arial,sans-serif;color:#18221b;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;border-collapse:collapse;background:#fffaf3;border:1px solid #d8cbb8;">
-            <tr>
-              <td style="background:#eef7ed;border-bottom:1px solid #d5e4d1;padding:28px 30px;">
-                <div style="color:#2f6b3b;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700;">Perth Cabinet Doors</div>
-                <h1 style="margin:8px 0 0;color:#001f36;font-family:Arial,sans-serif;font-size:30px;line-height:1.1;font-weight:400;">Your quote is ready</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:28px 30px 12px;">
-                ${paragraphs.map((paragraph) => `<p style="margin:0 0 14px;color:#263226;font-size:15px;line-height:1.6;">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("")}
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0;border-collapse:collapse;background:#f7f2ea;border:1px solid #e3d7c6;">
-                  <tr>
-                    <td style="padding:14px 16px;color:#7c725f;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Quote number</td>
-                    <td style="padding:14px 16px;color:#001f36;font-size:14px;font-weight:700;text-align:right;">${escapeHtml(quote.quote_number)}</td>
-                  </tr>
-                  ${
-                    includePrice
-                      ? `<tr>
-                    <td style="padding:14px 16px;border-top:1px solid #e3d7c6;color:#7c725f;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Total inc GST</td>
-                    <td style="padding:14px 16px;border-top:1px solid #e3d7c6;color:#001f36;font-size:16px;font-weight:800;text-align:right;">$${Number(quote.total_inc_gst || 0).toFixed(2)}</td>
-                  </tr>`
-                      : ""
-                  }
-                </table>
+  return quoteShell({
+    title: "Your quote is ready",
+    footerNote: `This email was sent because a quote was prepared for ${quote.customer_name || "you"}.`,
+    children: `
+                ${paragraphs
+                  .map(
+                    (paragraph) =>
+                      `<p style="margin:0 0 14px;color:#263226;font-size:15px;line-height:1.6;">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`
+                  )
+                  .join("")}
+                ${quoteFacts([
+                  ["Quote number", quote.quote_number],
+                  includePrice ? ["Total inc GST", `$${Number(quote.total_inc_gst || 0).toFixed(2)}`] : null,
+                ], { emphasiseLast: includePrice })}
                 ${
                   !includePrice
                     ? `<p style="margin:0 0 14px;color:#7c725f;font-size:13px;line-height:1.5;">Pricing has not been included in this email. Open the secure link below to view the full itemised quote and pricing.</p>`
                     : ""
                 }
-                <p style="margin:0 0 18px;">
-                  <a href="${escapeHtml(viewUrl)}" style="display:inline-block;background:#17321f;color:#ffffff;text-decoration:none;padding:14px 20px;font-size:14px;font-weight:700;">View and approve quote</a>
-                </p>
+                ${quoteButton(viewUrl, "View and approve quote")}
                 <p style="margin:0 0 6px;color:#7c725f;font-size:13px;line-height:1.5;">If the button does not work, copy and paste this link into your browser:</p>
-                <p style="margin:0 0 18px;color:#001f36;font-size:13px;line-height:1.5;word-break:break-all;">${escapeHtml(viewUrl)}</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="border-top:1px solid #e3d7c6;padding:18px 30px;color:#7c725f;font-size:12px;line-height:1.5;">
-                Perth Cabinet Doors<br>
-                This email was sent because a quote was prepared for ${escapeHtml(quote.customer_name || "you")}.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+                <p style="margin:0 0 18px;color:#001f36;font-size:13px;line-height:1.5;word-break:break-all;">${escapeHtml(viewUrl)}</p>`,
+  });
 }
 
 export async function POST(request, { params }) {

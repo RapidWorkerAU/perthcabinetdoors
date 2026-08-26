@@ -323,7 +323,15 @@ export default function QuoteApprovalClient() {
   const [desktopItemsRef, desktopItemsMax] = useRowCap(lines.length, VISIBLE_ITEM_ROWS);
   const [mobileItemsRef, mobileItemsMax] = useRowCap(lines.length, VISIBLE_ITEM_ROWS);
   const itemsAreCapped = lines.length > VISIBLE_ITEM_ROWS;
+  // LOCKED MEANS FINISHED, NOT ANSWERED.
+  //
+  // awaiting_deposit is deliberately not locked. The customer approved, went to
+  // pay and stopped, and locking them out at that point was the dead end this
+  // replaced: their own link told them the quote was approved and an order
+  // existed, with no button and no way to pay, and their only route back was to
+  // ring us. Now they come back to the same link and finish.
   const isLocked = quote?.status === "approved" || quote?.status === "rejected";
+  const awaitingDeposit = quote?.status === "awaiting_deposit";
   const productLineTotal = useMemo(() => {
     const lineSum = lines.reduce((sum, line) => sum + toNumber(line.line_total_ex_gst), 0);
     return lineSum || toNumber(quote?.material_cost_ex_gst);
@@ -424,6 +432,8 @@ export default function QuoteApprovalClient() {
         window.location.href = payload.checkoutUrl;
         return;
       }
+      // Only reached when nothing was owed: the deposit path has already sent
+      // them to Stripe above. So an order really has been created here.
       setQuote((current) => ({ ...current, status: action }));
       setMessage(action === "approved" ? "Quote approved. Your order has been created." : "Quote rejected. Your response has been recorded.");
     } catch (error) {
@@ -701,6 +711,19 @@ export default function QuoteApprovalClient() {
                       : "I acknowledge that no deposit is required at acceptance for this quote."}
                   </span>
                 </label>
+                {/* APPROVED, NOT PAID, AND STILL ABLE TO FINISH.
+                    Says where they actually stand rather than leaving them to
+                    guess from a form that looks untouched, and states the
+                    consequence in the same words the reminder emails use. The
+                    buttons below stay live: approving again takes them straight
+                    back to the payment page. */}
+                {awaitingDeposit ? (
+                  <p className={styles.depositPending}>
+                    You approved this quote but the {formatMoney(depositAmount, quote.currency)} deposit has not
+                    reached us, so it is not formally approved and no order has been created. Use the button
+                    below to go back to the payment page and finish.
+                  </p>
+                ) : null}
                 {message ? <p className={styles.message}>{message}</p> : null}
                 {/* The only place the block is announced, sitting against the
                     button it disables. Marked rather than merely stated, so it
@@ -720,7 +743,7 @@ export default function QuoteApprovalClient() {
                     onClick={() => submitAction("approved")}
                     disabled={isSubmitting || !detailsComplete}
                   >
-                    Approve quote
+                    {awaitingDeposit ? "Pay deposit" : "Approve quote"}
                   </button>
                   <button type="button" className={styles.buttonDanger} onClick={() => submitAction("rejected")} disabled={isSubmitting}>
                     Reject quote

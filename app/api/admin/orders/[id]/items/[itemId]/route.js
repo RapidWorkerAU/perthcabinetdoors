@@ -121,7 +121,16 @@ export async function PATCH(request, { params }) {
 
     if (error || !data) throw error || new Error("Order item not found.");
 
-    const changes = describeChanges(beforeItem || {}, updates, {
+    // status_updated_at is a stamp this route sets ITSELF whenever status
+    // changes, so logging it produced a second line saying a timestamp moved
+    // next to the line saying what actually happened. Noise in the order
+    // history, and it would have reached customers through the weekly update
+    // report, which reads this log. Dropped from the description only: the
+    // column is still written above.
+    const { status_updated_at: _stamp, ...described } = updates;
+
+    const changes = describeChanges(beforeItem || {}, described, {
+      status: "Status",
       production_stage: "Production stage",
       fulfilment_method: "Fulfilment",
       supplier_name: "Supplier",

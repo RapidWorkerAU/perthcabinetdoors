@@ -2,7 +2,9 @@ import { createOrderFromQuote } from "../../../../lib/pcd-order-from-quote";
 import { sendQuoteApprovedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { approvalEvidence } from "../../../../lib/pcd-approval-evidence";
-import { createCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
+import { siteUrl } from "../../../../lib/pcd-stripe";
+import { cancelOpenCheckouts, startDepositCheckout } from "../../../../lib/pcd-deposit-gate";
+import { depositAmountForQuote } from "../../../../lib/pcd-quote-acceptance";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { upsertCustomerByEmail } from "../../../../lib/pcd-customer-utils";
 import {
@@ -28,14 +30,6 @@ function customerColumns(details) {
     site_suburb: details.suburb,
     site_postcode: details.postcode,
   };
-}
-
-function depositAmountForQuote(quote) {
-  if (!quote.deposit_required) return 0;
-  const percent = Number(quote.deposit_percent || 0);
-  const total = Number(quote.total_inc_gst || 0);
-  if (!Number.isFinite(percent) || percent <= 0 || !Number.isFinite(total) || total <= 0) return 0;
-  return Number(((total * percent) / 100).toFixed(2));
 }
 
 export async function POST(request) {
@@ -73,6 +67,13 @@ export async function POST(request) {
       return Response.json({ ok: false, error: "We could not load this quote." }, { status: 404 });
     }
 
+    // A HELD QUOTE IS NOT A RESPONDED ONE.
+    //
+    // awaiting_deposit is deliberately absent from this list. It is the one
+    // state where the customer has answered and still has something left to do,
+    // and turning them away here is exactly the dead end this replaced: they
+    // clicked Approve, went to pay, got interrupted, and could never get back
+    // in without ringing us.
     if (quote.status === "approved" || quote.status === "rejected") {
       return Response.json({ ok: false, error: "This quote has already been responded to." }, { status: 409 });
     }
@@ -140,6 +141,34 @@ export async function POST(request) {
         // against the customer must not block the customer's acceptance.
       }
 
+      // A DEPOSIT QUOTE STOPS HERE AND COMMITS TO NOTHING.
+      //
+      // No approval is recorded and no order is created. The quote goes into a
+      // holding state and the customer goes to a payment page, and it is money
+      // arriving that turns that into an approval and an order, in one place:
+      // finaliseDepositAcceptance. See lib/pcd-deposit-gate.js.
+      //
+      // Doing it the other way round is what left an order behind for work
+      // nobody had paid for, and locked the customer out of their own quote so
+      // they could not come back and finish.
+      if (quote.deposit_required && depositAmountForQuote(quote) > 0) {
+        const started = await startDepositCheckout(supabase, quote, {
+          baseUrl: siteUrl(request.url),
+          clientName: payload.client_name,
+        });
+        if (!started.ok) {
+          return Response.json({ ok: false, error: started.error }, { status: started.status || 400 });
+        }
+        return Response.json({
+          ok: true,
+          requiresPayment: true,
+          checkoutUrl: started.checkoutUrl,
+          // Deliberately no orderId. There is no order, and saying otherwise
+          // would put the browser back to announcing one that does not exist.
+          orderId: null,
+        });
+      }
+
       // CLAIM THE QUOTE BEFORE MAKING ANYTHING FROM IT.
       //
       // The status was read at the top of this request. Between that read and
@@ -171,59 +200,7 @@ export async function POST(request) {
         );
       }
 
-      orderId = await createOrderFromQuote(supabase, quote, { markAcceptedAt: !quote.deposit_required });
-      const depositAmount = depositAmountForQuote(quote);
-      if (quote.deposit_required && depositAmount > 0) {
-        const { data: existingPayment } = await supabase
-          .from("pcd_order_payments")
-          .select("*")
-          .eq("order_id", orderId)
-          .eq("payment_type", "deposit")
-          .maybeSingle();
-
-        const paymentPayload = {
-          order_id: orderId,
-          payment_type: "deposit",
-          amount: depositAmount,
-          is_paid: false,
-          notes: `${Number(quote.deposit_percent || 0).toFixed(2)}% deposit required to accept ${quote.quote_number}`,
-          sort_order: 0,
-          request_status: "checkout_created",
-        };
-        const { data: payment, error: paymentError } = existingPayment?.id
-          ? await supabase.from("pcd_order_payments").update(paymentPayload).eq("id", existingPayment.id).select("*").single()
-          : await supabase.from("pcd_order_payments").insert(paymentPayload).select("*").single();
-        if (paymentError) throw paymentError;
-
-        const baseUrl = siteUrl(request.url);
-        const session = await createCheckoutSession({
-          amount: depositAmount,
-          currency: quote.currency || "AUD",
-          customerEmail: quote.customer_email,
-          description: `${quote.quote_number} deposit`,
-          successUrl: `${baseUrl}/payments/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${baseUrl}/quotes/view?code=${encodeURIComponent(quote.access_code)}`,
-          metadata: {
-            flow: "quote_deposit",
-            quote_id: quote.id,
-            order_id: orderId,
-            payment_id: payment.id,
-            quote_number: quote.quote_number,
-          },
-        });
-
-        await supabase
-          .from("pcd_order_payments")
-          .update({
-            stripe_checkout_session_id: session.id,
-            stripe_payment_intent_id: session.payment_intent || null,
-            request_url: session.url,
-            requested_at: now,
-          })
-          .eq("id", payment.id);
-
-        return Response.json({ ok: true, requiresPayment: true, checkoutUrl: session.url, orderId });
-      }
+      orderId = await createOrderFromQuote(supabase, quote, { markAcceptedAt: true });
     }
 
     const updatePayload =
@@ -278,6 +255,12 @@ export async function POST(request) {
     }
 
     if (action === "rejected") {
+      // A customer can decline a quote they had already started paying for, by
+      // coming back to the link and choosing the other button. The payment page
+      // has to die with it: our status means nothing to Stripe, and somebody
+      // still holding that tab could otherwise pay for a job they just declined.
+      await cancelOpenCheckouts(supabase, quote.id, { status: "cancelled" });
+
       await logOrderActivity(supabase, {
         quote_id: quote.id,
         actor_type: "customer",

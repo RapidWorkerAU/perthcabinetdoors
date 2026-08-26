@@ -8,7 +8,7 @@ import {
   IconFileInvoice, IconPackage, IconBox, IconPalette,
   IconSettings, IconLogout, IconChevronsLeft, IconChevronsRight,
   IconBell, IconDots, IconX, IconRulerMeasure, IconCoin, IconLayoutColumns,
-  IconCalendar,
+  IconCalendar, IconChartBar,
 } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
@@ -51,6 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Quotes',         href: '/admin/quotes',         icon: IconFileInvoice     },
   { label: 'Orders',         href: '/admin/orders',         icon: IconPackage         },
   { label: 'Financials',     href: '/admin/financials',     icon: IconCoin            },
+  { label: 'Reporting',      href: '/admin/reporting',      icon: IconChartBar        },
   { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure    },
   { label: 'Products',       href: '/admin/products',       icon: IconBox             },
   { label: 'Board Library',  href: '/admin/options',        icon: IconPalette         },
@@ -70,6 +71,7 @@ const BOTTOM_PRIMARY: NavItem[] = [
 const BOTTOM_MORE: NavItem[] = [
   { label: 'Calendar',       href: '/admin/calendar',       icon: IconCalendar    },
   { label: 'Financials',     href: '/admin/financials',     icon: IconCoin        },
+  { label: 'Reporting',      href: '/admin/reporting',      icon: IconChartBar    },
   { label: 'Enquiries',      href: '/admin/enquiries',      icon: IconMail        },
   { label: 'Quote Requests', href: '/admin/quote-requests', icon: IconFileText    },
   { label: 'Design Tool',    href: '/admin/design',         icon: IconRulerMeasure},
@@ -99,6 +101,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/settings':       'Settings',
   '/admin/design':         'Design Tool',
   '/admin/projects':       'Projects',
+  '/admin/financials':     'Financials',
+  '/admin/reporting':      'Reporting',
 }
 
 function getPageTitle(pathname: string): string {

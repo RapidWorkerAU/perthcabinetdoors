@@ -1555,3 +1555,22 @@
   margin: 0;
   padding: 10px 13px;
 }
+
+/* WHERE THEY STAND, NOT WHAT IS STOPPING THEM.
+   Deliberately not .acceptBlocked, which means "this is why the button is
+   disabled" and is stated exactly once for that reason. Nothing is blocked
+   here: they approved, the deposit has not arrived, and the button below is
+   live and waiting. Amber rather than red, because being part way through
+   paying is not an error. */
+.depositPending {
+  border: 1px solid #d8a33f;
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: #fdf7ea;
+  color: #7a5405;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0;
+  padding: 10px 13px;
+}

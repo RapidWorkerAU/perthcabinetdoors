@@ -16,7 +16,10 @@ import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 
-const STATUSES = ['draft', 'sent', 'viewed', 'approved', 'rejected']
+// awaiting_deposit is its own tab on purpose. It is the chase list: everyone who
+// said yes and has not paid the deposit, which is the closest thing to a warm
+// lead the system holds and used to be invisible.
+const STATUSES = ['draft', 'sent', 'viewed', 'awaiting_deposit', 'approved', 'rejected']
 // Archived is a tab you can go to, never a tab you land in. "All" means all the
 // live ones: putting something away has to actually put it away, or the tab is
 // only a label.

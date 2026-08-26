@@ -50,6 +50,24 @@ jobs:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
+      # BOTH passes, deliberately. This is the only thing that catches a deposit
+      # the customer paid and Stripe never told us about, and until it runs that
+      # customer has paid for a job that does not exist on our side. It also
+      # sends the reminders, which are timed in hours.
+      #
+      # It runs even if the calendar step above failed, because the two have
+      # nothing to do with each other and a Microsoft outage must not stop us
+      # noticing money.
+      - name: Sweep unpaid deposits
+        if: always()
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 120 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/deposit-sweep"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
       # Only on the late pass. The mailbox read is the heavier of the two and
       # once a day is what it was always doing; this workflow is here for the
       # calendar's extra pass, not to double the mail sync.

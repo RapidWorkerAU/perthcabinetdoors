@@ -12,6 +12,7 @@
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import { archivePatch, isArchived, restorePatch, QUOTE_RESTORE_FALLBACK } from "../../../../../../lib/pcd-archive";
+import { cancelOpenCheckouts } from "../../../../../../lib/pcd-deposit-gate";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -52,6 +53,15 @@ export async function POST(request, { params }) {
     if (archiving === isArchived(quote)) {
       return Response.json({ ok: true, quote, unchanged: true });
     }
+
+    // ARCHIVING HAS TO TAKE THE PAYMENT PAGE WITH IT.
+    //
+    // A quote awaiting a deposit has a live Stripe page the customer may still
+    // have open, and Stripe knows nothing about our statuses. Putting the quote
+    // away while leaving that payable means money could arrive against
+    // something we have deliberately taken out of circulation, which finalising
+    // would then refuse to act on and hand back as a problem.
+    if (archiving) await cancelOpenCheckouts(context.supabase, id, { status: "cancelled" });
 
     const patch = archiving ? archivePatch(quote) : restorePatch(quote, QUOTE_RESTORE_FALLBACK);
     const { data: saved, error: saveError } = await context.supabase
