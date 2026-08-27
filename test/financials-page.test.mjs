@@ -99,10 +99,51 @@ test("the outstanding total says the period does not apply to it", () => {
 
 // ── the dashboard no longer carries any of this ─────────────────────────────
 
+// THE RULE IS ABOUT TOTALS, AND IT STANDS.
+//
+// This used to be enforced by banning the string total_inc_gst from the
+// dashboard outright, which was the right blunt guard while the dashboard
+// carried a financial summary panel. The action queue that replaced Needs
+// attention does show a figure per row: what THAT quote is worth, what THAT
+// payment is owed, printed beside the row it came from.
+//
+// That is not what went wrong. What went wrong was a failed query rendering as
+// a confident $0 on an order TOTAL, and nobody doubting a total. So the ban has
+// moved to the thing that actually caused it: nothing on the dashboard may add
+// figures up, and no query may have its error dropped. A source that fails is a
+// missing row and a yellow line saying the list is short, which is visible in a
+// way a wrong total never is.
 test("the dashboard totals no money", () => {
-  assert.ok(!DASH_PAGE.includes("total_inc_gst"), "the dashboard still reads order totals");
-  assert.ok(!DASH_PAGE.includes("markup_amount_ex_gst"), "the dashboard still reads the cost split");
   assert.ok(!DASH_CLIENT.includes("FinancialSummaryPanel"), "the financial panel is still on the dashboard");
+  assert.ok(!DASH_PAGE.includes("markup_amount_ex_gst"), "the dashboard still reads the cost split");
+
+  // Nothing on either file sums a figure. Counting rows is fine; adding money
+  // is what this forbids.
+  assert.ok(!/\breduce\s*\(/.test(DASH_PAGE), "the dashboard page is adding figures up");
+  assert.ok(!/\breduce\s*\(/.test(DASH_CLIENT), "the dashboard panel is adding figures up");
+
+  // The queue counts rows, which is fine, and must never add their values.
+  const QUEUE = readFileSync(new URL("../lib/pcd-action-queue.js", import.meta.url), "utf8");
+  assert.ok(!/\+=\s*(toNumber|Number)\(/.test(QUEUE), "the queue is totalling values");
+  assert.ok(!/\.value\s*\+|\+\s*\w+\.value\b/.test(QUEUE), "the queue is adding row values together");
+});
+
+// The other half of the same fault: { data } read, { error } dropped. Every
+// query on this page has to be able to say it failed.
+test("a dashboard query that fails says so instead of returning nothing", () => {
+  assert.match(DASH_PAGE, /result\.error/, "the page is not checking query errors");
+  assert.match(DASH_PAGE, /problems\.push/, "a failed query has to be recorded");
+  assert.match(DASH_CLIENT, /queue\.problems\.length > 0/, "and shown, or the queue is quietly short");
+});
+
+// The pair that references each other in both directions, on this page too.
+test("the dashboard does not embed quotes from orders, or the reverse", () => {
+  const ordersQueries = DASH_PAGE.match(/from\('pcd_orders'\)\s*\n?\s*\.select\('[^']*'/g) || [];
+  ordersQueries.forEach((query) => assert.ok(!query.includes("pcd_quotes("), `ambiguous embed: ${query}`));
+
+  const quotesQueries = DASH_PAGE.match(/from\('pcd_quotes'\)\s*\n?\s*\.select\('[^']*'/g) || [];
+  assert.ok(quotesQueries.length, "the dashboard must still query quotes");
+  quotesQueries.forEach((query) => assert.ok(!query.includes("pcd_orders("), `ambiguous embed: ${query}`));
 });
 
 // The one payment query the dashboard keeps is for the count and the attention

@@ -7,6 +7,7 @@ import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { Modal } from '@/components/ui/Modal'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
+import { useFocusedRow } from '../_utils/useFocusedRow'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 
@@ -153,6 +154,17 @@ export default function EnquiriesManager() {
   }
 
   React.useEffect(() => { loadEnquiries() }, [])
+
+  // Arrived from the dashboard queue, which named one enquiry. Open it, and
+  // drop the filter to All first so the row is behind the modal when it closes
+  // rather than hidden by whichever tab happened to be selected.
+  useFocusedRow(
+    enquiries,
+    React.useCallback((enquiry: Enquiry) => {
+      setStatusFilter('all')
+      setPreviewEnquiry(enquiry)
+    }, []),
+  )
 
   async function updateStatus(id: string, status: string) {
     const res     = await fetch(`/api/admin/enquiries/${id}`, {

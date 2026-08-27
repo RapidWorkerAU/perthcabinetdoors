@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
+import { useFocusedRow } from '../_utils/useFocusedRow'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 import OrderFormActions from '../_components/OrderFormActions'
@@ -306,6 +307,17 @@ export default function QuoteRequestsManager() {
   }
 
   React.useEffect(() => { loadQuoteRequests() }, [])
+
+  // Arrived from the dashboard queue, which named one request. Open its preview,
+  // where Convert to quote is, and drop the filter to All first so the row is
+  // still there behind the modal when it closes.
+  useFocusedRow(
+    quoteRequests,
+    React.useCallback((request: QuoteRequest) => {
+      setStatusFilter('all')
+      setPreviewRequest(request)
+    }, []),
+  )
 
   async function updateStatus(id: string, status: string) {
     const res     = await fetch(`/api/admin/quote-requests/${id}`, {
