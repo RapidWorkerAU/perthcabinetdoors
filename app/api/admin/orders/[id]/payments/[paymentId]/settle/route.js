@@ -17,6 +17,7 @@ import { requireAdminApiContext } from "../../../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../../../lib/pcd-activity-log";
 import { syncDepositFields } from "../../../../../../../../lib/pcd-order-deposit";
 import { settlementMethodLabel, settlementPatch, undoSettlementPatch } from "../../../../../../../../lib/pcd-payment-settlement";
+import { loadListItems } from "../../../../../../../../lib/pcd-list-load";
 import { sendPaymentReceivedToCustomer } from "../../../../../../../../lib/pcd-customer-confirmations";
 import { expireCheckoutSession } from "../../../../../../../../lib/pcd-stripe";
 
@@ -42,12 +43,23 @@ export async function POST(request, { params }) {
     if (error) throw error;
     if (!payment) return Response.json({ ok: false, error: "Payment not found." }, { status: 404 });
 
-    const { updates, trail, error: refusal } = settlementPatch(payment, {
-      method: payload.method,
-      reference: payload.reference,
-      paidAt: payload.paid_at,
-      note: payload.note,
-    });
+    // Payment methods can be added in Settings, Lists, so the check inside
+    // settlementPatch has to read the live list. Without it a method somebody
+    // set up is offered in the modal and refused here, and the money stays
+    // showing as owing.
+    const methods = await loadListItems(context.supabase, "settlement_methods");
+
+    const { updates, trail, error: refusal } = settlementPatch(
+      payment,
+      {
+        method: payload.method,
+        reference: payload.reference,
+        paidAt: payload.paid_at,
+        note: payload.note,
+      },
+      new Date(),
+      methods
+    );
     if (refusal) return Response.json({ ok: false, error: refusal }, { status: 400 });
 
     // Conditional on it still being unpaid, so two people closing the same
@@ -122,7 +134,7 @@ export async function POST(request, { params }) {
         payment_id: paymentId,
         amount: Number(payment.amount || 0),
         method: payload.method,
-        method_label: settlementMethodLabel(payload.method),
+        method_label: settlementMethodLabel(payload.method, methods),
         reference: String(payload.reference || "").trim() || null,
         staff_email: context.user?.email || null,
         // Worth keeping: it says the link was live when the money came another
@@ -166,7 +178,7 @@ export async function POST(request, { params }) {
       confirmationSent: confirmation.ok,
       confirmationError: confirmation.ok ? "" : confirmation.error,
       message:
-        `Marked as paid by ${settlementMethodLabel(payload.method).toLowerCase()}.${linkNote}` +
+        `Marked as paid by ${settlementMethodLabel(payload.method, methods).toLowerCase()}.${linkNote}` +
         (confirmation.ok ? " The customer has been emailed a confirmation." : ` The customer was NOT emailed: ${confirmation.error}`),
     });
   } catch (error) {

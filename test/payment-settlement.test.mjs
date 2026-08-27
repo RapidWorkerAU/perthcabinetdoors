@@ -161,9 +161,18 @@ test("the modal warns when a live link is about to be closed", () => {
   assert.match(modal, /if that does not work/i, "and it must not promise more than it can deliver");
 });
 
+// Methods can be added in Settings, Lists, so an unknown key is more likely to
+// be one somebody set up than a mistake. It reads as its own words rather than
+// being labelled "Some other way", which would put the wrong thing on a payment
+// record. The live list wins where the caller has it.
 test("every method has a readable label and an unknown one does not crash", () => {
   assert.equal(settlementMethodLabel("bank_transfer"), "Bank transfer");
-  assert.equal(settlementMethodLabel("nonsense"), "Some other way");
+  assert.equal(settlementMethodLabel("direct_debit"), "Direct debit");
+  assert.equal(
+    settlementMethodLabel("direct_debit", [{ key: "direct_debit", label: "Direct debit (monthly)" }]),
+    "Direct debit (monthly)"
+  );
+  assert.equal(settlementMethodLabel(""), "Some other way");
 });
 
 // ── THE LINK MUST ACTUALLY BE KILLED ───────────────────────────────────────

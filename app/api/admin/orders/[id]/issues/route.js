@@ -5,6 +5,7 @@ import {
   issueBlocksLabel,
   validateIssue,
 } from "../../../../../../lib/pcd-order-issues";
+import { loadListItems } from "../../../../../../lib/pcd-list-load";
 
 async function orderIdFromParams(params) {
   const resolved = await params;
@@ -51,7 +52,12 @@ export async function POST(request, { params }) {
 
     // The same rules the form uses, checked again here. A browser check is a
     // suggestion.
-    const errors = validateIssue(payload);
+    //
+    // Kinds can be added in Settings, Lists, so the check here has to read the
+    // live list. Without it the dropdown offers a kind that this route then
+    // refuses, and the Save button appears to do nothing.
+    const kinds = await loadListItems(context.supabase, "issue_kinds");
+    const errors = validateIssue(payload, kinds);
     if (Object.keys(errors).length) {
       return Response.json({ ok: false, error: "That issue is not complete.", fieldErrors: errors }, { status: 422 });
     }
@@ -107,7 +113,7 @@ export async function POST(request, { params }) {
       actor_type: "admin",
       action_type: "issue_raised",
       title: "Issue raised",
-      description: `${issueKindLabel(row.kind)} on ${payload.panel_label || (line && line.title) || "the order"}${where}. ${issueBlocksLabel(row.blocks)}.`,
+      description: `${issueKindLabel(row.kind, kinds)} on ${payload.panel_label || (line && line.title) || "the order"}${where}. ${issueBlocksLabel(row.blocks)}.`,
       metadata: { issue_id: issue.id, kind: row.kind, blocks: row.blocks, extra_cost_ex_gst: row.extra_cost_ex_gst },
     });
 

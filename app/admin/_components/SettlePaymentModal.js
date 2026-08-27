@@ -15,7 +15,8 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { paymentTypeLabel } from "../../../lib/pcd-payment-notifications";
-import { SETTLEMENT_METHODS, settlementWantsReference } from "../../../lib/pcd-payment-settlement";
+import { settlementWantsReference } from "../../../lib/pcd-payment-settlement";
+import { useLists } from "../../../lib/use-lists";
 
 const tone = {
   label: "block text-[12px] font-semibold text-[#5a5a52] mb-1.5",
@@ -38,6 +39,10 @@ function today() {
 }
 
 export default function SettlePaymentModal({ payment, hadLink = false, onClose, onSubmit, onSettled }) {
+  // Payment methods are editable in Settings, Lists. optionsFor keeps whatever
+  // this payment already records in its own dropdown even after somebody
+  // switches that method off. See lib/pcd-lists.js.
+  const lists = useLists();
   const [method, setMethod] = useState("bank_transfer");
   const [reference, setReference] = useState("");
   const [paidAt, setPaidAt] = useState(today());
@@ -60,7 +65,11 @@ export default function SettlePaymentModal({ payment, hadLink = false, onClose, 
   // Offered, never demanded. Somebody closing off a job does not always have the
   // bank reference to hand, and refusing over it would leave money in the bank
   // showing as owing.
-  const suggestsReference = settlementWantsReference(method);
+  // Read off the live list first, so a payment method somebody added and ticked
+  // "asks for a reference" on actually asks for one. Falls back to the built-in
+  // rule while the lists are still loading.
+  const chosen = lists.itemsFor("settlement_methods").filter((entry) => entry.key === method)[0];
+  const suggestsReference = chosen ? Boolean(chosen.extras?.wantsReference) : settlementWantsReference(method);
   const ready = Boolean(method);
   const amount = Number(payment.amount || 0);
 
@@ -119,9 +128,9 @@ export default function SettlePaymentModal({ payment, hadLink = false, onClose, 
             onChange={(event) => setMethod(event.target.value)}
             disabled={busy}
           >
-            {SETTLEMENT_METHODS.map((entry) => (
+            {lists.optionsFor("settlement_methods", method).map((entry) => (
               <option key={entry.key} value={entry.key}>
-                {entry.label}
+                {entry.label}{entry.retired ? " (no longer offered)" : ""}
               </option>
             ))}
           </select>

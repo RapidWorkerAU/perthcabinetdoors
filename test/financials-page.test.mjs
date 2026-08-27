@@ -128,11 +128,16 @@ test("the dashboard totals no money", () => {
   assert.ok(!/\.value\s*\+|\+\s*\w+\.value\b/.test(QUEUE), "the queue is adding row values together");
 });
 
-// The other half of the same fault: { data } read, { error } dropped. Every
-// query on this page has to be able to say it failed.
+// The other half of the same fault: { data } read, { error } dropped. The
+// dashboard's list now comes from the board, which has always tracked which
+// SOURCE failed, so what this has to pin is that the dashboard carries that
+// through to the screen rather than dropping it on the way.
 test("a dashboard query that fails says so instead of returning nothing", () => {
-  assert.match(DASH_PAGE, /result\.error/, "the page is not checking query errors");
-  assert.match(DASH_PAGE, /problems\.push/, "a failed query has to be recorded");
+  const LOADER = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
+  assert.match(LOADER, /failed\.add\(/, "the board loader is not tracking failed sources");
+  assert.match(LOADER, /failed: Array\.from\(failed\)/, "and it has to hand them back");
+
+  assert.match(DASH_PAGE, /problems: board\.failed/, "the dashboard is dropping them on the way through");
   assert.match(DASH_CLIENT, /queue\.problems\.length > 0/, "and shown, or the queue is quietly short");
 });
 

@@ -23,27 +23,36 @@ interface Stats {
 // One thing to do, worked out in lib/pcd-action-queue.js. Every field here is
 // decided there, including the wording, so a change of tone happens in one file
 // rather than being split between the sentence and the screen that prints it.
+// One board card, worded for a row. Every field is decided in
+// lib/pcd-action-queue.js, including the sentence, so a change of tone happens
+// in one file rather than being split between the words and the screen.
 export interface QueueItem {
-  id:           string
-  kind:         string
-  tier:         number
-  title:        string
-  detail:       string
-  flag:         { text: string; tone: 'crit' | 'warn' | 'info' } | null
-  value:        number | null
-  valueNote:    string
-  daysWaiting:  number | null
-  href:         string
-  actionLabel:  string
+  id:          string
+  cat:         string
+  tier:        number
+  title:       string
+  detail:      string
+  flag:        { text: string; tone: 'crit' | 'warn' | 'info' } | null
+  value:       number | null
+  valueNote:   string
+  days:        number
+  href:        string
+  actionLabel: string
 }
 
 interface Queue {
-  items:    QueueItem[]
-  total:    number
-  hidden:   number
+  items:  QueueItem[]
+  total:  number
+  hidden: number
   // What would not load. A queue that is short because a table refused to
-  // answer must say so, or a broken query reads as a quiet morning.
+  // answer must say so, or a broken query reads as a quiet morning. `missing`
+  // is the same thing in the words of the work it affects, which is how the
+  // board says it too.
   problems: string[]
+  missing:  string
+  // Cards deliberately cleared off the board. Named here so a short list is
+  // explained by something somebody did rather than looking like a bug.
+  setAsideCount: number
 }
 
 interface DashboardProps {
@@ -130,15 +139,15 @@ function ActionQueuePanel({ queue }: { queue: Queue }) {
           identical, and the second one is the dangerous one. */}
       {queue.problems.length > 0 && (
         <p className="border-b border-[#fde68a] bg-[#fffbeb] px-4 py-[9px] text-[12px] text-[#5c4200]">
-          This list may be short: {queue.problems.join(', ')} could not be loaded just now. Refresh, and if it
-          keeps happening the detail is in the server log.
+          This list is incomplete: {queue.missing || queue.problems.join(', ')} could not be loaded just now.
+          Refresh, and if it keeps happening the detail is in the server log.
         </p>
       )}
 
       {queue.items.length === 0 ? (
         <p className="px-4 py-10 text-center text-[13px] text-[#8b8a81]">
-          Nothing is waiting on you. No quote is about to expire, nobody is waiting on a reply, and every
-          request has been priced.
+          Nothing is waiting on you. The board is clear.
+          {queue.setAsideCount > 0 && ` ${queue.setAsideCount} set aside.`}
         </p>
       ) : (
         <>
@@ -146,22 +155,28 @@ function ActionQueuePanel({ queue }: { queue: Queue }) {
             {queue.items.map(item => <QueueRow key={item.id} item={item} />)}
           </div>
 
-          {queue.hidden > 0 && (
-            <Link
-              href="/admin/quotes"
-              className="flex items-center justify-between border-t border-[#edf4eb] bg-[#f5f8f4] px-4 py-[7px] text-[11.5px] font-medium text-[#2d5e28] hover:bg-[#edf4eb] transition-colors"
-            >
-              <span>{queue.hidden} more further down the list</span>
-              <span>All quotes →</span>
-            </Link>
-          )}
+          {/* The board is where the rest of them are, and where a card is set
+              aside. Always offered, not only when there is an overflow: this
+              panel is the top of that list and should say so. */}
+          <Link
+            href="/admin/board"
+            className="flex items-center justify-between border-t border-[#edf4eb] bg-[#f5f8f4] px-4 py-[7px] text-[11.5px] font-medium text-[#2d5e28] hover:bg-[#edf4eb] transition-colors"
+          >
+            <span>
+              {queue.hidden > 0 ? `${queue.hidden} more on the board` : 'That is all of it'}
+              {queue.setAsideCount > 0 && (
+                <span className="font-normal text-[#8b8a81]"> · {queue.setAsideCount} set aside</span>
+              )}
+            </span>
+            <span>Open the board →</span>
+          </Link>
 
           {/* THE RULE, WRITTEN DOWN. A list that sorts itself without saying how
               is one people stop trusting the first time it puts something odd at
               the top. See lib/pcd-action-queue.js. */}
           <p className="border-t border-[#edf4eb] bg-[#f5f8f4] px-4 py-2 text-[11px] text-[#8b8a81]">
-            Ordered by <span className="font-semibold text-[#5a5a52]">how close the deadline is</span>, then by how
-            long it has waited and what it is worth.
+            The top of <span className="font-semibold text-[#5a5a52]">the board</span>, oldest and largest first.
+            Set a card aside there and it leaves here too.
           </p>
         </>
       )}

@@ -269,10 +269,20 @@ test("an email with no customer behind it reads as a new sender and goes to the 
   assert.equal(rows[0].days, 2);
 });
 
-test("an enquiry goes to the enquiries list, where its modal lives", () => {
-  const [row] = replyCards({ enquiries: [{ id: "e1", customer_name: "Dave", created_at: "2026-08-15" }] }, TODAY);
-  assert.equal(row.href, "/admin/enquiries");
-  assert.match(row.why, /to that address/);
+// A card names one person, so it has to land on that person rather than on the
+// list they are somewhere in. Somebody we already know opens at their desk,
+// because that is where a reply is typed; a sender with no record yet has no
+// desk, so it opens their row in the enquiries list. See useFocusedRow.
+test("an enquiry opens the person, or its own row, never just the list", () => {
+  const [stranger] = replyCards({ enquiries: [{ id: "e1", customer_name: "Dave", created_at: "2026-08-15" }] }, TODAY);
+  assert.equal(stranger.href, "/admin/enquiries?focus=e1");
+  assert.match(stranger.why, /to that address/);
+
+  const [known] = replyCards(
+    { enquiries: [{ id: "e2", customerId: "c5", customer_name: "Dave", created_at: "2026-08-15" }] },
+    TODAY
+  );
+  assert.equal(known.href, "/admin/customers/c5");
 });
 
 // A quote request has no price anywhere, so a card must never invent one.
@@ -284,7 +294,9 @@ test("a quote request card carries a count and never money", () => {
   assert.equal(row.amt, 0, "a request has no value to show");
   assert.ok(row.tags.some((t) => t[0] === "47 items"));
   assert.ok(row.tags.some((t) => t[0] === "Business"), "company name reads as Business, not Trade");
-  assert.equal(row.href, "/admin/quote-requests");
+  // Its own row rather than the list it sits in, for the same reason an enquiry
+  // does. The manager opens the preview, which is where Convert to quote lives.
+  assert.equal(row.href, "/admin/quote-requests?focus=r1");
 });
 
 test("a request from the design tool says so", () => {
@@ -338,7 +350,7 @@ test("a request with a drafted but unsent quote still reads as owed", () => {
 test("a request nobody has started still says so plainly", () => {
   const [row] = requestCards([{ id: "r1", created_at: "2026-08-10" }], TODAY);
   assert.match(row.why, /no quote sent to them yet/);
-  assert.equal(row.href, "/admin/quote-requests");
+  assert.equal(row.href, "/admin/quote-requests?focus=r1");
   assert.ok(!row.tags.some((t) => t[0] === "Drafted, not sent"));
 });
 
@@ -640,7 +652,7 @@ test("a request with no date on it is never silently cleared", () => {
 });
 
 test("the board looks past the convert link, and past its own quote list", () => {
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(page, /requestAnswered/, "the widened rule is actually used");
   // The board's own quotes are sent and viewed only. An APPROVED quote that has
   // become an order is the clearest evidence a price went out, and it is
@@ -652,7 +664,7 @@ test("the board looks past the convert link, and past its own quote list", () =>
 test("a failed read leaves the card up rather than clearing it", () => {
   // Not knowing about a quote has to fail towards the card staying, which is
   // what it did before. Silently clearing on an error would hide real work.
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(page, /sentQuoteQueries\.some\(q => q\.error\)/);
   assert.match(page, /failed\.add\('requests'\)/);
 });
@@ -785,7 +797,7 @@ test("collapsing an empty board, or one with nobody owed a reply, changes nothin
 test("the collapse runs after set aside, so setting a reply aside frees the quote", () => {
   // Collapsing first would let somebody set the reply aside and take the quote
   // chase with it, leaving the quote waiting with nothing anywhere saying so.
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   const dismiss = page.indexOf("applyDismissals(built");
   const collapse = page.indexOf("collapseReplies(standing)");
   assert.ok(dismiss > 0 && collapse > dismiss, "set aside first, collapse second");
@@ -794,7 +806,7 @@ test("the collapse runs after set aside, so setting a reply aside frees the quot
 // ── F5 and F6: an enquiry is another thing they sent ───────────────────────
 
 test("an enquiry from somebody already owed a reply folds into their card", () => {
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(page, /foldedEnquiryIds/, "enquiries join the per person grouping");
   // Folded BEFORE the cards are built from the groups, or the card would carry
   // the counts and dates from before the fold.
@@ -804,20 +816,20 @@ test("an enquiry from somebody already owed a reply folds into their card", () =
 });
 
 test("an enquiry with nobody to fold into still gets its own card", () => {
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(page, /!foldedEnquiryIds\.has\(e\.id as string\)/, "the ungrouped ones survive");
 });
 
 // ── F7: on hold keeps the money, drops the work ────────────────────────────
 
 test("a held job's requested payment still chases", () => {
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(page, /'pending_deposit', 'active', 'complete', 'on_hold'/, "held orders are read");
   assert.match(page, /\['active', 'on_hold'\]\.includes/, "and their payments chase");
 });
 
 test("a held job raises no work cards at all", () => {
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   // Planning, materials and workshop all come from this one list.
   assert.match(page, /const active = orders\.filter\(o => o\.status === 'active'\)/);
   // And issues are scoped away from held jobs explicitly.
@@ -828,14 +840,14 @@ test("an issue on an archived job stops asking to be fixed", () => {
   // Issues were never scoped to the board's orders, so an unresolved issue on
   // an archived job kept its card, with no order number on it because the order
   // was not there to name it.
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(page, /return Boolean\(order\) && order\?\.status !== 'on_hold'/);
 });
 
 // ── F9: a job booked to start with nothing on it ───────────────────────────
 
 test("an order booked to start with no panels at all is not silent", () => {
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(page, /const nothingOnIt = panels\.length === 0/);
   assert.match(page, /startPassed && \(nothingMoved \|\| nothingOnIt\)/);
   assert.match(page, /'Nothing on it'/, "and it says which of the two it is");
@@ -885,7 +897,7 @@ test("every tile counts panels, never the column beside them", () => {
   //
   // A board that tells you to do something already done is worse than no board,
   // because the one time it is right nobody believes it.
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
 
   // Everything that decides a tile runs off `panels`, which comes from panelsOf.
   const build = page.slice(page.indexOf("active.forEach(order => {"), page.indexOf("const built = buildBoard("));
@@ -915,7 +927,7 @@ test("a panel nobody has decided on counts as not done", () => {
   // exists: an undecided panel has to read as undecided rather than borrowing a
   // guess from the row above it. So the tiles have to treat a missing status as
   // outstanding, or a half filled plan would read as finished work.
-  const page = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(page, /panels\.filter\(p => !p\.status \|\| p\.status === 'Not Ordered'\)/);
   // The late card already took the same direction, and the two must agree.
   assert.match(page, /return !at \|\| START_OF_LIST\.has\(String\(at\)\)/);

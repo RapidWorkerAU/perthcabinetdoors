@@ -32,6 +32,7 @@ import AdminLoading from "@/components/admin/AdminLoading";
 import { panelNumberKey } from "../../../../lib/pcd-order-panel-numbers";
 import { groupProductionRows } from "../../../../lib/pcd-production-groups";
 import { lineNotes, lineNotesText } from "../../../../lib/pcd-line-notes";
+import { useLists } from "../../../../lib/use-lists";
 // Every cup from the bottom edge, worked out the one way. See lib/pcd-hinges.js.
 import { cupPositions, hingeSummaryLines } from "../../../../lib/pcd-hinges";
 import { taxInvoiceReadiness } from "../../../../lib/pcd-tax-invoice";
@@ -424,6 +425,11 @@ function lineValue(value, fallback = "-") {
 }
 
 export default function OrderDetail({ orderId }) {
+  // Issue kinds and production timeframes are editable in Settings, Lists. The
+  // built-in ones are used until the fetch lands, so nothing renders empty, and
+  // optionsFor keeps whatever this record already holds in its own dropdown
+  // even after somebody switches that option off. See lib/pcd-lists.js.
+  const lists = useLists();
   const router = useRouter();
   const [order, setOrder] = useState(null);
   const pathname = usePathname();
@@ -675,7 +681,9 @@ export default function OrderDetail({ orderId }) {
   }
 
   async function saveIssue() {
-    const errors = validateIssue(issueDraft);
+    // The live kinds, or the client refuses a kind somebody added in Settings
+    // before it even reaches the server.
+    const errors = validateIssue(issueDraft, lists.itemsFor("issue_kinds"));
     setIssueErrors(errors);
     if (Object.keys(errors).length) return;
 
@@ -1442,9 +1450,13 @@ export default function OrderDetail({ orderId }) {
                   disabled={isSavingOrder}
                 >
                   <option value="">Not set</option>
-                  {PRODUCTION_TIMEFRAMES.map(t => (
-                    <option key={t.days} value={t.days}>{t.label}</option>
-                  ))}
+                  {lists
+                    .optionsFor("production_timeframes", String(order.production_lead_days || ""))
+                    .map(t => (
+                      <option key={t.key} value={t.extras?.days ?? t.key}>
+                        {t.label}{t.retired ? " (no longer offered)" : ""}
+                      </option>
+                    ))}
                 </select>
               </label>
             </div>
@@ -2239,7 +2251,7 @@ export default function OrderDetail({ orderId }) {
       if (issueFilter === "open" && issue.resolved_at) return false;
       if (issueFilter === "resolved" && !issue.resolved_at) return false;
       if (!query) return true;
-      return [issueKindLabel(issue.kind), issue.detail, issue.resolution, panelLabelForIssue(issue)]
+      return [issueKindLabel(issue.kind, lists.itemsFor("issue_kinds")), issue.detail, issue.resolution, panelLabelForIssue(issue)]
         .filter(Boolean).join(" ").toLowerCase().includes(query);
     });
 
@@ -2306,7 +2318,7 @@ export default function OrderDetail({ orderId }) {
                       <p className="text-[12px] font-semibold text-[#1a1a18]">{panelLabelForIssue(issue)}</p>
                     </td>
                     <td className={tw.td}>
-                      <p className="text-[12px] font-semibold text-[#1a1a18]">{issueKindLabel(issue.kind)}</p>
+                      <p className="text-[12px] font-semibold text-[#1a1a18]">{issueKindLabel(issue.kind, lists.itemsFor("issue_kinds"))}</p>
                       <p className={`${tw.cellText} ${tw.muted}`}>{issue.detail}</p>
                       {issue.resolution && (
                         <p className={`${tw.cellText} text-[11px] text-[#2d5e28] mt-[3px]`}>
@@ -3472,7 +3484,7 @@ export default function OrderDetail({ orderId }) {
               What is wrong <span className="text-[#991b1b]">*</span>
             </span>
             <div className="flex flex-wrap gap-[6px]">
-              {ISSUE_KINDS.map(kind => (
+              {lists.optionsFor("issue_kinds", issueDraft.kind).map(kind => (
                 <button
                   key={kind.key}
                   type="button"
@@ -3544,7 +3556,7 @@ export default function OrderDetail({ orderId }) {
       open={Boolean(resolveDraft)}
       onClose={() => setResolveDraft(null)}
       title="Resolve this issue"
-      subtitle={resolveDraft ? issueKindLabel(resolveDraft.kind) : ""}
+      subtitle={resolveDraft ? issueKindLabel(resolveDraft.kind, lists.itemsFor("issue_kinds")) : ""}
       size="lg"
       footer={
         <>

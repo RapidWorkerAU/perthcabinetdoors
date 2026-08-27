@@ -171,7 +171,7 @@ test("a reply goes to whoever is in that conversation, not to the main contact",
 
 test("the board groups a merged person into one card", async () => {
   const { readFileSync } = await import("node:fs");
-  const board = readFileSync(new URL("../app/admin/board/page.tsx", import.meta.url), "utf8");
+  const board = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
   assert.match(board, /primaryIdIndex/);
   assert.match(board, /customer:\$\{asPrimary\(t\.customer_id as string\)\}/);
   // And judges the turn against every address that reaches them.

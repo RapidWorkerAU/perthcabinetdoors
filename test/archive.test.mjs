@@ -99,10 +99,21 @@ test("the financials and the dashboard both leave archived orders out", () => {
   const financials = read("app/admin/financials/page.tsx");
   assert.ok(financials.includes(".neq('status', 'archived')"), "the orders query drops them");
 
+  // The dashboard's own list of work comes from the board, and the board only
+  // ever reads orders in the four live statuses, so archived never reaches it.
+  // The one figure the dashboard still counts for itself is unpaid payments,
+  // and that has to be scoped the same way or a cancelled job goes on reading
+  // as money outstanding.
   const dashboard = read("app/admin/dashboard/page.tsx");
   assert.ok(
-    dashboard.includes("['cancelled', 'archived'].includes"),
-    "and so does the unpaid payments list"
+    dashboard.includes(".in('pcd_orders.status', ['pending_deposit', 'active', 'on_hold', 'complete'])"),
+    "the unpaid payments count still includes archived and cancelled jobs"
+  );
+
+  const board = read("lib/pcd-board-load.ts");
+  assert.ok(
+    board.includes("['pending_deposit', 'active', 'complete', 'on_hold']"),
+    "the board's order query no longer names the live statuses"
   );
 });
 

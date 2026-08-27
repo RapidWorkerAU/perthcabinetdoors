@@ -17,7 +17,7 @@ import {
   counts,
 } from '../../../lib/pcd-board'
 import { formatMoney } from '../../../lib/pcd-quote-utils'
-import { DISMISS_REASONS } from '../../../lib/pcd-board-dismissal'
+import { useLists } from '../../../lib/use-lists'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
@@ -144,6 +144,10 @@ export default function BoardClient({ cards, failed, loadedAt, setAsideCount = 0
   // new email from the same person reopens the ticket by itself.
   const [closing, setClosing] = useState<Card | null>(null)
   const [reason, setReason] = useState('no_reply_needed')
+  // Set aside reasons are editable in Settings, Lists. The built-in ones are
+  // used until the fetch lands, so the modal never opens with no reasons in it.
+  const lists = useLists()
+  const dismissReasons = lists.optionsFor('dismiss_reasons', reason)
   const [detail, setDetail] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -522,7 +526,7 @@ export default function BoardClient({ cards, failed, loadedAt, setAsideCount = 0
           <div className="flex flex-col gap-[6px]">
             <span className="text-[11px] font-medium text-[#5a5a52]">Why <span className="text-[#991b1b]">*</span></span>
             <div className="flex flex-wrap gap-[6px]">
-              {DISMISS_REASONS.map(r => (
+              {dismissReasons.map(r => (
                 <button
                   key={r.key}
                   type="button"

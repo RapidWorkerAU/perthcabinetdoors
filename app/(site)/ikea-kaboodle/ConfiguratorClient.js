@@ -461,7 +461,9 @@ export default function ConfiguratorClient({ colours, pricingEnabled = true }) {
       counts.set(name, (counts.get(name) || 0) + 1);
     });
 
-    const order = ["Polytec", "Laminex", "Formica"];
+    // Matching COLOUR_SUPPLIERS. A brand missing from here sorts last rather
+    // than vanishing, so this is about position, not about who is offered.
+    const order = ["Polytec", "Laminex", "Formica", "Paperock"];
     return [...counts.entries()]
       .filter(([name]) => {
         if (!needsProfile || !profileLibrary.isReady) return true;

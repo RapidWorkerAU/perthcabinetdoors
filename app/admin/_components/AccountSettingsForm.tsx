@@ -11,6 +11,7 @@ import { IconArrowLeft, IconChevronRight } from '@tabler/icons-react'
 import launchStyles from './launch-preview.module.css'
 import QuoteTermsManager from './QuoteTermsManager'
 import EmailSignatureCard from './EmailSignatureCard'
+import ListsManager from './ListsManager'
 
 interface DefaultField {
   key:        string
@@ -267,7 +268,7 @@ const primaryBtn = 'h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-mediu
 const secondaryBtn = 'h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors'
 const fieldLabelClass = 'flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]'
 
-type Tab = 'profile' | 'launch' | 'defaults'
+type Tab = 'profile' | 'launch' | 'defaults' | 'lists'
 
 export default function AccountSettingsForm({ currentEmail }: { currentEmail?: string }) {
   const [activeTab,        setActiveTab]        = useState<Tab>('profile')
@@ -472,6 +473,10 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     { key: 'profile',  label: 'My Profile',        description: 'Name, email and password',                              icon: accountInitials },
     { key: 'launch',   label: 'Website Overlay',    description: 'Password gate, copy and countdown',                    icon: 'WO' },
     { key: 'defaults', label: 'Business Defaults',  description: 'GST, markup, labour and hardware costs',               icon: 'BD' },
+    // Last, because it is the one you visit rarely and on purpose. Business
+    // Defaults changes what every quote costs; this changes what a dropdown
+    // offers.
+    { key: 'lists',    label: 'Lists',              description: 'Dropdown options you can add to yourself',            icon: 'LI' },
   ]
 
   // Profile tab content
@@ -776,7 +781,11 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     </form>
   )
 
-  const tabContent = activeTab === 'profile' ? profileContent : activeTab === 'launch' ? launchContent : defaultsContent
+  const tabContent =
+    activeTab === 'profile'  ? profileContent  :
+    activeTab === 'launch'   ? launchContent   :
+    activeTab === 'lists'    ? <ListsManager /> :
+    defaultsContent
 
   const launchPreviewModal =
     showLaunchPreview && typeof document !== 'undefined'

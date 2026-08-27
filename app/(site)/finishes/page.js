@@ -27,7 +27,10 @@ const FINISH_ORDER = [
   "Gloss", "Ultramatt", "Sheen", "Texture", "Natura", "Satin", "Raw", "Ashgrain",
 ];
 
-const SUPPLIER_ORDER = ["Polytec", "Laminex", "Formica"];
+// The order brands are shown in, matching COLOUR_SUPPLIERS. A brand missing
+// from here still appears, sorted last, so this decides position rather than
+// whether somebody's colours show up at all.
+const SUPPLIER_ORDER = ["Polytec", "Laminex", "Formica", "Paperock"];
 
 // One speller for brand names, shared with the rest of the site. This page used
 // to carry its own, which is how a lower case "formica" reached a customer.

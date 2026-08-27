@@ -7,13 +7,13 @@ import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import {
   COLOUR_MATERIALS,
   COLOUR_ORDER_TYPES,
-  COLOUR_SUPPLIERS,
   materialLabelForType,
   normaliseOrderTypes,
   normaliseSupplierName,
   orderTypesLabel,
   thicknessOptionsForMaterial,
 } from '../../../lib/pcd-colour-library'
+import { useLists } from '../../../lib/use-lists'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -148,17 +148,19 @@ function boardSizeLabel(row: ColourRow) {
   return `${height || '-'} x ${width || '-'}mm`
 }
 
-function rowFromDraft(draft: Draft, image: { imageUrl: string; imagePath: string | null }, sortOrder: number) {
+function rowFromDraft(draft: Draft, image: { imageUrl: string; imagePath: string | null }, sortOrder: number, brands: { key: string }[] = []) {
   const costs = calculateColourCosts(draft)
   return {
     name:                      draft.name.trim(),
     image_url:                 image.imageUrl,
     image_path:                image.imagePath || draft.image_path || null,
-    // Spelt the one way before the check. A brand arriving in the wrong case
-    // used to fail the match and be saved as Polytec instead.
-    supplier_name:             COLOUR_SUPPLIERS.includes(normaliseSupplierName(draft.supplier_name))
-      ? normaliseSupplierName(draft.supplier_name)
-      : 'Polytec',
+    // Spelt the one way, and then KEPT. This used to fall back to 'Polytec'
+    // whenever the brand was not in a hardcoded list, which quietly re-saved a
+    // Formica board as a Polytec one the moment anybody opened it for editing.
+    // Brands are a list you can add to now, so an unrecognised one is far more
+    // likely to be a supplier somebody just set up than a mistake, and the safe
+    // answer is to leave it exactly as it is.
+    supplier_name:             normaliseSupplierName(draft.supplier_name, brands) || 'Polytec',
     material_type:             draft.material_type,
     thickness:                 draft.thickness,
     finish_type:               draft.finish_type.trim(),
@@ -189,6 +191,9 @@ export default function ColourLibraryManager({
   initialError?: string
 }) {
   const { toast } = useToast()
+  // Board suppliers come from Settings, Lists rather than a constant, so a new
+  // brand needs no deploy. See lib/pcd-lists.js.
+  const lists = useLists()
   const fileInputRef   = useRef<HTMLInputElement>(null)
   const [rows,         setRows]         = useState<ColourRow[]>(initialRows)
   const [draft,        setDraft]        = useState<Draft>(emptyDraft)
@@ -233,7 +238,12 @@ export default function ColourLibraryManager({
     const uniq = (values: (string | null | undefined)[]) =>
       Array.from(new Set(values.filter(Boolean).map(v => String(v)))).sort((a, b) => a.localeCompare(b))
     return {
-      supplier:  [...COLOUR_SUPPLIERS],
+      // Every brand that can still be picked, plus any already sitting on a
+      // row, so a brand switched off in Settings can still be filtered for.
+      supplier:  uniq([
+        ...lists.optionsFor('colour_suppliers').map(item => item.key),
+        ...sortedRows.map(r => normaliseSupplierName(r.supplier_name) || 'Polytec'),
+      ]),
       finish:    uniq(sortedRows.map(r => r.finish_type   || '-')),
       material:  uniq(sortedRows.map(r => r.material_type || '-')),
       thickness: uniq(sortedRows.map(r => r.thickness     || '-')),
@@ -337,9 +347,9 @@ export default function ColourLibraryManager({
       last_cost_field:           null,
       order_types:               normaliseOrderTypes(row),
       is_active:                 row.is_active ?? true,
-      supplier_name:             COLOUR_SUPPLIERS.includes(normaliseSupplierName(row.supplier_name))
-        ? normaliseSupplierName(row.supplier_name)
-        : 'Polytec',
+      // Kept as stored, for the reason on the save above: rewriting a brand it
+      // did not recognise is how one quietly became another.
+      supplier_name:             normaliseSupplierName(row.supplier_name) || 'Polytec',
       material_type:             row.material_type || 'decorative board',
       thickness:                 row.thickness     || '18mm',
       finish_type:               row.finish_type   || '',
@@ -434,7 +444,9 @@ export default function ColourLibraryManager({
     try {
       const supabase = createSupabaseBrowserClient()
       const image    = await uploadImage(fileInputRef.current?.files?.[0] || null)
-      const payload  = rowFromDraft(draft, image, sortOrderForDraft())
+      // The live brands, so a supplier added in Settings keeps the exact
+      // spelling it was given rather than being title-cased on the way in.
+      const payload  = rowFromDraft(draft, image, sortOrderForDraft(), lists.itemsFor('colour_suppliers'))
       const query    = draft.id
         ? supabase.from('pcd_colour_library').update(payload).eq('id', draft.id)
         : supabase.from('pcd_colour_library').insert(payload)
@@ -623,8 +635,14 @@ export default function ColourLibraryManager({
                 <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
                   Supplier
                   <select className={inputClass} value={draft.supplier_name} onChange={e => updateDraft('supplier_name', e.target.value)}>
-                    {(COLOUR_SUPPLIERS as string[]).map(supplier => (
-                      <option key={supplier} value={supplier}>{supplier}</option>
+                    {/* Board suppliers are editable in Settings, Lists. A colour
+                        already recorded against a supplier that has since been
+                        switched off keeps showing it, so opening that row for
+                        editing cannot quietly change its brand. */}
+                    {lists.optionsFor('colour_suppliers', draft.supplier_name).map(supplier => (
+                      <option key={supplier.key} value={supplier.key}>
+                        {supplier.label}{supplier.retired ? ' (no longer offered)' : ''}
+                      </option>
                     ))}
                   </select>
                 </label>

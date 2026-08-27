@@ -53,9 +53,20 @@ test("the keys are unique within each list", () => {
   });
 });
 
-test("an unknown key falls back to a sensible label rather than showing raw", () => {
+// An unknown key used to read as "Something else", which was right while the
+// kinds were a fixed list. They can be added to in Settings, Lists now, so an
+// unknown key is far more likely to be a kind somebody set up than a mistake,
+// and it reads as its own words. Passing the live list gives the real label;
+// this is the fallback for a PDF or anywhere else the list is out of reach.
+test("an unknown key reads as words rather than as somebody else's label", () => {
   assert.equal(issueKindLabel("wrong_size"), "Wrong size");
-  assert.equal(issueKindLabel("nonsense"), "Something else");
+  assert.equal(issueKindLabel("damaged_in_transit"), "Damaged in transit");
+  assert.equal(
+    issueKindLabel("damaged_in_transit", [{ key: "damaged_in_transit", label: "Damaged in transit by courier" }]),
+    "Damaged in transit by courier",
+    "the live list wins when the caller has it"
+  );
+  assert.equal(issueKindLabel(""), "Something else", "and nothing at all still has a label");
   assert.equal(issueOwnerLabel("customer"), "The customer");
   assert.equal(issueBlocksLabel("order"), "The whole order");
 });

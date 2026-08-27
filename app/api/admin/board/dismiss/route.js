@@ -1,5 +1,6 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { dismissNote, dismissReasonLabel, validateDismissal } from "../../../../../lib/pcd-board-dismissal";
+import { loadListItems } from "../../../../../lib/pcd-list-load";
 
 async function agentFor(supabase, email) {
   if (!email) return null;
@@ -82,7 +83,13 @@ export async function POST(request) {
       return Response.json({ ok: true, restored: true });
     }
 
-    const errors = validateDismissal(payload);
+    // Reasons can be added in Settings, Lists, so the validity check and the
+    // wording both have to read the live list. Without this, a reason somebody
+    // set up themselves would be refused here and the button on the board would
+    // do nothing.
+    const reasons = await loadListItems(context.supabase, "dismiss_reasons");
+
+    const errors = validateDismissal(payload, reasons);
     if (Object.keys(errors).length) {
       return Response.json(
         { ok: false, error: "Say why it is being set aside.", fieldErrors: errors },
@@ -91,7 +98,7 @@ export async function POST(request) {
     }
 
     const agent = await agentFor(context.supabase, context.user?.email);
-    const words = dismissNote(payload.label, payload.reason, payload.detail);
+    const words = dismissNote(payload.label, payload.reason, payload.detail, reasons);
 
     // The mark. A card with no clock of its own is stamped with now, so it stays
     // set aside until somebody puts it back rather than reappearing at once.

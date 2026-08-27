@@ -19,11 +19,11 @@ import { IconButton } from "@/components/ui/IconButton";
 import { useToast } from "@/components/ui/Toast";
 import {
   PROFILE_KINDS,
-  PROFILE_LIBRARY_SUPPLIERS,
   categoriesBySupplier,
   profileLibraryGaps,
   profileLibraryRowFromDraft,
 } from "../../../lib/pcd-profile-library";
+import { useLists } from "../../../lib/use-lists";
 
 const ALL = "All";
 
@@ -59,6 +59,8 @@ const emptyDraft = {
 
 export default function ProfileLibraryManager({ initialRows = [], initialError = "" }) {
   const { toast } = useToast();
+  // Profile suppliers come from Settings, Lists rather than a constant.
+  const lists = useLists();
   const [rows, setRows] = useState(initialRows);
   const [kind, setKind] = useState("door");
   const [supplier, setSupplier] = useState(ALL);
@@ -357,8 +359,13 @@ export default function ProfileLibraryManager({ initialRows = [], initialError =
                 value={draft.supplier_name}
                 onChange={(event) => setDraft((current) => ({ ...current, supplier_name: event.target.value }))}
               >
-                {PROFILE_LIBRARY_SUPPLIERS.map((name) => (
-                  <option key={name} value={name}>{name}</option>
+                {/* Profile suppliers are editable in Settings, Lists. A profile
+                    already recorded against one that has since been switched
+                    off keeps showing it. */}
+                {lists.optionsFor("profile_suppliers", draft.supplier_name).map((entry) => (
+                  <option key={entry.key} value={entry.key}>
+                    {entry.label}{entry.retired ? " (no longer offered)" : ""}
+                  </option>
                 ))}
               </select>
             </label>

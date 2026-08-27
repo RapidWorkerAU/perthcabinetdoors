@@ -147,8 +147,21 @@ test("a draft is cleaned into a row, with sensible defaults", () => {
   assert.equal(row.image_url, null, "an empty image is null, not an empty string");
 });
 
-test("a supplier we do not deal with falls back rather than being stored", () => {
-  assert.equal(profileLibraryRowFromDraft({ supplier_name: "Someone Else" }).supplier_name, "Polytec");
+// A SUPPLIER IS KEPT, NOT REWRITTEN, and this used to be the other way round.
+//
+// It fell back to "Polytec" whenever the brand was not in a hardcoded list,
+// which silently re-saved somebody else's profile as a Polytec one the moment
+// anybody opened it for editing. That is the same fault the colour library had.
+// Profile suppliers are a list you can add to in Settings now, so an
+// unrecognised one is far more likely to be a supplier just set up than a
+// mistake, and the safe answer is to leave it exactly as it is.
+//
+// The kind is NOT extendable and still falls back: door and edge are two
+// incompatible ranges with a pairing rule between them, not vocabulary.
+test("a supplier is kept as it is, and only the kind falls back", () => {
+  assert.equal(profileLibraryRowFromDraft({ supplier_name: "Someone Else" }).supplier_name, "Someone Else");
+  assert.equal(profileLibraryRowFromDraft({ supplier_name: "laminex" }).supplier_name, "Laminex", "still spelt one way");
+  assert.equal(profileLibraryRowFromDraft({ supplier_name: "" }).supplier_name, "Polytec", "blank still has to land somewhere");
   assert.equal(profileLibraryRowFromDraft({ kind: "nonsense" }).kind, "door");
 });
 
