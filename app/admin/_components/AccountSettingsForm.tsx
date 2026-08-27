@@ -62,6 +62,19 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     step:  '0.01',
     hint:  'As a decimal. 0.1 = 10%.',
   },
+  // ONE FIGURE, AND FOUR THINGS READ IT. It used to be two numbers that
+  // disagreed: the terms wording said 14 days and the lead conversion report
+  // counted 30. Changing it here moves the reminder email, the date the customer
+  // is given, the day the quote archives itself and the point the report calls a
+  // quote lost, all together.
+  {
+    group:  'Pricing',
+    key:    'quote_valid_days',
+    label:  'Quote validity',
+    suffix: 'days',
+    step:   '1',
+    hint:   'How long a quote stands for. The customer is emailed a reminder 7 days before it runs out, and it archives itself the day after. Change your terms wording to match.',
+  },
   // Workshop fees. The drawer runner rates used to live here, one per runner
   // type. Runners are ordinary hardware now, picked from the hardware library
   // and added to a quote as their own line, so there is nothing to set here.
@@ -140,7 +153,9 @@ const DEFAULTS_GROUPS = ['Labour', 'Pricing', 'Workshop fees']
 // Fields where zero is not a real answer. A $0 hourly rate prices the labour on
 // every quote in the system at nothing, and it is far too easy to leave a box
 // empty and save.
-const DEFAULTS_MUST_BE_POSITIVE = new Set(['worker_hourly_rate'])
+// A quote good for zero days would archive every live quote on the next pass
+// and kill every customer link with it.
+const DEFAULTS_MUST_BE_POSITIVE = new Set(['worker_hourly_rate', 'quote_valid_days'])
 
 const LAUNCH_TEXT_FIELDS: [string, string, string?][] = [
   ['statusPill', 'Status pill'],

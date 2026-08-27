@@ -135,6 +135,19 @@ export default function LeadConversionReport() {
             />
           </div>
 
+          {/* THE ONLY ACTIONABLE THING ON THIS PAGE, so it sits above the
+              history rather than under it. Everything else here is a record of
+              what already happened; these are the quotes that have not happened
+              yet and are about to stop being able to. */}
+          {data.expiringSoon?.length > 0 && (
+            <Card
+              title={`Expiring within ${data.expiry.warnDays} days`}
+              subtitle="Closest first. After this they archive themselves and the customer link stops working"
+            >
+              <ExpiringList quotes={data.expiringSoon} />
+            </Card>
+          )}
+
           {/* The standing "still live" banner was removed: the breakdown below
               already carries that row, marked as outside the rate, so the banner
               was the same figure twice with a paragraph attached. */}
@@ -151,6 +164,28 @@ export default function LeadConversionReport() {
                   <Row label="Still live" bucket={b.pending} total={data} tone="#8b8a81" ghost />
                   <Row label="Never sent" bucket={b.draft} total={data} tone="#dbd8cc" ghost />
                 </div>
+
+                {/* FIGURES, NOT A VERDICT. How many closed themselves, how many
+                    customers were reminded first, and how many of those said
+                    yes afterwards. Whether that makes the reminder worth having
+                    depends on things this report cannot see. */}
+                {data.expiry && (data.expiry.archivedOnExpiry > 0 || data.expiry.warned > 0) && (
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-[#edf4eb] px-4 py-3 text-[12.5px] text-[#5a5a52]">
+                    <span>
+                      Archived automatically{' '}
+                      <span className="font-semibold tabular-nums text-[#1a1a18]">{data.expiry.archivedOnExpiry}</span>
+                      <span className="text-[#8b8a81]"> · {money(data.expiry.archivedOnExpiryValue)}</span>
+                    </span>
+                    <span>
+                      Reminded before expiry{' '}
+                      <span className="font-semibold tabular-nums text-[#1a1a18]">{data.expiry.warned}</span>
+                    </span>
+                    <span>
+                      Approved after a reminder{' '}
+                      <span className="font-semibold tabular-nums text-[#1a1a18]">{data.expiry.warnedConverted}</span>
+                    </span>
+                  </div>
+                )}
               </Card>
             </div>
 
@@ -248,6 +283,106 @@ function Row({ label, bucket, total, tone, ghost = false }) {
         <div className="h-full rounded-full" style={{ width: `${Math.max(percent, bucket.count ? 1 : 0)}%`, backgroundColor: tone }} />
       </div>
     </div>
+  )
+}
+
+// The quotes still inside their last few days.
+//
+// SEPARATE FROM QuoteList because it answers a different question. That list is
+// history, sorted oldest first and aged in days since sending. This one is a
+// countdown, sorted by what runs out first, and the column that matters is how
+// long is left rather than how long it has been.
+function ExpiringList({ quotes }) {
+  const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(
+    quotes,
+    'expiring',
+    REPORT_PAGE_SIZE
+  )
+
+  const dayLabel = days => (days === 0 ? 'Today' : days === 1 ? '1 day' : `${days} days`)
+  // Under three days is worth marking. Not a verdict, just where the eye should
+  // land first when there are twenty of these.
+  const tone = days => (days <= 2 ? 'text-[#a32b21]' : 'text-[#5a5a52]')
+
+  return (
+    <>
+      <div className="flex flex-col gap-2 p-3 md:hidden">
+        {pageItems.map(quote => (
+          <Link
+            key={quote.id}
+            href={`/admin/quotes/${quote.id}`}
+            className="block rounded-[6px] border border-[#edf4eb] p-3 hover:bg-[#f5f8f4]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-mono text-[12px] text-[#1a1a18]">{quote.number}</div>
+                <div className="mt-[1px] truncate text-[13px] text-[#1a1a18]">{quote.customer || '-'}</div>
+              </div>
+              <div className="whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-[#1a1a18]">
+                {money(quote.total)}
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
+              <span className={`font-semibold tabular-nums ${tone(quote.daysLeft)}`}>{dayLabel(quote.daysLeft)} left</span>
+              <span className="text-[#8b8a81]">
+                Expires{' '}
+                {quote.expiresAt
+                  ? new Date(quote.expiresAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+                  : '-'}
+              </span>
+              <span className="text-[#8b8a81]">{quote.warnedAt ? 'Reminded' : 'Not reminded yet'}</span>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[680px] text-[13px]">
+          <thead>
+            <tr className="border-b border-[#edf4eb]">
+              {['Quote', 'Customer', 'Expires', 'Reminded', 'Left', 'Value'].map((column, index) => (
+                <th
+                  key={column}
+                  className={`px-4 py-[7px] text-[11px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] ${index > 3 ? 'text-right' : 'text-left'}`}
+                >
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {pageItems.map(quote => (
+              <tr key={quote.id} className="border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4]">
+                <td className="px-4 py-[9px]">
+                  <Link href={`/admin/quotes/${quote.id}`} className="font-mono text-[12px] text-[#1a1a18] hover:underline">
+                    {quote.number}
+                  </Link>
+                </td>
+                <td className="px-4 py-[9px] text-[#1a1a18]">{quote.customer || '-'}</td>
+                <td className="whitespace-nowrap px-4 py-[9px] text-[#5a5a52]">
+                  {quote.expiresAt
+                    ? new Date(quote.expiresAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+                    : '-'}
+                </td>
+                <td className="px-4 py-[9px] text-[#8b8a81]">{quote.warnedAt ? 'Yes' : 'Not yet'}</td>
+                <td className={`px-4 py-[9px] text-right font-semibold tabular-nums ${tone(quote.daysLeft)}`}>
+                  {dayLabel(quote.daysLeft)}
+                </td>
+                <td className="px-4 py-[9px] text-right tabular-nums text-[#1a1a18]">{money(quote.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <AdminPagination
+        label="quotes"
+        pageSize={REPORT_PAGE_SIZE}
+        page={page}
+        pageCount={pageCount}
+        totalItems={totalItems}
+        onPageChange={setPage}
+      />
+    </>
   )
 }
 

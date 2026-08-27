@@ -110,6 +110,18 @@ export async function POST(request, { params }) {
         // previous send) that already set viewed_at doesn't stop this send's
         // first genuine client view from being recorded.
         viewed_at: null,
+        // THE EXPIRY CLOCK RESTARTS WITH THE EMAIL.
+        //
+        // sent_at above is what the clock counts from, so re-sending already
+        // gives the customer their full validity again. This stamp has to be
+        // cleared with it, or the reminder from the FIRST send is still on
+        // record and the re-sent quote is archived without anybody ever being
+        // warned about the version they are actually holding.
+        expiry_warned_at: null,
+        // What the customer was shown, kept, so the reminder a few weeks later
+        // follows the same decision. A quote deliberately sent without a figure
+        // in the body must not have one turn up in a reminder nobody chose.
+        sent_with_price: includePrice,
         deposit_required: depositRequired,
         deposit_percent: depositRequired ? depositPercent : 0,
       })

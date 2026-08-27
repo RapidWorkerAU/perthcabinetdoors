@@ -11,7 +11,13 @@
 
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
-import { archivePatch, isArchived, restorePatch, QUOTE_RESTORE_FALLBACK } from "../../../../../../lib/pcd-archive";
+import {
+  ARCHIVED_MANUAL,
+  isArchived,
+  quoteArchivePatch,
+  quoteRestorePatch,
+  QUOTE_RESTORE_FALLBACK,
+} from "../../../../../../lib/pcd-archive";
 import { cancelOpenCheckouts } from "../../../../../../lib/pcd-deposit-gate";
 
 async function quoteIdFromParams(params) {
@@ -63,7 +69,13 @@ export async function POST(request, { params }) {
     // would then refuse to act on and hand back as a problem.
     if (archiving) await cancelOpenCheckouts(context.supabase, id, { status: "cancelled" });
 
-    const patch = archiving ? archivePatch(quote) : restorePatch(quote, QUOTE_RESTORE_FALLBACK);
+    // MANUAL, always, on this route. It is a person pressing a button. The only
+    // thing that writes 'expired' is the sweep in lib/pcd-quote-expiry.js, and
+    // keeping the two apart is what lets lead conversion go on counting a quote
+    // the customer never answered as a lost lead rather than as tidying up.
+    const patch = archiving
+      ? quoteArchivePatch(quote, ARCHIVED_MANUAL)
+      : quoteRestorePatch(quote, QUOTE_RESTORE_FALLBACK);
     const { data: saved, error: saveError } = await context.supabase
       .from("pcd_quotes")
       .update({ ...patch, updated_at: new Date().toISOString() })

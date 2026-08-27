@@ -78,6 +78,27 @@ export async function POST(request) {
       return Response.json({ ok: false, error: "This quote has already been responded to." }, { status: 409 });
     }
 
+    // AN EXPIRED QUOTE CANNOT BE ACCEPTED, and the viewer already refuses to
+    // load one. This is the same rule written a second time on purpose: a page
+    // left open in a tab before the quote expired still holds a working form,
+    // and the check that matters is the one on the write.
+    //
+    // See the matching refusal in ../get/route.js for the wording and why it
+    // does not use our word for it.
+    if (quote.status === "archived") {
+      return Response.json(
+        {
+          ok: false,
+          expired: true,
+          error:
+            "This quote has expired and can no longer be approved. If you would still like the work done, get " +
+            "in touch and we will put a fresh quote together for you. Prices and lead times may have changed " +
+            "since this one was prepared.",
+        },
+        { status: 410 }
+      );
+    }
+
     const now = new Date().toISOString();
     let orderId = null;
     let details = null;

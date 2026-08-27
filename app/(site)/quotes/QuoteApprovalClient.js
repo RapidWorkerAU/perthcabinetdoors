@@ -291,6 +291,10 @@ export default function QuoteApprovalClient() {
   const [clientName, setClientName] = useState("");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
+  // An expired quote is not a broken link, and the page must not read like one.
+  // Somebody who let a quote run out did nothing wrong and is owed a heading
+  // that says what happened rather than "Quote not found".
+  const [isExpired, setIsExpired] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(false);
@@ -370,6 +374,7 @@ export default function QuoteApprovalClient() {
         const payload = await readJsonResponse(response);
         if (!response.ok || !payload.ok) {
           setMessage(payload.error || "We could not load this quote.");
+          setIsExpired(Boolean(payload.expired));
           return;
         }
         setQuote(payload.quote);
@@ -461,7 +466,7 @@ export default function QuoteApprovalClient() {
   if (!quote) {
     return (
       <section className={styles.panel}>
-        <div className={styles.panelHeader}>Quote</div>
+        <div className={styles.panelHeader}>{isExpired ? "This quote has expired" : "Quote"}</div>
         <div className={styles.panelBody}>{message || "Quote not found."}</div>
       </section>
     );

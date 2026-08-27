@@ -68,6 +68,23 @@ jobs:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
+      # Both passes, so a quote is never archived more than half a day after the
+      # date the customer was told in writing. It also carries the weekly digest
+      # to sales@, which claims itself through pcd_job_stamps and so goes out on
+      # whichever pass first finds it due rather than on a schedule of its own.
+      #
+      # Runs regardless of the two above for the same reason they do: these jobs
+      # have nothing to do with each other.
+      - name: Expire and archive unanswered quotes
+        if: always()
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 120 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/quote-expiry"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
       # Only on the late pass. The mailbox read is the heavier of the two and
       # once a day is what it was always doing; this workflow is here for the
       # calendar's extra pass, not to double the mail sync.
