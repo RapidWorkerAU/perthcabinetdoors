@@ -7,6 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { fieldsForProductType } from "../lib/pcd-product-fields.js";
 
 import {
   HINGE_SIDES,
@@ -245,4 +246,59 @@ test("the design planner fills the fields instead of writing a sentence", () => 
   assert.match(design, /hingeSide: drills \? normaliseHingeSide/);
   assert.match(design, /hingeFromBottomMm: hasPositions \? positions\[0\] : null/);
   assert.ok(!design.includes("formatHingeNote"), "the sentence is gone from the notes");
+});
+
+// ── THE FIELDS HAVE TO BE REACHABLE, NOT JUST EXIST ─────────────────────────
+//
+// The quote editor's line is written twice: once as a table for a desktop and
+// once as a full screen sheet for a phone. The drilling fields were built, the
+// database carried them, the design tool worked them out and the customer's
+// form asked for them, and the button that opens them landed only in the phone
+// sheet. So on every desktop the quote editor asked whether to drill and how
+// many holes, and the four fields saying WHERE the cups go could not be opened
+// at all. Nothing failed; it just was not there.
+//
+// These pin the two things that were wrong, because neither shows up as a
+// broken build or a failing save.
+
+test("the drilling fields can be opened from the desktop table, not only the phone sheet", () => {
+  const editor = readFileSync(new URL("../app/admin/quotes/[id]/QuoteEditor.js", import.meta.url), "utf8");
+
+  // The line table specifically. There are several md:block / md:hidden pairs
+  // on this screen, so this anchors on the one class only the line table has.
+  const desktopStart = editor.indexOf('quoteStyles.quoteItemsTable');
+  const phoneStart = editor.indexOf('className="md:hidden flex flex-col gap-2"', desktopStart);
+  assert.ok(desktopStart > 0 && phoneStart > desktopStart, "the two layouts have moved, check this test still finds them");
+
+  const desktopTable = editor.slice(desktopStart, phoneStart);
+  assert.match(desktopTable, /openHingeModal\(/, "the desktop table has no way to reach the drilling fields");
+});
+
+test("both layouts ask one definition whether a type gets drilled", () => {
+  // These used to be worked out by comparing the type against the literal
+  // "Door" in the editor while the customer's form read pcd-product-fields.js,
+  // so there were two answers to the same question with nothing keeping them in
+  // step. They agreed only because there are five product types and one door.
+  const editor = readFileSync(new URL("../app/admin/quotes/[id]/QuoteEditor.js", import.meta.url), "utf8");
+  assert.match(editor, /from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/pcd-product-fields"/, "the editor does not read the shared definition");
+  assert.match(editor, /fieldsForProductType\(line\.product_type\)\.hinges === true/);
+  assert.ok(
+    !/product_type !== "Door"/.test(editor),
+    "the editor still decides for itself what a door is"
+  );
+  assert.ok(
+    !/normalizeProductTypeKey\(line\.product_type\) === normalizeProductTypeKey\("Door"\)/.test(editor),
+    "the editor still has its own hinge rule"
+  );
+});
+
+test("the definition still says a door is the only thing that gets drilled", () => {
+  // The rule the two screens now share. If this changes, both move together,
+  // which is the whole point of the change above.
+  assert.equal(fieldsForProductType("Door").hinges, true);
+  for (const type of ["Drawer front", "Panel", "Table top", "Hardware"]) {
+    assert.equal(fieldsForProductType(type).hinges, false, `${type} must not be drilled`);
+  }
+  // And a type nobody has heard of is not drilled, rather than defaulting to it.
+  assert.equal(fieldsForProductType("Something new").hinges, false);
 });

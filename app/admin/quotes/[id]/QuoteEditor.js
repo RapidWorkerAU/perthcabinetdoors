@@ -11,6 +11,9 @@ import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { asSelectionRows, useProfileLibrary } from "../../../../lib/use-profile-library";
+// What each kind of product is asked, shared with the customer's quote form so
+// the two cannot decide differently what a door needs. See lib/pcd-product-fields.js.
+import { fieldsForProductType, isHardwareType } from "../../../../lib/pcd-product-fields";
 import {
   edgesForSupplier,
   fieldsClearedBySupplierChange,
@@ -1201,9 +1204,18 @@ export default function QuoteEditor({ quoteId }) {
         const image = typeof edge === "string" ? "" : edge.image_url;
         return { name, label: name, meta: "Edge profile", src: image || edgeOptionSrc(name) };
       }),
-      isHardware: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Hardware"),
+      // WHAT THIS TYPE IS ASKED, FROM THE ONE DEFINITION.
+      //
+      // These two were worked out here, by comparing the type against a literal
+      // "Hardware" and a literal "Door". The quote form already reads
+      // lib/pcd-product-fields.js for the same questions, so there were two
+      // answers to "does a door get drilled" with nothing keeping them in step.
+      // They agreed only because there happen to be five product types and only
+      // one of them is a door; a sixth would have been offered hinge fields on
+      // the customer's form and refused them on ours.
+      isHardware: isHardwareType(line.product_type),
       isBenchtop: isBenchtopLine(line),
-      hingesApplicable: normalizeProductTypeKey(line.product_type) === normalizeProductTypeKey("Door"),
+      hingesApplicable: fieldsForProductType(line.product_type).hinges === true,
       colourSrc: colourSrcForLine(line, swatchIndex.byId, swatchIndex.byName),
       isBaseCabinet: isBaseCabinetLine(line),
     };
@@ -1535,7 +1547,9 @@ export default function QuoteEditor({ quoteId }) {
 
   function openHingeModal(index) {
     const line = index === editableLineIndex && editableLineDraft ? editableLineDraft : form.lines[index];
-    if (!line || line.product_type !== "Door") return;
+    // The same definition the row used to decide whether to offer the button,
+    // rather than a second comparison against the literal "Door".
+    if (!line || fieldsForProductType(line.product_type).hinges !== true) return;
     setHingeModal({
       lineIndex: index,
       hinge_holes: Boolean(line.hinge_holes),
@@ -1686,9 +1700,20 @@ export default function QuoteEditor({ quoteId }) {
         next.product_unit_cost_ex_gst = "";
         next.markup_percent = next.markup_percent ?? businessDefaults.markup_percent;
       }
-      if (patch.product_type !== "Door") {
+      // Changed to something that does not get drilled. The same definition the
+      // row and the modal use, rather than a third comparison against "Door".
+      //
+      // All six go, not just the first two. The saver already nulls the four
+      // positions once hinge_holes is false, so leaving them on the draft was
+      // never written anywhere, but it meant switching a door to a panel and
+      // back again brought the old handing with it, silently.
+      if (fieldsForProductType(patch.product_type).hinges !== true) {
         next.hinge_holes = false;
         next.hinge_qty = "";
+        next.hinge_side = "";
+        next.hinge_from_bottom_mm = "";
+        next.hinge_from_top_mm = "";
+        next.hinge_middles_mm = [];
       }
       if (patch.product_type !== BASE_CABINET_TYPE) {
         next.cabinet_config = null;
@@ -3137,6 +3162,32 @@ export default function QuoteEditor({ quoteId }) {
                           ) : (
                             <span className={hingesApplicable && !isBaseCabinet ? v1 : naText}>{hingesApplicable && !isBaseCabinet ? line.hinge_qty || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
                           )}
+
+                          {/* HANDING AND CUP POSITIONS, ON A DESKTOP AT LAST.
+                              This whole line is written twice, once as this
+                              table and once as a full screen sheet below for a
+                              phone, and the button that opens the drilling
+                              fields only ever landed in the phone one. So on
+                              any desktop the quote editor asked whether to
+                              drill and how many holes, and the four fields that
+                              say WHERE they go were unreachable: the design
+                              tool worked them out, the customer's form asked
+                              for them, the order carried them, and the one
+                              screen in the middle could not show them.
+
+                              It sits under the quantity rather than in a column
+                              of its own so no other cell has to move, and it is
+                              only offered once drilling is actually ticked. */}
+                          {hingesApplicable && !isBaseCabinet && line.hinge_holes ? (
+                            <button
+                              type="button"
+                              onClick={() => openHingeModal(index)}
+                              title={hasHingeConfig(line) ? hingeConfigLines(line).join(" · ") : "Set the handing and where the cups go"}
+                              className="mt-[3px] block w-full truncate rounded-[3px] border border-[#a8c5a0] bg-white px-[5px] py-[2px] text-left text-[10px] text-[#2d5e28] hover:bg-[#edf4eb] transition-colors"
+                            >
+                              {hasHingeConfig(line) ? hingeConfigLines(line)[0] : (isEditable ? "Set drilling" : "Not set")}
+                            </button>
+                          ) : null}
                         </td>
 
                         {/* Unit price */}
