@@ -85,6 +85,18 @@ jobs:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
+      # Only on the late pass. A day is folded once it is over, so twice a day
+      # would be the same work done twice for no benefit. It runs regardless of
+      # everything above it because counting visits has nothing to do with mail,
+      # money or quotes.
+      - name: Roll up yesterday's website visits
+        if: always() && (github.event.schedule == '0 22 * * *' || github.event_name == 'workflow_dispatch')
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 120             --header "Authorization: Bearer $CRON_SECRET"             "$SITE_URL/api/cron/site-rollup"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
       # Only on the late pass. The mailbox read is the heavier of the two and
       # once a day is what it was always doing; this workflow is here for the
       # calendar's extra pass, not to double the mail sync.

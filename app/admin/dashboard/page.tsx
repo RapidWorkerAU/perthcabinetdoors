@@ -1,26 +1,26 @@
+import { cookies } from 'next/headers'
 import AdminShell from '../_components/AdminShell'
 import { requireAdminSession } from '../../../lib/admin-guard'
 import { createSupabaseAdminClient } from '../../../lib/supabase/admin'
-import { loadBoard } from '../../../lib/pcd-board-load'
-import { rankBoardCards } from '../../../lib/pcd-action-queue'
-import { missingWords } from '../../../lib/pcd-board'
+import { loadSiteStats } from '../../../lib/pcd-site-stats'
 import DashboardClient from './DashboardClient'
+import { DETAIL_COOKIE, readDetail } from './_components/detail'
 
 export const dynamic = 'force-dynamic'
 
-// THE DASHBOARD IS THE TOP OF THE BOARD, RANKED.
+// THE DASHBOARD IS THE STAT STRIP AND THE WEBSITE.
 //
-// ── WHY IT IS NOT ITS OWN LIST ───────────────────────────────────────────────
+// ── WHAT USED TO BE HERE, AND WHY IT IS NOT ──────────────────────────────────
 //
-// It was, briefly, and it was wrong in the way that matters most: it built its
-// own idea of what needed doing from its own queries, so it knew nothing about
-// set aside. A card cleared off the board came straight back here, with no way
-// to clear it, which makes both screens untrustworthy at once.
+// A ranked list of what needed doing, taken off the board. It was accurate and
+// it was still the wrong thing to put here: it was the board a second time, one
+// click from the board, and the stat strip above it already links to every
+// screen it pointed at. Two places showing the same work is two places to keep
+// in step, and the board is the one that can set a card aside.
 //
-// There is now one definition of what needs doing, in lib/pcd-board.js, read by
-// lib/pcd-board-load.ts. The board shows all of it grouped into columns. This
-// shows the top eight, ranked. Set a card aside on the board and it leaves
-// both; it comes back to both when the thing it is about moves on.
+// So the queue is gone, and with it lib/pcd-action-queue.js, which existed only
+// to rank it. The board is the work list. This page is now about the one thing
+// the board cannot answer: whether the website is bringing anything in.
 //
 // ── IT SHOWS MONEY, AND IT NEVER TOTALS ANY ──────────────────────────────────
 //
@@ -30,17 +30,30 @@ export const dynamic = 'force-dynamic'
 // order total. Nobody doubts a total, so it went unnoticed for as long as the
 // dashboard had existed. See test/financials-page.test.mjs.
 //
-// Each row shows what ONE card is worth, beside that card, and nothing is added
-// up. A source that fails is named out loud by the board loader and said on the
-// panel, because a short list that looks like a quiet morning is the same fault
-// wearing a different hat.
+// Nothing on this page adds anything up. The counts below are counts of rows,
+// and every website figure arrives finished from lib/pcd-site-stats.js, which
+// also names any source that would not load so a failed query reads as a
+// warning rather than as a quiet week.
+//
+// ── THE PERIOD IS THE CALENDAR MONTH ─────────────────────────────────────────
+//
+// Which is what somebody means when they ask how the month is going. Seven and
+// ninety day windows are already built in lib/pcd-site-stats.js if a switcher
+// is ever wanted; nothing here would have to change but the argument.
 
 export default async function AdminDashboardPage() {
   await requireAdminSession()
   const supabase = createSupabaseAdminClient()
 
+  // How much detail this person wants, read from their own cookie so the server
+  // renders the right amount on the first paint. Browser storage could only be
+  // read after hydration, which would show one layout and then rearrange it
+  // while somebody was reading it. See _components/DetailToggle.tsx.
+  const jar = await cookies()
+  const detail = readDetail(jar.get(DETAIL_COOKIE)?.value)
+
   const [
-    board,
+    site,
     { count: newEnquiriesCount },
     { count: openQuotesCount },
     { count: activeOrdersCount },
@@ -48,7 +61,7 @@ export default async function AdminDashboardPage() {
     { count: pendingRequestsCount },
     { count: unpaidPaymentsCount },
   ] = await Promise.all([
-    loadBoard(supabase),
+    loadSiteStats(supabase, { period: 'month' }),
     supabase.from('pcd_enquiries').select('*', { count: 'exact', head: true }).eq('status', 'new'),
     // awaiting_deposit counts as an open quote. It is neither won nor lost: the
     // customer has said yes and the deposit has not arrived. Leaving it out
@@ -70,18 +83,6 @@ export default async function AdminDashboardPage() {
       .in('pcd_orders.status', ['pending_deposit', 'active', 'on_hold', 'complete']),
   ])
 
-  const queue = {
-    ...rankBoardCards(board.cards),
-    // What would not load, in the words of the work it affects rather than the
-    // name of a table. A query that errors returns no rows, and no rows reads
-    // as all clear. The board says it the same way, so the two agree.
-    problems: board.failed,
-    missing: missingWords(board.failed),
-    // How many were deliberately cleared. Said on the panel so an unusually
-    // short list is explained rather than mysterious.
-    setAsideCount: board.setAsideCount,
-  }
-
   const stats = {
     newEnquiries:    newEnquiriesCount    ?? 0,
     quoteRequests:   pendingRequestsCount ?? 0,
@@ -97,7 +98,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <AdminShell>
-      <DashboardClient stats={stats} queue={queue} todayLabel={todayLabel} />
+      <DashboardClient stats={stats} site={site} todayLabel={todayLabel} initialDetail={detail} />
     </AdminShell>
   )
 }

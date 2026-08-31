@@ -14,6 +14,11 @@ function isBypassedPath(pathname) {
     pathname === "/api/launch-access" ||
     pathname === "/api/launch-settings" ||
     pathname === "/api/enquiries" ||
+    // The visit counter. Left through the launch gate because it is called by
+    // sendBeacon as a page is being torn down: a redirect to /launch would be
+    // followed silently and write nothing, so the gated period would look like
+    // a week nobody visited.
+    pathname === "/api/track" ||
     pathname.startsWith("/quotes") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/images") ||

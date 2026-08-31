@@ -1,6 +1,7 @@
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
 import { normaliseSupplierName } from "@/lib/pcd-colour-library";
+import { PUBLIC_PRODUCT_TYPES, normaliseMaterialKey } from "@/lib/pcd-materials";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import PublicSiteNav from "../PublicSiteNav";
 import styles from "../journey.module.css";
@@ -9,7 +10,7 @@ import FinishesBrowser from "./FinishesBrowser";
 export const metadata = {
   title: "Colours, Door Profiles & Edge Details | Perth Cabinet Doors",
   description:
-    "Every colour we supply across Polytec, Laminex and Formica, all our door profiles and every edge detail. Filter by brand and finish, search by name, and view any of them larger.",
+    "Every colour we supply across Polytec, Laminex and Formica, all our door profiles and every edge detail. Filter by what you are making, by brand and by finish, search by name, and view any of them larger.",
 };
 
 export const dynamic = "force-dynamic";
@@ -68,9 +69,11 @@ async function loadColours() {
       if (!row.name || !row.finish_type) return;
       const supplier = titleCaseSupplier(row.supplier_name);
       const key = `${supplier}|${row.finish_type}|${row.name}`;
+      const materialKey = normaliseMaterialKey(row.material_type);
       const existing = byKey.get(key);
       if (existing) {
         if (row.thickness) existing.thicknesses.push(row.thickness);
+        if (materialKey) existing.materials.push(materialKey);
         if (!existing.imageUrl && row.image_url) existing.imageUrl = row.image_url;
         return;
       }
@@ -79,6 +82,12 @@ async function loadColours() {
         supplier,
         finish: row.finish_type,
         thicknesses: row.thickness ? [row.thickness] : [],
+        // A colour name can be pressed as a decorative board, as a
+        // thermolaminate, or as both, and one tile stands for all of them. This
+        // is what the product type filter reads, so it has to collect every
+        // material the colour is really pressed in rather than keep the first
+        // row that arrived.
+        materials: materialKey ? [materialKey] : [],
         imageUrl: row.image_url || null,
       });
     });
@@ -94,6 +103,7 @@ async function loadColours() {
         supplier: colour.supplier,
         finish: colour.finish,
         thickness: formatThickness(colour.thicknesses),
+        materials: [...new Set(colour.materials)],
         imageUrl: colour.imageUrl,
       }))
       .sort(
@@ -114,6 +124,12 @@ export default async function FinishesPage({ searchParams }) {
   // /finishes?tab=profiles is the link you send a customer who needs to pick
   // one thing, so they land on it rather than on the colours.
   const initialTab = ["colours", "profiles", "edges"].includes(params?.tab) ? params.tab : "colours";
+  // /finishes?product=profiled-fronts is the link to send somebody who has
+  // asked for a profiled door, so they land on the colours that can be made as
+  // one instead of on all 274 and the same question a second time.
+  const initialProductType = PUBLIC_PRODUCT_TYPES.some((type) => type.id === params?.product)
+    ? params.product
+    : "All";
 
   return (
     <>
@@ -126,16 +142,22 @@ export default async function FinishesPage({ searchParams }) {
             </div>
             <h1>Colours, Door Profiles &amp; Edge Details</h1>
             <p>
-              Everything we can make your doors, drawer fronts and panels in. Filter by brand and finish,
-              search by name, and click anything to see it larger. Every colour here is available across
-              doors, drawer fronts and panels, so a whole kitchen matches.
+              Everything we can make your doors, drawer fronts and panels in. Start with what you are
+              making. A routed profile is pressed into a vinyl wrapped front, so profiled doors and drawer
+              fronts come in the thermolaminate colours only, while flat fronts, panels and table tops can
+              also be decorative board. Filter by product type, brand and finish, search by name, and click
+              anything to see it larger.
             </p>
           </div>
         </header>
 
         <section className={styles.section}>
           <div className={styles.wrap}>
-            <FinishesBrowser colours={colours} initialTab={initialTab} />
+            <FinishesBrowser
+              colours={colours}
+              initialTab={initialTab}
+              initialProductType={initialProductType}
+            />
           </div>
         </section>
 

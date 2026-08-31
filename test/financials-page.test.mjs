@@ -18,7 +18,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const PAGE = readFileSync(new URL("../app/admin/financials/page.tsx", import.meta.url), "utf8");
 const CLIENT = readFileSync(new URL("../app/admin/financials/FinancialsClient.tsx", import.meta.url), "utf8");
@@ -103,16 +103,18 @@ test("the outstanding total says the period does not apply to it", () => {
 //
 // This used to be enforced by banning the string total_inc_gst from the
 // dashboard outright, which was the right blunt guard while the dashboard
-// carried a financial summary panel. The action queue that replaced Needs
-// attention does show a figure per row: what THAT quote is worth, what THAT
-// payment is owed, printed beside the row it came from.
+// carried a financial summary panel.
 //
 // That is not what went wrong. What went wrong was a failed query rendering as
 // a confident $0 on an order TOTAL, and nobody doubting a total. So the ban has
 // moved to the thing that actually caused it: nothing on the dashboard may add
 // figures up, and no query may have its error dropped. A source that fails is a
-// missing row and a yellow line saying the list is short, which is visible in a
-// way a wrong total never is.
+// missing figure and a yellow line saying so, which is visible in a way a wrong
+// total never is.
+//
+// The website panel that now fills this page is held to the same rule from the
+// other side: every one of its figures is worked out in lib/pcd-site-stats.js
+// and handed over finished, so neither dashboard file does arithmetic at all.
 test("the dashboard totals no money", () => {
   assert.ok(!DASH_CLIENT.includes("FinancialSummaryPanel"), "the financial panel is still on the dashboard");
   assert.ok(!DASH_PAGE.includes("markup_amount_ex_gst"), "the dashboard still reads the cost split");
@@ -121,24 +123,31 @@ test("the dashboard totals no money", () => {
   // is what this forbids.
   assert.ok(!/\breduce\s*\(/.test(DASH_PAGE), "the dashboard page is adding figures up");
   assert.ok(!/\breduce\s*\(/.test(DASH_CLIENT), "the dashboard panel is adding figures up");
-
-  // The queue counts rows, which is fine, and must never add their values.
-  const QUEUE = readFileSync(new URL("../lib/pcd-action-queue.js", import.meta.url), "utf8");
-  assert.ok(!/\+=\s*(toNumber|Number)\(/.test(QUEUE), "the queue is totalling values");
-  assert.ok(!/\.value\s*\+|\+\s*\w+\.value\b/.test(QUEUE), "the queue is adding row values together");
 });
 
-// The other half of the same fault: { data } read, { error } dropped. The
-// dashboard's list now comes from the board, which has always tracked which
-// SOURCE failed, so what this has to pin is that the dashboard carries that
-// through to the screen rather than dropping it on the way.
-test("a dashboard query that fails says so instead of returning nothing", () => {
-  const LOADER = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
-  assert.match(LOADER, /failed\.add\(/, "the board loader is not tracking failed sources");
-  assert.match(LOADER, /failed: Array\.from\(failed\)/, "and it has to hand them back");
+// THE LIST OF WHAT NEEDS DOING IS THE BOARD'S JOB, AND ONLY THE BOARD'S.
+//
+// The dashboard carried a ranked copy of it for a while. It was accurate and it
+// was still wrong to have: the same work in two places is two places to keep in
+// step, and only one of them can set a card aside. It is gone, and so is
+// lib/pcd-action-queue.js, which existed only to rank it.
+test("the dashboard does not keep a second copy of the board", () => {
+  assert.ok(!DASH_PAGE.includes("loadBoard"), "the dashboard is reading the board again");
+  assert.ok(!DASH_PAGE.includes("rankBoardCards"), "the dashboard is ranking board cards again");
+  assert.ok(!existsSync(new URL("../lib/pcd-action-queue.js", import.meta.url)), "the ranking lib is back");
+});
 
-  assert.match(DASH_PAGE, /problems: board\.failed/, "the dashboard is dropping them on the way through");
-  assert.match(DASH_CLIENT, /queue\.problems\.length > 0/, "and shown, or the queue is quietly short");
+// The other half of the original fault: { data } read, { error } dropped. What
+// this has to pin is that a source which will not load reaches the screen as a
+// warning rather than as an empty panel, because an empty panel and a broken
+// query look identical and the second one is the dangerous one.
+test("a dashboard query that fails says so instead of returning nothing", () => {
+  const STATS = readFileSync(new URL("../lib/pcd-site-stats.js", import.meta.url), "utf8");
+  assert.match(STATS, /problems\.push\(/, "the site stats loader is not tracking failed sources");
+  assert.match(STATS, /problems: \[\.\.\.new Set\(problems\)\]/, "and it has to hand them back");
+
+  const PANELS = readFileSync(new URL("../app/admin/dashboard/_components/WebsitePanels.tsx", import.meta.url), "utf8");
+  assert.match(PANELS, /site\.problems\.length > 0/, "or the panel is quietly short and nobody is told");
 });
 
 // The pair that references each other in both directions, on this page too.

@@ -4,6 +4,11 @@ out
 .env
 .env.local
 .env.production
+# Anything alongside them. A hand made copy called .env.local.bak or .env.old
+# holds every secret the real one does, and the exact names above would let it
+# through.
+.env.*
+!.env.example
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

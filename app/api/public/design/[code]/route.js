@@ -4,6 +4,7 @@
 
 import { createSupabaseAdminClient } from "../../../../../lib/supabase/admin";
 import { resolvePublicProject, clampRoom } from "../../../../../lib/pcd-public-design";
+import { cleanDesignName, isUsableDesignName } from "../../../../../lib/pcd-design-name";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +39,16 @@ export async function PATCH(request, { params }) {
     const project = await resolvePublicProject(supabase, code);
     if (!project) return Response.json({ ok: false, error: "Design not found." }, { status: 404 });
 
-    // Rename the design (visitor may title it before saving/submitting).
-    if (typeof body?.name === "string" && body.name.trim()) {
-      await supabase.from("pcd_design_projects").update({ name: body.name.trim().slice(0, 120) }).eq("id", project.id);
+    // Rename the design. The same cleaning as creating one, so a design cannot
+    // be renamed into something the create route would have refused. A name too
+    // short to be one is ignored rather than saved, which leaves the design
+    // called whatever it was rather than blanking it.
+    if (typeof body?.name === "string") {
+      if (isUsableDesignName(body.name)) {
+        await supabase.from("pcd_design_projects").update({ name: cleanDesignName(body.name) }).eq("id", project.id);
+      } else if (body.name.trim()) {
+        return Response.json({ ok: false, error: "Please give the design a longer name." }, { status: 422 });
+      }
     }
 
     // Update the (single) room's size — clamped to sane limits.

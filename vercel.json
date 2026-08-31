@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/quote-expiry",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/site-rollup",
+      "schedule": "0 18 * * *"
     }
   ]
 }

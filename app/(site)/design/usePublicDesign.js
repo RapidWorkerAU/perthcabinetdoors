@@ -13,6 +13,7 @@ import { findOverlappingItemIds } from "../../admin/design/_components/DesignCan
 import { buildColourImageMap, COLOUR_IMAGE_MATERIALS } from "../../../lib/pcd-colour-images";
 import { findFreeWallSlot } from "../../../lib/pcd-plan-geometry";
 import { publicItemDefaults } from "../../../lib/pcd-public-parts";
+import { isPlaceholderDesignName } from "../../../lib/pcd-design-name";
 
 const CODE_STORAGE_KEY = "pcd_public_design_code";
 const FALLBACK_CARCASS_DEFAULT = {
@@ -112,6 +113,19 @@ function persistCode(code) {
   }
 }
 
+// Starting over has to forget the code in BOTH places. Clearing only the stored
+// one leaves ?c= in the address bar, and the next reload would quietly resume
+// the design somebody had just chosen to abandon.
+function forgetCode() {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.removeItem(CODE_STORAGE_KEY); } catch { /* private mode */ }
+  const url = new URL(window.location.href);
+  if (url.searchParams.has("c")) {
+    url.searchParams.delete("c");
+    window.history.replaceState(null, "", url.toString());
+  }
+}
+
 export default function usePublicDesign() {
   const [code, setCode] = useState(null);
   const [project, setProject] = useState(null);
@@ -123,7 +137,26 @@ export default function usePublicDesign() {
   const [saveError, setSaveError] = useState(null);
   const [colourImages, setColourImages] = useState(null);
   const [carcassDefault, setCarcassDefault] = useState(FALLBACK_CARCASS_DEFAULT);
+  // NOTHING IS CREATED UNTIL THE DESIGN HAS A NAME.
+  //
+  // This used to boot straight into an empty room and create the row on the
+  // way, which is why every public design in the admin list was called "My
+  // design": the planner had to write something and never asked for anything
+  // better. Now the first screen is one field, and somebody who opens the
+  // planner and thinks better of it leaves no row behind at all.
+  const [needsName, setNeedsName] = useState(false);
+  const [naming, setNaming] = useState(false);
+  // Whether the gate is naming a design that already exists rather than
+  // creating one. Every design made before the planner asked is called "My
+  // design", and somebody coming back to one of those has to be asked too, or
+  // the admin list stays unreadable for as long as anybody keeps using an old
+  // session.
+  const [namingExisting, setNamingExisting] = useState(false);
   const bootedRef = useRef(false);
+  // The code as a ref as well as state. The gate answers in the same tick the
+  // code was set, and a callback closed over the state would still be holding
+  // the previous render's value, which is null.
+  const codeRef = useRef(null);
 
   useEffect(() => { let live = true; fetchColourImageMap().then((m) => { if (live) setColourImages(m); }); return () => { live = false; }; }, []);
   useEffect(() => { let live = true; fetchCarcassDefault().then((m) => { if (live) setCarcassDefault(m); }); return () => { live = false; }; }, []);
@@ -133,20 +166,89 @@ export default function usePublicDesign() {
 
   const applyLoad = useCallback((data) => {
     setCode(data.code);
+    codeRef.current = data.code;
     setProject(data.project);
     setRoom((data.rooms && data.rooms[0]) || data.room || null);
     setItems((data.items || []).map((item) => applyCarcassDefault(item, carcassDefault)));
     persistCode(data.code);
   }, [carcassDefault]);
 
-  const startFresh = useCallback(async () => {
-    const res = await fetch("/api/public/design", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const startFresh = useCallback(async (name) => {
+    const res = await fetch("/api/public/design", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "Could not start a design.");
     applyLoad(data);
   }, [applyLoad]);
 
-  // Bootstrap: resume an existing session or create one. Runs once.
+  /**
+   * Rename by code rather than by reading state.
+   *
+   * Declared before the two that use it: a dependency array is read while the
+   * component renders, so a const referenced above where it is defined is a
+   * crash rather than a hoisted function.
+   */
+  const renameDesignByCode = useCallback(async (theCode, name) => {
+    if (!theCode) return { ok: false, error: "No design to rename yet." };
+    try {
+      const res = await fetch(`/api/public/design/${encodeURIComponent(theCode)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) return { ok: false, error: data.error || "Could not rename the design." };
+      if (data.project) setProject(data.project);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Could not rename the design. Please check your connection." };
+    }
+  }, []);
+
+  /** Rename the design that is open, from the planner. */
+  const renameDesign = useCallback((name) => renameDesignByCode(codeRef.current, name), [renameDesignByCode]);
+
+  /**
+   * The answer to the first screen.
+   *
+   * Two jobs, because the screen has two reasons to be up. With no design yet
+   * it creates one. With a resumed design that never got a real name it renames
+   * THAT one, so somebody's existing work is not thrown away to get a name onto
+   * it. Deliberately one function: the screen should not have to know which
+   * case it is in to do the one thing it does.
+   */
+  const nameAndStart = useCallback(async (name) => {
+    setNaming(true);
+    // Cleared rather than set on failure: the gate shows its own message
+    // inline, and a stale error here would put the full screen error page up
+    // behind it the moment the gate closed.
+    setError(null);
+    try {
+      if (codeRef.current) {
+        const renamed = await renameDesignByCode(codeRef.current, name);
+        if (!renamed.ok) return renamed;
+      } else {
+        await startFresh(name);
+      }
+      setNeedsName(false);
+      setNamingExisting(false);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || "Could not start your design." };
+    } finally {
+      setNaming(false);
+    }
+  }, [renameDesignByCode, startFresh]);
+
+  // Bootstrap: resume an existing session, or ask for a name. Runs once.
+  //
+  // A code that no longer resolves falls through to the naming screen rather
+  // than silently starting a new design, because somebody arriving on a shared
+  // link that has expired should be told they are starting something new rather
+  // than being dropped into an empty room that looks like theirs.
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
@@ -156,17 +258,32 @@ export default function usePublicDesign() {
         const existing = readInitialCode();
         if (existing) {
           const res = await fetch(`/api/public/design/${encodeURIComponent(existing)}`);
-          if (res.ok) { const data = await res.json(); if (data.ok) { applyLoad(data); return; } }
-          // stale/invalid code, fall through to a fresh session
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok) {
+              applyLoad(data);
+              // A design made before the planner asked is called "My design".
+              // Resuming one goes through the gate too, so the back catalogue
+              // gets named as people come back to it rather than keeping the
+              // shared name for ever. Their work is untouched: answering it
+              // renames this design rather than starting another.
+              if (isPlaceholderDesignName(data.project?.name)) {
+                setNamingExisting(true);
+                setNeedsName(true);
+              }
+              return;
+            }
+          }
+          forgetCode();
         }
-        await startFresh();
+        setNeedsName(true);
       } catch (err) {
         setError(err?.message || "Could not start the design tool.");
       } finally {
         setLoading(false);
       }
     })();
-  }, [applyLoad, startFresh]);
+  }, [applyLoad]);
 
   // ---- mutations ----
 
@@ -274,9 +391,19 @@ export default function usePublicDesign() {
     if (res.ok && data.ok) { setRoom((data.rooms && data.rooms[0]) || room); if (data.project) setProject(data.project); }
   }
 
-  async function startOver() {
-    setLoading(true); setSelectedItemId(null);
-    try { await startFresh(); } catch (err) { setError(err?.message || "Could not start over."); } finally { setLoading(false); }
+  // Back to the first screen rather than straight into a new empty room, so a
+  // second design gets named the same way the first one did.
+  function startOver() {
+    forgetCode();
+    setSelectedItemId(null);
+    setItems([]);
+    setRoom(null);
+    setProject(null);
+    setCode(null);
+    codeRef.current = null;
+    setError(null);
+    setNamingExisting(false);
+    setNeedsName(true);
   }
 
   // "Send my design to PCD" → creates a quote request from this design.
@@ -300,6 +427,8 @@ export default function usePublicDesign() {
   return {
     code, project, room, items, selectedItem, selectedItemId, setSelectedItemId,
     loading, error, saveError, dismissSaveError: () => setSaveError(null),
+    needsName, naming, namingExisting, nameAndStart, renameDesign,
+    designName: project?.name || "",
     colourImages,
     addItem, duplicateItem, updateItem, handleItemDragEnd, deleteItem, updateRoom, startOver, submitToPcd,
     overlappingItemIds,

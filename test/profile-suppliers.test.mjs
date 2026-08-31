@@ -131,8 +131,14 @@ test("the brand filter works on every tab, not only on colours", () => {
 
 // The brand list has to describe what is on screen. Built from the colours it
 // would offer brands that say nothing about the profiles being looked at.
+//
+// It reads `scoped` rather than `dataset` since the product type filter went in:
+// same thing, with what you are making taken off it first, so choosing profiled
+// fronts and then opening the brand list cannot offer a brand with nothing left
+// under it.
 test("the brand list is built from whatever tab is open", () => {
-  assert.match(BROWSER, /dataset\.forEach\(\(item\) => \{[\s\S]{0,120}item\.supplier/);
+  assert.match(BROWSER, /scoped\.forEach\(\(item\) => \{[\s\S]{0,120}item\.supplier/);
+  assert.match(BROWSER, /const scoped = useMemo\(\(\) => dataset\.filter/);
 });
 
 // ── THE LAMINEX RANGE ──────────────────────────────────────────────────────

@@ -51,6 +51,9 @@ import {
   detectSupports,
 } from "../../../lib/pcd-shelf-rail-utils";
 import usePublicDesign from "./usePublicDesign";
+import DesignNameGate from "./DesignNameGate";
+import DesignNameField from "./DesignNameField";
+import { isUsableDesignName } from "../../../lib/pcd-design-name";
 import PinchZoom from "../../admin/design/_components/PinchZoom";
 
 const Design3DView = dynamic(() => import("../../admin/design/_components/Design3DView"), {
@@ -312,6 +315,7 @@ export default function PublicDesignClient() {
   const [narrow, setNarrow] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false); // narrow: room sheet
   const [startOverOpen, setStartOverOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   // Windows, doorways and fridge spaces are there to plan around, not things we
   // make, so a design holding only those has nothing to send.
@@ -514,6 +518,13 @@ export default function PublicDesignClient() {
       </div>
     );
   }
+  // BEFORE THE ROOM, THE NAME. Checked ahead of the error branch below on
+  // purpose: there is no room yet at this point and there is not meant to be,
+  // so falling through would show "Couldn't load your room" to somebody who has
+  // not started one.
+  if (d.needsName) {
+    return <DesignNameGate onStart={d.nameAndStart} busy={d.naming} resuming={d.namingExisting} />;
+  }
   if (d.error || !d.room) {
     return (
       <div style={{ ...shell, alignItems: "center", justifyContent: "center", gap: 12, textAlign: "center", padding: 24 }}>
@@ -599,6 +610,8 @@ export default function PublicDesignClient() {
           moreOpen={mobileMoreOpen}
           setMoreOpen={setMobileMoreOpen}
           onRoom={() => { setMobileMoreOpen(false); setRoomOpen(true); }}
+          onRename={() => { setMobileMoreOpen(false); setRenameOpen(true); }}
+          designName={d.designName}
           onSave={() => { setMobileMoreOpen(false); setSavePanel((s) => !s); }}
           onStartOver={() => { setMobileMoreOpen(false); setStartOverOpen(true); }}
           onSubmit={() => { setMobileMoreOpen(false); setSubmitOpen(true); }}
@@ -612,7 +625,20 @@ export default function PublicDesignClient() {
           left={<>
             <Link href="/" style={{ color: "#f3f1ea", textDecoration: "none", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>Perth Cabinet Doors</Link>
             <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>·</span>
-            <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", whiteSpace: "nowrap" }}>Room planner</span>
+            {/* The design's name rather than "Room planner", which said nothing
+                somebody did not already know. Clicking it renames. */}
+            <button
+              type="button"
+              onClick={() => setRenameOpen(true)}
+              title="Rename this design"
+              style={{
+                background: "none", border: 0, padding: "2px 4px", borderRadius: 6, cursor: "pointer",
+                font: "inherit", fontSize: 13, color: "rgba(255,255,255,0.88)",
+                maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+            >
+              {d.designName || "Untitled design"}
+            </button>
           </>}
           right={<>
             <span style={{ position: "relative" }}>
@@ -732,11 +758,19 @@ export default function PublicDesignClient() {
         <SubmitModal items={d.items} room={d.room} colourImages={d.colourImages} onSubmit={d.submitToPcd} onClose={() => setSubmitOpen(false)} />
       )}
 
+      {renameOpen && (
+        <RenameDesignModal
+          currentName={d.designName}
+          onRename={d.renameDesign}
+          onClose={() => setRenameOpen(false)}
+        />
+      )}
+
       {startOverOpen && (
         <ConfirmModal
           title="Start a new design?"
-          body="Your current design stays saved under its link, so you can always come back to it. This gives you an empty room to start again."
-          confirmLabel="Start a new design"
+          body="Your current design stays saved under its link, so you can always come back to it. You will be asked to name the new one before you start."
+          confirmLabel="Name a new design"
           onConfirm={() => { setStartOverOpen(false); d.startOver(); }}
           onClose={() => setStartOverOpen(false)}
         />
@@ -910,6 +944,8 @@ function MobilePublicTopBar({
   moreOpen,
   setMoreOpen,
   onRoom,
+  onRename,
+  designName,
   onSave,
   onStartOver,
   onSubmit,
@@ -920,7 +956,20 @@ function MobilePublicTopBar({
     <div style={{ flexShrink: 0, background: C.bar, color: C.barText, padding: "max(8px, env(safe-area-inset-top)) 10px 8px", zIndex: 20, display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
       <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/" style={{ color: C.barText, textDecoration: "none", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Perth Cabinet Doors</Link>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>Room planner</span>
+        {/* The design's name rather than "Room planner". On a phone this is the
+            only place it appears, so it is worth the line. */}
+        <button
+          type="button"
+          onClick={onRename}
+          title="Rename this design"
+          style={{
+            background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer", font: "inherit",
+            fontSize: 11, color: "rgba(255,255,255,0.62)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}
+        >
+          {designName || "Untitled design"}
+        </button>
       </div>
       <select
         aria-label="View"
@@ -942,6 +991,7 @@ function MobilePublicTopBar({
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 21 }} onClick={() => setMoreOpen(false)} />
             <div role="menu" style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 22, width: 190, background: "#fff", color: C.ink, border: `1px solid ${C.edge}`, borderRadius: 10, boxShadow: "0 14px 34px rgba(0,0,0,0.24)", padding: 6, display: "flex", flexDirection: "column", gap: 2 }}>
+              <MobileMenuButton onClick={onRename}>Rename design</MobileMenuButton>
               <MobileMenuButton onClick={onRoom}>Room size</MobileMenuButton>
               <MobileMenuButton onClick={onSave}>Save / share</MobileMenuButton>
               <MobileMenuButton onClick={onStartOver}>Start over</MobileMenuButton>
@@ -2547,6 +2597,72 @@ function ConfirmModal({ title, body, confirmLabel = "Yes, continue", cancelLabel
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" style={btn} onClick={onClose}>{cancelLabel}</button>
             <button type="button" style={btnPrimary} onClick={onConfirm} autoFocus>{confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// RENAMING, from inside the planner.
+//
+// The same field as the first screen, so the two never drift apart in what they
+// accept or in how the placeholder behaves. It opens holding the current name
+// rather than empty, because this is an edit and starting from blank would make
+// a small correction into retyping the whole thing.
+function RenameDesignModal({ currentName, onRename, onClose }) {
+  const [name, setName] = useState(currentName || "");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ready = isUsableDesignName(name) && name.trim() !== (currentName || "").trim();
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function save() {
+    if (!ready || busy) return;
+    setBusy(true);
+    setError("");
+    const result = await onRename(name);
+    setBusy(false);
+    if (result && result.ok === false) { setError(result.error || "Could not rename the design."); return; }
+    onClose();
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000 }} />
+      <div role="dialog" aria-modal="true" aria-label="Rename this design"
+        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 1001, width: "min(420px, 92vw)", background: "#fff", borderRadius: 14, boxShadow: "0 24px 64px rgba(0,0,0,0.35)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", borderBottom: `1px solid ${C.edge}` }}>
+          <strong style={{ fontSize: 15, color: C.ink }}>Rename this design</strong>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.edge}`, background: "#fff", cursor: "pointer", color: C.soft }}>✕</button>
+        </div>
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+          <DesignNameField
+            id="rename-design"
+            label="Design name"
+            value={name}
+            onChange={(next) => { setName(next); if (error) setError(""); }}
+            onSubmit={save}
+            autoFocus
+            disabled={busy}
+            hint="Whatever helps you tell this design from your others."
+          />
+          {error && <p style={{ margin: 0, fontSize: 13, color: "#b4442f", lineHeight: 1.5 }}>{error}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" style={{ ...btn, flex: 1 }} onClick={onClose}>Cancel</button>
+            <button
+              type="button"
+              style={{ ...btnPrimary, flex: 1, opacity: ready && !busy ? 1 : 0.55, cursor: ready && !busy ? "pointer" : "not-allowed" }}
+              disabled={!ready || busy}
+              onClick={save}
+            >
+              {busy ? "Saving…" : "Save name"}
+            </button>
           </div>
         </div>
       </div>

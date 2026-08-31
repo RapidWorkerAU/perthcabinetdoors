@@ -294,6 +294,20 @@
   text-transform: uppercase;
 }
 
+/* Which board the colour is pressed in. Green rather than grey because it is
+   the line that answers "can I have this as a profiled door", not another piece
+   of catalogue detail to skim past. */
+.tileMaterials {
+  color: #4a7a42;
+  display: block;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-top: 3px;
+  text-transform: uppercase;
+}
+
 .moreWrap {
   margin-top: 22px;
   text-align: center;
