@@ -149,7 +149,11 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 
 const ADDRESS_SCREENS = [
   "app/admin/quotes/[id]/QuoteEditor.js",
-  "app/admin/quotes/QuotesManager.js",
+  // QuotesManager.js was on this list and has been deleted. It was orphaned:
+  // /admin/quotes renders QuotesTable, nothing imported QuotesManager, and
+  // docs/admin-style-audit.md had said to delete it for months. It was still
+  // carrying its own copy of the built-in 40% markup, so every search for
+  // hard coded pricing kept turning it up as though it were live.
   "app/admin/orders/[id]/OrderDetail.js",
   "app/admin/customers/CustomersManager.tsx",
   "app/admin/design/_components/ImportModal.js",

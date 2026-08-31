@@ -1368,6 +1368,24 @@ export default function QuoteEditor({ quoteId }) {
   // creation path, and the rows already carrying the old wording are repaired by
   // supabase/202608171600_pcd_repair_legacy_quote_terms.sql.
   useEffect(() => {
+    // NOTHING IS FILLED IN UNTIL THE REAL SETTINGS ARE HERE.
+    //
+    // THE BUG THIS EXISTS FOR, which came back a second time through this very
+    // effect. businessDefaults starts as the built-in constants, so on mount
+    // this ran with markup 40 and stamped it into the blank line. The real
+    // settings arrived a moment later, the effect ran again, and by then the
+    // markup was 40 rather than blank, so `isBlank` skipped it and the
+    // configured rate never reached the line. On screen it looked exactly like
+    // a markup somebody had chosen.
+    //
+    // The guard is the whole fix. A blank markup already means "use the
+    // configured one" everywhere it is read, including calculateQuoteLine on
+    // the server, so waiting costs nothing and prices correctly in the gap. If
+    // the settings never load at all the line stays blank, the banner says the
+    // defaults could not be read, and the server prices it from its own copy
+    // rather than from a number this screen invented.
+    if (!defaultsLoaded) return;
+
     const isBlank = (value) => value === "" || value === null || value === undefined;
     // A STORED ZERO HOURLY RATE IS NOT A DECISION, it is a column that was never
     // filled in, and normalizeBusinessDefaults already prices it at the
@@ -1388,7 +1406,7 @@ export default function QuoteEditor({ quoteId }) {
       ),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessDefaults, form.id]);
+  }, [businessDefaults, defaultsLoaded, form.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1698,7 +1716,10 @@ export default function QuoteEditor({ quoteId }) {
         next.hinge_holes = false;
         next.hinge_qty = "";
         next.product_unit_cost_ex_gst = "";
-        next.markup_percent = next.markup_percent ?? businessDefaults.markup_percent;
+        // Left alone rather than topped up. A blank markup already means "use
+        // the configured one", and reading businessDefaults here would write the
+        // built-in constant onto the line whenever the settings had not loaded.
+        next.markup_percent = next.markup_percent ?? "";
       }
       // Changed to something that does not get drilled. The same definition the
       // row and the modal use, rather than a third comparison against "Door".
@@ -2203,7 +2224,11 @@ export default function QuoteEditor({ quoteId }) {
           ...cabinetPayload.line_item_patch,
           cabinet_config: cabinetPayload,
           qty: line.qty || 1,
-          markup_percent: line.markup_percent ?? businessDefaults.markup_percent,
+          // Blank means inherit. See the note on the defaults effect above:
+          // reading businessDefaults here writes 40 onto the line whenever the
+          // settings have not come back yet, and 40 is not blank, so nothing
+          // ever puts it right.
+          markup_percent: line.markup_percent ?? "",
         };
       }),
     };
@@ -3076,7 +3101,12 @@ export default function QuoteEditor({ quoteId }) {
                               <span className="flex h-full items-center border-l border-[#a8c5a0] bg-[#f5f8f4] px-[5px] text-[10px] text-[#8b8a81]">%</span>
                             </div>
                           ) : (
-                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">{line.markup_percent ?? businessDefaults.markup_percent}%</span>
+                            // Showing a figure is fine; showing the built-in constant as
+                            // though it were the configured one is not. Until the settings
+                            // are in, this says nothing.
+                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
+                              {line.markup_percent ?? (defaultsLoaded ? businessDefaults.markup_percent : "")}%
+                            </span>
                           )}
                         </td>
 

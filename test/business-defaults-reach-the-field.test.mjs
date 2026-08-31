@@ -19,7 +19,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS } from "../lib/pcd-quote-utils.js";
 
@@ -193,5 +193,83 @@ test("a new line never carries the built-in markup", () => {
   assert.ok(
     !/emptyLineWithDefaults\(businessDefaults\)/.test(EDITOR),
     "a call site still assumes the defaults are loaded"
+  );
+});
+
+// ── THE SAME FAULT, THE SECOND AND THIRD TIMES ──────────────────────────────
+//
+// The test above pinned emptyLineWithDefaults and stopped there, so the fault
+// came straight back through two doors it was not watching.
+//
+// FIRST: the effect that fills blanks from the defaults. businessDefaults
+// starts as the built-in constants, so on mount it ran with markup 40 and wrote
+// it into the blank line. The real settings landed a moment later, the effect
+// ran again, and the markup was no longer blank so it was skipped. The
+// configured rate never reached the line and 40 sat there looking chosen.
+//
+// SECOND: the variations editor. Its emptyLine() correctly returns a blank
+// markup, and then four separate callers overwrote it with businessDefaults on
+// the very next line.
+//
+// So the rule is not about one function. It is: NOTHING WRITES A MARKUP FROM
+// THE DEFAULTS UNTIL THE DEFAULTS ARE REAL. Blank already means "use the
+// configured one" everywhere it is read, including calculateQuoteLine on the
+// server, so waiting costs nothing.
+
+const VARIATIONS = readFileSync(
+  new URL("../app/admin/orders/[id]/variations/[variationId]/VariationEditor.js", import.meta.url),
+  "utf8"
+);
+
+test("the effect that fills blanks waits for the real settings", () => {
+  const start = EDITOR.indexOf("// NOTHING IS FILLED IN UNTIL THE REAL SETTINGS ARE HERE.");
+  assert.ok(start > 0, "the guarded effect could not be found");
+  const effect = EDITOR.slice(start, EDITOR.indexOf("}, [businessDefaults, defaultsLoaded, form.id]);", start));
+
+  const guard = effect.indexOf("if (!defaultsLoaded) return;");
+  const writes = effect.indexOf("markup_percent: businessDefaults.markup_percent");
+  assert.ok(guard > -1, "the effect runs before the settings have loaded");
+  assert.ok(writes > -1, "the effect no longer fills the markup, so this test is watching nothing");
+  assert.ok(guard < writes, "the guard is below the write it is supposed to prevent");
+
+  // In the deps as well, or it never re-runs when the settings do arrive and
+  // the line stays blank for ever.
+  assert.match(EDITOR, /\}, \[businessDefaults, defaultsLoaded, form\.id\]\);/);
+});
+
+test("no screen writes a markup from the defaults without checking they are real", () => {
+  // Every assignment of a markup FROM the defaults, anywhere in either editor.
+  // Each one has to be on a line that also checks defaultsLoaded, or inside the
+  // guarded effect above. Anything else is the same bug wearing a new hat.
+  const ASSIGNS = /markup_percent(?::|\s*=)[^\n]*(?:businessDefaults|DEFAULT_BUSINESS_DEFAULTS)\.markup_percent/;
+
+  const guardedEffectLine = "isBlank(line.markup_percent) ? { ...line, markup_percent: businessDefaults.markup_percent } : line";
+
+  [["QuoteEditor", EDITOR], ["VariationEditor", VARIATIONS]].forEach(([name, source]) => {
+    source.split("\n").forEach((line, index) => {
+      if (!ASSIGNS.test(line)) return;
+      const ok = line.includes("defaultsLoaded") || line.trim() === guardedEffectLine.trim();
+      assert.ok(ok, `${name}:${index + 1} writes a markup from the defaults unguarded: ${line.trim()}`);
+    });
+  });
+});
+
+test("the variations editor leaves a new line's markup blank", () => {
+  // Four callers used to undo emptyLine()'s blank on the very next line.
+  assert.match(VARIATIONS, /markup_percent: "",/, "emptyLine no longer starts blank");
+  assert.ok(
+    !/\.\.\.emptyLine\(\)[^\n]*markup_percent: businessDefaults/.test(VARIATIONS),
+    "a caller still stamps the built-in markup onto a fresh line"
+  );
+});
+
+test("the orphaned quotes screen that carried its own copy is gone", () => {
+  // QuotesManager.js was not imported by anything: /admin/quotes renders
+  // QuotesTable. It still held its own `?? DEFAULT_BUSINESS_DEFAULTS.markup_percent`,
+  // so every search for hard coded pricing turned it up as though it were live,
+  // which is a large part of why this kept being reported as unfixed.
+  assert.ok(
+    !existsSync(new URL("../app/admin/quotes/QuotesManager.js", import.meta.url)),
+    "the orphaned quotes manager is back"
   );
 });

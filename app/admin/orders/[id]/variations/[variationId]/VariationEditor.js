@@ -648,11 +648,11 @@ export default function VariationEditor({ orderId, variationId }) {
 
   function changeLineDraftAction(action) {
     if (action === "add") {
-      setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, markup_percent: businessDefaults.markup_percent, notes: current.notes }));
+      setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, notes: current.notes }));
       return;
     }
     if (action === "price_adjustment") {
-      setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, title: "Price adjustment", markup_percent: businessDefaults.markup_percent, notes: current.notes }));
+      setLineDraft((current) => ({ ...emptyLine(), id: current.id, action, title: "Price adjustment", notes: current.notes }));
       return;
     }
     if (action === JOB_COST_ACTION) {
@@ -680,7 +680,7 @@ export default function VariationEditor({ orderId, variationId }) {
 
   function openAddLineModal() {
     setEditingLineId(null);
-    setLineDraft({ ...emptyLine(), markup_percent: businessDefaults.markup_percent });
+    setLineDraft({ ...emptyLine() });
     setIsAddLineModalOpen(true);
   }
 
@@ -771,7 +771,9 @@ export default function VariationEditor({ orderId, variationId }) {
       product_unit_cost_ex_gst: item?.product_unit_cost_ex_gst || "",
       original_line_total_ex_gst: item?.line_total_ex_gst || 0,
       proposed_line_total_ex_gst: current.action === "remove" ? 0 : item?.line_total_ex_gst || 0,
-      markup_percent: item?.markup_percent ?? current.markup_percent ?? businessDefaults.markup_percent,
+      // Whatever the line already carries, or blank. Never the built-in
+      // constant: 40 is not blank, so once it is written nothing puts it right.
+      markup_percent: item?.markup_percent ?? current.markup_percent ?? "",
     }));
   }
 
