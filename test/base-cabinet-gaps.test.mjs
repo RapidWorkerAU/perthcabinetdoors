@@ -115,8 +115,41 @@ test("the quote editor lets the markup be edited on a cabinet, on both layouts",
 test("the carcass board is a picker on the cabinet, not a read-only box", () => {
   assert.match(CONFIGURATOR, /Carcass board/, "there is no carcass board picker");
   assert.match(CONFIGURATOR, /Carcass finish and colour/, "there is no carcass colour picker");
-  assert.match(CONFIGURATOR, /options=\{carcassColourOptions\}/, "the carcass picker is not fed from the colour library");
+  assert.match(CONFIGURATOR, /options=\{carcassColourOptions \|\| \[\]\}/, "the carcass picker is not fed from the colour library");
   assert.match(CONFIGURATOR, /onChange=\{selectCarcassColour\}/);
+});
+
+test("the cabinet uses the shared picker, so its menu is not trapped under the modal", () => {
+  // It had a hand-rolled copy: a text input with a createPortal menu at z-index
+  // 60, opened inside a modal at z-index 1000, so the menu rendered underneath
+  // it. QuoteComboboxes.js is the admin's one picker, is built on the same
+  // Radix Popover as every other dropdown, and opens above whatever it is
+  // inside. The shelf picker had the identical fault and was simply reached
+  // less often.
+  assert.match(CONFIGURATOR, /import \{ QuoteImageCombobox \} from "\.\/QuoteComboboxes"/);
+  assert.ok(!/createPortal/.test(CONFIGURATOR.replace(/^.*createPortal menu.*$/gm, "")), "the cabinet still portals a menu of its own");
+  assert.ok(!/function ColourLibraryCombobox/.test(CONFIGURATOR), "the hand-rolled picker is still here");
+  // Both pickers, one widget.
+  const uses = CONFIGURATOR.split("<QuoteImageCombobox").length - 1;
+  assert.equal(uses, 2, `the carcass and the shelf should both use it, found ${uses}`);
+});
+
+test("the picker says it is loading rather than saying nothing matches", () => {
+  // An empty list and a list that has not arrived look identical on screen, and
+  // "No match" on a list of nothing reads as "we do not stock any of these".
+  assert.match(CONFIGURATOR, /useState<ColourOption\[\] \| null>\(null\)/);
+  assert.match(CONFIGURATOR, /if \(options === null\) return "Loading colours\.\.\."/);
+  assert.match(CONFIGURATOR, /emptyMessage=\{colourEmptyMessage\(carcassColourOptions/);
+  assert.match(CONFIGURATOR, /emptyMessage=\{colourEmptyMessage\(shelfColourOptions/);
+});
+
+test("the picker knows which option is already chosen", () => {
+  // Resolved against the loaded list, by the saved library row id where there
+  // is one, so the swatch and the label on the trigger are the colour actually
+  // on the cabinet rather than a rebuilt key that matches nothing.
+  assert.match(CONFIGURATOR, /function selectedColourValue/);
+  assert.match(CONFIGURATOR, /value=\{selectedColourValue\(carcassColourOptions, \{/);
+  assert.match(CONFIGURATOR, /value=\{selectedColourValue\(shelfColourOptions, \{/);
 });
 
 test("the cabinet no longer overwrites its board from the quote line on every render", () => {
@@ -288,9 +321,9 @@ test("a configured cabinet is not skipped as a manual override", () => {
 test("the cabinet's fields are written once and rendered on both layouts", () => {
   // The desktop and phone layouts were full copies of each other, which is how
   // they drifted: the same fix had to be made twice and often was not.
-  for (const [name, expected] of [["carcassBoardFields", 3], ["backPanelFields", 3], ["shapeFields", 3]]) {
+  for (const name of ["carcassBoardFields", "shelfBoardFields", "backPanelFields", "shapeFields"]) {
     const uses = CONFIGURATOR.split(`${name}(`).length - 1;
-    assert.equal(uses, expected, `${name} should be defined once and used on both layouts, found ${uses} mentions`);
+    assert.equal(uses, 3, `${name} should be declared once and called from both layouts, found ${uses} mentions`);
   }
 });
 

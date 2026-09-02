@@ -41,22 +41,54 @@ function optionMatchesQuery(option, query) {
 }
 
 /**
- * Searchable combobox with a thumbnail per option (colours, edges, profiles,
- * hardware). Same trigger metrics as QuoteTileCombobox so a form mixing the two
- * lines up.
+ * One option in a picker: what to show, what to match against, and the swatch.
+ *
+ * @typedef {object} ComboboxOption
+ * @property {string} label       the full description, e.g. "Matt - Classic White - 16mm"
+ * @property {string} [name]      the colour, edge or profile on its own
+ * @property {string} [value]     the caller's own key, when a label is not unique enough
+ * @property {string|number} [id] the colour library row, where the option came from one
+ * @property {string} [src]       the swatch image
+ * @property {string} [finish]    shown under the name, with the two below
+ * @property {string} [thickness]
+ * @property {string} [supplier]
+ * @property {string} [meta]      used in place of a finish when there is no finish
  */
-export const QuoteImageCombobox = memo(function QuoteImageCombobox({
-  className = "",
-  compact = false,
-  disabled = false,
-  emptyMessage = "No match",
-  placeholder = "Select an option...",
-  value,
-  displayValue = "",
-  options = [],
-  onChange,
-  contentZIndex = 9999,
-}) {
+
+export const QuoteImageCombobox = memo(
+  /**
+   * Searchable combobox with a thumbnail per option (colours, edges, profiles,
+   * hardware). Same trigger metrics as QuoteTileCombobox so a form mixing the
+   * two lines up.
+   *
+   * Typed so a TypeScript caller gets its props checked. The cabinet
+   * configurator is one, and it grew its own copy of this widget partly because
+   * importing this one told it nothing about what to pass.
+   *
+   * @param {object} props
+   * @param {string} [props.className]
+   * @param {boolean} [props.compact]      short trigger, to sit in a dense table row
+   * @param {boolean} [props.disabled]
+   * @param {string} [props.emptyMessage]  what to say when nothing matches
+   * @param {string} [props.placeholder]
+   * @param {string} [props.value]         matched against each option's value, name or label
+   * @param {string} [props.displayValue]  shown when `value` matches no loaded option
+   * @param {ComboboxOption[]} [props.options]
+   * @param {(option: ComboboxOption) => void} [props.onChange]
+   * @param {number} [props.contentZIndex] above whatever the picker opens inside
+   */
+  function QuoteImageCombobox({
+    className = "",
+    compact = false,
+    disabled = false,
+    emptyMessage = "No match",
+    placeholder = "Select an option...",
+    value,
+    displayValue = "",
+    options = [],
+    onChange,
+    contentZIndex = 9999,
+  }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef(null);

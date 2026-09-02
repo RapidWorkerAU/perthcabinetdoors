@@ -1,8 +1,10 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
-import { createPortal } from "react-dom"
 import { COLOUR_MATERIALS, materialTypeForKey, materialLabelForType, optionsFromColourFamily } from "../../lib/pcd-colour-library"
+// The admin's one searchable picker with a swatch per option. See the note
+// above colourEmptyMessage for why this file no longer has its own.
+import { QuoteImageCombobox } from "./QuoteComboboxes"
 import { calculateCabinetTotals, normalizeCabinetConfig } from "../../lib/pcd-cabinet-utils"
 // The one description a cabinet gets, wherever it is written from. This screen,
 // the design importer and a converted customer request all used to spell it out
@@ -83,6 +85,10 @@ const tw = {
   primaryBtn:   "h-[30px] px-3 bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors",
   secondaryBtn: "h-[30px] px-3 bg-white border border-[#dbd8cc] text-[12px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
   smBtn:        "h-[26px] px-2 bg-white border border-[#dbd8cc] text-[11px] font-medium rounded-[5px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors flex-shrink-0",
+  // The shared picker's compact trigger is built for a quote table row, which
+  // is smaller and squarer than the fields on this form. Nudged to match the
+  // inputs beside it so a row of fields lines up.
+  combo:        "!h-[30px] !rounded-[6px] !px-[8px] !pr-[28px] !text-[12px]",
 }
 
 // ---------------------------------------------------------------------------
@@ -235,149 +241,63 @@ function MaterialCostPrompt({ prompt, onUseOnce, onSaveFuture, onCancel }: {
   )
 }
 
-function ColourLibraryCombobox({ disabled = false, placeholder, value, options, onChange }: {
-  disabled?: boolean
-  placeholder?: string
-  value: string
-  options: ColourOption[]
-  onChange: (option: ColourOption) => void
-}) {
-  const [query, setQuery] = useState(value || "")
-  const [open, setOpen] = useState(false)
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
-  const [inputEl, setInputEl] = useState<HTMLInputElement | null>(null)
+// The colour picker is the SHARED one every other quote screen uses.
+//
+// This file had a hand-rolled copy: a text input with a createPortal menu at
+// z-index 60. The cabinet opens inside a modal at z-index 1000, so the menu
+// rendered underneath it. components/admin/QuoteComboboxes.js already exists
+// for exactly this, is built on the same Radix Popover as every other dropdown
+// in the admin, and carries the note about why a hand-rolled portal menu
+// breaks inside a dialog at all. Reusing it fixes the carcass picker, fixes
+// the shelf picker, which had the same fault and was simply reached less
+// often, and means a colour is chosen the same way here as on a quote line:
+// same swatches, same search box, same keyboard, same empty state.
 
-  const cleanedQuery = query.trim().toLowerCase()
-  const queryTokens = cleanedQuery.split(/\s+/).filter(Boolean)
-  const normaliseSearchText = (text: string) =>
-    String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+// WHICH LOADED OPTION IS THE ONE ALREADY CHOSEN.
+//
+// Resolved against the list rather than by rebuilding the option's key from
+// parts: a cabinet stores a finish and a colour name, and the key those options
+// carry is assembled from the library row, so any difference in how a thickness
+// or a brand is spelt would quietly match nothing and the swatch would go
+// blank. The saved library row id is used when there is one, which there is for
+// anything picked here; a finish and a name identify it otherwise, which is
+// what a cabinet imported from a design carries.
+//
+// Falls back to the colour name so the field still reads correctly while the
+// options are loading, or if that colour has since left the library.
+function selectedColourValue(
+  options: ColourOption[] | null,
+  { id, finish, colour }: { id?: unknown; finish?: unknown; colour?: unknown }
+): string {
+  const name = String(colour || "").trim()
+  if (!name) return ""
+  const list = options || []
+  const wantedName = name.toLowerCase()
+  const wantedFinish = String(finish || "").trim().toLowerCase()
 
-  const visibleOptions = cleanedQuery
-    ? options.filter(option => {
-        const searchText = normaliseSearchText(
-          [
-            option.label,
-            option.name,
-            option.finish,
-            option.supplier,
-            option.meta,
-            `${option.finish || ""} ${option.name || ""}`,
-            `${option.name || ""} ${option.finish || ""}`,
-          ]
-            .filter(Boolean)
-            .join(" ")
-        )
-        return queryTokens.every(token => searchText.includes(normaliseSearchText(token)))
-      })
-    : options
+  const byId = id ? list.find(option => String(option.id) === String(id)) : null
+  if (byId) return byId.label
 
-  useEffect(() => { setQuery(value || "") }, [value])
+  const sameName = list.filter(option => String(option.name || "").trim().toLowerCase() === wantedName)
+  const byFinish = wantedFinish
+    ? sameName.find(option => String(option.finish || "").trim().toLowerCase() === wantedFinish)
+    : null
+  return (byFinish || sameName[0])?.label || name
+}
 
-  useEffect(() => {
-    if (!open || !inputEl) return
-
-    function positionMenu() {
-      const rect = inputEl!.getBoundingClientRect()
-      const viewportPadding = 12
-      const preferredWidth = Math.max(rect.width, 360)
-      const width = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2)
-      const left = Math.min(
-        Math.max(rect.left, viewportPadding),
-        window.innerWidth - width - viewportPadding
-      )
-      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding
-      const spaceAbove = rect.top - viewportPadding
-      const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow
-      const availableHeight = openAbove ? spaceAbove : spaceBelow
-      const maxHeight = Math.max(160, Math.min(360, availableHeight - 4))
-      setMenuStyle({
-        bottom: openAbove ? `${window.innerHeight - rect.top + 4}px` : "auto",
-        left: `${left}px`,
-        maxHeight: `${maxHeight}px`,
-        top: openAbove ? "auto" : `${rect.bottom + 4}px`,
-        width: `${width}px`,
-      })
-    }
-
-    positionMenu()
-    window.addEventListener("resize", positionMenu)
-    window.addEventListener("scroll", positionMenu, true)
-    return () => {
-      window.removeEventListener("resize", positionMenu)
-      window.removeEventListener("scroll", positionMenu, true)
-    }
-  }, [open, inputEl])
-
-  function choose(option: ColourOption) {
-    setQuery(option.label)
-    onChange(option)
-    setOpen(false)
+// What the picker says when it has nothing to offer. "No match" is only true
+// once there is something it could have matched against.
+function colourEmptyMessage(options: ColourOption[] | null, material: unknown, thicknessMm: unknown): string {
+  if (options === null) return "Loading colours..."
+  if (!material) return "Pick the board type first."
+  if (!options.length) {
+    const thickness = thicknessLabel(thicknessMm)
+    const board = materialLabelForType(String(material))
+    return thickness
+      ? `No ${board} colours at ${thickness} in the colour library.`
+      : `No ${board} colours in the colour library.`
   }
-
-  return (
-    <div className="relative flex-1 min-w-0">
-      <input
-        ref={setInputEl}
-        className={tw.input}
-        disabled={disabled}
-        placeholder={placeholder}
-        type="text"
-        value={query}
-        onMouseDown={e => e.stopPropagation()}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        onChange={e => { setQuery(e.target.value); setOpen(true) }}
-        onFocus={() => !disabled && setOpen(true)}
-      />
-      <button
-        aria-label="Open shelf material options"
-        className="absolute right-[6px] top-1/2 -translate-y-1/2 w-[18px] h-[18px] flex items-center justify-center text-[#8b8a81] hover:text-[#1a1a18]"
-        disabled={disabled}
-        type="button"
-        onMouseDown={e => {
-          e.preventDefault()
-          e.stopPropagation()
-          if (!disabled) setOpen(current => !current)
-        }}
-      >
-        ▾
-      </button>
-      {open && !disabled && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              className="fixed z-[60] bg-white border border-[#dbd8cc] rounded-[8px] shadow-lg overflow-y-auto"
-              style={menuStyle}
-              onMouseDown={e => e.stopPropagation()}
-            >
-              {visibleOptions.length ? (
-                visibleOptions.map(option => (
-                  <button
-                    className="flex items-center gap-2 w-full px-3 py-[7px] text-[12px] text-[#1a1a18] hover:bg-[#f5f8f4] text-left"
-                    key={`${option.id || option.label}-${option.src}`}
-                    type="button"
-                    onMouseDown={e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      choose(option)
-                    }}
-                  >
-                    <span className="w-[24px] h-[24px] rounded-[3px] overflow-hidden bg-[#f5f8f4] border border-[#dbd8cc] flex-shrink-0">
-                      {option.src ? <img alt="" src={option.src} /> : null}
-                    </span>
-                    <span>
-                      <strong className="block text-[12px] font-medium text-[#1a1a18]">{option.name || option.label}</strong>
-                      <small className="block text-[10px] text-[#8b8a81]">{option.finish || option.meta || ""}</small>
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div className="px-3 py-4 text-[12px] text-[#8b8a81] text-center">No match</div>
-              )}
-            </div>,
-            document.body
-          )
-        : null}
-    </div>
-  )
+  return "No match"
 }
 
 // ---------------------------------------------------------------------------
@@ -477,8 +397,10 @@ export default function CabinetConfigurator({
   const [isSavingCost, setIsSavingCost]   = useState(false)
   const [activeTab, setActiveTab]         = useState("dimensions")
   const [mobileSectionOpen, setMobileSectionOpen] = useState<string | null>(null)
-  const [carcassColourOptions, setCarcassColourOptions] = useState<ColourOption[]>([])
-  const [shelfColourOptions, setShelfColourOptions] = useState<ColourOption[]>([])
+  // null while a list is still being fetched, so the picker can say "loading"
+  // instead of "no match", which reads as "we do not stock any of these".
+  const [carcassColourOptions, setCarcassColourOptions] = useState<ColourOption[] | null>(null)
+  const [shelfColourOptions, setShelfColourOptions] = useState<ColourOption[] | null>(null)
 
   // The carcass fields are no longer overwritten from the quote line here. That
   // line is what forced the read-only boxes: whatever anyone picked was
@@ -556,10 +478,12 @@ export default function CabinetConfigurator({
       }
     }
 
-    setCarcassColourOptions([])
+    setCarcassColourOptions(null)
     loadOptions(config.carcass_material, config.carcass_thickness_mm, setCarcassColourOptions)
 
-    setShelfColourOptions([])
+    // The shelf follows the carcass unless it has been told not to, so there is
+    // no separate list to fetch until it has been.
+    setShelfColourOptions(sameShelfMaterial ? [] : null)
     if (!sameShelfMaterial) {
       loadOptions(config.shelf_material, config.shelf_thickness_mm, setShelfColourOptions)
     }
@@ -893,14 +817,24 @@ export default function CabinetConfigurator({
           <ToggleGroup value={numberValue(config.carcass_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("carcass_thickness_mm", v)} />
         </Field>
         <Field label="Carcass finish and colour" wide>
-          <div className="flex gap-2">
-            <ColourLibraryCombobox
-              disabled={!hasBoard}
-              placeholder={hasBoard ? "Select carcass finish and colour" : "Select board type and thickness first"}
-              value={carcassMaterialLabel}
-              options={carcassColourOptions}
-              onChange={selectCarcassColour}
-            />
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <QuoteImageCombobox
+                compact
+                className={tw.combo}
+                disabled={!hasBoard}
+                emptyMessage={colourEmptyMessage(carcassColourOptions, config.carcass_material, config.carcass_thickness_mm)}
+                placeholder={hasBoard ? "Select carcass finish and colour" : "Select board type and thickness first"}
+                value={selectedColourValue(carcassColourOptions, {
+                  id: normalizedConfig.carcass_colour_id,
+                  finish: normalizedConfig.carcass_finish,
+                  colour: normalizedConfig.carcass_colour,
+                })}
+                displayValue={carcassMaterialLabel}
+                options={carcassColourOptions || []}
+                onChange={selectCarcassColour}
+              />
+            </div>
             <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("carcass")}>Lookup</button>
           </div>
         </Field>
@@ -912,6 +846,47 @@ export default function CabinetConfigurator({
               Business Defaults", the same rule the markup follows, so a
               cabinet nobody has an opinion about tracks the setting. */}
           <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? ""} onChange={e => updateConfig("labour_hours", e.target.value)} />
+        </Field>
+      </>
+    )
+  }
+
+  function shelfBoardFields() {
+    const hasBoard = Boolean(config.shelf_material && config.shelf_thickness_mm)
+    return (
+      <>
+        <Field label="Shelf material type">
+          <select className={tw.input} value={config.shelf_material ? materialTypeForKey(String(config.shelf_material)) : ""} onChange={e => updateShelfMaterialType(e.target.value)}>
+            <option value="">Select board type</option>
+            {COLOUR_MATERIALS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Shelf thickness">
+          <ToggleGroup value={numberValue(config.shelf_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("shelf_thickness_mm", v)} />
+        </Field>
+        <Field label="Shelf finish and colour" wide>
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <QuoteImageCombobox
+                compact
+                className={tw.combo}
+                disabled={!hasBoard}
+                emptyMessage={colourEmptyMessage(shelfColourOptions, config.shelf_material, config.shelf_thickness_mm)}
+                placeholder={hasBoard ? "Select shelf finish and colour" : "Select type and thickness first"}
+                value={selectedColourValue(shelfColourOptions, {
+                  finish: normalizedConfig.shelf_finish,
+                  colour: normalizedConfig.shelf_colour,
+                })}
+                displayValue={shelfMaterialLabel}
+                options={shelfColourOptions || []}
+                onChange={selectShelfColour}
+              />
+            </div>
+            <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("shelf")}>Lookup</button>
+          </div>
+        </Field>
+        <Field label="Shelf cost per sqm">
+          <input id={shelfCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_shelf} onChange={e => updateConfig("cost_per_sqm_shelf", e.target.value)} />
         </Field>
       </>
     )
@@ -1091,29 +1066,7 @@ export default function CabinetConfigurator({
             {Number(config.shelf_qty) > 0 && !sameShelfMaterial && (
               <div className="mt-3">
                 <div className={tw.grid2}>
-                  <Field label="Shelf material type">
-                    <select className={tw.input} value={materialTypeForKey(String(config.shelf_material))} onChange={e => updateShelfMaterialType(e.target.value)}>
-                      {COLOUR_MATERIALS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Shelf thickness">
-                    <ToggleGroup value={numberValue(config.shelf_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("shelf_thickness_mm", v)} />
-                  </Field>
-                  <Field label="Shelf finish and colour" wide>
-                    <div className="flex gap-2">
-                      <ColourLibraryCombobox
-                        disabled={!config.shelf_material || !config.shelf_thickness_mm}
-                        placeholder={config.shelf_material && config.shelf_thickness_mm ? "Select shelf finish and colour" : "Select type and thickness first"}
-                        value={shelfMaterialLabel}
-                        options={shelfColourOptions}
-                        onChange={selectShelfColour}
-                      />
-                      <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("shelf")}>Lookup</button>
-                    </div>
-                  </Field>
-                  <Field label="Shelf cost per sqm">
-                    <input id={shelfCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_shelf} onChange={e => updateConfig("cost_per_sqm_shelf", e.target.value)} />
-                  </Field>
+                  {shelfBoardFields()}
                 </div>
                 <MaterialCostPrompt
                   prompt={costPrompt?.role === "shelf" ? costPrompt : null}
@@ -1392,29 +1345,7 @@ export default function CabinetConfigurator({
                 {Number(config.shelf_qty) > 0 && !sameShelfMaterial && (
                   <div className="mt-3">
                     <div className={tw.grid2}>
-                      <Field label="Shelf material type">
-                        <select className={tw.input} value={materialTypeForKey(String(config.shelf_material))} onChange={e => updateShelfMaterialType(e.target.value)}>
-                          {COLOUR_MATERIALS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Shelf thickness">
-                        <ToggleGroup value={numberValue(config.shelf_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("shelf_thickness_mm", v)} />
-                      </Field>
-                      <Field label="Shelf finish and colour" wide>
-                        <div className="flex gap-2">
-                          <ColourLibraryCombobox
-                            disabled={!config.shelf_material || !config.shelf_thickness_mm}
-                            placeholder={config.shelf_material && config.shelf_thickness_mm ? "Select shelf finish and colour" : "Select type and thickness first"}
-                            value={shelfMaterialLabel}
-                            options={shelfColourOptions}
-                            onChange={selectShelfColour}
-                          />
-                          <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("shelf")}>Lookup</button>
-                        </div>
-                      </Field>
-                      <Field label="Shelf cost per sqm">
-                        <input id={shelfCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_shelf} onChange={e => updateConfig("cost_per_sqm_shelf", e.target.value)} />
-                      </Field>
+                      {shelfBoardFields()}
                     </div>
                     <MaterialCostPrompt
                       prompt={costPrompt?.role === "shelf" ? costPrompt : null}
