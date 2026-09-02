@@ -21,11 +21,12 @@ import { IncompleteQuoteRequestError, insertQuoteRequest, sendQuoteRequestEmails
 import { isIkeaPreset } from "../../../../../../lib/pcd-ikea-presets";
 import {
   buildPreset,
+  itemTypeLabel,
   partsForItem,
   quotableItems,
   selectedPartKeys,
 } from "../../../../../../lib/pcd-design-parts";
-import { requestLinesForItem } from "../../../../../../lib/pcd-design-request-lines";
+import { partsWithNoLines, requestLinesForItem } from "../../../../../../lib/pcd-design-request-lines";
 import { createSupplierGuard, firstSupplierConflict } from "../../../../../../lib/pcd-supplier-guard";
 import { customerNoticeFor, reportSendFailures } from "../../../../../../lib/pcd-notify";
 
@@ -222,9 +223,26 @@ export async function POST(request, { params }) {
     }
 
     const room = (rooms || [])[0];
-    const lineContext = { roomName: room?.name || "", roomHeightMm: Number(room?.height_mm) || 0 };
-    const lines = chosen.flatMap((entry) => requestLinesForItem(entry.item, entry.keys, lineContext));
     const chosenItems = chosen.map((entry) => entry.item);
+    // `siblings` is what makes a kickboard running across three cabinets ONE
+    // board instead of three, the same as an import. `room` carries the wall
+    // lengths those runs are measured against.
+    const lineContext = {
+      roomName: room?.name || "",
+      roomHeightMm: Number(room?.height_mm) || 0,
+      room,
+      siblings: chosenItems,
+    };
+    const lines = chosen.flatMap((entry) => requestLinesForItem(entry.item, entry.keys, lineContext));
+
+    // A part they ticked that we build nothing for. Never dropped quietly: it
+    // goes on the request in words, so it is quoted by hand rather than missed.
+    const unbuilt = chosen.flatMap((entry) =>
+      partsWithNoLines(entry.item, entry.keys, lineContext).map((key) => {
+        const part = partsForItem(entry.item).find((p) => p.key === key);
+        return `${part?.label || key} on ${entry.item.label || itemTypeLabel(entry.item)}`;
+      })
+    );
 
     // EVERY PIECE NEEDS A COLOUR. Checked here and not only in the browser,
     // because a browser check is a suggestion. A request that arrives with
@@ -260,7 +278,12 @@ export async function POST(request, { params }) {
     // Only the props they actually asked for, so this does not warn about a
     // cabinet that is not in the request.
     const props = propSummary(chosenItems);
-    const notes = [summary, partial, askedForSummary(chosen), props, roomRefs, String(body?.notes || "").trim()]
+    // Said in words on the request, because a piece that produced no line would
+    // otherwise be a thing the customer asked for and nobody ever priced.
+    const unbuiltNote = unbuilt.length
+      ? `QUOTE BY HAND: the planner could not work out a piece for ${unbuilt.join(", ")}. Nothing was priced for ${unbuilt.length === 1 ? "it" : "them"}.`
+      : "";
+    const notes = [summary, partial, askedForSummary(chosen), unbuiltNote, props, roomRefs, String(body?.notes || "").trim()]
       .filter(Boolean)
       .join("\n\n");
 

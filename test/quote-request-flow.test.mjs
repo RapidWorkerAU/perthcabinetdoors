@@ -18,6 +18,7 @@ import test from "node:test";
 
 import { matchBoardCost } from "../lib/pcd-board-cost.js";
 import { convertedQuoteLine, unpricedSummary, withHingeSupplyNote } from "../lib/pcd-quote-request-convert.js";
+import { cabinetSpecFromDesignItem } from "../lib/pcd-cabinet-from-design.js";
 import { insertQuoteRequest } from "../lib/pcd-quote-request.js";
 import { describeGaps, lineGaps, lineIsReady, missingFields, unreadyLines } from "../lib/pcd-quote-ready.js";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS } from "../lib/pcd-quote-utils.js";
@@ -202,6 +203,136 @@ test("a cabinet keeps its carcass rate without being costed as a flat sheet", ()
     colour_library_id: "lib-white-16",
     thickness: "16mm",
   }));
+  assert.equal(row.unit_cost_per_sqm_ex_gst, 55.5, "the carcass board rate was lost");
+  assert.equal(row.calculated_unit_cost_ex_gst, 0, "a cabinet was costed as a flat sheet");
+});
+
+// ── The cabinet the customer drew ─────────────────────────────────────────
+//
+// A cabinet is priced from a cut list worked out from its box. The box used to
+// reach the quote only as a sentence in the description, and the conversion had
+// no cabinet handling at all, so a converted cabinet arrived with no height, no
+// width, no depth and no shelves. On the first real customer design that came
+// through, three cabinets were re-entered by hand off that sentence.
+
+// The design item, exactly as the planner stores one.
+const drawnCabinet = {
+  id: "item-7",
+  item_type: "base_cabinet",
+  label: "Base 470",
+  width_mm: 470,
+  height_mm: 745,
+  depth_mm: 470,
+  qty: 1,
+  material: "decorative board",
+  finish: "Matt",
+  colour: "Classic White",
+  carcass_thickness_mm: 16,
+  back_panel_included: true,
+  back_panel_thickness_mm: 16,
+  shelf_qty: 1,
+  shelf_thickness_mm: 16,
+  shelf_heights_mm: [373],
+  front_type: "doors",
+  door_config: { columns: 1 },
+};
+
+// The request line the website writes for it.
+function cabinetRequestLine(over = {}) {
+  return requestLine({
+    product_type: "base_cabinet",
+    product_name: "Base cabinet",
+    material: "Decorative Board",
+    thickness: "16mm",
+    width_mm: null,
+    height_mm: null,
+    colour_library_id: "lib-white-16",
+    edge_mould: null,
+    hinge_holes: false,
+    hinge_qty: null,
+    design_item_id: drawnCabinet.id,
+    cabinet_spec: cabinetSpecFromDesignItem(drawnCabinet),
+    ...over,
+  });
+}
+
+test("a cabinet from a design arrives measured, not empty", () => {
+  const { line } = convertOne(cabinetRequestLine());
+  const config = line.cabinet_config;
+  assert.ok(config, "the cabinet converted with no configuration, so it opens on the configurator's own defaults");
+  assert.equal(config.height_mm, 745, "the cabinet's height was lost");
+  assert.equal(config.width_mm, 470, "the cabinet's width was lost");
+  assert.equal(config.depth_mm, 470, "the cabinet's depth was lost");
+  assert.equal(config.carcass_thickness_mm, 16);
+  assert.equal(config.back_panel_included, true);
+  assert.equal(config.shelf_qty, 1, "the shelf had to be added by hand");
+  assert.deepEqual(config.shelf_heights_mm, [373], "the shelf height was lost");
+});
+
+test("a shelf drawn without a height is still given one", () => {
+  // The planner records a shelf count without always recording where it sits.
+  // The cut list spaces those evenly, so the cabinet stores where it actually
+  // cut them rather than a blank that reads as "no shelves anywhere".
+  const noHeights = { ...drawnCabinet, shelf_heights_mm: [] };
+  const { line } = convertOne(cabinetRequestLine({ cabinet_spec: cabinetSpecFromDesignItem(noHeights) }));
+  assert.deepEqual(line.cabinet_config.shelf_heights_mm, [373]);
+});
+
+test("a cabinet from a design arrives costed from its cut list", () => {
+  const { line, row } = convertOne(cabinetRequestLine());
+  const config = line.cabinet_config;
+  assert.ok(config.calculated_cut_list.length > 0, "no cut list, so nothing to make it from or price it on");
+  assert.equal(config.cost_per_sqm_carcass, 55.5, "the carcass was costed at something other than its board rate");
+  assert.ok(config.calculated_material_cost_ex_gst > 0, "a fully specified cabinet still costed nothing");
+  // The line is priced from the cut list, never as width x height x rate.
+  assert.equal(row.product_unit_cost_ex_gst, config.calculated_material_cost_ex_gst);
+  assert.equal(row.unit_cost_mode, "auto");
+  assert.equal(row.width_mm, null, "a cabinet line took on dimensions, which lets it be repriced as a flat sheet");
+  assert.equal(row.height_mm, null);
+  assert.ok(row.line_total_ex_gst > 0, "the cabinet totalled zero on the quote");
+});
+
+test("a cabinet's description says its size, height first", () => {
+  const { row } = convertOne(cabinetRequestLine());
+  assert.match(row.description, /745mm high x 470mm wide x 470mm deep/);
+  assert.match(row.description, /16mm carcass/);
+  assert.match(row.description, /1 shelf/);
+});
+
+test("a shelf is priced from its own board, not assumed to be the carcass", () => {
+  const shelfInAnotherBoard = {
+    ...drawnCabinet,
+    shelf_material: "decorative board",
+    shelf_finish: "Matt",
+    shelf_colour: "Classic White",
+    shelf_thickness_mm: 18,
+  };
+  const { line } = convertOne(cabinetRequestLine({ cabinet_spec: cabinetSpecFromDesignItem(shelfInAnotherBoard) }));
+  assert.equal(line.cabinet_config.cost_per_sqm_shelf, 60.74, "the shelf was costed at the carcass rate");
+  assert.equal(line.cabinet_config.cost_per_sqm_carcass, 55.5);
+});
+
+test("a cabinet with a board we hold no price for still arrives measured", () => {
+  // The library is half unpriced and that is normal. A missing price must cost
+  // somebody a rate to type, never the whole cabinet.
+  const { line } = convertOne(cabinetRequestLine({
+    colour_library_id: "lib-natura-oak",
+    material: "Thermolaminate",
+    thickness: "18mm",
+    finish: "Natura",
+    colour: "Bottega Oak",
+  }));
+  assert.equal(line.cabinet_config.height_mm, 745);
+  assert.equal(line.cabinet_config.shelf_qty, 1);
+  assert.equal(line.cabinet_config.cost_per_sqm_carcass, 0);
+  assert.equal(line.unit_cost_mode, "manual", "a cabinet with no board price was left looking priced");
+});
+
+test("a cabinet with no box on it converts the way it always did", () => {
+  // Requests taken before this existed, and any line added by hand, carry no
+  // spec. They must still convert, just without a cabinet built for them.
+  const { line, row } = convertOne(cabinetRequestLine({ cabinet_spec: null, design_item_id: null }));
+  assert.equal(line.cabinet_config, undefined);
   assert.equal(row.unit_cost_per_sqm_ex_gst, 55.5, "the carcass board rate was lost");
   assert.equal(row.calculated_unit_cost_ex_gst, 0, "a cabinet was costed as a flat sheet");
 });

@@ -31,6 +31,7 @@ import { calculateQuoteLine, roundMoney } from "../../../../../../lib/pcd-quote-
 import { boardCostLinePatch, createBoardCostResolver, lineAreaSqm } from "../../../../../../lib/pcd-board-cost";
 import {
   isMissingSupplierNameSchemaError,
+  loadQuoteLinesWithCabinets,
   quoteIdFromParams,
   quoteLineRow,
   recalculateQuoteTotals,
@@ -40,7 +41,16 @@ import {
 const NON_BOARD_PRODUCT_TYPES = new Set(["Hardware", "Benchtop"]);
 const CABINET_PRODUCT_TYPE = "base_cabinet";
 
+// A price somebody typed OVER the automatic one, which a reprice leaves alone
+// unless it is told otherwise.
+//
+// A cabinet is never one of these. Its price always comes from its cut list, so
+// it is always "manual", and treating that as an override meant a configured
+// cabinet's board rate was skipped by every ordinary reprice while the summary
+// still offered to refresh it. Being priced a different way is not the same as
+// being overridden.
 function isManualOverride(line) {
+  if (line.product_type === CABINET_PRODUCT_TYPE) return false;
   return line.unit_cost_mode !== "auto" && Number(line.product_unit_cost_ex_gst || 0) > 0;
 }
 
@@ -56,17 +66,20 @@ export async function POST(request, { params }) {
     await assertQuoteEditable(context.supabase, quoteId);
     const businessDefaults = await getBusinessDefaults(context.supabase);
 
-    const { data: lines, error: linesError } = await context.supabase
-      .from("pcd_quote_line_items")
-      .select("*")
-      .eq("quote_id", quoteId)
-      .order("sort_order", { ascending: true });
-    if (linesError) throw linesError;
+    // With their cabinets attached: a cabinet line carries its build hours on
+    // its configuration, and recalculating one without that would rewrite the
+    // line back to the default hours.
+    const lines = await loadQuoteLinesWithCabinets(context.supabase, quoteId);
 
     const resolveBoard = await createBoardCostResolver(context.supabase);
 
     const changed = [];
     const unmatched = [];
+    // Boards that are made to order. They have no rate to reprice from and
+    // never will, so they are counted apart from the ones that could not be
+    // matched. Reported all the same, because "nothing happened to this line"
+    // is worth saying either way.
+    const madeToOrder = [];
     // A cabinet's money comes from its cut list, not from width x height x rate.
     // Refreshing its carcass board rate is still worth doing, because that is
     // what the configurator costs the cut list from, but the line total will not
@@ -95,20 +108,39 @@ export async function POST(request, { params }) {
       });
 
       if (!match.ok) {
-        unmatched.push({
+        const entry = {
           id: line.id,
           product_name: line.product_name || line.product_type || "Line",
           colour: line.colour || "",
           reason: match.reason,
           message: match.message,
-        });
+        };
+        if (match.reason === "made_to_order") madeToOrder.push(entry);
+        else unmatched.push(entry);
         continue;
       }
 
       const beforeRate = Number(line.unit_cost_per_sqm_ex_gst || 0);
-      const patch = boardCostLinePatch(match, { areaSqm: lineAreaSqm(line) });
+      const isCabinet = line.product_type === CABINET_PRODUCT_TYPE;
+      // A CABINET IS NEVER PRICED AUTOMATICALLY, so its rate is refreshed
+      // without its costing mode being touched. boardCostLinePatch writes
+      // "auto" and a calculated cost of zero, which is the right answer for a
+      // flat sheet priced by area and the wrong one for a box priced from its
+      // cut list: a cabinet carries no width or height, so the area is zero and
+      // the line was left labelled automatic at nothing while the real price
+      // sat beside it. Only the rate the configurator reads is taken.
+      const patch = isCabinet
+        ? (() => {
+            const { unit_cost_mode: _mode, calculated_unit_cost_ex_gst: _calc, ...rest } =
+              boardCostLinePatch(match, { areaSqm: 0 });
+            return rest;
+          })()
+        : boardCostLinePatch(match, { areaSqm: lineAreaSqm(line) });
       const afterRate = Number(patch.unit_cost_per_sqm_ex_gst || 0);
-      if (roundMoney(beforeRate) === roundMoney(afterRate) && line.unit_cost_mode === "auto") {
+      // A cabinet is always manual, so the "already automatic at this rate"
+      // test can never let one through and it is asked separately: nothing to
+      // do when the rate has not moved.
+      if (roundMoney(beforeRate) === roundMoney(afterRate) && (isCabinet || line.unit_cost_mode === "auto")) {
         skipped += 1;
         continue;
       }
@@ -141,7 +173,7 @@ export async function POST(request, { params }) {
 
     const quote = await recalculateQuoteTotals(context.supabase, quoteId, businessDefaults);
 
-    if (changed.length || unmatched.length || cabinetsToReconfigure.length) {
+    if (changed.length || unmatched.length || madeToOrder.length || cabinetsToReconfigure.length) {
       await logOrderActivity(context.supabase, {
         quote_id: quoteId,
         actor_type: "admin",
@@ -150,12 +182,14 @@ export async function POST(request, { params }) {
         description: [
           `${changed.length} line${changed.length === 1 ? "" : "s"} repriced`,
           cabinetsToReconfigure.length ? `${cabinetsToReconfigure.length} cabinet board rate(s) refreshed` : "",
+          madeToOrder.length ? `${madeToOrder.length} made to order` : "",
           `${unmatched.length} could not be matched`,
         ].filter(Boolean).join(", "),
         metadata: {
           changed,
           cabinets_to_reconfigure: cabinetsToReconfigure,
           unmatched,
+          made_to_order: madeToOrder,
           skipped,
           include_manual: includeManual,
         },
@@ -168,10 +202,12 @@ export async function POST(request, { params }) {
       changedCount: changed.length,
       cabinetCount: cabinetsToReconfigure.length,
       unmatchedCount: unmatched.length,
+      madeToOrderCount: madeToOrder.length,
       skippedCount: skipped,
       changed,
       cabinetsToReconfigure,
       unmatched,
+      madeToOrder,
     });
   } catch (error) {
     return Response.json(

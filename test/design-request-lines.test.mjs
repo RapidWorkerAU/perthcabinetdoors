@@ -12,6 +12,7 @@ import test from "node:test";
 import { PRODUCT_TYPES } from "../lib/pcd-materials.js";
 import { partsForItem, buildPreset, selectedPartKeys, quotableItems } from "../lib/pcd-design-parts.js";
 import { requestLinesForItem } from "../lib/pcd-design-request-lines.js";
+import { cabinetSpecFromDesignItem } from "../lib/pcd-cabinet-from-design.js";
 
 // product_type is copied straight onto the quote line when a request is
 // converted (app/api/admin/quote-requests/route.js), so anything outside this
@@ -113,14 +114,47 @@ test("a carcass line carries no dimensions, so the editor cannot reprice it as a
   assert.equal(line.productType, "base_cabinet");
   assert.equal(line.width, undefined);
   assert.equal(line.height, undefined);
-  assert.match(line.notes, /900 wide × 720 high × 560 deep/, "the real size is in the notes instead");
+  assert.match(line.notes, /720 high × 900 wide × 560 deep/, "the real size is in the notes, height first");
+});
+
+// THE BOX HAS TO TRAVEL AS DATA, not only as a sentence.
+//
+// It used to travel only as the sentence. So a cabinet from a customer's design
+// converted with no height, width, depth or shelves, and whoever opened the
+// configurator got its built-in starting values (720 high x 900 wide x 560
+// deep, no shelves) with nothing on screen saying the real ones had been lost.
+test("a carcass line carries the cabinet itself, not just a description of it", () => {
+  const [line] = linesFor(baseDoors, ["carcass"]);
+  const spec = line.cabinetSpec;
+  assert.ok(spec, "the cabinet line carries no box, so the conversion has nothing to build");
+  assert.equal(spec.height_mm, 720);
+  assert.equal(spec.width_mm, 900);
+  assert.equal(spec.depth_mm, 560);
+  assert.equal(spec.carcass_thickness_mm, 16);
+  assert.equal(spec.shelf_qty, 1);
+  assert.equal(spec.back_panel_included, true);
+  // Title Case, like every other value that reaches a quote line.
+  assert.equal(spec.carcass_material, "Decorative Board");
+  // And which item it was drawn as, so a quote line can be traced back to it.
+  assert.equal(line.designItemId, "b1");
+});
+
+// One builder, called by the request path and by the admin importer. Two
+// builders is how the same drawing came to produce two different cabinets.
+test("the box is built by the shared builder, not spelled out again", () => {
+  const [line] = linesFor(baseDoors, ["carcass"]);
+  assert.deepEqual(line.cabinetSpec, cabinetSpecFromDesignItem(baseDoors));
 });
 
 test("kickboard and end panel come through as their own Panel lines", () => {
   const lines = linesFor(baseDoors, ["endpanels", "kickboard"]);
+  assert.ok(lines.every((l) => l.productType === "Panel"), "a kickboard and an end panel are both Panels");
   const names = lines.map((l) => l.productName);
-  assert.deepEqual(names, ["End panel (right)", "Kickboard"]);
-  assert.ok(lines.every((l) => l.productType === "Panel"));
+  assert.ok(names.includes("Kickboard"));
+  assert.ok(names.includes("End Panel (Right)"));
+  // A finished end that stands proud of the run needs its own kickboard return,
+  // which the website's own builder never made and the shared one always did.
+  assert.ok(names.includes("Kickboard — Right End"), "the finished end's kickboard return is missing");
   const kick = lines.find((l) => l.productName === "Kickboard");
   assert.equal(kick.width, 900);
   assert.equal(kick.height, 150);
@@ -254,7 +288,7 @@ test("a cabinet's notes are a brief someone can configure from", () => {
   const [line] = linesFor(baseDoors, ["carcass"]);
   // description on the quote line comes from notes, and the Cabinets tab shows
   // it under the name while the line reads "Needs configuration".
-  assert.match(line.notes, /900 wide × 720 high × 560 deep/);
+  assert.match(line.notes, /720 high × 900 wide × 560 deep/);
   assert.match(line.notes, /16mm carcass board/);
   assert.match(line.notes, /1 shelf/);
   assert.match(line.notes, /Back included/);
@@ -276,7 +310,9 @@ test("a drawer front always states its runner", () => {
 });
 
 test("a filler with no height shouts about it rather than shipping a zero", () => {
-  const noHeight = { ...baseDoors, id:"f1", has_filler_panel:true, filler_panel_height_mm:0 };
+  // On a tall cabinet: a filler closes the gap to the ceiling, so a base
+  // cabinet never has one and the shared builder refuses to make one.
+  const noHeight = { ...baseDoors, id:"f1", item_type:"tall_cabinet", height_mm:2100, has_filler_panel:true, filler_panel_height_mm:0 };
   const [line] = linesFor(noHeight, ["filler"]);
   assert.match(line.notes, /HEIGHT NOT SET/);
 });
@@ -284,8 +320,8 @@ test("a filler with no height shouts about it rather than shipping a zero", () =
 test("a bookcase plinth is named and noted as a plinth rail, not a kickboard", () => {
   const bookcase = { ...baseDoors, id:"o1", item_type:"bookcase", label:"Bookcase", front_type:"none" };
   const [line] = linesFor(bookcase, ["kickboard"]);
-  assert.equal(line.productName, "Plinth rail");
-  assert.match(line.notes, /set back between the sides/);
+  assert.equal(line.productName, "Plinth Rail");
+  assert.match(line.notes, /set back between the bookcase sides/);
 });
 
 test("a panel that runs to the ceiling says so", () => {

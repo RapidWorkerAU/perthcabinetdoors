@@ -18,10 +18,12 @@ import { readFileSync } from "node:fs";
 
 import { PRODUCT_TYPES } from "../lib/pcd-materials.js";
 
-const IMPORTER = readFileSync(
-  new URL("../app/api/admin/design/projects/[projectId]/import/route.js", import.meta.url),
-  "utf8"
-);
+// The importer is two files since the line building was shared with the public
+// request path: the route that writes, and the translation that builds. Read as
+// one, so an assertion holds wherever the code sits.
+const IMPORTER =
+  readFileSync(new URL("../app/api/admin/design/projects/[projectId]/import/route.js", import.meta.url), "utf8") +
+  readFileSync(new URL("../lib/pcd-design-to-lines.js", import.meta.url), "utf8");
 
 // Assigned as `name:` in an object literal, or as `line.name =` afterwards.
 // Both are how this route builds a line.

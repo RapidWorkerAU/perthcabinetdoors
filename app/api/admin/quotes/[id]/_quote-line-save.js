@@ -291,16 +291,44 @@ async function addLineToQuoteTotals(supabase, quoteId, line, businessDefaults) {
   return savedQuote;
 }
 
-export async function recalculateQuoteTotals(supabase, quoteId, businessDefaults) {
-  const [quote, businessDefaultsResult, linesResult] = await Promise.all([
-    loadQuote(supabase, quoteId),
-    businessDefaults ? Promise.resolve(businessDefaults) : getBusinessDefaults(supabase),
+// EVERY LINE ON A QUOTE, WITH ITS CABINET ATTACHED.
+//
+// The line items table alone is not the whole line for a cabinet: how long one
+// takes to build is held on the configuration, not on the line, because the
+// line's own labour_hours column is a DERIVED figure this calculation writes.
+// Reading the hours from the column and writing them back to it would add the
+// same hours again on every save, which is the trap the note in
+// calculateQuoteLine describes.
+//
+// Totalling a quote without the configurations meant the hours somebody typed
+// on a cabinet were invisible here and the default was used instead, so the
+// configurator reported one figure and the quote billed another.
+export async function loadQuoteLinesWithCabinets(supabase, quoteId) {
+  const [linesResult, configsResult] = await Promise.all([
     supabase.from("pcd_quote_line_items").select("*").eq("quote_id", quoteId).order("sort_order", { ascending: true }),
+    supabase.from("pcd_cabinet_configs").select("*").eq("quote_id", quoteId),
   ]);
 
   if (linesResult.error) throw linesResult.error;
+  // A database without the table yet still totals, it just has no cabinets on
+  // it to total. The same tolerance the quote loader already applies.
+  if (configsResult.error && configsResult.error.code !== "42P01") throw configsResult.error;
 
-  const totals = calculateQuoteTotals(linesResult.data || [], quote.gst_rate ?? GST_RATE, {
+  const configsByLineId = new Map((configsResult.data || []).map((config) => [config.line_item_id, config]));
+  return (linesResult.data || []).map((line) => ({
+    ...line,
+    cabinet_config: configsByLineId.get(line.id) || line.cabinet_config || null,
+  }));
+}
+
+export async function recalculateQuoteTotals(supabase, quoteId, businessDefaults) {
+  const [quote, businessDefaultsResult, lines] = await Promise.all([
+    loadQuote(supabase, quoteId),
+    businessDefaults ? Promise.resolve(businessDefaults) : getBusinessDefaults(supabase),
+    loadQuoteLinesWithCabinets(supabase, quoteId),
+  ]);
+
+  const totals = calculateQuoteTotals(lines, quote.gst_rate ?? GST_RATE, {
     ...quote,
     business_defaults: businessDefaultsResult,
   });

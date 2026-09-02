@@ -4,6 +4,10 @@ import React, { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { COLOUR_MATERIALS, materialTypeForKey, materialLabelForType, optionsFromColourFamily } from "../../lib/pcd-colour-library"
 import { calculateCabinetTotals, normalizeCabinetConfig } from "../../lib/pcd-cabinet-utils"
+// The one description a cabinet gets, wherever it is written from. This screen,
+// the design importer and a converted customer request all used to spell it out
+// separately, and only two of the three knew about a corner cabinet's second leg.
+import { cabinetDescription } from "../../lib/pcd-cabinet-from-design"
 import CabinetSchematic from "./CabinetSchematic"
 
 // ---------------------------------------------------------------------------
@@ -22,6 +26,9 @@ interface ColourOption {
   supplier?: string
   meta?: string
   costPerSqmExGst?: number | string
+  // Made to order is not the same as unpriced, and the picker has to be able
+  // to tell them apart. See colourPickedMessage.
+  orderTypes?: string[]
 }
 
 interface CostPrompt {
@@ -117,16 +124,38 @@ function isShelfPiece(piece: CabinetConfig): boolean {
   return String(piece?.label || "").toLowerCase().includes("shelf")
 }
 
-function cabinetDescription(config: CabinetConfig): string {
-  const shelfText =
-    Number(config.shelf_qty) > 0
-      ? `, ${config.shelf_qty} ${Number(config.shelf_qty) === 1 ? "shelf" : "shelves"}`
-      : ""
-  return `${config.height_mm}mm high x ${config.width_mm}mm wide x ${config.depth_mm}mm deep - ${config.carcass_material || "cabinet board"} ${config.carcass_thickness_mm}mm carcass${shelfText}`
-}
-
 function fieldId(prefix: string, name: string): string {
   return `${prefix}-${name}`.replace(/[^a-z0-9-_]/gi, "-")
+}
+
+// WHAT PICKING A COLOUR JUST DID TO THE PRICE, said plainly.
+//
+// Three different things, and they used to read as one. A colour with a rate
+// loads it; a colour that is made to order has no rate and never will, because
+// the job is priced by the supplier when it is ordered; a colour we have simply
+// not priced yet is a gap somebody can fill. Saying "cost loaded" for all three
+// is how a cabinet ends up quoted at nothing.
+function colourPickedMessage(option: ColourOption): string {
+  const name = option.name || option.label || "That colour"
+  const rate = Number(option.costPerSqmExGst) || 0
+  if (rate > 0) return `${name} loaded at ${money(rate)} per m².`
+  const orderTypes = Array.isArray(option.orderTypes) ? option.orderTypes : []
+  if (orderTypes.some(type => String(type).toLowerCase().includes("made to order"))) {
+    return `${name} is made to order, so it is priced by the supplier per job. Enter the cost per m² below if you have a figure for it.`
+  }
+  return `${name} has no cost per m² in the colour library yet. Enter one below, or price this cabinet by hand.`
+}
+
+/** "16mm" off a quote line as the number the cabinet holds. */
+function thicknessMmFromLabel(value: unknown): number {
+  const match = String(value || "").match(/\d+(\.\d+)?/)
+  return match ? Number(match[0]) : 0
+}
+
+/** The thickness a cabinet carries, written the way a quote line writes it. */
+function thicknessLabel(value: unknown): string {
+  const mm = numberValue(value)
+  return mm > 0 ? `${mm}mm` : ""
 }
 
 function materialDisplay({ material, finish, colour }: { material?: unknown; finish?: unknown; colour?: unknown }): string {
@@ -184,8 +213,10 @@ function MaterialCostPrompt({ prompt, onUseOnce, onSaveFuture, onCancel }: {
   return (
     <div className="mt-3 p-3 bg-[#f5f8f4] border border-[#dbd8cc] rounded-[6px] flex flex-col gap-2">
       <div className="flex flex-col gap-[2px]">
-        <p className="text-[11px] font-semibold text-[#1a1a18]">No price found for {prompt.material}</p>
-        <p className="text-[10px] text-[#8b8a81]">Enter a cost per sqm ex GST</p>
+        <p className="text-[11px] font-semibold text-[#1a1a18]">No price in the colour library for {prompt.material}</p>
+        <p className="text-[10px] text-[#8b8a81]">
+          Enter a cost per sqm ex GST. Saving it to the library writes it against this one colour, nothing else.
+        </p>
       </div>
       <input
         type="number"
@@ -356,8 +387,17 @@ function ColourLibraryCombobox({ disabled = false, placeholder, value, options, 
 interface CabinetConfiguratorProps {
   lineItemId?: string | null
   quoteId?: string | null
-  quoteLine?: { material?: string; colour?: string; finish?: string } | null
+  quoteLine?: {
+    material?: string
+    colour?: string
+    finish?: string
+    thickness?: string
+    supplier_name?: string
+    unit_cost_source_id?: string | number | null
+  } | null
   existingConfig?: CabinetConfig | null
+  /** Hours per cabinet from Business Defaults, shown in the field as a start. */
+  labourHoursPerCabinet?: number | string
   onSave?: (config: unknown) => void
   onCancel?: () => void
 }
@@ -367,21 +407,59 @@ export default function CabinetConfigurator({
   quoteId,
   quoteLine = null,
   existingConfig = null,
+  labourHoursPerCabinet = 0,
   onSave,
   onCancel,
 }: CabinetConfiguratorProps) {
-  const quoteMaterial = quoteLine?.material || existingConfig?.carcass_material || ""
-  const quoteColour   = quoteLine?.colour   || existingConfig?.colour            || ""
-  const quoteFinish   = quoteLine?.finish   || existingConfig?.finish             || ""
+  // ── THE BOARD THIS BOX IS MADE FROM IS CHOSEN HERE ───────────────────────
+  //
+  // It used to be read off the quote line and shown as two grey read-only
+  // boxes, on the reasoning that a cabinet always arrives from a design and a
+  // design has already answered. Add one by hand and nothing has answered: the
+  // quote line locked its colour, supplier and thickness BECAUSE it was a
+  // cabinet, and the cabinet pointed back at the line. Neither would take an
+  // answer, so the carcass board could not be set at all and the cut list was
+  // costed from whatever the price lookup guessed.
+  //
+  // The shelf inside this same modal always had a full material, thickness and
+  // colour picker. The box the shelf sits in now has the same one, and what is
+  // picked here is written back onto the quote line when the cabinet is saved,
+  // so the items table and the Base Cabinets tab read the truth.
+  //
+  // The quote line is the SEED for a cabinet that came from a design, not the
+  // master. The old code had that backwards, and its fallback the other way
+  // read existingConfig.colour and .finish, which are not fields: the columns
+  // are carcass_colour and carcass_finish. So the fallback never fired, and a
+  // saved carcass colour was overwritten with a blank on the next save.
+  const seedMaterial = existingConfig?.carcass_material || quoteLine?.material || ""
+  const seedFinish   = existingConfig?.carcass_finish   || quoteLine?.finish   || ""
+  const seedColour   = existingConfig?.carcass_colour   || quoteLine?.colour   || ""
+  // Whatever is saved is kept, not clamped to the two the toggle offers. A
+  // cabinet drawn at some other thickness would otherwise be quietly rewritten
+  // to 16 the first time anybody opened it, and its cut list recosted with it.
+  const seedThickness = numberValue(existingConfig?.carcass_thickness_mm) > 0
+    ? numberValue(existingConfig?.carcass_thickness_mm)
+    : thicknessMmFromLabel(quoteLine?.thickness) || 16
+  // The per-cabinet hours from Business Defaults, IN the field rather than
+  // behind it, so they can be seen, changed and cleared. They used to be typed
+  // here and then thrown away: the quote replaced whatever was entered with the
+  // default every time it costed the line.
+  const savedLabourHours = numberValue(existingConfig?.labour_hours ?? existingConfig?.labour_cost)
 
   const initialConfig: CabinetConfig = {
     ...DEFAULT_CONFIG,
     ...(existingConfig || {}),
-    carcass_material:       quoteMaterial,
-    back_panel_material:    quoteMaterial,
+    carcass_material:       seedMaterial,
+    carcass_finish:         seedFinish,
+    carcass_colour:         seedColour,
+    carcass_thickness_mm:   seedThickness,
+    carcass_supplier:       existingConfig?.carcass_supplier || quoteLine?.supplier_name || "",
+    carcass_colour_id:      existingConfig?.carcass_colour_id ?? quoteLine?.unit_cost_source_id ?? null,
+    back_panel_material:    seedMaterial,
     back_panel_thickness_mm: [16, 18].includes(Number(existingConfig?.back_panel_thickness_mm))
       ? Number(existingConfig?.back_panel_thickness_mm)
       : 16,
+    labour_hours: savedLabourHours > 0 ? savedLabourHours : numberValue(labourHoursPerCabinet),
   }
 
   const [config, setConfig] = useState<CabinetConfig>(() => ({
@@ -399,25 +477,41 @@ export default function CabinetConfigurator({
   const [isSavingCost, setIsSavingCost]   = useState(false)
   const [activeTab, setActiveTab]         = useState("dimensions")
   const [mobileSectionOpen, setMobileSectionOpen] = useState<string | null>(null)
+  const [carcassColourOptions, setCarcassColourOptions] = useState<ColourOption[]>([])
   const [shelfColourOptions, setShelfColourOptions] = useState<ColourOption[]>([])
 
+  // The carcass fields are no longer overwritten from the quote line here. That
+  // line is what forced the read-only boxes: whatever anyone picked was
+  // replaced by the line's answer on the very next render.
   const normalizedConfig = useMemo(
-    () =>
-      normalizeCabinetConfig({
+    () => ({
+      ...normalizeCabinetConfig({
         ...config,
-        carcass_material:   quoteMaterial,
-        carcass_finish:     quoteFinish,
-        carcass_colour:     quoteColour,
-        back_panel_material: quoteMaterial,
-        shelf_material:      sameShelfMaterial ? config.carcass_material    : config.shelf_material,
-        shelf_finish:        sameShelfMaterial ? quoteFinish                : config.shelf_finish,
-        shelf_colour:        sameShelfMaterial ? quoteColour                : config.shelf_colour,
+        back_panel_material: config.carcass_material,
+        shelf_material:      sameShelfMaterial ? config.carcass_material     : config.shelf_material,
+        shelf_finish:        sameShelfMaterial ? config.carcass_finish       : config.shelf_finish,
+        shelf_colour:        sameShelfMaterial ? config.carcass_colour       : config.shelf_colour,
         cost_per_sqm_shelf:  sameShelfMaterial ? config.cost_per_sqm_carcass : config.cost_per_sqm_shelf,
         shelf_thickness_mm:  sameShelfMaterial ? config.carcass_thickness_mm : config.shelf_thickness_mm,
         shelf_heights_mm:    normalizeShelfHeights(config.shelf_heights_mm, shelfCount(config.shelf_qty), config.height_mm),
       }),
-    [config, quoteColour, quoteFinish, quoteMaterial, sameShelfMaterial]
+      // WHICH library row the carcass colour came from, and whose board it is.
+      // Carried alongside rather than through normalizeCabinetConfig, because
+      // pcd_cabinet_configs has no column for either: the QUOTE LINE holds them
+      // (unit_cost_source_id and supplier_name), which is why they are seeded
+      // from the line above and written back to it on save. The cabinet holds
+      // the board's description and its rate, the line holds where the rate
+      // came from, and neither has to invent a column for the other's job.
+      carcass_supplier:  config.carcass_supplier || "",
+      carcass_colour_id: config.carcass_colour_id ?? null,
+    }),
+    [config, sameShelfMaterial]
   )
+
+  const carcassMaterialLabel = materialDisplay({
+    finish: normalizedConfig.carcass_finish,
+    colour: normalizedConfig.carcass_colour,
+  })
 
   const shelfMaterialLabel = materialDisplay({
     finish: normalizedConfig.shelf_finish,
@@ -433,32 +527,51 @@ export default function CabinetConfigurator({
     return () => window.clearTimeout(timeout)
   }, [feedback])
 
-  // Load shelf colour options when shelf material / thickness changes
+  // Load the colours offered for a material at a thickness. One loader, used by
+  // the carcass and the shelf, so the two pickers can never offer different
+  // colours for the same board.
   useEffect(() => {
     let cancelled = false
 
-    async function loadShelfOptions() {
-      setShelfColourOptions([])
-      if (sameShelfMaterial || !config.shelf_material || !config.shelf_thickness_mm) return
+    async function loadOptions(
+      material: unknown,
+      thicknessMm: unknown,
+      apply: (options: ColourOption[]) => void
+    ) {
+      if (!material || !thicknessMm) {
+        if (!cancelled) apply([])
+        return
+      }
       try {
         const response = await fetch(
-          `/api/colour-library?material=${encodeURIComponent(String(config.shelf_material))}&thickness=${encodeURIComponent(`${config.shelf_thickness_mm}mm`)}`,
+          `/api/colour-library?material=${encodeURIComponent(String(material))}&thickness=${encodeURIComponent(`${thicknessMm}mm`)}`,
           { cache: "no-store" }
         )
         const payload = await response.json()
         if (!cancelled) {
-          setShelfColourOptions(
-            payload?.colourFamily?.groups?.length ? optionsFromColourFamily(payload.colourFamily) : []
-          )
+          apply(payload?.colourFamily?.groups?.length ? optionsFromColourFamily(payload.colourFamily) : [])
         }
       } catch {
-        if (!cancelled) setShelfColourOptions([])
+        if (!cancelled) apply([])
       }
     }
 
-    loadShelfOptions()
+    setCarcassColourOptions([])
+    loadOptions(config.carcass_material, config.carcass_thickness_mm, setCarcassColourOptions)
+
+    setShelfColourOptions([])
+    if (!sameShelfMaterial) {
+      loadOptions(config.shelf_material, config.shelf_thickness_mm, setShelfColourOptions)
+    }
+
     return () => { cancelled = true }
-  }, [sameShelfMaterial, config.shelf_material, config.shelf_thickness_mm])
+  }, [
+    config.carcass_material,
+    config.carcass_thickness_mm,
+    sameShelfMaterial,
+    config.shelf_material,
+    config.shelf_thickness_mm,
+  ])
 
   // ---------------------------------------------------------------------------
   // State updaters
@@ -470,8 +583,19 @@ export default function CabinetConfigurator({
       if (field === "cost_per_sqm_carcass" && sameShelfMaterial) {
         next.cost_per_sqm_shelf = value
       }
-      if (field === "carcass_thickness_mm" && sameShelfMaterial) {
-        next.shelf_thickness_mm = value
+      if (field === "carcass_thickness_mm") {
+        // A colour is held per finish AND thickness, so changing the thickness
+        // changes which colours exist and what they cost. Keeping the old
+        // answer would leave a colour on the cabinet that is not stocked in
+        // the board it now says it is made from.
+        next.carcass_finish        = ""
+        next.carcass_colour        = ""
+        next.carcass_colour_id     = null
+        next.cost_per_sqm_carcass  = 0
+        if (sameShelfMaterial) {
+          next.shelf_thickness_mm = value
+          next.cost_per_sqm_shelf = 0
+        }
       }
       if (field === "shelf_thickness_mm") {
         next.shelf_finish       = ""
@@ -497,6 +621,50 @@ export default function CabinetConfigurator({
     })
   }
 
+  function updateCarcassMaterialType(rawValue: string) {
+    // Stored Title Case, the way a quote line spells a material, because this
+    // is written straight back onto the line when the cabinet is saved. The
+    // shelf keeps the design tool's lowercase spelling; materialDisplay copes
+    // with both, and the library lookup normalises either.
+    const value = rawValue ? materialLabelForType(rawValue) : ""
+    setConfig(current => ({
+      ...current,
+      carcass_material:      value,
+      back_panel_material:   value,
+      carcass_finish:        "",
+      carcass_colour:        "",
+      carcass_colour_id:     null,
+      carcass_supplier:      "",
+      cost_per_sqm_carcass:  0,
+      // The shelf follows the box unless it has been told not to. Left behind,
+      // it would claim a colour from a material it is no longer made of.
+      ...(sameShelfMaterial
+        ? { shelf_material: value, shelf_finish: "", shelf_colour: "", cost_per_sqm_shelf: 0 }
+        : {}),
+    }))
+  }
+
+  function selectCarcassColour(option: ColourOption) {
+    setConfig(current => ({
+      ...current,
+      carcass_finish:       option.finish || "",
+      carcass_colour:       option.name || option.label || "",
+      carcass_colour_id:    option.id ?? null,
+      carcass_supplier:     option.supplier || "",
+      // Number(x) || 0, never `x || 0`: a colour genuinely priced at $0 is an
+      // answer, and the falsy form throws it away.
+      cost_per_sqm_carcass: Number(option.costPerSqmExGst) || 0,
+      ...(sameShelfMaterial
+        ? {
+            shelf_finish:       option.finish || "",
+            shelf_colour:       option.name || option.label || "",
+            cost_per_sqm_shelf: Number(option.costPerSqmExGst) || 0,
+          }
+        : {}),
+    }))
+    setFeedback(colourPickedMessage(option))
+  }
+
   function updateShelfMaterialType(value: string) {
     setConfig(current => ({
       ...current,
@@ -512,11 +680,9 @@ export default function CabinetConfigurator({
       ...current,
       shelf_finish:       option.finish || "",
       shelf_colour:       option.name || option.label || "",
-      cost_per_sqm_shelf: Number(option.costPerSqmExGst || 0),
+      cost_per_sqm_shelf: Number(option.costPerSqmExGst) || 0,
     }))
-    if (Number(option.costPerSqmExGst || 0) > 0) {
-      setFeedback(`${option.name || option.label} cost loaded.`)
-    }
+    setFeedback(colourPickedMessage(option))
   }
 
   function updatePromptCost(value: string) {
@@ -531,21 +697,42 @@ export default function CabinetConfigurator({
     updateConfig("cost_per_sqm_carcass", value)
   }
 
+  // Everything the matcher needs to land on ONE colour library row. The colour
+  // and the finish are the point: without them the lookup used to answer with
+  // whichever colour of that material happened to sort first, and a save wrote
+  // the price back over every colour it had matched.
+  function lookupSpec(role: string) {
+    const shelf = role === "shelf"
+    return {
+      material:  shelf ? normalizedConfig.shelf_material       : normalizedConfig.carcass_material,
+      thickness: shelf ? normalizedConfig.shelf_thickness_mm   : normalizedConfig.carcass_thickness_mm,
+      colour:    shelf ? normalizedConfig.shelf_colour         : normalizedConfig.carcass_colour,
+      finish:    shelf ? normalizedConfig.shelf_finish         : normalizedConfig.carcass_finish,
+      supplier:  shelf ? ""                                     : normalizedConfig.carcass_supplier,
+      colourId:  shelf ? null                                   : normalizedConfig.carcass_colour_id,
+    }
+  }
+
   function lookupUrl(role: string): string {
-    const material  = role === "shelf" ? normalizedConfig.shelf_material        : normalizedConfig.carcass_material
-    const thickness = role === "shelf" ? normalizedConfig.shelf_thickness_mm    : normalizedConfig.carcass_thickness_mm
-    const colour    = role === "shelf" ? normalizedConfig.shelf_colour           : quoteColour
-    const params    = new URLSearchParams()
-    if (colour)    params.set("colour",    String(colour))
-    if (thickness) params.set("thickness", `${thickness}mm`)
+    const spec   = lookupSpec(role)
+    const params = new URLSearchParams()
+    if (spec.colourId)  params.set("colour_library_id", String(spec.colourId))
+    if (spec.colour)    params.set("colour",    String(spec.colour))
+    if (spec.finish)    params.set("finish",    String(spec.finish))
+    if (spec.supplier)  params.set("supplier",  String(spec.supplier))
+    if (spec.thickness) params.set("thickness", `${spec.thickness}mm`)
     const query = params.toString()
-    return `/api/admin/board-costs/${encodeURIComponent(String(material))}${query ? `?${query}` : ""}`
+    return `/api/admin/board-costs/${encodeURIComponent(String(spec.material))}${query ? `?${query}` : ""}`
   }
 
   async function lookupMaterialCost(role: string, { promptIfMissing = true } = {}) {
-    const material = role === "shelf" ? normalizedConfig.shelf_material : normalizedConfig.carcass_material
-    if (!material) {
-      setFeedback("Select a material on the quote line before looking up the cost.")
+    const spec = lookupSpec(role)
+    if (!spec.material) {
+      setFeedback(`Pick the ${role === "shelf" ? "shelf" : "carcass"} board type first.`)
+      return
+    }
+    if (!spec.colour) {
+      setFeedback(`Pick the ${role === "shelf" ? "shelf" : "carcass"} finish and colour first. A board price is held per colour, so there is nothing to look up without one.`)
       return
     }
     setFeedback("")
@@ -553,25 +740,50 @@ export default function CabinetConfigurator({
       const response = await fetch(lookupUrl(role), { cache: "no-store" })
       const payload  = await response.json()
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not load material cost.")
+
       if (payload.found && payload.cost) {
-        applyCost(role, payload.cost.cost_per_sqm_ex_gst)
-        if (promptIfMissing) setFeedback(`${material} cost loaded.`)
+        applyCost(role, Number(payload.cost.cost_per_sqm_ex_gst) || 0)
+        if (promptIfMissing) {
+          setFeedback(
+            payload.source === "material_rate"
+              ? `No price against ${spec.colour}, so the rate held for ${spec.material} as a whole was used. Check it before quoting.`
+              : `${spec.colour} loaded at ${money(payload.cost.cost_per_sqm_ex_gst)} per m².`
+          )
+        }
         return
       }
+
+      // Made to order is not a missing price, so it never opens the "enter a
+      // cost" prompt. It is reported and left alone.
+      if (payload.madeToOrder) {
+        setFeedback(payload.message || `${spec.colour} is made to order and is priced by the supplier per job.`)
+        return
+      }
+
       if (promptIfMissing) {
-        setCostPrompt({ role: role as "carcass" | "shelf", material: String(material), cost: "", onChange: updatePromptCost })
+        setCostPrompt({
+          role: role as "carcass" | "shelf",
+          material: [spec.material, spec.finish, spec.colour].filter(Boolean).join(" - "),
+          cost: "",
+          onChange: updatePromptCost,
+        })
+      } else if (payload.message) {
+        setFeedback(payload.message)
       }
     } catch (error: unknown) {
       setFeedback((error as Error)?.message || "Could not load material cost.")
     }
   }
 
-  // Auto-lookup carcass cost on mount / material change
+  // Refresh the carcass rate when the board changes and no rate has been
+  // entered. Only once a colour is on it: without one there is nothing to
+  // look up, and the old code guessed rather than waited.
   useEffect(() => {
-    if (!normalizedConfig.carcass_material || Number(normalizedConfig.cost_per_sqm_carcass) > 0) return
+    if (!normalizedConfig.carcass_material || !normalizedConfig.carcass_colour) return
+    if (Number(normalizedConfig.cost_per_sqm_carcass) > 0) return
     lookupMaterialCost("carcass", { promptIfMissing: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedConfig.carcass_material])
+  }, [normalizedConfig.carcass_material, normalizedConfig.carcass_colour, normalizedConfig.carcass_thickness_mm])
 
   function usePromptCostOnce() {
     const cost = numberValue(costPrompt?.cost)
@@ -625,16 +837,172 @@ export default function CabinetConfigurator({
         product_type:             "base_cabinet",
         product_name:             label,
         description:              cabinetDescription(savedConfig),
+        // THE BOARD GOES BACK ONTO THE LINE.
+        //
+        // It only ever travelled the other way, which is what made the board
+        // unsettable: the modal read these five off the line and showed them
+        // greyed out. Now the cabinet is where they are answered, and the line
+        // carries the answer so the items table, the Base Cabinets tab, the
+        // reprice and the workshop paperwork all say the same board.
+        material:                 savedConfig.carcass_material || "",
+        finish:                   savedConfig.carcass_finish || "",
+        colour:                   savedConfig.carcass_colour || "",
+        thickness:                thicknessLabel(savedConfig.carcass_thickness_mm),
+        supplier_name:            savedConfig.carcass_supplier || "",
+        unit_cost_source_id:      savedConfig.carcass_colour_id || null,
+        unit_cost_per_sqm_ex_gst: numberValue(savedConfig.cost_per_sqm_carcass),
         product_unit_cost_ex_gst: unitPrice,
-        unit_price_ex_gst:        unitPrice,
-        line_total_ex_gst:        unitPrice,
-        labour_hours:             totals.labour_hours,
+        // The cut list is what this cabinet costs, so the line is a manual
+        // cost by definition. Left as "auto" it invites the editor's flat
+        // width x height x rate path to have an opinion about a box.
+        unit_cost_mode:           "manual",
+        calculated_unit_cost_ex_gst: unitPrice,
+        // Labour hours are deliberately NOT sent. The line's column is worked
+        // out by calculateQuoteLine from the hours held here times how many
+        // cabinets, and stamping a per-cabinet figure onto a column that means
+        // the total is how a number ends up multiplied twice.
       },
     })
   }
 
   const carcassCostId = fieldId(lineItemId || "cabinet", "carcass-cost")
   const shelfCostId   = fieldId(lineItemId || "cabinet", "shelf-cost")
+
+  // ── WRITTEN ONCE, RENDERED TWICE ─────────────────────────────────────────
+  //
+  // This screen has a desktop layout and a phone layout, and every field used
+  // to be typed out in both. That is how the two drifted: the same fix had to
+  // be made in two places and often was not. The fields that matter now come
+  // from these, so a phone and a desktop cannot ask different questions.
+
+  function carcassBoardFields() {
+    const hasBoard = Boolean(config.carcass_material && config.carcass_thickness_mm)
+    return (
+      <>
+        <Field label="Carcass board">
+          <select
+            className={tw.input}
+            value={config.carcass_material ? materialTypeForKey(String(config.carcass_material)) : ""}
+            onChange={e => updateCarcassMaterialType(e.target.value)}
+          >
+            <option value="">Select board type</option>
+            {COLOUR_MATERIALS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Carcass thickness">
+          <ToggleGroup value={numberValue(config.carcass_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("carcass_thickness_mm", v)} />
+        </Field>
+        <Field label="Carcass finish and colour" wide>
+          <div className="flex gap-2">
+            <ColourLibraryCombobox
+              disabled={!hasBoard}
+              placeholder={hasBoard ? "Select carcass finish and colour" : "Select board type and thickness first"}
+              value={carcassMaterialLabel}
+              options={carcassColourOptions}
+              onChange={selectCarcassColour}
+            />
+            <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("carcass")}>Lookup</button>
+          </div>
+        </Field>
+        <Field label="Cost per sqm ex GST">
+          <input id={carcassCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_carcass} onChange={e => updateConfig("cost_per_sqm_carcass", e.target.value)} />
+        </Field>
+        <Field label="Labour hours per cabinet">
+          {/* Clearable on purpose. Empty means "use the hours per cabinet from
+              Business Defaults", the same rule the markup follows, so a
+              cabinet nobody has an opinion about tracks the setting. */}
+          <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? ""} onChange={e => updateConfig("labour_hours", e.target.value)} />
+        </Field>
+      </>
+    )
+  }
+
+  function backPanelFields() {
+    return (
+      <>
+        <Field label="Back material" wide>
+          {/* Follows the carcass by design, and says so rather than sitting
+              there greyed out looking like a field somebody broke. */}
+          <input
+            className={tw.inputRo}
+            value={materialDisplay({
+              material: normalizedConfig.back_panel_material,
+              finish:   normalizedConfig.carcass_finish,
+              colour:   normalizedConfig.carcass_colour,
+            }) || "Same board as the carcass"}
+            readOnly
+          />
+        </Field>
+        <Field label="Back thickness">
+          <ToggleGroup value={numberValue(config.back_panel_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("back_panel_thickness_mm", v)} />
+        </Field>
+      </>
+    )
+  }
+
+  function matchShelfToCarcass(checked: boolean) {
+    setSameShelfMaterial(checked)
+    if (!checked) return
+    setConfig(current => ({
+      ...current,
+      shelf_material:     current.carcass_material,
+      shelf_finish:       current.carcass_finish,
+      shelf_colour:       current.carcass_colour,
+      shelf_thickness_mm: current.carcass_thickness_mm,
+      cost_per_sqm_shelf: current.cost_per_sqm_carcass,
+    }))
+  }
+
+  // The corner and rangehood answers. A design can set all of these and this
+  // screen could set none of them, so a cabinet added by hand could never be a
+  // corner: the fields existed on the record and nowhere on the form.
+  function shapeFields() {
+    return (
+      <>
+        <label className="flex items-center gap-2 text-[12px] text-[#1a1a18] col-span-2 cursor-pointer">
+          <input
+            type="checkbox"
+            className="accent-[#6b9e61]"
+            checked={Boolean(config.is_corner)}
+            onChange={e => updateConfig("is_corner", e.target.checked)}
+          />
+          Corner cabinet
+        </label>
+        {config.is_corner ? (
+          <>
+            <Field label="Corner shape">
+              <select className={tw.input} value={config.corner_style === "diagonal" ? "diagonal" : "l_shape"} onChange={e => updateConfig("corner_style", e.target.value)}>
+                <option value="l_shape">L shape, bi-fold door</option>
+                <option value="diagonal">Diagonal, single flat door</option>
+              </select>
+            </Field>
+            <Field label="Second leg width mm">
+              <input className={tw.input} type="number" min="0" value={config.secondary_width_mm ?? ""} onChange={e => updateConfig("secondary_width_mm", e.target.value)} />
+            </Field>
+          </>
+        ) : null}
+        <label className="flex items-center gap-2 text-[12px] text-[#1a1a18] col-span-2 cursor-pointer">
+          <input
+            type="checkbox"
+            className="accent-[#6b9e61]"
+            checked={Boolean(config.has_rangehood)}
+            onChange={e => updateConfig("has_rangehood", e.target.checked)}
+          />
+          Houses a rangehood
+        </label>
+        {config.has_rangehood ? (
+          <>
+            <Field label="Housing height mm">
+              <input className={tw.input} type="number" min="0" value={config.rangehood_housing_height_mm ?? ""} onChange={e => updateConfig("rangehood_housing_height_mm", e.target.value)} />
+            </Field>
+            <Field label="Channel width mm">
+              <input className={tw.input} type="number" min="0" value={config.rangehood_channel_width_mm ?? ""} onChange={e => updateConfig("rangehood_channel_width_mm", e.target.value)} />
+            </Field>
+          </>
+        ) : null}
+      </>
+    )
+  }
 
   function renderTabContent(overrideTab?: string) {
     const tab = overrideTab ?? activeTab
@@ -657,6 +1025,7 @@ export default function CabinetConfigurator({
               <Field label="Depth mm">
                 <input className={tw.input} type="number" min="1" value={config.depth_mm} onChange={e => updateConfig("depth_mm", e.target.value)} />
               </Field>
+              {shapeFields()}
             </div>
           </div>
         </div>
@@ -669,21 +1038,7 @@ export default function CabinetConfigurator({
           <p className={tw.sectionTitle}>Boards and labour</p>
           <div className={tw.card}>
             <div className={tw.grid2}>
-              <Field label="Carcass material" wide>
-                <div className="flex gap-2">
-                  <input className={tw.inputRo} value={materialDisplay({ material: normalizedConfig.carcass_material, finish: quoteFinish, colour: quoteColour })} readOnly />
-                  <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("carcass")}>Lookup</button>
-                </div>
-              </Field>
-              <Field label="Carcass thickness">
-                <ToggleGroup value={numberValue(config.carcass_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("carcass_thickness_mm", v)} />
-              </Field>
-              <Field label="Cost per sqm ex GST">
-                <input id={carcassCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_carcass} onChange={e => updateConfig("cost_per_sqm_carcass", e.target.value)} />
-              </Field>
-              <Field label="Labour hours">
-                <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? config.labour_cost /* legacy key */} onChange={e => updateConfig("labour_hours", e.target.value)} />
-              </Field>
+              {carcassBoardFields()}
             </div>
             <MaterialCostPrompt
               prompt={costPrompt?.role === "carcass" ? costPrompt : null}
@@ -707,12 +1062,7 @@ export default function CabinetConfigurator({
             </label>
             {config.back_panel_included && (
               <div className={`${tw.grid2} mb-3`}>
-                <Field label="Back material" wide>
-                  <input className={tw.inputRo} value={materialDisplay({ material: normalizedConfig.back_panel_material, finish: quoteFinish, colour: quoteColour })} readOnly />
-                </Field>
-                <Field label="Back thickness">
-                  <ToggleGroup value={numberValue(config.back_panel_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("back_panel_thickness_mm", v)} />
-                </Field>
+                {backPanelFields()}
               </div>
             )}
             <div className={tw.grid2}>
@@ -725,19 +1075,7 @@ export default function CabinetConfigurator({
                 type="checkbox"
                 checked={sameShelfMaterial}
                 className="accent-[#6b9e61]"
-                onChange={e => {
-                  setSameShelfMaterial(e.target.checked)
-                  if (e.target.checked) {
-                    setConfig(current => ({
-                      ...current,
-                      shelf_material:     normalizedConfig.carcass_material,
-                      shelf_finish:       quoteFinish,
-                      shelf_colour:       quoteColour,
-                      shelf_thickness_mm: current.carcass_thickness_mm,
-                      cost_per_sqm_shelf: current.cost_per_sqm_carcass,
-                    }))
-                  }
-                }}
+                onChange={e => matchShelfToCarcass(e.target.checked)}
               />
               Shelves same as carcass board and thickness
             </label>
@@ -990,6 +1328,7 @@ export default function CabinetConfigurator({
                   <Field label="Depth mm">
                     <input className={tw.input} type="number" min="1" value={config.depth_mm} onChange={e => updateConfig("depth_mm", e.target.value)} />
                   </Field>
+                  {shapeFields()}
                 </div>
               </div>
             </div>
@@ -1001,21 +1340,7 @@ export default function CabinetConfigurator({
               <p className={tw.sectionTitle}>Boards and labour</p>
               <div className={tw.card}>
                 <div className={tw.grid2}>
-                  <Field label="Carcass material" wide>
-                    <div className="flex gap-2">
-                      <input className={tw.inputRo} value={materialDisplay({ material: normalizedConfig.carcass_material, finish: quoteFinish, colour: quoteColour })} readOnly />
-                      <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("carcass")}>Lookup</button>
-                    </div>
-                  </Field>
-                  <Field label="Carcass thickness">
-                    <ToggleGroup value={numberValue(config.carcass_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("carcass_thickness_mm", v)} />
-                  </Field>
-                  <Field label="Cost per sqm ex GST">
-                    <input id={carcassCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_carcass} onChange={e => updateConfig("cost_per_sqm_carcass", e.target.value)} />
-                  </Field>
-                  <Field label="Labour hours">
-                    <input className={tw.input} type="number" min="0" step="0.01" value={config.labour_hours ?? config.labour_cost /* legacy key */} onChange={e => updateConfig("labour_hours", e.target.value)} />
-                  </Field>
+                  {carcassBoardFields()}
                 </div>
                 <MaterialCostPrompt
                   prompt={costPrompt?.role === "carcass" ? costPrompt : null}
@@ -1038,12 +1363,7 @@ export default function CabinetConfigurator({
                 </label>
                 {config.back_panel_included && (
                   <div className={`${tw.grid2} mb-3`}>
-                    <Field label="Back material" wide>
-                      <input className={tw.inputRo} value={materialDisplay({ material: normalizedConfig.back_panel_material, finish: quoteFinish, colour: quoteColour })} readOnly />
-                    </Field>
-                    <Field label="Back thickness">
-                      <ToggleGroup value={numberValue(config.back_panel_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("back_panel_thickness_mm", v)} />
-                    </Field>
+                    {backPanelFields()}
                   </div>
                 )}
                 <div className={tw.grid2}>
@@ -1056,19 +1376,7 @@ export default function CabinetConfigurator({
                     type="checkbox"
                     checked={sameShelfMaterial}
                     className="accent-[#6b9e61]"
-                    onChange={e => {
-                      setSameShelfMaterial(e.target.checked)
-                      if (e.target.checked) {
-                        setConfig(current => ({
-                          ...current,
-                          shelf_material:     normalizedConfig.carcass_material,
-                          shelf_finish:       quoteFinish,
-                          shelf_colour:       quoteColour,
-                          shelf_thickness_mm: current.carcass_thickness_mm,
-                          cost_per_sqm_shelf: current.cost_per_sqm_carcass,
-                        }))
-                      }
-                    }}
+                    onChange={e => matchShelfToCarcass(e.target.checked)}
                   />
                   Shelves same as carcass board and thickness
                 </label>

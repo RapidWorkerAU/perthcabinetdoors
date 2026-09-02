@@ -5,6 +5,7 @@
 // wrong way round, which is a door made twice.
 
 import test from "node:test";
+import { requestLinesForItem } from "../lib/pcd-design-request-lines.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fieldsForProductType } from "../lib/pcd-product-fields.js";
@@ -239,13 +240,45 @@ test("a variation line carries it too", () => {
   assert.equal(written, 2, "both variation write sites have to carry it");
 });
 
-test("the design planner fills the fields instead of writing a sentence", () => {
-  // It already worked all of this out to draw the elevation, and used to hand
-  // it over as prose somebody had to read and retype.
-  const design = readFileSync(new URL("../lib/pcd-design-request-lines.js", import.meta.url), "utf8");
-  assert.match(design, /hingeSide: drills \? normaliseHingeSide/);
-  assert.match(design, /hingeFromBottomMm: hasPositions \? positions\[0\] : null/);
-  assert.ok(!design.includes("formatHingeNote"), "the sentence is gone from the notes");
+test("a design fills the drilling fields rather than leaving it as prose", () => {
+  // The planner already works all of this out to draw the elevation, and used
+  // to hand it over as a sentence somebody had to read and retype. That is
+  // where a pair becomes two identical doors.
+  //
+  // Asserted on the line rather than on the source, because the drilling is now
+  // worked out in one place for both paths (hingeFields in lib/pcd-door-utils.js)
+  // and what matters is that it arrives, not which file wrote it.
+  const [door] = requestLinesForItem(
+    {
+      id: "d1",
+      item_type: "base_cabinet",
+      label: "Base 600",
+      width_mm: 600,
+      height_mm: 720,
+      depth_mm: 560,
+      qty: 1,
+      front_type: "doors",
+      // Handing and cup positions, exactly as the elevation drew them.
+      door_config: { columns: 1, hinges: ["R"], hinge_positions_mm: [[100, 620]] },
+      door_style: { material: "decorative board", finish: "Matt", colour: "Classic White", thickness_mm: 18 },
+      material: "decorative board",
+      finish: "Matt",
+      colour: "Classic White",
+      carcass_thickness_mm: 16,
+    },
+    ["doors"],
+    { roomName: "Kitchen", roomHeightMm: 2400 }
+  );
+
+  assert.equal(door.productType, "Door");
+  assert.equal(door.hingeHoles, true);
+  assert.match(door.hingeQty, /^\d+ hinges$/, "the drilling cost is parsed out of this");
+  assert.equal(door.hingeSide, "Right", "the handing the planner drew is not on the line");
+  assert.equal(door.hingeFromBottomMm, 100, "the bottom cup position is not on the line");
+  // Turned round once here: the planner records both from the bottom, the form
+  // asks for the top one from the top.
+  assert.equal(door.hingeFromTopMm, door.height - 620, "the top cup position is not on the line");
+  assert.ok(Array.isArray(door.hingeMiddlesMm), "middle cups have to arrive as a list, even an empty one");
 });
 
 // ── THE FIELDS HAVE TO BE REACHABLE, NOT JUST EXIST ─────────────────────────
@@ -281,7 +314,12 @@ test("both layouts ask one definition whether a type gets drilled", () => {
   // step. They agreed only because there are five product types and one door.
   const editor = readFileSync(new URL("../app/admin/quotes/[id]/QuoteEditor.js", import.meta.url), "utf8");
   assert.match(editor, /from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/pcd-product-fields"/, "the editor does not read the shared definition");
-  assert.match(editor, /fieldsForProductType\(line\.product_type\)\.hinges === true/);
+  // The whole field set is now read once per line and every cell asks IT,
+  // rather than each cell calling out separately. So the anchor is that the
+  // line's fields come from the shared definition and that hinges is answered
+  // from them, not the exact one-line expression that used to be here.
+  assert.match(editor, /fieldsForProductType\(line\.product_type\)/, "the editor does not ask the shared definition about a line");
+  assert.match(editor, /hingesApplicable: fields\.hinges === true/, "the editor no longer answers hinges from the shared field set");
   assert.ok(
     !/product_type !== "Door"/.test(editor),
     "the editor still decides for itself what a door is"

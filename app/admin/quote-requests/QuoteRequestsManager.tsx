@@ -344,10 +344,19 @@ export default function QuoteRequestsManager() {
     if (res.ok && payload.ok) {
       // Lines are priced from the colour library during the conversion. Say so
       // when some could not be matched, so nothing sits at $0 unnoticed.
+      //
+      // Made-to-order lines are said separately and calmly. They have no rate to
+      // match against and never will, so calling them a failure sent people
+      // looking for a price that does not exist.
       if (payload.unpricedCount > 0) {
         toast({
           title: `${payload.unpricedCount} of ${payload.lineCount} lines could not be matched to a library colour. Check the cost on those lines.`,
           variant: 'error',
+        })
+      }
+      if (payload.madeToOrderCount > 0) {
+        toast({
+          title: `${payload.madeToOrderCount} line${payload.madeToOrderCount === 1 ? ' is' : 's are'} made to order. Price ${payload.madeToOrderCount === 1 ? 'it' : 'them'} from the supplier's quote.`,
         })
       }
       router.push(`/admin/quotes/${payload.quoteId}`)

@@ -117,7 +117,8 @@ test("the settings screen no longer writes the runner columns", () => {
 });
 
 test("the design importer invents no priced runner line", () => {
-  const src = read("app/api/admin/design/projects/[projectId]/import/route.js");
+  const src =
+    read("app/api/admin/design/projects/[projectId]/import/route.js") + read("lib/pcd-design-to-lines.js");
   assert.doesNotMatch(src, /runnerUnitCost/, "no rate lookup should survive");
   assert.doesNotMatch(src, /product_name: `Drawer runner/, "no automatic runner line should survive");
   // The runner is still the spec for whoever fits the drawer, so the NOTE stays.

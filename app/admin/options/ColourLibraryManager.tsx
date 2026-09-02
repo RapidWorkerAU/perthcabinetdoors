@@ -12,6 +12,8 @@ import {
   normaliseSupplierName,
   orderTypesLabel,
   thicknessOptionsForMaterial,
+  isMadeToOrder,
+  isMissingBoardPrice,
 } from '../../../lib/pcd-colour-library'
 import { useLists } from '../../../lib/use-lists'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
@@ -268,7 +270,7 @@ export default function ColourLibraryManager({
         (!columnFilters.material.length  || columnFilters.material.includes(row.material_type  || '-')) &&
         (!columnFilters.thickness.length || columnFilters.thickness.includes(row.thickness     || '-')) &&
         (!columnFilters.orderType.length || normaliseOrderTypes(row).some(t => columnFilters.orderType.includes(t))) &&
-        (!onlyUnpriced || !Number(row.cost_per_sqm_ex_gst))
+        (!onlyUnpriced || isMissingBoardPrice(row))
       )
     })
   }, [columnFilters, onlyUnpriced, searchQuery, sortedRows])
@@ -282,12 +284,17 @@ export default function ColourLibraryManager({
 
   // Active colours with no cost per m2 yet, and how many active colours there
   // are to compare it against.
+  //
+  // MADE TO ORDER IS NOT MISSING. Thermolaminate and compact laminate go to the
+  // supplier as a job and come back priced for that job, so there is no cost per
+  // m2 to hold and there never will be. Counting them said "236 of 490 colours
+  // have no cost" about a library that is, for the boards we cut ourselves,
+  // completely priced. A number that is always wrong is a number nobody reads.
   const activeRows = useMemo(() => rows.filter(row => row.is_active !== false), [rows])
   const activeCount = activeRows.length
-  const unpricedCount = useMemo(
-    () => activeRows.filter(row => !Number(row.cost_per_sqm_ex_gst)).length,
-    [activeRows]
-  )
+  const supplyRows = useMemo(() => activeRows.filter(row => !isMadeToOrder(row)), [activeRows])
+  const unpricedCount = useMemo(() => supplyRows.filter(isMissingBoardPrice).length, [supplyRows])
+  const madeToOrderCount = activeCount - supplyRows.length
 
   // ── State helpers ────────────────────────────────────────────────────────────
 
@@ -865,18 +872,27 @@ export default function ColourLibraryManager({
           </div>
         </div>
 
-        {unpricedCount > 0 && (
+        {(unpricedCount > 0 || madeToOrderCount > 0) && (
           <div className="flex flex-wrap items-center gap-3 mb-4 px-4 py-3 rounded-[8px] border border-[#dbd8cc] bg-[#f5f8f4]">
             <span className="text-[13px] text-[#5a5a52]">
-              <strong className="font-semibold text-[#1a1a18]">{unpricedCount}</strong> of {activeCount} active colour{activeCount === 1 ? '' : 's'} have no cost against them yet.
-              Lines in {unpricedCount === 1 ? 'it' : 'them'} are costed by hand when a request becomes a quote.
+              {unpricedCount > 0 ? (
+                <>
+                  <strong className="font-semibold text-[#1a1a18]">{unpricedCount}</strong> of {supplyRows.length} supply board colour{supplyRows.length === 1 ? '' : 's'} have no cost per m² against them yet.
+                  Lines in {unpricedCount === 1 ? 'it' : 'them'} are costed by hand when a request becomes a quote.{' '}
+                </>
+              ) : (
+                <>Every supply board colour has a cost per m² against it.{' '}</>
+              )}
+              {madeToOrderCount > 0 ? (
+                <>The other {madeToOrderCount} {madeToOrderCount === 1 ? 'is' : 'are'} made to order and priced from the supplier&apos;s quote per job, so {madeToOrderCount === 1 ? 'it holds' : 'they hold'} no rate.</>
+              ) : null}
             </span>
             <button
               type="button"
               onClick={() => setOnlyUnpriced(v => !v)}
               className="ml-auto h-[30px] px-3 bg-white border border-[#dbd8cc] text-[12px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#edf4eb]"
             >
-              {onlyUnpriced ? 'Show all colours' : 'Show only these'}
+              {onlyUnpriced ? 'Show all colours' : 'Show the unpriced supply boards'}
             </button>
           </div>
         )}

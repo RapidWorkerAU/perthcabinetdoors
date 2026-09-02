@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import TermsEditor from "../../_components/TermsEditor";
@@ -13,7 +13,7 @@ import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from 
 import { asSelectionRows, useProfileLibrary } from "../../../../lib/use-profile-library";
 // What each kind of product is asked, shared with the customer's quote form so
 // the two cannot decide differently what a door needs. See lib/pcd-product-fields.js.
-import { fieldsForProductType, isHardwareType } from "../../../../lib/pcd-product-fields";
+import { fieldsForProductType, isCabinetType, isHardwareType } from "../../../../lib/pcd-product-fields";
 import {
   edgesForSupplier,
   fieldsClearedBySupplierChange,
@@ -390,8 +390,38 @@ function normalizeProductTypeKey(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+// The one definition, from lib/pcd-product-fields.js. It used to be a literal
+// comparison here, a second one in the design importer and a third in the
+// reprice, which is exactly how three screens ended up with three ideas of what
+// a cabinet is allowed to be asked.
 function isBaseCabinetLine(line) {
-  return normalizeProductTypeKey(line?.product_type) === normalizeProductTypeKey(BASE_CABINET_TYPE);
+  return isCabinetType(line?.product_type);
+}
+
+// A cabinet's size, off the cabinet. The quote line deliberately carries no
+// width or height for one (see the note in pcd-design-to-lines.js: real
+// dimensions there arm the flat width x height x rate path and silently
+// reprice a carcass as a sheet of board), so the figure to show comes from the
+// configuration.
+function cabinetSizeText(line, field) {
+  const value = Number(line?.cabinet_config?.[field] || 0);
+  return value > 0 ? `${value}` : "";
+}
+
+// One line saying what this cabinet is, for the button that opens it. Height
+// first, the way a size is written everywhere else.
+function cabinetSummaryText(line) {
+  const config = line?.cabinet_config;
+  const size = [config?.height_mm, config?.width_mm, config?.depth_mm]
+    .map((value) => Number(value || 0))
+    .filter((value) => value > 0);
+  const board = [config?.carcass_colour || line?.colour, config?.carcass_material || line?.material]
+    .filter(Boolean)
+    .join(", ");
+  if (size.length === 3) {
+    return [`${size[0]} x ${size[1]} x ${size[2]}mm`, board].filter(Boolean).join(" - ");
+  }
+  return board || "Set up this cabinet";
 }
 
 function isBenchtopLine(line) {
@@ -1186,11 +1216,19 @@ export default function QuoteEditor({ quoteId }) {
     // A brand that makes no edges gets no edge field at all, not an empty one.
     const brandDoesEdges = useLibrary ? supplierOffersEdges(profileRows, supplier) : true;
     const brandDoesProfiles = useLibrary ? supplierOffersProfiles(profileRows, supplier) : true;
+    // WHAT THIS TYPE IS ASKED, read once from the shared definition rather than
+    // re-decided per cell. A cabinet used to fall through to the "unknown type"
+    // fallback in there, which answers yes to size, profile and edge, so every
+    // cell in this table carried its own hand-written `!isBaseCabinet`. That is
+    // how the desktop table and the phone sheet came to disagree about which
+    // ones. See lib/pcd-product-fields.js.
+    const fields = fieldsForProductType(line.product_type);
     const value = {
       calculated: calculateQuoteLine(line, businessDefaults),
       materialOptions: MATERIALS_BY_TYPE[line.product_type] || MATERIAL_OPTIONS,
-      showEdges: edgeProfiles.length > 0 && brandDoesEdges,
+      showEdges: fields.edge === true && edgeProfiles.length > 0 && brandDoesEdges,
       showProfiles:
+        fields.profile === true &&
         line.material === "Thermolaminate" &&
         Boolean(line.thickness) &&
         brandDoesProfiles &&
@@ -1215,7 +1253,8 @@ export default function QuoteEditor({ quoteId }) {
       // the customer's form and refused them on ours.
       isHardware: isHardwareType(line.product_type),
       isBenchtop: isBenchtopLine(line),
-      hingesApplicable: fieldsForProductType(line.product_type).hinges === true,
+      hingesApplicable: fields.hinges === true,
+      showSize: fields.size === true,
       colourSrc: colourSrcForLine(line, swatchIndex.byId, swatchIndex.byName),
       isBaseCabinet: isBaseCabinetLine(line),
     };
@@ -1249,6 +1288,34 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+  // WHICH BOARDS ARE MADE TO ORDER, by library row and by name.
+  //
+  // A made-to-order board is quoted by the supplier for the job, so it has no
+  // cost per m² and never will. Counting one as a line "with no board cost"
+  // meant every thermolaminate quote carried a red warning about something
+  // completely normal, which is how a warning stops being read.
+  const madeToOrderBoards = useMemo(() => {
+    const byId = new Set();
+    const byName = new Set();
+    (colourSwatches || []).forEach((item) => {
+      if (!item?.madeToOrder) return;
+      if (item.id) byId.add(item.id);
+      byName.add([item.material, item.thickness, item.finish, item.colour].map((v) => String(v || "").trim().toLowerCase()).join("|"));
+    });
+    return { byId, byName };
+  }, [colourSwatches]);
+
+  const isMadeToOrderLine = useCallback(
+    (line) => {
+      if (line.unit_cost_source_id && madeToOrderBoards.byId.has(line.unit_cost_source_id)) return true;
+      const key = [line.material, line.thickness, line.finish, line.colour]
+        .map((v) => String(v || "").trim().toLowerCase())
+        .join("|");
+      return madeToOrderBoards.byName.has(key);
+    },
+    [madeToOrderBoards]
+  );
+
   // Board lines sitting at no cost. These are the ones a converted quote used
   // to be full of, and the ones Reprice is for, so the count is shown rather
   // than left for someone to spot by scrolling.
@@ -1262,9 +1329,26 @@ export default function QuoteEditor({ quoteId }) {
           // would just be the same warning twice.
           line.product_type !== BASE_CABINET_TYPE &&
           line.colour &&
-          Number(line.product_unit_cost_ex_gst || 0) <= 0
+          Number(line.product_unit_cost_ex_gst || 0) <= 0 &&
+          // Made to order is not a missing price. It is priced by hand from the
+          // supplier's quote for this job, which is the normal way we sell it.
+          !isMadeToOrderLine(line)
       ).length,
-    [form.lines]
+    [form.lines, isMadeToOrderLine]
+  );
+
+  // Lines waiting on a supplier's price, said separately and without alarm.
+  const madeToOrderLineCount = useMemo(
+    () =>
+      form.lines.filter(
+        (line) =>
+          !NON_BOARD_PRODUCT_TYPES.has(line.product_type) &&
+          line.product_type !== BASE_CABINET_TYPE &&
+          line.colour &&
+          Number(line.product_unit_cost_ex_gst || 0) <= 0 &&
+          isMadeToOrderLine(line)
+      ).length,
+    [form.lines, isMadeToOrderLine]
   );
 
   /**
@@ -1303,15 +1387,25 @@ export default function QuoteEditor({ quoteId }) {
         ? ` ${payload.cabinetCount} cabinet${payload.cabinetCount === 1 ? "" : "s"} got a new board rate, so reopen them to recost the cut list.`
         : "";
 
-      if (!payload.changedCount && !payload.cabinetCount && !payload.unmatchedCount) {
+      // WHY a line did not reprice, not just how many. The server works the
+      // reason out per line and this used to throw it away, so "could not be
+      // matched to a library colour" was said about colours that were sitting
+      // right there in the library, either made to order or with no cost
+      // against them. People went looking for a missing colour and found one.
+      const mtoNote = payload.madeToOrderCount
+        ? ` ${payload.madeToOrderCount} ${payload.madeToOrderCount === 1 ? "line is" : "lines are"} made to order, priced from the supplier's quote.`
+        : "";
+
+      if (!payload.changedCount && !payload.cabinetCount && !payload.unmatchedCount && !payload.madeToOrderCount) {
         toast({ title: "Every line already matches the colour library." });
       } else if (payload.unmatchedCount) {
+        const reasons = [...new Set((payload.unmatched || []).map((line) => line.message))];
         toast({
-          title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced. ${payload.unmatchedCount} could not be matched to a library colour.${cabinetNote}`,
+          title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced. ${payload.unmatchedCount} could not be priced: ${reasons.join(" ")}${cabinetNote}${mtoNote}`,
           variant: "error",
         });
       } else {
-        toast({ title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced from the colour library.${cabinetNote}` });
+        toast({ title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced from the colour library.${cabinetNote}${mtoNote}` });
       }
     } catch (error) {
       toast({ title: error?.message || "Could not reprice this quote.", variant: "error" });
@@ -2214,6 +2308,26 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+  // THE WAY IN, from wherever you are looking at the cabinet.
+  //
+  // Configure used to exist only on the Base Cabinets tab, so adding a cabinet
+  // on the items tab left you with a row of locked cells and no button. The
+  // line is saved first when it is new, because the configurator needs a line
+  // to hang the configuration off.
+  async function openCabinetConfigurator(index) {
+    if (editableLineIndex !== null && editableLineIndex !== index) {
+      const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex], { updateDraft: false });
+      if (!saved) return;
+    }
+    if (index === editableLineIndex && editableLineDraft) {
+      const saved = await saveLineAtIndex(index, editableLineDraft);
+      if (!saved) return;
+      setEditableLineIndex(null);
+      setEditableLineDraft(null);
+    }
+    setActiveCabinetLineIndex(index);
+  }
+
   async function saveCabinetLine(index, cabinetPayload) {
     const nextForm = {
       ...form,
@@ -2736,6 +2850,37 @@ export default function QuoteEditor({ quoteId }) {
     const v2 = 'text-[11px] text-[#5a5a52] leading-[1.25] block mt-[1px]'
     const v3 = 'text-[10px] text-[#8b8a81] leading-[1.25] block mt-[1px]'
     const naText = 'text-[10px] text-[#c5cdd8] italic block'
+    // A CELL A CABINET ANSWERS, and the way in to answer it.
+    //
+    // These cells used to render as grey disabled boxes, which reads as a
+    // field somebody broke rather than a field that lives elsewhere. Worse,
+    // "elsewhere" had no door from this table: Configure was only on the Base
+    // Cabinets tab, so anyone who added a cabinet here was left clicking a
+    // dead box. Now the cell says what the answer is, or that there isn't one
+    // yet, and opens the cabinet either way.
+    const cabinetBoardCell = (value, index) => (
+      <button
+        type="button"
+        onClick={() => openCabinetConfigurator(index)}
+        title="Set in the cabinet, where the cut list is priced from it"
+        className="block w-full truncate rounded-[3px] border border-[#a8c5a0] bg-white px-[5px] py-[2px] text-left text-[10px] text-[#2d5e28] transition-colors hover:bg-[#edf4eb]"
+      >
+        {value || 'Set in cabinet'}
+      </button>
+    )
+    // A cabinet's height and width come off the cabinet, because the line
+    // deliberately carries neither: real dimensions on a cabinet line arm the
+    // flat width x height x rate path and reprice a carcass as a sheet of
+    // board. Shown plainly when the row is not being edited, the way every
+    // other value in this table is.
+    const cabinetSizeCell = (value, index, isRowEditing) =>
+      isRowEditing ? (
+        cabinetBoardCell(value, index)
+      ) : (
+        <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
+          {value || <span className="text-[#c5cdd8]">-</span>}
+        </span>
+      )
     const monoClass = 'font-mono'
     const fl = 'text-[9px] font-semibold uppercase tracking-[0.05em] text-[#8b8a81] block mb-[2px]'
     const fi = 'w-full h-[22px] text-[10px] border border-[#a8c5a0] rounded-[3px] bg-white px-[5px] font-[inherit] block mb-[3px] last:mb-0 focus:outline-none focus:border-[#6b9e61]'
@@ -2749,6 +2894,11 @@ export default function QuoteEditor({ quoteId }) {
             {unpricedLineCount > 0 ? (
               <span className="ml-2 text-[#991b1b] font-medium">
                 {unpricedLineCount} with no board cost
+              </span>
+            ) : null}
+            {madeToOrderLineCount > 0 ? (
+              <span className="ml-2 text-[#5a5a52]">
+                {madeToOrderLineCount} made to order, priced from the supplier
               </span>
             ) : null}
           </span>
@@ -2828,7 +2978,17 @@ export default function QuoteEditor({ quoteId }) {
                     supplier,
                     useLibrary,
                   } = lineViewModel(line)
-                  const isBaseCabinetEditable = isEditable && isBaseCabinet
+                  // WHICH CELLS THE CABINET OWNS, and which ones are still the
+                  // quote's business. One flag used to mean both, so unlocking
+                  // anything for a cabinet meant unlocking everything.
+                  //
+                  // The board and the sizes are answered on the cabinet, in the
+                  // configurator, and written back onto the line when it saves.
+                  // The quantity and the markup were never the cabinet's: they
+                  // are what this quote is charging for it, they were locked by
+                  // accident, and the markup was being applied all along where
+                  // nobody could see or change it.
+                  const cabinetOwnsBoard = isEditable && isBaseCabinet
                   const isLineSaving = savingLineIndex === index
                   const hasLineNote = Boolean(line.notes || line.client_note)
                   const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id
@@ -2851,11 +3011,7 @@ export default function QuoteEditor({ quoteId }) {
                         meta: line.profile_type || "Profile",
                         src: profileOptionSrc(line.profile_type, profile),
                       }))
-                  const canResetUnitCost = !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
-                  const hintText = isBaseCabinetEditable
-                    ? 'Base cabinet - dimensions configured in the Base Cabinets tab'
-                    : 'Edge, profile and hinge config open in modals'
-                  void hintText
+                  const canResetUnitCost = !cabinetOwnsBoard && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
 
                   return (
                     <React.Fragment key={savedLine.id || index}>
@@ -2929,6 +3085,12 @@ export default function QuoteEditor({ quoteId }) {
                               options={benchtopMaterialOptions}
                               onChange={option => updateProductLine(index, { benchtop_material_id: option.id || option.value })}
                             />
+                          ) : cabinetOwnsBoard ? (
+                            // The board is picked in the cabinet now, where the
+                            // thickness, the finish and the colour are picked
+                            // with it and the cut list reprices as they change.
+                            // Setting it here would leave the two disagreeing.
+                            cabinetBoardCell(line.material, index)
                           ) : isEditable ? (
                             <QuoteTileCombobox
                               placeholder="Select material"
@@ -2947,7 +3109,9 @@ export default function QuoteEditor({ quoteId }) {
                         <td className={td}>
                           {isHardware || isBenchtop ? (
                             <span className={naText}>N/A</span>
-                          ) : isEditable && !isBaseCabinetEditable ? (
+                          ) : cabinetOwnsBoard ? (
+                            cabinetBoardCell(line.supplier_name, index)
+                          ) : isEditable ? (
                             <QuoteTileCombobox
                               disabled={!line.material}
                               placeholder="Supplier"
@@ -2962,14 +3126,20 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Finish */}
                         <td className={td}>
-                          <span className={isHardware || isBenchtop ? naText : v2}>{isHardware || isBenchtop ? "N/A" : line.finish || <span className="text-[#c5cdd8]">-</span>}</span>
+                          {cabinetOwnsBoard ? (
+                            cabinetBoardCell(line.finish, index)
+                          ) : (
+                            <span className={isHardware || isBenchtop ? naText : v2}>{isHardware || isBenchtop ? "N/A" : line.finish || <span className="text-[#c5cdd8]">-</span>}</span>
+                          )}
                         </td>
 
                         {/* Colour */}
                         <td className={td}>
                           {isHardware || isBenchtop ? (
                             <span className={naText}>N/A</span>
-                          ) : isEditable && !isBaseCabinetEditable ? (
+                          ) : cabinetOwnsBoard ? (
+                            cabinetBoardCell(line.colour, index)
+                          ) : isEditable ? (
                             <QuoteColourCombobox line={line} onChange={patch => updateProductLine(index, patch)} />
                           ) : (
                             <span className={v3}>
@@ -2983,12 +3153,21 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Thickness */}
                         <td className={td}>
-                          <span className={isHardware || isBenchtop ? naText : v1}>{isHardware || isBenchtop ? "N/A" : line.thickness || <span className="text-[#c5cdd8]">-</span>}</span>
+                          {cabinetOwnsBoard ? (
+                            cabinetBoardCell(line.thickness, index)
+                          ) : (
+                            <span className={isHardware || isBenchtop ? naText : v1}>{isHardware || isBenchtop ? "N/A" : line.thickness || <span className="text-[#c5cdd8]">-</span>}</span>
+                          )}
                         </td>
 
-                        {/* H mm */}
+                        {/* H mm. A cabinet shows the height its cut list was
+                            worked out from, rather than a blank: the sizes are
+                            on the cabinet, not on the line, and an empty cell
+                            reads as a cabinet nobody has sized. */}
                         <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
+                          {isBaseCabinet ? (
+                            cabinetSizeCell(cabinetSizeText(line, 'height_mm'), index, cabinetOwnsBoard)
+                          ) : isEditable ? (
                             <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
                               <span className="px-[3px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0 select-none">H</span>
                               <input
@@ -3000,8 +3179,6 @@ export default function QuoteEditor({ quoteId }) {
                                 className="flex-1 h-full px-[3px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
                               />
                             </div>
-                          ) : isBaseCabinetEditable ? (
-                            <span className={naText}>Via cabinet</span>
                           ) : (
                             <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
                               {line.height_mm || <span className="text-[#c5cdd8]">-</span>}
@@ -3011,7 +3188,9 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* W mm */}
                         <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
+                          {isBaseCabinet ? (
+                            cabinetSizeCell(cabinetSizeText(line, 'width_mm'), index, cabinetOwnsBoard)
+                          ) : isEditable ? (
                             <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
                               <span className="px-[3px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0 select-none">W</span>
                               <input
@@ -3023,8 +3202,6 @@ export default function QuoteEditor({ quoteId }) {
                                 className="flex-1 h-full px-[3px] text-[10px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0"
                               />
                             </div>
-                          ) : isBaseCabinetEditable ? (
-                            <span className={naText}>Via cabinet</span>
                           ) : (
                             <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">
                               {line.width_mm || <span className="text-[#c5cdd8]">-</span>}
@@ -3063,7 +3240,7 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Unit price */}
                         <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
+                          {isEditable && !cabinetOwnsBoard ? (
                             <div>
                               <div className="flex h-[22px] items-center overflow-hidden rounded-[3px] border border-[#a8c5a0] bg-white focus-within:border-[#6b9e61]">
                                 <span className="flex h-full items-center border-r border-[#a8c5a0] bg-[#f5f8f4] px-[5px] text-[10px] text-[#8b8a81]">$</span>
@@ -3087,9 +3264,14 @@ export default function QuoteEditor({ quoteId }) {
                           )}
                         </td>
 
-                        {/* Markup */}
+                        {/* Markup. Editable on EVERY line, a cabinet included.
+                            It was locked on cabinets and still applied to them:
+                            calculateQuoteLine marks a cabinet up like anything
+                            else, so the number was in the price and out of
+                            reach. Nothing about being priced from a cut list
+                            changes what we charge on top of the cost. */}
                         <td className={td}>
-                          {isEditable && !isBaseCabinetEditable ? (
+                          {isEditable ? (
                             <div className="flex h-[22px] items-center overflow-hidden rounded-[3px] border border-[#a8c5a0] bg-white focus-within:border-[#6b9e61]">
                               <input
                                 type="text"
@@ -3112,7 +3294,7 @@ export default function QuoteEditor({ quoteId }) {
 
                         {/* Edge profile */}
                         <td className={td}>
-                          {isEditable && showEdges && !isBaseCabinetEditable ? (
+                          {isEditable && showEdges ? (
                             <QuoteImageCombobox
                               className={quoteStyles.profileNameCombo}
                               disabled={!supplier}
@@ -3122,13 +3304,13 @@ export default function QuoteEditor({ quoteId }) {
                               onChange={option => updateProductLine(index, { edge_mould: option.name || option.label })}
                             />
                           ) : (
-                            <span className={showEdges && !isBaseCabinet ? v1 : naText}>{showEdges && !isBaseCabinet ? line.edge_mould || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
+                            <span className={showEdges ? v1 : naText}>{showEdges ? line.edge_mould || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
                           )}
                         </td>
 
                         {/* Profile type */}
                         <td className={td}>
-                          {isEditable && showProfiles && !isBaseCabinetEditable ? (
+                          {isEditable && showProfiles ? (
                             <select
                               className="h-[22px] w-full rounded-[3px] border border-[#a8c5a0] bg-white px-[5px] text-[10px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
                               value={line.profile_type}
@@ -3139,13 +3321,13 @@ export default function QuoteEditor({ quoteId }) {
                               {profileTypeOptions.map((type) => <option key={type}>{type}</option>)}
                             </select>
                           ) : (
-                            <span className={showProfiles && !isBaseCabinet ? v1 : naText}>{showProfiles && !isBaseCabinet ? line.profile_type || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
+                            <span className={showProfiles ? v1 : naText}>{showProfiles ? line.profile_type || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
                           )}
                         </td>
 
                         {/* Front profile */}
                         <td className={td}>
-                          {isEditable && showProfiles && !isBaseCabinetEditable ? (
+                          {isEditable && showProfiles ? (
                             <QuoteImageCombobox
                               className={quoteStyles.profileNameCombo}
                               disabled={!supplier || !line.profile_type}
@@ -3155,13 +3337,13 @@ export default function QuoteEditor({ quoteId }) {
                               onChange={option => updateProductLine(index, { profile: option.name || option.label })}
                             />
                           ) : (
-                            <span className={showProfiles && !isBaseCabinet ? v1 : naText}>{showProfiles && !isBaseCabinet ? line.profile || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
+                            <span className={showProfiles ? v1 : naText}>{showProfiles ? line.profile || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
                           )}
                         </td>
 
                         {/* Hinge drill */}
                         <td className={td}>
-                          {isEditable && hingesApplicable && !isBaseCabinetEditable ? (
+                          {isEditable && hingesApplicable ? (
                             <label className="inline-flex h-[22px] items-center gap-2 text-[11px] text-[#1a1a18]">
                               <input
                                 type="checkbox"
@@ -3171,13 +3353,13 @@ export default function QuoteEditor({ quoteId }) {
                               Drill
                             </label>
                           ) : (
-                            <span className={hingesApplicable && !isBaseCabinet ? v1 : naText}>{hingesApplicable && !isBaseCabinet ? (line.hinge_holes ? "Yes" : "No") : "N/A"}</span>
+                            <span className={hingesApplicable ? v1 : naText}>{hingesApplicable ? (line.hinge_holes ? "Yes" : "No") : "N/A"}</span>
                           )}
                         </td>
 
                         {/* Hinge qty */}
                         <td className={td}>
-                          {isEditable && hingesApplicable && !isBaseCabinetEditable ? (
+                          {isEditable && hingesApplicable ? (
                             <select
                               className="h-[22px] w-full rounded-[3px] border border-[#a8c5a0] bg-white px-[5px] text-[10px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]"
                               value={line.hinge_qty || ""}
@@ -3190,7 +3372,7 @@ export default function QuoteEditor({ quoteId }) {
                               <option>4 hinges</option>
                             </select>
                           ) : (
-                            <span className={hingesApplicable && !isBaseCabinet ? v1 : naText}>{hingesApplicable && !isBaseCabinet ? line.hinge_qty || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
+                            <span className={hingesApplicable ? v1 : naText}>{hingesApplicable ? line.hinge_qty || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
                           )}
 
                           {/* HANDING AND CUP POSITIONS, ON A DESKTOP AT LAST.
@@ -3208,7 +3390,7 @@ export default function QuoteEditor({ quoteId }) {
                               It sits under the quantity rather than in a column
                               of its own so no other cell has to move, and it is
                               only offered once drilling is actually ticked. */}
-                          {hingesApplicable && !isBaseCabinet && line.hinge_holes ? (
+                          {hingesApplicable && line.hinge_holes ? (
                             <button
                               type="button"
                               onClick={() => openHingeModal(index)}
@@ -3261,6 +3443,18 @@ export default function QuoteEditor({ quoteId }) {
                             </div>
                           ) : (
                             <div className="flex items-center justify-center gap-2">
+                              {isBaseCabinet && (
+                                <button
+                                  type="button"
+                                  onClick={() => runLineAction(() => openCabinetConfigurator(index))}
+                                  disabled={isLineSaving || savingLineIndex !== null}
+                                  aria-label={`Configure cabinet on quote line ${index + 1}`}
+                                  title="Configure cabinet"
+                                  className="inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28] transition-colors hover:bg-[#dfeedd] disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <IconSettings size={13} />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => runLineAction(() => editLine(index))}
@@ -4581,9 +4775,9 @@ export default function QuoteEditor({ quoteId }) {
           const idx = editableLineIndex
           const line = editableLineDraft || form.lines[idx] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)
           const { calculated, materialOptions, showEdges, showProfiles, edgeOptions, hingesApplicable, isHardware, isBenchtop, isBaseCabinet } = lineViewModel(line)
-          const isBaseCabinetEditable = isBaseCabinet
+          const cabinetOwnsBoard = isBaseCabinet
           const isLineSaving = savingLineIndex === idx
-          const canResetUnitCost = !isBaseCabinetEditable && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
+          const canResetUnitCost = !cabinetOwnsBoard && line.unit_cost_mode === 'manual' && Number(line.calculated_unit_cost_ex_gst || 0) > 0
           const mfl = 'text-[10px] font-semibold uppercase tracking-[0.05em] text-[#8b8a81] block mb-[3px]'
           return (
             <div className="fixed inset-0 z-[39] flex flex-col bg-white md:hidden" role="dialog" aria-modal="true" aria-label={`Edit line ${idx + 1}`}>
@@ -4596,7 +4790,7 @@ export default function QuoteEditor({ quoteId }) {
                   className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0"
                 >{"<-"}</button>
                 <span className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
-                  {isBaseCabinetEditable ? `Base cabinet ${idx + 1}` : `Edit line ${idx + 1}`}
+                  {cabinetOwnsBoard ? `Base cabinet ${idx + 1}` : `Edit line ${idx + 1}`}
                 </span>
                 <div className="w-[28px]" aria-hidden="true" />
               </div>
@@ -4645,7 +4839,7 @@ export default function QuoteEditor({ quoteId }) {
                     <span className={mfl}>Supplier</span>
                     <QuoteTileCombobox
                       compact={false}
-                      disabled={isHardware || isBenchtop || !line.material || isBaseCabinetEditable}
+                      disabled={isHardware || isBenchtop || !line.material || cabinetOwnsBoard}
                       placeholder="Supplier"
                       value={line.supplier_name || ""}
                       options={supplierOptionsFor(line)}
@@ -4654,9 +4848,14 @@ export default function QuoteEditor({ quoteId }) {
                   </div>
                   <div className="col-span-2">
                     <span className={mfl}>Finish, colour &amp; thickness</span>
-                    <QuoteColourCombobox compact={false} disabled={isHardware || isBenchtop || isBaseCabinetEditable} line={line} onChange={patch => updateProductLine(idx, patch)} />
+                    <QuoteColourCombobox compact={false} disabled={isHardware || isBenchtop || cabinetOwnsBoard} line={line} onChange={patch => updateProductLine(idx, patch)} />
                   </div>
-                  {!isBaseCabinetEditable ? (
+                  {/* A cabinet's own sizes live on the cabinet. Everything
+                      below them is what this quote charges for it, so it is
+                      asked of every line. Qty and Markup used to be inside
+                      this block, which is why a phone would not let you set
+                      either on a cabinet while a desktop let you set one. */}
+                  {!cabinetOwnsBoard ? (
                     <>
                       <div>
                         <span className={mfl}>H mm</span>
@@ -4676,14 +4875,24 @@ export default function QuoteEditor({ quoteId }) {
                             className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
                         </div>
                       </div>
-                      <div>
-                        <span className={mfl}>Qty</span>
-                        <input type="text" inputMode="numeric" value={line.qty}
-                          onChange={e => updateLine(idx, 'qty', sanitizeIntegerInput(e.target.value))}
-                          className="w-full h-[44px] text-[14px] font-mono text-center border border-[#a8c5a0] rounded-[6px] bg-white focus:outline-none focus:border-[#6b9e61]" />
+                    </>
+                  ) : null}
+                  <div>
+                    <span className={mfl}>Qty</span>
+                    <input type="text" inputMode="numeric" value={line.qty}
+                      onChange={e => updateLine(idx, 'qty', sanitizeIntegerInput(e.target.value))}
+                      className="w-full h-[44px] text-[14px] font-mono text-center border border-[#a8c5a0] rounded-[6px] bg-white focus:outline-none focus:border-[#6b9e61]" />
+                  </div>
+                  <div>
+                    <span className={mfl}>Unit cost</span>
+                    {cabinetOwnsBoard ? (
+                      // Priced from the cut list, so it is shown rather than
+                      // typed. Changing the box changes it.
+                      <div className="h-[44px] flex items-center px-3 bg-[#f5f8f4] rounded-[6px] border border-[#dbd8cc]">
+                        <span className="text-[14px] font-mono text-[#1a1a18]">{formatMoney(line.product_unit_cost_ex_gst || 0, form.currency)}</span>
                       </div>
-                      <div>
-                        <span className={mfl}>Unit cost</span>
+                    ) : (
+                      <>
                         <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white">
                           <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 font-mono">$</span>
                           <input type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst}
@@ -4695,22 +4904,26 @@ export default function QuoteEditor({ quoteId }) {
                             Reset to {formatMoney(line.calculated_unit_cost_ex_gst, form.currency)}
                           </button>
                         )}
-                      </div>
-                      <div>
-                        <span className={mfl}>Markup %</span>
-                        <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
-                          <input type="text" inputMode="decimal" value={line.markup_percent}
-                            onChange={e => updateLine(idx, 'markup_percent', sanitizeNonNegativeDecimalInput(e.target.value))}
-                            className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
-                          <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
-                        </div>
-                      </div>
-                      <div>
-                        <span className={mfl}>Line total</span>
-                        <div className="h-[44px] flex items-center px-3 bg-[#f5f8f4] rounded-[6px] border border-[#dbd8cc]">
-                          <span className="text-[16px] font-semibold font-mono text-[#1a1a18]">{formatMoney(calculated.line_total_ex_gst, form.currency)}</span>
-                        </div>
-                      </div>
+                      </>
+                    )}
+                  </div>
+                  <div>
+                    <span className={mfl}>Markup %</span>
+                    <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                      <input type="text" inputMode="decimal" value={line.markup_percent}
+                        onChange={e => updateLine(idx, 'markup_percent', sanitizeNonNegativeDecimalInput(e.target.value))}
+                        className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none min-w-0" />
+                      <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-l border-[#a8c5a0] flex-shrink-0">%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <span className={mfl}>Line total</span>
+                    <div className="h-[44px] flex items-center px-3 bg-[#f5f8f4] rounded-[6px] border border-[#dbd8cc]">
+                      <span className="text-[16px] font-semibold font-mono text-[#1a1a18]">{formatMoney(calculated.line_total_ex_gst, form.currency)}</span>
+                    </div>
+                  </div>
+                  {!cabinetOwnsBoard ? (
+                    <>
                       {showEdges && (
                         <div className="col-span-2">
                           <span className={mfl}>Edge profile</span>
@@ -4755,7 +4968,18 @@ export default function QuoteEditor({ quoteId }) {
                       )}
                     </>
                   ) : (
-                    <p className="col-span-2 text-[13px] text-[#8b8a81] italic py-2">Dimensions are configured in the Base Cabinets tab.</p>
+                    <div className="col-span-2">
+                      <span className={mfl}>Cabinet</span>
+                      <button type="button" onClick={() => runLineAction(() => openCabinetConfigurator(idx))}
+                        className="inline-flex items-center gap-2 text-[13px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[6px] px-3 h-[44px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
+                      >
+                        <span>{cabinetSummaryText(line)}</span>
+                        <span>open</span>
+                      </button>
+                      <p className="mt-[6px] text-[12px] text-[#8b8a81]">
+                        The sizes, the board and the cut list are set on the cabinet.
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -4901,6 +5125,12 @@ export default function QuoteEditor({ quoteId }) {
                       shelf_material: activeCabinetLine.cabinet_config?.shelf_material || activeCabinetLine.material || "",
                       label: activeCabinetLine.cabinet_config?.label || activeCabinetLine.product_name || `Base cabinet ${activeCabinetLineIndex + 1}`,
                     }}
+                    // The configured hours per cabinet, so the field opens with
+                    // the figure in it rather than a nought that means "ask the
+                    // defaults". Only once the defaults have actually loaded:
+                    // handing over the built-in constant would write it onto the
+                    // cabinet as though somebody had chosen it.
+                    labourHoursPerCabinet={defaultsLoaded ? businessDefaults.labour_hours_per_cabinet : 0}
                     onCancel={() => setActiveCabinetLineIndex(null)}
                     onSave={(cabinetPayload) => saveCabinetLine(activeCabinetLineIndex, cabinetPayload)}
                   />

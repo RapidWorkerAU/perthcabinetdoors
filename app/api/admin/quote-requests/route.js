@@ -5,10 +5,11 @@ import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { addressColumns } from "../../../../lib/pcd-contact-details";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { createBoardCostResolver } from "../../../../lib/pcd-board-cost";
-import { convertedQuoteLine, unpricedSummary } from "../../../../lib/pcd-quote-request-convert";
+import { convertedQuoteLine, madeToOrderSummary, unpricedSummary } from "../../../../lib/pcd-quote-request-convert";
 import { calculateQuoteLine, quoteCostDefaults } from "../../../../lib/pcd-quote-utils";
 import { defaultQuoteTermsFor } from "../../../../lib/pcd-quote-terms";
 import {
+  cabinetConfigRow,
   isMissingSupplierNameSchemaError,
   quoteLineRow,
   recalculateQuoteTotals,
@@ -125,6 +126,7 @@ export async function POST(request) {
 
     const requestLines = [...(quoteRequest.pcd_quote_request_line_items || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
     let unpriced = [];
+    let madeToOrder = [];
     if (requestLines.length) {
       // One read of the colour library for the whole conversion, not one per
       // line.
@@ -133,6 +135,7 @@ export async function POST(request) {
         convertedQuoteLine(line, { resolveBoard, quoteRequest, businessDefaults })
       );
       unpriced = unpricedSummary(entries);
+      madeToOrder = madeToOrderSummary(entries);
 
       // calculateQuoteLine + quoteLineRow are the same pair every other write
       // path uses. Going straight to insert() was why a converted quote opened
@@ -140,19 +143,51 @@ export async function POST(request) {
       // the cabinet labour hours or the line totals.
       const quoteLines = entries.map((entry, index) =>
         quoteLineRow(
-          { ...calculateQuoteLine(entry.line, businessDefaults), design_project_id: entry.line.design_project_id },
+          {
+            ...calculateQuoteLine(entry.line, businessDefaults),
+            // Which design, and which item in it. The project tag is what scopes
+            // a re-import's sweep; the item tag is what ties a quote line back to
+            // the piece the customer drew.
+            design_project_id: entry.line.design_project_id,
+            design_item_id: entry.line.design_item_id,
+          },
           quote.id,
           index
         )
       );
 
-      const { error: lineError } = await context.supabase.from("pcd_quote_line_items").insert(quoteLines);
+      // The ids come back so the cabinets can be attached below. A cabinet's
+      // box lives in its own table keyed to the line, not on the line itself.
+      let { data: insertedLines, error: lineError } = await context.supabase
+        .from("pcd_quote_line_items")
+        .insert(quoteLines)
+        .select("id, sort_order");
       if (lineError) {
         if (!isMissingSupplierNameSchemaError(lineError)) throw lineError;
-        const { error: retryError } = await context.supabase
+        ({ data: insertedLines, error: lineError } = await context.supabase
           .from("pcd_quote_line_items")
-          .insert(quoteLines.map(withoutSupplierName));
-        if (retryError) throw retryError;
+          .insert(quoteLines.map(withoutSupplierName))
+          .select("id, sort_order"));
+        if (lineError) throw lineError;
+      }
+
+      // THE CABINETS THE CUSTOMER DREW, built rather than described.
+      //
+      // Every other field on a quote line is a column on the line. A cabinet's
+      // box is not: it is a row in pcd_cabinet_configs pointing back at the
+      // line, which is why the bulk insert above cannot carry it and why
+      // nothing here used to. So a converted cabinet arrived with no size and
+      // no shelves, and somebody re-typed it off the description.
+      const lineIdBySortOrder = new Map((insertedLines || []).map((row) => [row.sort_order, row.id]));
+      const cabinetConfigs = entries
+        .map((entry, index) => ({ config: entry.line.cabinet_config, lineId: lineIdBySortOrder.get(index) }))
+        .filter((entry) => entry.config && entry.lineId)
+        .map((entry) => cabinetConfigRow(entry.config, quote.id, entry.lineId));
+      if (cabinetConfigs.length) {
+        const { error: configError } = await context.supabase
+          .from("pcd_cabinet_configs")
+          .insert(cabinetConfigs);
+        if (configError) throw configError;
       }
 
       // The quote row was inserted before its lines and was never patched
@@ -183,8 +218,10 @@ export async function POST(request) {
       metadata: {
         quote_number: quote.quote_number,
         line_items: requestLines.length,
-        priced_lines: requestLines.length - unpriced.length,
+        priced_lines: requestLines.length - unpriced.length - madeToOrder.length,
         unpriced_lines: unpriced,
+        // Not a gap: these are quoted from the supplier's price for the job.
+        made_to_order_lines: madeToOrder,
       },
       event_key: `quote_request:${quoteRequest.id}:converted`,
     });
@@ -197,6 +234,8 @@ export async function POST(request) {
       lineCount: requestLines.length,
       unpricedCount: unpriced.length,
       unpriced,
+      madeToOrderCount: madeToOrder.length,
+      madeToOrder,
     });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not convert quote request." }, { status: 500 });

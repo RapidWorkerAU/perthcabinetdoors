@@ -1307,6 +1307,20 @@ function SubmitModal({ items, room, colourImages, onSubmit, onClose }) {
   // The exact lines the API will build, worked out here so the customer signs
   // off on what actually lands in the quote rather than a summary of it. Same
   // function the submit route calls, so the two cannot disagree.
+  // The exact context the submit route builds, so the two cannot answer
+  // differently. siblings is what makes a kickboard running across three
+  // cabinets one board here as well as there, which means the customer signs
+  // off the piece we actually make.
+  const lineContext = useMemo(
+    () => ({
+      roomName: room?.name || "",
+      roomHeightMm: Number(room?.height_mm) || 0,
+      room,
+      siblings: chosenItems,
+    }),
+    [room, chosenItems]
+  );
+
   const reviewLines = useMemo(() => {
     const out = [];
     quotable.forEach((item) => {
@@ -1314,7 +1328,7 @@ function SubmitModal({ items, room, colourImages, onSubmit, onClose }) {
       const owned = isCustomerOwned(item);
       parts.forEach((part) => {
         if (!isPartSelected(selection, item.id, part.key)) return;
-        requestLinesForItem(item, [part.key], { roomName: room?.name || "", roomHeightMm: Number(room?.height_mm) || 0 })
+        requestLinesForItem(item, [part.key], lineContext)
           .forEach((line) => {
             out.push({
               ...line,
@@ -1329,7 +1343,7 @@ function SubmitModal({ items, room, colourImages, onSubmit, onClose }) {
       });
     });
     return out;
-  }, [quotable, selection, room, colourSwatchFor]);
+  }, [quotable, selection, lineContext, colourSwatchFor]);
 
   // Every piece needs a colour before this can be sent. Grouped by the cabinet
   // it belongs to, because that is where the customer goes to fix it.
