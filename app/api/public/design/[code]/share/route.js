@@ -12,7 +12,7 @@
 // and Resend being unconfigured locally should not look like a failure.
 
 import { createSupabaseAdminClient } from "../../../../../../lib/supabase/admin";
-import { resolvePublicProject } from "../../../../../../lib/pcd-public-design";
+import { resolvePublicProject, canEditPublicProject, VIEW_ONLY_REFUSAL } from "../../../../../../lib/pcd-public-design";
 import { upsertCustomerByEmail } from "../../../../../../lib/pcd-customer-utils";
 import { sendDesignLinkEmail } from "../../../../../../lib/pcd-design-share-email";
 
@@ -39,6 +39,15 @@ export async function POST(request, { params }) {
     const project = await resolvePublicProject(supabase, code);
     if (!project) {
       return Response.json({ ok: false, error: "Design not found." }, { status: 404 });
+    }
+
+    // THIS WRITES customer_id ONTO THE PROJECT, which is the whole point of it
+    // for a visitor's own design and exactly wrong for one of ours: it would
+    // reassign a design we drew for a customer to whoever happened to be
+    // holding the link. The planner hides the Save and share button on a
+    // view-only share, and this is the rule behind it.
+    if (!canEditPublicProject(project)) {
+      return Response.json({ ok: false, error: VIEW_ONLY_REFUSAL }, { status: 403 });
     }
 
     const name = String(body?.name || "").trim();

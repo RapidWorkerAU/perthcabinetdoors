@@ -16,6 +16,7 @@ import StageQuoteModal from "./StageQuoteModal";
 import CutListModal from "./CutListModal";
 import { RoomCutList } from "./CutListView";
 import useDesignProgram from "./useDesignProgram";
+import ShareDesignModal from "./ShareDesignModal";
 import PinchZoom from "./PinchZoom";
 import PcdLoader from "../../../../components/public/PcdLoader";
 
@@ -49,6 +50,7 @@ export default function DesignProgram({ projectId }) {
   const [stageOpen, setStageOpen] = useState(false);
   const [roomCutListOpen, setRoomCutListOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false); // "Quote & Export" kebab menu
+  const [shareOpen, setShareOpen] = useState(false);
   // The desktop "Add item" picker lives in the LEFT rail now (the card
   // catalogue); the chosen type is held here so the right panel can show its
   // size form. Cleared whenever add-mode ends (see effect below).
@@ -160,6 +162,13 @@ export default function DesignProgram({ projectId }) {
                   <ActionMenuItem onClick={() => { setStageOpen(true); setActionsOpen(false); }}>Stage Quote</ActionMenuItem>
                   <ActionMenuItem onClick={() => { setImportOpen(true); setActionsOpen(false); }}>Import to Quote</ActionMenuItem>
                   <ActionMenuItem disabled={rooms.length === 0} onClick={() => { setExportOpen(true); setActionsOpen(false); }}>Export PDF</ActionMenuItem>
+                  {/* Below a divider on purpose. The three above put this
+                      design into a quote or onto paper for us; this one sends
+                      it out of the building to the customer. */}
+                  <div style={{ height: 1, background: "rgba(255,255,255,0.14)", margin: "5px 4px" }} />
+                  <ActionMenuItem disabled={rooms.length === 0} onClick={() => { setShareOpen(true); setActionsOpen(false); }}>
+                    {project?.is_public ? "Sharing…" : "Share with customer…"}
+                  </ActionMenuItem>
                 </div>
               </>
             )}
@@ -307,6 +316,16 @@ export default function DesignProgram({ projectId }) {
           onClose={() => setMaterialDefaultsOpen(false)}
           onSaved={(materialDefaults) => setProject((p) => ({ ...p, material_defaults: materialDefaults }))}
           onItemsChanged={loadAll}
+        />
+      )}
+
+      {shareOpen && project?.id && (
+        <ShareDesignModal
+          project={project}
+          onClose={() => setShareOpen(false)}
+          // The bar reads "Sharing…" once a link is live, so the row has to see
+          // the change without a reload.
+          onShared={(share) => setProject((p) => (p ? { ...p, ...share } : p))}
         />
       )}
 

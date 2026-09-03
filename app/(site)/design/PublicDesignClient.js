@@ -538,7 +538,10 @@ export default function PublicDesignClient() {
   const selectItem = (itemOrId) => {
     const id = typeof itemOrId === "object" ? itemOrId?.id : itemOrId;
     if (!id) return;
-    if (narrow && d.selectedItemId === id) {
+    // Tapping a selected cabinet again opens the configure sheet, which is the
+    // whole editing panel. On a design shared to be looked at there is nothing
+    // to configure, so a second tap just leaves it selected.
+    if (narrow && !d.readOnly && d.selectedItemId === id) {
       setMobileConfigOpen(true);
       return;
     }
@@ -559,7 +562,7 @@ export default function PublicDesignClient() {
     <DesignCanvas
       room={d.room} items={d.items} selectedItemId={d.selectedItemId} overlappingItemIds={d.overlappingItemIds}
       onItemClick={selectItem} onDeselect={deselectItem}
-      onItemDragEnd={d.handleItemDragEnd} onFrontView={(w) => { setElevWall(w); setView("elevation"); }} colourImages={d.colourImages} showColours={showColours}
+      onItemDragEnd={d.readOnly ? undefined : d.handleItemDragEnd} onFrontView={(w) => { setElevWall(w); setView("elevation"); }} colourImages={d.colourImages} showColours={showColours}
       selectOnPointerUp={narrow}
     />
   );
@@ -574,7 +577,7 @@ export default function PublicDesignClient() {
           colourImages={d.colourImages} showColours={showColours}
           selectedId={d.selectedItemId}
           onItemSelect={selectItem}
-          onItemChange={d.handleItemDragEnd}
+          onItemChange={d.readOnly ? undefined : d.handleItemDragEnd}
           onClose={() => setView("plan")}
           selectOnPointerUp={narrow}
         />
@@ -616,6 +619,7 @@ export default function PublicDesignClient() {
           onStartOver={() => { setMobileMoreOpen(false); setStartOverOpen(true); }}
           onSubmit={() => { setMobileMoreOpen(false); setSubmitOpen(true); }}
           canSubmit={quotableCount > 0}
+          readOnly={d.readOnly}
         />
       ) : (
         <DesignTopBar
@@ -629,10 +633,15 @@ export default function PublicDesignClient() {
                 somebody did not already know. Clicking it renames. */}
             <button
               type="button"
-              onClick={() => setRenameOpen(true)}
-              title="Rename this design"
+              // The design's name is a rename button. On a draft shared to be
+              // looked at it is just the name, or the customer could rename our
+              // design from the top bar.
+              onClick={d.readOnly ? undefined : () => setRenameOpen(true)}
+              disabled={d.readOnly}
+              title={d.readOnly ? d.designName : "Rename this design"}
               style={{
-                background: "none", border: 0, padding: "2px 4px", borderRadius: 6, cursor: "pointer",
+                background: "none", border: 0, padding: "2px 4px", borderRadius: 6,
+                cursor: d.readOnly ? "default" : "pointer",
                 font: "inherit", fontSize: 13, color: "rgba(255,255,255,0.88)",
                 maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
               }}
@@ -640,13 +649,21 @@ export default function PublicDesignClient() {
               {d.designName || "Untitled design"}
             </button>
           </>}
-          right={<>
+          right={d.readOnly ? (
+            // A DESIGN WE DREW AND SENT TO BE LOOKED AT. Every control here
+            // changes it, so none of them belong. Plan, elevation and 3D are in
+            // the left of this bar and still work, which is the whole point of
+            // sending it. See lib/pcd-design-share-mode.js.
+            <span style={{ color: "rgba(255,255,255,0.72)", fontSize: 13, whiteSpace: "nowrap" }}>
+              Shared with you by Perth Cabinet Doors
+            </span>
+          ) : (<>
             <span style={{ position: "relative" }}>
               <button type="button" style={barButton} onClick={() => setSavePanel((s) => !s)}>Save / share</button>
             </span>
             <button type="button" style={barButton} onClick={() => setStartOverOpen(true)}>Start over</button>
             <button type="button" style={{ ...btnPrimary, fontWeight: 700 }} onClick={() => setSubmitOpen(true)} disabled={quotableCount === 0} title={quotableCount === 0 ? "Add a cabinet, panel or shelf first" : "Choose what to quote and send it to PCD"}>Send to PCD</button>
-          </>}
+          </>)}
         />
       )}
 
@@ -674,7 +691,7 @@ export default function PublicDesignClient() {
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         {/* Catalogue rail (wide only), the shared AddItemRail (same one the
             admin tool uses), themed light. */}
-        {!narrow && (
+        {!narrow && !d.readOnly && (
           <div style={{ width: 236, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.edge}`, display: "flex", flexDirection: "column" }}>
             <div style={{ flex: 1, minHeight: 0 }}>
               <AddItemRail {...railProps} />
@@ -690,9 +707,15 @@ export default function PublicDesignClient() {
         {/* Contextual panel (wide only) */}
         {!narrow && (
           <div style={{ width: 320, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.edge}`, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            {d.selectedItem
-              ? <ItemPanel item={d.selectedItem} items={d.items} room={d.room} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={deselectItem} colourImages={d.colourImages} onChangeColour={openColour} />
-              : <EmptyPrompt />}
+            {d.readOnly
+              // ItemPanel is entirely controls: sizes to type into, a colour to
+              // change, duplicate and delete. None of it belongs on a design
+              // somebody was sent to look at, so the panel says what the piece
+              // IS instead of offering to change it.
+              ? <SharedItemSummary item={d.selectedItem} />
+              : d.selectedItem
+                ? <ItemPanel item={d.selectedItem} items={d.items} room={d.room} onUpdate={d.updateItem} onDuplicate={() => d.duplicateItem(d.selectedItem.id)} onDelete={() => d.deleteItem(d.selectedItem.id)} onDeselect={deselectItem} colourImages={d.colourImages} onChangeColour={openColour} />
+                : <EmptyPrompt />}
           </div>
         )}
       </div>
@@ -700,7 +723,7 @@ export default function PublicDesignClient() {
       {/* Narrow: add bar + sheets */}
       {narrow && (
         <>
-          {d.selectedItem && !mobileConfigOpen && !mobileAddOpen && (
+          {d.selectedItem && !d.readOnly && !mobileConfigOpen && !mobileAddOpen && (
             <div style={{ flexShrink: 0, background: "#fff", borderTop: `1px solid ${C.edge}`, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ minWidth: 0, flex: 1, fontSize: 12, color: C.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 Selected: <strong style={{ color: C.ink }}>{TYPE_LABELS[d.selectedItem.item_type] || "Cabinet"}</strong>. Tap again to configure.
@@ -708,10 +731,17 @@ export default function PublicDesignClient() {
               <button type="button" onClick={() => setMobileConfigOpen(true)} style={{ ...btn, padding: "7px 10px", flexShrink: 0 }}>Configure</button>
             </div>
           )}
-          <div style={{ flexShrink: 0, background: C.panel, borderTop: `1px solid ${C.edge}`, padding: "8px 10px max(8px, env(safe-area-inset-bottom))", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <button type="button" onClick={() => setMobileAddOpen(true)} style={{ ...btnPrimary, minHeight: 44, width: "100%" }}>Add cabinet</button>
-            <button type="button" onClick={() => setRoomOpen(true)} style={{ ...btn, minHeight: 44, width: "100%" }}>Room size</button>
-          </div>
+          {d.readOnly ? (
+            <div style={{ flexShrink: 0, background: C.panel, borderTop: `1px solid ${C.edge}`, padding: "10px 12px max(10px, env(safe-area-inset-bottom))", fontSize: 12.5, lineHeight: 1.5, color: C.soft }}>
+              Perth Cabinet Doors shared this design with you. Switch between plan, elevation and 3D above.
+              Reply to the email if you would like anything changed.
+            </div>
+          ) : (
+            <div style={{ flexShrink: 0, background: C.panel, borderTop: `1px solid ${C.edge}`, padding: "8px 10px max(8px, env(safe-area-inset-bottom))", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button type="button" onClick={() => setMobileAddOpen(true)} style={{ ...btnPrimary, minHeight: 44, width: "100%" }}>Add cabinet</button>
+              <button type="button" onClick={() => setRoomOpen(true)} style={{ ...btn, minHeight: 44, width: "100%" }}>Room size</button>
+            </div>
+          )}
           {mobileAddOpen && (
             <BottomSheet title="Add to your room" onClose={() => setMobileAddOpen(false)}>
               {/* The sheet already draws the title and the close button, so the
@@ -2576,6 +2606,55 @@ function Toggle({ label, checked, onChange }) {
 }
 
 // Shown in the right panel when nothing is selected.
+/**
+ * The right-hand panel on a design that was shared to be looked at.
+ *
+ * ItemPanel is entirely controls: sizes to type into, a colour to change,
+ * duplicate and delete. On a draft we drew and sent for approval, none of that
+ * belongs, so this says what the selected piece IS instead of offering to
+ * change it. Nothing here writes, so there is nothing for the server to refuse.
+ *
+ * HEIGHT BEFORE WIDTH, as everywhere else.
+ */
+function SharedItemSummary({ item }) {
+  const line = (label, value) =>
+    value ? (
+      <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 14, padding: "7px 0", borderBottom: `1px solid ${C.edge}` }}>
+        <span style={{ fontSize: 12, color: C.soft }}>{label}</span>
+        <strong style={{ fontSize: 13, color: C.ink, textAlign: "right" }}>{value}</strong>
+      </div>
+    ) : null;
+
+  if (!item) {
+    return (
+      <div style={{ height: "100%", minHeight: 220, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 8, padding: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Shared with you to look at</div>
+        <div style={{ fontSize: 12.5, color: C.soft, lineHeight: 1.5 }}>
+          Click any piece to see what it is. Use the buttons above to switch between the plan, the elevations and
+          the 3D view. If you would like something changed, reply to the email we sent you.
+        </div>
+      </div>
+    );
+  }
+
+  const size = [item.height_mm, item.width_mm].filter(Boolean);
+
+  return (
+    <div style={{ padding: 16, overflowY: "auto" }}>
+      <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginBottom: 10 }}>
+        {TYPE_LABELS[item.item_type] || "Cabinet"}
+      </div>
+      {line("Size", size.length === 2 ? `${size[0]} x ${size[1]} mm` : "")}
+      {line("Depth", item.depth_mm ? `${item.depth_mm} mm` : "")}
+      {line("Colour", item.front_colour || item.colour || "")}
+      {line("Finish", item.front_finish || item.finish || "")}
+      <p style={{ marginTop: 14, fontSize: 12.5, lineHeight: 1.55, color: C.soft }}>
+        Reply to the email we sent you if you would like anything changed and we will update it for you.
+      </p>
+    </div>
+  );
+}
+
 function EmptyPrompt() {
   return (
     <div style={{ height: "100%", minHeight: 220, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 8, padding: 20 }}>

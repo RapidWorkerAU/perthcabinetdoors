@@ -14,6 +14,9 @@ import { buildColourImageMap, COLOUR_IMAGE_MATERIALS } from "../../../lib/pcd-co
 import { findFreeWallSlot } from "../../../lib/pcd-plan-geometry";
 import { publicItemDefaults } from "../../../lib/pcd-public-parts";
 import { isPlaceholderDesignName } from "../../../lib/pcd-design-name";
+// The share-mode file, NOT pcd-public-design, which imports node's crypto and
+// would pull it into this client bundle. See lib/pcd-design-share-mode.js.
+import { canEditPublicProject } from "../../../lib/pcd-design-share-mode";
 
 const CODE_STORAGE_KEY = "pcd_public_design_code";
 const FALLBACK_CARCASS_DEFAULT = {
@@ -432,5 +435,16 @@ export default function usePublicDesign() {
     colourImages,
     addItem, duplicateItem, updateItem, handleItemDragEnd, deleteItem, updateRoom, startOver, submitToPcd,
     overlappingItemIds,
+    // A DESIGN SENT TO BE LOOKED AT, NOT CHANGED.
+    //
+    // Set when somebody shared one of our drafts in view mode. The screen uses
+    // it to put the editing controls away, and that is all it is: the rule is
+    // enforced by every public write route, which refuse a view-only project
+    // whatever the browser thinks. See canEditPublicProject in
+    // lib/pcd-public-design.js.
+    //
+    // A project with no share_mode is one the visitor drew themselves and has
+    // always been able to edit, so the absent value reads as editable.
+    readOnly: !canEditPublicProject(project),
   };
 }

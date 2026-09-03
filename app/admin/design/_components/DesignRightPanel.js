@@ -53,7 +53,9 @@ import {
   spanLimitMm,
 } from "../../../../lib/pcd-shelf-rail-utils";
 
-const CABINET_TYPES = ["base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet", "corner_tall_cabinet", "blind_corner_cabinet", "bookcase"];
+// One definition, in lib/pcd-design-item-io.js. This was written out by hand
+// in seven files; see test/one-definition.test.mjs for why it now is not.
+import { CABINET_TYPES } from "../../../../lib/pcd-design-item-io";
 // Cabinet types plus a standalone filler panel — a thin board a user can
 // freely position between cabinets (e.g. beside a fridge recess, between a
 // base and tall cabinet) with its own height/depth/thickness/material,

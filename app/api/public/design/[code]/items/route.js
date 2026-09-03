@@ -4,11 +4,12 @@
 // the shared buildItemRow so a public cabinet row is identical to an admin one.
 
 import { createSupabaseAdminClient } from "../../../../../../lib/supabase/admin";
-import {
-  resolvePublicProject,
+import {resolvePublicProject,
   PUBLIC_ITEM_TYPES,
   MAX_ITEMS_PER_SESSION,
   stripForbiddenItemFields,
+  canEditPublicProject,
+  VIEW_ONLY_REFUSAL,
 } from "../../../../../../lib/pcd-public-design";
 import { applyMaterialDefaults, buildItemRow } from "../../../../../../lib/pcd-design-item-io";
 import { resolveIkeaPreset } from "../../../../../../lib/pcd-ikea-presets";
@@ -28,6 +29,12 @@ export async function POST(request, { params }) {
 
     const project = await resolvePublicProject(supabase, code);
     if (!project) return Response.json({ ok: false, error: "Design not found." }, { status: 404 });
+    // A design we drafted and sent to be looked at is not theirs to change.
+    // Checked HERE and not only in the client, because this route is reachable
+    // with curl. See canEditPublicProject in lib/pcd-public-design.js.
+    if (!canEditPublicProject(project)) {
+      return Response.json({ ok: false, error: VIEW_ONLY_REFUSAL }, { status: 403 });
+    }
 
     if (!PUBLIC_ITEM_TYPES.includes(payload?.item_type)) {
       return Response.json({ ok: false, error: "That item can't be added here." }, { status: 422 });

@@ -3,7 +3,7 @@
 // own items. Cost/hardware fields are stripped before patching.
 
 import { createSupabaseAdminClient } from "../../../../../../../lib/supabase/admin";
-import { resolvePublicProject, stripForbiddenItemFields } from "../../../../../../../lib/pcd-public-design";
+import { resolvePublicProject, stripForbiddenItemFields, canEditPublicProject, VIEW_ONLY_REFUSAL } from "../../../../../../../lib/pcd-public-design";
 import { buildItemPatch } from "../../../../../../../lib/pcd-design-item-io";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,12 @@ export async function PATCH(request, { params }) {
 
     const project = await resolvePublicProject(supabase, code);
     if (!project) return Response.json({ ok: false, error: "Design not found." }, { status: 404 });
+    // A design we drafted and sent to be looked at is not theirs to change.
+    // Checked HERE and not only in the client, because this route is reachable
+    // with curl. See canEditPublicProject in lib/pcd-public-design.js.
+    if (!canEditPublicProject(project)) {
+      return Response.json({ ok: false, error: VIEW_ONLY_REFUSAL }, { status: 403 });
+    }
 
     const patch = buildItemPatch(stripForbiddenItemFields(payload));
     if (!Object.keys(patch).length) {
@@ -49,6 +55,12 @@ export async function DELETE(_request, { params }) {
 
     const project = await resolvePublicProject(supabase, code);
     if (!project) return Response.json({ ok: false, error: "Design not found." }, { status: 404 });
+    // A design we drafted and sent to be looked at is not theirs to change.
+    // Checked HERE and not only in the client, because this route is reachable
+    // with curl. See canEditPublicProject in lib/pcd-public-design.js.
+    if (!canEditPublicProject(project)) {
+      return Response.json({ ok: false, error: VIEW_ONLY_REFUSAL }, { status: 403 });
+    }
 
     const { error } = await supabase
       .from("pcd_design_items")
