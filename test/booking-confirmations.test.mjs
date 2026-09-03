@@ -241,8 +241,8 @@ test("the address is joined the way it is stored", () => {
 
 test("the link is scoped by the token and nothing else", () => {
   assert.equal(
-    confirmUrl("https://www.perthcabinetdoors.com.au/", "abc123"),
-    "https://www.perthcabinetdoors.com.au/bookings/confirm?code=abc123"
+    confirmUrl("https://www.perthcabinetdoors.com/", "abc123"),
+    "https://www.perthcabinetdoors.com/bookings/confirm?code=abc123"
   );
 });
 

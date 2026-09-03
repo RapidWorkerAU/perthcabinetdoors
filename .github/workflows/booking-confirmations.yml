@@ -20,7 +20,8 @@ name: Booking confirmations
 # rather than encoded in a cron expression nobody can read.
 #
 # WHAT IT NEEDS. The same two repository secrets scheduled-sync.yml already uses:
-#   SITE_URL      https://www.perthcabinetdoors.com.au  (no trailing slash)
+#   SITE_URL      https://www.perthcabinetdoors.com  (no trailing slash, and NOT .com.au: the
+#                 site is .com, only the email is .com.au)
 #   CRON_SECRET   the same value as the CRON_SECRET environment variable in
 #                 Vercel.
 

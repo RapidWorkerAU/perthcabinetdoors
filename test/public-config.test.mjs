@@ -6,6 +6,11 @@
 // library and check that what comes back matches what is in it.
 import test from "node:test";
 import assert from "node:assert/strict";
+// fileURLToPath, NOT pathname with the leading slash stripped. That idiom turns
+// "/C:/Users/..." into a usable Windows path and "/home/runner/..." into a
+// RELATIVE one, so these checks quietly passed here and failed everywhere else
+// the first time they were ever run outside Windows.
+import { fileURLToPath } from "node:url";
 import {
   PUBLIC_PARTS,
   publicPartDef,
@@ -236,7 +241,7 @@ test("profile and edge images resolve to the files we actually have", async () =
   // profile on the finishes page a broken image.
   const { profileImageSrc, edgeImageSrc } = await import("../lib/pcd-profile-images.js");
   const { existsSync } = await import("node:fs");
-  const PUBLIC_ROOT = new URL("../public", import.meta.url).pathname.replace(/^\//, "");
+  const PUBLIC_ROOT = fileURLToPath(new URL("../public", import.meta.url));
 
   assert.equal(profileImageSrc("Soft", "Mona Vale"), "/images/profiles/polytec/soft/mona-vale.jpg");
   assert.equal(profileImageSrc("Sharp", "Calcutta 35"), "/images/profiles/polytec/sharp/calcutta-35.jpg");

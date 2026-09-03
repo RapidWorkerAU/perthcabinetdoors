@@ -14,6 +14,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+// fileURLToPath, NOT pathname with the leading slash stripped. That idiom turns
+// "/C:/Users/..." into a usable Windows path and "/home/runner/..." into a
+// RELATIVE one, so these checks quietly passed here and failed everywhere else
+// the first time they were ever run outside Windows.
+import { fileURLToPath } from "node:url";
 
 import {
   DEFAULT_PROFILE_SUPPLIER,
@@ -155,7 +160,7 @@ test("the brand list is built from whatever tab is open", () => {
 import { readdirSync } from "node:fs";
 import { LAMINEX_PROFILE_GROUPS, LAMINEX_PROFILES, laminexProfileImageSrc } from "../lib/pcd-laminex-profiles.js";
 
-const PROFILE_ROOT = new URL("../public/images/profiles/laminex/", import.meta.url).pathname.replace(/^\//, "");
+const PROFILE_ROOT = fileURLToPath(new URL("../public/images/profiles/laminex/", import.meta.url));
 
 test("every Laminex profile points at a file that is really there", () => {
   const missing = [];

@@ -17,7 +17,8 @@ name: Scheduled sync
 #
 # WHAT IT NEEDS. Two repository secrets, under Settings, Secrets and variables,
 # Actions:
-#   SITE_URL      https://www.perthcabinetdoors.com.au  (no trailing slash)
+#   SITE_URL      https://www.perthcabinetdoors.com  (no trailing slash, and NOT .com.au: the
+#                 site is .com, only the email is .com.au)
 #   CRON_SECRET   the same value as the CRON_SECRET environment variable in
 #                 Vercel. The routes check it, so a wrong one gets a 401 and
 #                 this workflow goes red.

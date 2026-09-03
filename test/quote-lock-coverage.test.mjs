@@ -19,8 +19,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+// fileURLToPath, NOT pathname with the leading slash stripped. That idiom turns
+// "/C:/Users/..." into a usable Windows path and "/home/runner/..." into a
+// RELATIVE one, so these checks quietly passed here and failed everywhere else
+// the first time they were ever run outside Windows.
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname.replace(/^\//, "");
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const API = join(ROOT, "app", "api");
 const SAVER = join(ROOT, "app", "api", "admin", "quotes", "[id]", "_quote-line-save.js");
 
