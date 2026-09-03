@@ -2,6 +2,8 @@ import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { bookingRowFromInput } from "../../../../../lib/pcd-calendar";
 import { pushBooking } from "../../../../../lib/pcd-calendar-sync";
 import { logBookingActivity } from "../../../../../lib/pcd-booking-activity";
+import { askOnSave } from "../../../../../lib/pcd-booking-confirmation-sweep";
+import { siteUrl } from "../../../../../lib/pcd-stripe";
 
 // Changing or cancelling one booking.
 //
@@ -77,7 +79,17 @@ export async function PATCH(request, { params }) {
       .eq("id", id)
       .maybeSingle();
 
-    return Response.json({ ok: true, event: fresh || data, sync });
+    // MOVED INTO THE WINDOW, SO ASKED AGAIN NOW.
+    //
+    // A time change clears any answer already given, in a database trigger, so
+    // a booking confirmed for half past nine cannot stay confirmed once it is
+    // moved to two. That leaves it needing a fresh ask, and if the new time is
+    // already inside a day it needs one straight away rather than whenever the
+    // hourly pass next runs. Shares the claim on the row with that pass, so
+    // only one of them sends.
+    const ask = await askOnSave(context.supabase, fresh || data, siteUrl(request.url));
+
+    return Response.json({ ok: true, event: fresh || data, sync, ask });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not update the booking." }, { status: 500 });
   }

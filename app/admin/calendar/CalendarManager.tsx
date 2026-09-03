@@ -12,6 +12,7 @@ import AdminLoading from '@/components/admin/AdminLoading'
 import useIsMobile from '@/hooks/useIsMobile'
 import BookingModal, { KIND_COLOUR, type BookingDraft } from './BookingModal'
 import {
+  ASKABLE_KINDS,
   addDays,
   addMonths,
   bookingFromRow,
@@ -1438,6 +1439,12 @@ function DetailBody({
             value={<Link className="font-semibold text-[#2d5e28] underline" href={`/admin/orders/${booking.orderId}`}>Open the order</Link>}
           />
         )}
+        {(booking.contactName || booking.contactMobile) && (
+          <Field
+            label="Contact"
+            value={[booking.contactName, booking.contactMobile].filter(Boolean).join(', ')}
+          />
+        )}
         <Field
           label="In Outlook"
           value={
@@ -1447,11 +1454,30 @@ function DetailBody({
               : 'Not yet'
           }
         />
+        <Field label="Confirmed" value={<ConfirmValue booking={booking} />} />
       </div>
 
       {booking.syncError && (
         <p className="break-words rounded-[7px] border border-[#e8d68f] bg-[#fffdf0] px-[10px] py-[9px] text-[12px] leading-[1.55] text-[#8a6d0b]">
           {booking.syncError}
+        </p>
+      )}
+
+      {/* WHAT THEY ACTUALLY SAID. Kept apart from the booking's own notes,
+          because one is what we wrote down and the other is what the customer
+          told us, and a driver needs to know which is which. */}
+      {booking.confirmNotes && (
+        <p
+          className={[
+            'whitespace-pre-wrap break-words rounded-[7px] border px-[10px] py-[9px] text-[12px] leading-[1.55]',
+            booking.confirmState === 'declined'
+              ? 'border-[#f0cec6] bg-[#fdf3f1] text-[#8a3324]'
+              : 'border-[#cbe0c4] bg-[#f4faf3] text-[#2d5e28]',
+          ].join(' ')}
+        >
+          <b>{booking.confirmState === 'declined' ? 'Declined, they said:' : 'Confirmed, they said:'}</b>
+          {'\n'}
+          {booking.confirmNotes}
         </p>
       )}
 
@@ -1482,6 +1508,70 @@ function DetailBody({
       </div>
     </div>
   )
+}
+
+/**
+ * Whether the customer has answered, and if not, WHY not.
+ *
+ * "They have not answered" and "we never managed to ask" look identical on a
+ * calendar that only stores the answer, and they need opposite responses from
+ * us: one is a customer to chase, the other is an email to fix. So they are
+ * different states, in different colours, saying different things.
+ *
+ * Asked is deliberately not called sent. What we know is that Resend accepted
+ * the message, and there is no bounce webhook here to tell us whether it landed.
+ */
+function ConfirmValue({ booking }: { booking: Booking }) {
+  const pill = (text: string, className: string, title?: string) => (
+    <span title={title} className={`rounded-full border px-[6px] py-px text-[10.5px] font-bold ${className}`}>
+      {text}
+    </span>
+  )
+
+  // Nothing we would ever ask about. Said plainly rather than left blank, so a
+  // reminder with no confirmation on it does not read as one that failed.
+  if (!ASKABLE_KINDS.has(booking.kind) || booking.source === 'outlook' || booking.status !== 'booked') {
+    return <span className="text-[#8b8a81]">Not asked</span>
+  }
+
+  switch (booking.confirmState) {
+    case 'confirmed':
+      return (
+        <span className="flex flex-wrap items-baseline justify-end gap-[6px]">
+          {pill('Confirmed', 'border-[#cbe0c4] bg-[#eaf3e6] text-[#2d5e28]')}
+          <span className="text-[11.5px] font-normal text-[#8b8a81]">
+            {booking.confirmAnsweredBy || 'answered'} {timeAgo(booking.confirmAnsweredAt)}
+          </span>
+        </span>
+      )
+    case 'declined':
+      return (
+        <span className="flex flex-wrap items-baseline justify-end gap-[6px]">
+          {pill('Declined', 'border-[#f0cec6] bg-[#fdeeeb] text-[#a3311f]')}
+          <span className="text-[11.5px] font-normal text-[#8b8a81]">
+            {booking.confirmAnsweredBy || 'answered'} {timeAgo(booking.confirmAnsweredAt)}
+          </span>
+        </span>
+      )
+    case 'asked':
+      return (
+        <span className="flex flex-wrap items-baseline justify-end gap-[6px]">
+          {pill('Asked, waiting', 'border-[#e8d68f] bg-[#fffdf0] text-[#8a6d0b]')}
+          <span className="text-[11.5px] font-normal text-[#8b8a81]">
+            {booking.confirmSentTo || ''} {timeAgo(booking.confirmAskedAt)}
+          </span>
+        </span>
+      )
+    case 'failed':
+      return (
+        <span className="flex flex-wrap items-baseline justify-end gap-[6px]">
+          {pill('Could not ask', 'border-[#f0cec6] bg-[#fdeeeb] text-[#a3311f]', booking.confirmError)}
+          <span className="text-[11.5px] font-normal text-[#8b8a81]">{booking.confirmError}</span>
+        </span>
+      )
+    default:
+      return <span className="text-[#8b8a81]">Not asked yet</span>
+  }
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {

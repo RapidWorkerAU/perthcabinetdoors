@@ -8,6 +8,8 @@ import {
 } from "../../../../lib/pcd-calendar";
 import { pushBooking } from "../../../../lib/pcd-calendar-sync";
 import { logBookingActivity } from "../../../../lib/pcd-booking-activity";
+import { askOnSave } from "../../../../lib/pcd-booking-confirmation-sweep";
+import { siteUrl } from "../../../../lib/pcd-stripe";
 
 // What is on between two dates, and booking something new.
 //
@@ -142,7 +144,20 @@ export async function POST(request) {
     // the one thing the report could not see.
     await logBookingActivity(context.supabase, fresh || data, { action: "created" });
 
-    return Response.json({ ok: true, event: fresh || data, sync });
+    // BOOKED INSIDE THE WINDOW, SO ASKED NOW.
+    //
+    // The hourly pass would find this within the hour, which is fine for a
+    // booking made on Tuesday for Friday and not fine for one made at two for
+    // tomorrow morning: an hour of a day's notice is a real slice of it. The
+    // pass and this share one claim on the row, so whichever gets there first
+    // sends and the other finds nothing to do.
+    //
+    // Never allowed to fail the booking. It is saved, it is in Outlook, and an
+    // ask that did not go leaves the row saying so.
+    const askBaseUrl = siteUrl(request.url);
+    const ask = await askOnSave(context.supabase, fresh || data, askBaseUrl);
+
+    return Response.json({ ok: true, event: fresh || data, sync, ask });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not save the booking." }, { status: 500 });
   }

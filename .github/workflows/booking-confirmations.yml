@@ -1,0 +1,51 @@
+name: Booking confirmations
+
+# THE HOURLY PASS, and why it is not in scheduled-sync.yml with the others.
+#
+# Every job in that workflow is timed in DAYS, so twice a day suits all of them.
+# This one is timed in hours: a booking at half past nine wants its ask at half
+# past nine the day before, and a daily pass can only ever be right by accident.
+# Putting it in there would mean either running the mail sync and the deposit
+# sweep 24 times a day for no reason, or leaving this one wrong.
+#
+# Vercel's Hobby plan refuses anything more often than daily, which is why the
+# real schedule lives in GitHub and vercel.json keeps a single daily pass as a
+# floor. If GitHub disables this workflow (it does that on a repo nobody has
+# pushed to for 60 days) the Vercel cron carries on alone and the asks still go
+# out, just once a day instead of hourly.
+#
+# QUIET HOURS ARE THE ROUTE'S PROBLEM, NOT THIS FILE'S. It is called every hour
+# of the day and the pass itself returns without sending outside 7am to 8pm
+# Perth. Written that way round so the rule is in one place and is testable,
+# rather than encoded in a cron expression nobody can read.
+#
+# WHAT IT NEEDS. The same two repository secrets scheduled-sync.yml already uses:
+#   SITE_URL      https://www.perthcabinetdoors.com.au  (no trailing slash)
+#   CRON_SECRET   the same value as the CRON_SECRET environment variable in
+#                 Vercel.
+
+on:
+  schedule:
+    - cron: "5 * * * *"
+  # So it can be run by hand from the Actions tab.
+  workflow_dispatch:
+
+# A second run starting while the first is still going would have both reading
+# the same bookings. They could not both send, because every ask is claimed on
+# the row first, but there is nothing to gain from the overlap.
+concurrency:
+  group: booking-confirmations
+  cancel-in-progress: false
+
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask tomorrow's customers to confirm
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 90 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/booking-confirmations"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

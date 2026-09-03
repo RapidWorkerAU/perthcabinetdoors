@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/site-rollup",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/booking-confirmations",
+      "schedule": "0 17 * * *"
     }
   ]
 }
