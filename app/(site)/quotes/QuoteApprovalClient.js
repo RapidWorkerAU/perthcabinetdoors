@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { edgeImageSrc } from "@/lib/pcd-profile-images";
+import { isHardwareLine, lineHeading, lineSubLines } from "../../../lib/pcd-quote-line-display";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
 import { rowCapHeight } from "../../../lib/pcd-row-cap";
@@ -34,11 +35,6 @@ function lineValue(value) {
 
 function isBaseCabinetLine(line) {
   return line?.product_type === "base_cabinet";
-}
-
-function productDisplayName(line) {
-  if (isBaseCabinetLine(line)) return "Base Cabinet";
-  return line.product_type || line.product_name;
 }
 
 function cabinetDimensionText(line) {
@@ -114,13 +110,29 @@ function SelectionTile({ src, label, onPreview }) {
   );
 }
 
+// THE CELL THE CUSTOMER READS FIRST.
+//
+// It used to print the product type and then the material, the finish and the
+// colour, each falling back to "N/A". On a hardware line all three are blank
+// because a hinge has no board, so the row read "Hardware" and three N/As and
+// never said WHICH hinge, even though the line knew its name all along. What a
+// line is called and what sits under it is now one shared answer. See
+// lib/pcd-quote-line-display.js.
 function DetailStack({ line }) {
+  const subLines = lineSubLines(line);
   return (
     <div className={styles.quoteItemDetailStack}>
-      <strong>{lineValue(productDisplayName(line))}</strong>
-      <span>{lineValue(line.material)}</span>
-      <span>{lineValue(line.finish)}</span>
-      <span>{lineValue(line.colour)}</span>
+      <strong>{lineHeading(line)}</strong>
+      {subLines.map((sub) =>
+        // A board line keeps its N/A: a door with no finish recorded is a gap
+        // worth showing. A hardware line has nothing to leave a gap in, so a
+        // row it does not have is not printed at all.
+        isHardwareLine(line) ? (
+          sub.value ? <span key={sub.key}>{sub.value}</span> : null
+        ) : (
+          <span key={sub.key}>{lineValue(sub.value)}</span>
+        )
+      )}
     </div>
   );
 }
@@ -533,6 +545,7 @@ export default function QuoteApprovalClient() {
               </thead>
               <tbody>
                 {lines.map((line, index) => {
+                  const isHardware = isHardwareLine(line);
                   const showProfiles = line.material === "Thermolaminate" && line.product_type !== "Panel" && line.product_type !== "Table top";
                   const hingesApplicable = line.product_type === "Door";
                   const colourSrc = colourSrcForLine(line);
@@ -550,20 +563,34 @@ export default function QuoteApprovalClient() {
                           <span className={styles.quoteLineClientNoteEmpty}>-</span>
                         )}
                       </td>
-                      <td>{lineValue(quoteLineSizeText(line))}</td>
+                      {/* A hinge has no size, no edge profile and no drilling.
+                          Printing N/A in four columns made a complete line read
+                          as an unfinished one, so a hardware row says the
+                          question does not arise instead. */}
+                      <td>{isHardware ? "-" : lineValue(quoteLineSizeText(line))}</td>
                       <td>{line.qty || "1"}</td>
-                      <td><PreviewName src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} /></td>
                       <td>
-                        <div className={styles.quoteItemDetailStack}>
-                          <span>{showProfiles ? lineValue(line.profile_type) : "N/A"}</span>
-                          {showProfiles ? <PreviewName src={profileSrc} label={line.profile} onPreview={setPreviewImage} /> : <span>N/A</span>}
-                        </div>
+                        {isHardware ? "-" : <PreviewName src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} />}
                       </td>
                       <td>
-                        <div className={styles.quoteItemDetailStack}>
-                          <span>Drill: {hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</span>
-                          <span>Qty: {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</span>
-                        </div>
+                        {isHardware ? (
+                          "-"
+                        ) : (
+                          <div className={styles.quoteItemDetailStack}>
+                            <span>{showProfiles ? lineValue(line.profile_type) : "N/A"}</span>
+                            {showProfiles ? <PreviewName src={profileSrc} label={line.profile} onPreview={setPreviewImage} /> : <span>N/A</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {isHardware ? (
+                          "-"
+                        ) : (
+                          <div className={styles.quoteItemDetailStack}>
+                            <span>Drill: {hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</span>
+                            <span>Qty: {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</span>
+                          </div>
+                        )}
                       </td>
                       <td>{formatMoney(line.unit_price_ex_gst, quote.currency)}</td>
                       <td>{formatMoney(line.line_total_ex_gst, quote.currency)}</td>
@@ -579,6 +606,7 @@ export default function QuoteApprovalClient() {
             style={mobileItemsMax ? { maxHeight: mobileItemsMax } : undefined}
           >
             {lines.map((line, index) => {
+              const isHardware = isHardwareLine(line);
               const showProfiles = line.material === "Thermolaminate" && line.product_type !== "Panel" && line.product_type !== "Table top";
               const hingesApplicable = line.product_type === "Door";
               const colourSrc = colourSrcForLine(line);
@@ -597,7 +625,7 @@ export default function QuoteApprovalClient() {
                   >
                     <span className={styles.quoteItemNumber}>{index + 1}</span>
                     <div>
-                      <p>{lineValue(productDisplayName(line), "Quote item")}</p>
+                      <p>{lineHeading(line)}</p>
                       <strong>{formatMoney(line.line_total_ex_gst, quote.currency)}</strong>
                     </div>
                     <span className={styles.quoteItemMobileToggle} aria-hidden="true" />
@@ -605,20 +633,37 @@ export default function QuoteApprovalClient() {
                   {isExpanded ? (
                     <div className={styles.quoteItemMobileContent}>
                       <div className={styles.quoteItemMobileSpecs}>
-                        <div><span>Material</span><strong>{lineValue(line.material)}</strong></div>
-                        <div><span>Size</span><strong>{lineValue(quoteLineSizeText(line))}</strong></div>
+                        {/* A hinge has no board and no size. What it does have
+                            is a name, which is the one thing somebody opening
+                            this card is looking for. */}
+                        {isHardware ? (
+                          lineSubLines(line).map((sub) =>
+                            sub.value ? (
+                              <div key={sub.key}><span>{sub.label}</span><strong>{sub.value}</strong></div>
+                            ) : null
+                          )
+                        ) : (
+                          <>
+                            <div><span>Material</span><strong>{lineValue(line.material)}</strong></div>
+                            <div><span>Size</span><strong>{lineValue(quoteLineSizeText(line))}</strong></div>
+                          </>
+                        )}
                         <div><span>Qty</span><strong>{line.qty || "1"}</strong></div>
                         <div><span>Unit cost</span><strong>{formatMoney(line.unit_price_ex_gst, quote.currency)}</strong></div>
                       </div>
                       <div className={styles.quoteItemMobileSelections}>
-                        <div>
-                          <span>Colour</span>
-                          <SelectionTile src={colourSrc} label={line.colour} onPreview={setPreviewImage} />
-                        </div>
-                        <div>
-                          <span>Edge profile</span>
-                          <SelectionTile src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} />
-                        </div>
+                        {isHardware ? null : (
+                          <>
+                            <div>
+                              <span>Colour</span>
+                              <SelectionTile src={colourSrc} label={line.colour} onPreview={setPreviewImage} />
+                            </div>
+                            <div>
+                              <span>Edge profile</span>
+                              <SelectionTile src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} />
+                            </div>
+                          </>
+                        )}
                         {showProfiles ? (
                           <>
                             <div>
@@ -632,12 +677,14 @@ export default function QuoteApprovalClient() {
                           </>
                         ) : null}
                       </div>
-                      <div className={styles.quoteItemMobileHinges}>
-                        <span className={hingesApplicable && line.hinge_holes ? styles.quoteItemYes : styles.quoteItemNo}>
-                          {hingesApplicable && line.hinge_holes ? "Yes" : hingesApplicable ? "No" : "N/A"} drill holes
-                        </span>
-                        <span>Hinge qty: {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</span>
-                      </div>
+                      {isHardware ? null : (
+                        <div className={styles.quoteItemMobileHinges}>
+                          <span className={hingesApplicable && line.hinge_holes ? styles.quoteItemYes : styles.quoteItemNo}>
+                            {hingesApplicable && line.hinge_holes ? "Yes" : hingesApplicable ? "No" : "N/A"} drill holes
+                          </span>
+                          <span>Hinge qty: {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</span>
+                        </div>
+                      )}
                       {clientNote ? (
                         <div className={styles.quoteLineClientNote}>
                           <strong>Note:</strong> {clientNote}

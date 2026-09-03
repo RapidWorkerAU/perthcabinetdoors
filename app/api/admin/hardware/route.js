@@ -1,17 +1,10 @@
 import { requireAdminApiContext } from "@/lib/admin-api";
+import { HARDWARE_TYPE_VALUES } from "@/lib/pcd-hardware-types";
 
 const TABLE = "pcd_hardware";
-const TYPES = new Set([
-  "handle",
-  "hinge",
-  "drawer_runner",
-  "push_to_open",
-  "cutlery_tray",
-  "wardrobe_hanging_rail",
-  "slide_out_bin",
-  "bi_fold_door",
-  "cabinet_inserts",
-]);
+// The one definition, so a type the hardware screen offers cannot be one
+// this route refuses to save. See lib/pcd-hardware-types.js.
+const TYPES = new Set(HARDWARE_TYPE_VALUES);
 
 function cleanText(value) {
   return String(value || "").trim();

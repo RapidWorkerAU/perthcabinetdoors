@@ -168,6 +168,49 @@ test("the rest of the channels land where they should", () => {
   assert.equal(channelFrom({ referrer: "", utmSource: "newsletter" }), "referral");
 });
 
+// ── the bug that put ChatGPT in the Facebook column ────────────────────────
+
+test("a visit from ChatGPT is an AI answer, not Facebook", () => {
+  // THE BUG THIS PINS, and it was live for as long as the tracking has been.
+  // The social list was matched with includes() and one of the hosts in it was
+  // "t.co", Twitter's link shortener. "chatgp[t.co]m" contains it. Every person
+  // who found us through ChatGPT was filed as Facebook and Instagram, and the
+  // Facebook figure on the dashboard was almost entirely them.
+  assert.equal(channelFrom({ referrer: "https://chatgpt.com/" }), "ai");
+  assert.equal(channelFrom({ referrer: "https://chat.openai.com/" }), "ai");
+  assert.equal(channelFrom({ referrer: "https://www.perplexity.ai/" }), "ai");
+  assert.equal(channelFrom({ referrer: "https://claude.ai/" }), "ai");
+});
+
+test("Copilot and Gemini are AI answers too, not Facebook and not Google", () => {
+  // Both are subdomains of something else, which is why the order matters: the
+  // AI test has to run before the Google one and before social, or Gemini reads
+  // as organic search and Copilot reads as Facebook.
+  assert.equal(channelFrom({ referrer: "https://copilot.microsoft.com/" }), "ai");
+  assert.equal(channelFrom({ referrer: "https://gemini.google.com/app" }), "ai");
+  // And ordinary Google is still Google, on any of its country domains.
+  assert.equal(channelFrom({ referrer: "https://www.google.com/" }), "google");
+  assert.equal(channelFrom({ referrer: "https://www.google.com.au/search?q=x" }), "google");
+  assert.equal(channelFrom({ referrer: "https://www.google.co.uk/" }), "google");
+});
+
+test("a host is matched as a host, never as a piece of the text", () => {
+  // The whole class of bug, not just the one instance of it. Anything with
+  // "t.co" inside it used to be Facebook.
+  assert.equal(channelFrom({ referrer: "https://support.co.uk/help" }), "referral");
+  assert.equal(channelFrom({ referrer: "https://notchatgpt.com/" }), "referral");
+  assert.equal(channelFrom({ referrer: "https://mygoogle.com.hijack.example/" }), "referral");
+  // And the real t.co still lands where it should.
+  assert.equal(channelFrom({ referrer: "https://t.co/AbCdEf" }), "social");
+  // A subdomain of something we do know is that thing.
+  assert.equal(channelFrom({ referrer: "https://m.facebook.com/" }), "social");
+});
+
+test("a paid AI click is still an ad", () => {
+  // The ads test runs first for the same reason it runs before search.
+  assert.equal(channelFrom({ referrer: "https://chatgpt.com/", gclid: "abc123" }), "ads");
+});
+
 test("moving around our own site is not arriving from somewhere", () => {
   // Otherwise the second page of every visit would overwrite the channel with
   // "referral: ourselves" and Google search would read as nearly nothing.
@@ -179,6 +222,50 @@ test("moving around our own site is not arriving from somewhere", () => {
     channelFrom({ referrer: "https://perthcabinetdoors.com.au/", siteHost: "www.perthcabinetdoors.com.au" }),
     "direct"
   );
+});
+
+test("AI answers have a column of their own on the dashboard", () => {
+  // Folded into "another search engine" it would be invisible, and it is not a
+  // search engine: somebody arrives having already been told about us, and
+  // there is no ranking to check or bid to place.
+  assert.ok(CHANNEL_ORDER.includes("ai"));
+  assert.match(CHANNEL_LABELS.ai, /AI/);
+  // Second in the list, behind Google. It is already ahead of Bing.
+  assert.equal(CHANNEL_ORDER.indexOf("ai"), 1);
+});
+
+// ── a page that does not exist is not a page view ──────────────────────────
+
+test("the 404 page leaves the marker the counter looks for", () => {
+  // THE OTHER HALF OF THE SKEW. The counter is mounted in the site layout, and
+  // a layout wraps the not-found boundary exactly as it wraps a real page, so
+  // every request for a URL we do not have was reported as something somebody
+  // had read. A scraper sweeping eight dead product URLs put about a hundred
+  // and ninety views into the dashboard that way.
+  //
+  // These two files are the fix and neither works without the other, so they
+  // are pinned together here.
+  const notFound = readFileSync(new URL("../app/(site)/not-found.js", import.meta.url), "utf8");
+  const tracker = readFileSync(new URL("../app/(site)/SiteTracker.js", import.meta.url), "utf8");
+  assert.match(notFound, /data-site-not-found/, "the 404 page has stopped marking itself");
+  assert.match(tracker, /data-site-not-found/, "the counter has stopped looking for the marker");
+  assert.match(tracker, /if \(isNotFoundPage\(\)\) return undefined;/, "the counter no longer skips a 404");
+});
+
+test("the counter still counts a real page if anything about the check goes wrong", () => {
+  // A counting script must never be the reason a page fails, and a lost view is
+  // a smaller cost than a blank page.
+  const tracker = readFileSync(new URL("../app/(site)/SiteTracker.js", import.meta.url), "utf8");
+  const guard = tracker.slice(tracker.indexOf("function isNotFoundPage"), tracker.indexOf("export default"));
+  assert.match(guard, /catch/, "an unexpected failure must not stop the page being counted");
+  assert.match(guard, /return false;/);
+});
+
+test("the city is decoded on the way in", () => {
+  // Vercel percent encodes it, so it was being stored as "Frankfurt%20am%20Main".
+  const route = readFileSync(new URL("../app/api/track/route.js", import.meta.url), "utf8");
+  assert.match(route, /decodeHeader\(headers\.get\("x-vercel-ip-city"\)\)/);
+  assert.match(route, /decodeURIComponent/);
 });
 
 test("every channel that can be recorded has something to call it", () => {

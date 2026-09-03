@@ -79,12 +79,39 @@ function send(payload) {
   }
 }
 
+// A PAGE THAT DOES NOT EXIST IS NOT A PAGE VIEW.
+//
+// The layout this counter sits in wraps the not-found boundary exactly as it
+// wraps a real page, so every request for a URL we do not have was being
+// reported as something somebody had read. A scraper sweeping eight dead
+// product URLs every couple of hours put about a hundred and ninety views into
+// the dashboard that way, more than the homepage got, and a one page visit each
+// time that went straight into the bounce rate.
+//
+// The 404 page leaves the marker; this looks for it. A DOM attribute rather
+// than a prop or a context because the counter is on the other side of that
+// boundary and there is nothing to pass through. React commits the whole
+// document before it runs any effect, so by the time this runs the marker is
+// either there or the page is real.
+const NOT_FOUND_MARKER = "[data-site-not-found]";
+
+function isNotFoundPage() {
+  try {
+    return Boolean(document.querySelector(NOT_FOUND_MARKER));
+  } catch {
+    // A counter must never be the reason a page fails. Anything unexpected here
+    // counts the view, which is the same behaviour as before.
+    return false;
+  }
+}
+
 export default function SiteTracker() {
   const pathname = usePathname();
   const view = useRef(null);
 
   useEffect(() => {
     if (!pathname || !shouldTrackPath(pathname)) return undefined;
+    if (isNotFoundPage()) return undefined;
 
     const id = randomId();
     const params = new URLSearchParams(window.location.search);

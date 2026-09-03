@@ -17,10 +17,15 @@ import {
   standardFrontSizes,
 } from "../lib/pcd-order-form-data.js";
 import { buildOrderFormWorkbook, columnLetter, ITEM_ROWS } from "../lib/pcd-order-form-workbook.js";
+import { TABS } from "../lib/pcd-order-form-tabs.js";
 import { orderFormFileName, formatGeneratedOn } from "../lib/pcd-order-form.js";
 import { PRODUCT_TYPES, MATERIAL_LABELS, THICKNESS_BY_LABEL } from "../lib/pcd-materials.js";
 import { profileTypesForSelection, edgeProfilesForMaterial, CABINET_BRANDS } from "../lib/quote-form-data.js";
 import { lineIsReady } from "../lib/pcd-quote-ready.js";
+import { HINGE_COUNT_BREAKS, hingesForHeight } from "../lib/pcd-hinges.js";
+import { ROOM_AREAS } from "../lib/pcd-line-details.js";
+import { cabinetTypeOptions } from "../lib/pcd-design-parts.js";
+import { cabinetSpecFromDesignItem } from "../lib/pcd-cabinet-from-design.js";
 
 // A small stand-in for the libraries, shaped exactly like the rows the tables
 // hand back. Deliberately includes the awkward cases: a colour that comes in
@@ -255,11 +260,12 @@ test("every standard size the catalogue holds is reachable", () => {
 
 // ── The workbook itself ─────────────────────────────────────────────────────
 
-async function build() {
+async function build(extra = {}) {
   const workbook = await buildOrderFormWorkbook({
     colours: COLOURS,
     hardware: HARDWARE,
     generatedOn: "1 January 2026",
+    ...extra,
   });
   const buffer = await workbook.xlsx.writeBuffer();
   const reopened = new ExcelJS.Workbook();
@@ -280,7 +286,7 @@ function helperFormulas(sheet, row) {
 }
 
 /** The column a heading sits in, so the tests do not pin letters that shift. */
-function headings(sheet, headRow) {
+function headings(sheet, headRow = 7) {
   const found = new Map();
   for (let column = 1; column <= 40; column += 1) {
     const letter = columnLetter(column);
@@ -290,19 +296,352 @@ function headings(sheet, headRow) {
   return found;
 }
 
-test("the details sheet comes first, because it is filled in first", async () => {
+/** The labels down the details sheet, however far down it now runs. */
+function detailLabels(sheet) {
+  const labels = [];
+  for (let row = 4; row <= 90; row += 1) {
+    const value = sheet.getCell(`B${row}`).value;
+    const asText =
+      value && typeof value === "object" && value.richText
+        ? value.richText.map((part) => part.text).join("")
+        : value;
+    if (asText) labels.push(String(asText).replace(/ \*$/, "").trim());
+  }
+  return labels;
+}
+
+/** The row a details question sits on. */
+function detailRow(sheet, label) {
+  for (let row = 4; row <= 90; row += 1) {
+    if (String(sheet.getCell(`B${row}`).value || "").replace(/ \*$/, "").trim() === label) return row;
+  }
+  return 0;
+}
+
+/** The values behind a defined name. */
+function namedValues(workbook, name) {
+  const entry = workbook.definedNames.model.find((item) => item.name === name);
+  if (!entry) return null;
+  const sheetName = String(entry.ranges[0]).split("!")[0].replace(/'/g, "");
+  const sheet = workbook.getWorksheet(sheetName);
+  const match = String(entry.ranges[0]).match(/\$([A-Z]+)\$(\d+)(?::\$[A-Z]+\$(\d+))?$/);
+  const values = [];
+  for (let row = Number(match[2]); row <= Number(match[3] || match[2]); row += 1) {
+    values.push(String(sheet.getCell(`${match[1]}${row}`).value));
+  }
+  return values;
+}
+
+// ── The tabs ────────────────────────────────────────────────────────────────
+
+test("the sheets are in the order they are worked through", async () => {
   const workbook = await build();
   assert.deepEqual(
     workbook.worksheets.map((sheet) => sheet.name),
-    ["Your Details", "Order Form", "How to fill this in", "Colour list", "Lists"]
+    [
+      "Start here",
+      "Kit fronts",
+      "Fronts and panels",
+      "Carcasses",
+      "Hardware",
+      "How to fill this in",
+      "Colour list",
+      "Lists",
+    ]
   );
 });
+
+test("every measuring tab carries the same five columns", async () => {
+  // Room, cabinet reference, quantity, notes and the check. They are what let
+  // four tabs be read into one quote, and what lets somebody find a line again
+  // three weeks later. Defined once in pcd-order-form-tabs.js and spread into
+  // each tab, so they cannot drift apart.
+  const workbook = await build();
+  const shared = ["Room or area", "Qty", "Notes for this line", "Is this line complete?"];
+  TABS.forEach((tab) => {
+    const at = headings(workbook.getWorksheet(tab.sheet));
+    shared.forEach((head) => assert.ok(at.has(head), `${tab.sheet} is missing ${head}`));
+    // The hardware tab asks the same question in its own words, because the
+    // line is for a cabinet rather than being one.
+    assert.ok(
+      at.has("Cabinet reference") || at.has("For which cabinet"),
+      `${tab.sheet} has nowhere to say which cabinet`
+    );
+  });
+});
+
+test("a refresh measure is never shown a kit cabinet column", async () => {
+  // The whole reason there is more than one tab. On the made to measure tab
+  // there is no range to pick and no standard size to fail to find, because
+  // neither can apply to a door somebody is measuring off an existing carcass.
+  const workbook = await build();
+  const at = headings(workbook.getWorksheet("Fronts and panels"));
+  assert.ok(!at.has("Cabinet range"));
+  assert.ok(![...at.keys()].some((head) => /standard size/i.test(head)));
+  // And the sizes are typed, not filled in from a catalogue.
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  assert.equal(sheet.getCell(`${at.get("Height mm")}8`).formula, undefined);
+});
+
+test("a kit front is not asked for hinge positions it cannot have", async () => {
+  // It is bored to its range's own pattern, so there is nothing to measure and
+  // four columns would sit empty through an entire IKEA job.
+  const workbook = await build();
+  const kit = headings(workbook.getWorksheet("Kit fronts"));
+  const fronts = headings(workbook.getWorksheet("Fronts and panels"));
+  const positions = ["Bottom hinge, mm from bottom", "Top hinge, mm from top", "2nd hinge, mm from bottom"];
+  positions.forEach((head) => {
+    assert.ok(!kit.has(head), `${head} does not belong on Kit fronts`);
+    assert.ok(fronts.has(head), `${head} belongs on Fronts and panels`);
+  });
+  // But handing still does. A kit door is hinged left or right like any other.
+  assert.ok(kit.has("Hinge side"));
+});
+
+test("a hardware line is asked nothing about board, size or colour", async () => {
+  // It is bought rather than made. On the single sheet it sat in a row of
+  // columns that all wanted a board, and the check had to be taught to ignore
+  // them; on its own tab there is nothing to ignore.
+  const workbook = await build();
+  const at = headings(workbook.getWorksheet("Hardware"));
+  ["Material", "Thickness", "Colour", "Height mm", "Width mm", "Edge profile"].forEach((head) => {
+    assert.ok(!at.has(head), `${head} is not a question about a handle`);
+  });
+  assert.ok(at.has("Hardware type") && at.has("Hardware item") && at.has("Supplied by"));
+});
+
+test("the carcass tab asks for everything a cut list is worked out from", async () => {
+  // A cabinet is priced off its box, and the box is the same shape the design
+  // tool builds. Anything the shared builder produces that the form cannot ask
+  // for is a cabinet that imports half configured.
+  const workbook = await build();
+  const at = headings(workbook.getWorksheet("Carcasses"));
+  const asked = {
+    height_mm: "Height mm",
+    width_mm: "Width mm",
+    secondary_width_mm: "Second width mm (corners)",
+    depth_mm: "Depth mm",
+    carcass_material: "Carcass material",
+    carcass_finish: "Carcass finish",
+    carcass_colour: "Carcass colour",
+    carcass_thickness_mm: "Carcass thickness",
+    back_panel_included: "Back panel",
+    back_panel_thickness_mm: "Back thickness",
+    shelf_qty: "Shelves",
+    shelf_heights_mm: "Shelf heights, mm from bottom",
+    shelf_colour: "Shelf colour (blank = same as carcass)",
+    shelf_thickness_mm: "Shelf thickness (blank = same)",
+    mount_height_mm: "Mount height mm",
+    rangehood_housing_height_mm: "Rangehood housing height mm",
+    rangehood_channel_width_mm: "Rangehood channel width mm",
+  };
+  Object.entries(asked).forEach(([field, head]) => {
+    assert.ok(at.has(head), `${field} has no column (${head})`);
+  });
+
+  // And the fields it deliberately does not ask about, each for a reason.
+  const spec = cabinetSpecFromDesignItem({});
+  const notAsked = [
+    "label", // the cabinet reference is the label
+    "is_corner", // read off the cabinet type
+    "corner_style", // the configurator's default, said in the notes if it differs
+    "back_panel_material", // the same board as the box
+    "shelf_material", // the same board as the box
+    "shelf_finish", // follows the shelf colour
+    "has_rangehood", // true when a rangehood measurement is given
+    "cost_per_sqm_carcass", // no prices on this form, ever
+    "cost_per_sqm_shelf",
+    "notes",
+  ];
+  const covered = new Set([...Object.keys(asked), ...notAsked]);
+  Object.keys(spec).forEach((field) => {
+    assert.ok(covered.has(field), `${field} is neither asked for nor deliberately left out`);
+  });
+});
+
+test("the cabinet types are the ones we actually make, not a new list", async () => {
+  // That list is already written out in more places than it should be. The form
+  // reads one of them rather than becoming another.
+  const workbook = await build();
+  assert.deepEqual(
+    namedValues(workbook, "cabinettypes"),
+    cabinetTypeOptions().map((option) => option.label)
+  );
+});
+
+// ── Nothing on the form is a dead end ───────────────────────────────────────
+
+test("every dropdown warns and then lets the answer through", async () => {
+  // It is filled in on site, under time pressure. A refusal there is a line
+  // that never gets written down, which costs far more than a value somebody
+  // here has to match up by hand.
+  const workbook = await build();
+  TABS.forEach((tab) => {
+    const sheet = workbook.getWorksheet(tab.sheet);
+    for (let column = 1; column <= 30; column += 1) {
+      const validation = sheet.getCell(`${columnLetter(column)}8`).dataValidation;
+      if (!validation) continue;
+      assert.equal(
+        validation.errorStyle,
+        "warning",
+        `${tab.sheet} column ${columnLetter(column)} refuses instead of warning`
+      );
+    }
+  });
+});
+
+test("a narrowed list shows everything while the columns it depends on are blank", async () => {
+  // The dead end on the single sheet: answer out of order and the dropdown told
+  // you to go back a column. Narrowing is a convenience, not a gate.
+  const workbook = await build();
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
+  const helperOf = (head) => {
+    const validation = sheet.getCell(`${at.get(head)}8`).dataValidation;
+    const letter = validation.formulae[0].match(/INDIRECT\(\$([A-Z]+)8\)/)[1];
+    return sheet.getCell(`${letter}8`).formula;
+  };
+
+  assert.match(helperOf("Material"), /^IF\(OR\(\$[A-Z]+8=""\),"materials"/);
+  assert.match(helperOf("Thickness"), /^IF\(OR\(\$[A-Z]+8=""\),"thicknesses"/);
+  assert.match(helperOf("Edge profile"), /^IF\(OR\(\$[A-Z]+8=""\),"edges"/);
+});
+
+test("a blank finish still narrows the colours by material and thickness", async () => {
+  // The finish is an optional question. A colour column that emptied itself
+  // because nobody answered it would be a dead end on the one column the whole
+  // form exists to get right, and falling all the way back to every colour we
+  // hold would offer a 16mm colour on an 18mm door.
+  const workbook = await build();
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
+  const validation = sheet.getCell(`${at.get("Colour")}8`).dataValidation;
+  const letter = validation.formulae[0].match(/INDIRECT\(\$([A-Z]+)8\)/)[1];
+  const helper = sheet.getCell(`${letter}8`).formula;
+
+  // Three steps, widening: finish blank falls to material and thickness, and
+  // only a blank material falls to the whole library.
+  assert.ok(helper.includes('"COLOUR|"'), helper);
+  assert.ok(helper.includes('"colours"'), "no final fallback");
+  assert.equal((helper.match(/VLOOKUP/g) || []).length, 2, "the middle step is missing");
+
+  // And that middle list is really published.
+  const built = tree();
+  const withoutFinish = built.lists.find((list) => list.key === "COLOUR|Any / not sure|Decorative Board|16mm");
+  assert.ok(withoutFinish, "no colour list keyed without a finish");
+  assert.ok(withoutFinish.values.includes("Classic White"));
+  assert.ok(withoutFinish.values.includes("Notaio Walnut"), "a Ravine colour is still a 16mm colour");
+});
+
+test("a decorative board is still offered no door profile at all", async () => {
+  // The one place an empty list is the honest answer rather than a dead end. A
+  // routed profile is a vinyl skin pressed over a routed face and there is
+  // nothing to press onto a board, so widening the list there would be offering
+  // something we cannot make.
+  const built = tree();
+  assert.equal(built.lists.find((list) => list.key === "PROFILEGROUP|Decorative Board|18mm"), undefined);
+  assert.equal(built.lists.find((list) => list.key === "PROFILEANY|Decorative Board|18mm"), undefined);
+  assert.ok(built.lists.find((list) => list.key === "PROFILEANY|Thermolaminate|18mm"));
+});
+
+test("a size warns rather than refusing, so an odd measurement still gets written down", async () => {
+  const workbook = await build();
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
+  const height = sheet.getCell(`${at.get("Height mm")}8`).dataValidation;
+  assert.equal(height.errorStyle, "warning");
+  assert.equal(sheet.getCell(`${at.get("Height mm")}8`).numFmt, "0");
+});
+
+// ── The job defaults ────────────────────────────────────────────────────────
+
+test("the colour set once on the first tab starts every row on every tab", async () => {
+  // The biggest saving on site: most kitchens are one colour, and picking it
+  // sixty times is sixty chances to pick a different one.
+  const workbook = await build();
+  const details = workbook.getWorksheet("Start here");
+  const colourRow = detailRow(details, "Colour");
+  assert.ok(colourRow, "the job default colour is missing");
+
+  ["Kit fronts", "Fronts and panels"].forEach((name) => {
+    const sheet = workbook.getWorksheet(name);
+    const at = headings(sheet);
+    const formula = sheet.getCell(`${at.get("Colour")}8`).formula;
+    assert.ok(formula, `${name} does not read the job default`);
+    assert.ok(formula.includes(`'Start here'!$C$${colourRow}`), formula);
+    // Blank there is blank here. A job that set no default is not given an
+    // answer nobody chose.
+    assert.match(formula, /^IF\('Start here'!\$C\$\d+="","",/);
+  });
+});
+
+test("a row that differs is typed over, and the row wins", async () => {
+  // The default is a formula in an unlocked cell, which is the same trick the
+  // standard size uses. Typing over it is expected rather than a mistake.
+  const workbook = await build();
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
+  assert.equal(sheet.getCell(`${at.get("Colour")}8`).protection?.locked, false);
+  assert.equal(sheet.getCell(`${at.get("Material")}40`).protection?.locked, false);
+});
+
+test("a job default does not make every untouched row report itself incomplete", async () => {
+  // The trap in filling a hundred rows in with a colour: judged on every
+  // column, all four hundred rows of the workbook would have looked started.
+  // The check counts only the columns a PERSON fills in.
+  const workbook = await build();
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
+  const check = sheet.getCell(`${at.get("Is this line complete?")}8`).formula;
+  assert.match(check, /^IF\(\(\$[A-Z]+8<>""\)/);
+  assert.ok(!check.includes(`$${at.get("Colour")}8<>""`), "the check counts a defaulted colour as an answer");
+  assert.ok(check.includes(`$${at.get("Height mm")}8<>""`), "a typed height is what starts a row");
+});
+
+// ── Hinges ──────────────────────────────────────────────────────────────────
+
+test("hinges per door fills itself in from the height, on the shared rule", async () => {
+  // One rule in one place. The sheet writes it as a formula and everything on
+  // our side reads hingesForHeight, so the form and the quote cannot disagree
+  // about a door of the same height.
+  const workbook = await build();
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
+  const formula = sheet.getCell(`${at.get("Hinges per door")}8`).formula;
+
+  HINGE_COUNT_BREAKS.forEach((step) => {
+    assert.ok(formula.includes(`<=${step.upToMm},${step.hinges}`), `the ${step.upToMm} break is missing`);
+  });
+  assert.equal(hingesForHeight(720), 2);
+  assert.equal(hingesForHeight(900), 2);
+  assert.equal(hingesForHeight(901), 3);
+  assert.equal(hingesForHeight(2300), 5);
+  // No height, no answer. A blank column beats a guess about a door nobody has
+  // measured.
+  assert.equal(hingesForHeight(0), 0);
+  assert.ok(formula.includes('<=0,""'), "a door with no height should stay blank");
+});
+
+test("a door is drilled unless somebody says otherwise, and nothing else is", async () => {
+  const workbook = await build();
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
+  const formula = sheet.getCell(`${at.get("Drill hinge holes")}8`).formula;
+  assert.match(formula, /^IF\(\$[A-Z]+8="Door","Yes",""\)$/);
+});
+
+test("handing is two answers, because a pair is two lines", async () => {
+  const workbook = await build();
+  assert.deepEqual(namedValues(workbook, "hingesides"), ["Left", "Right"]);
+});
+
+// ── The details sheet ───────────────────────────────────────────────────────
 
 test("the details sheet is set up to print on one A4 page", async () => {
   // It gets printed and stapled to the job, so coming out as one page and a
   // strip is the difference between useful and annoying.
   const workbook = await build();
-  const setup = workbook.getWorksheet("Your Details").pageSetup;
+  const setup = workbook.getWorksheet("Start here").pageSetup;
   assert.equal(setup.paperSize, 9, "9 is A4");
   assert.equal(setup.orientation, "portrait");
   assert.equal(setup.fitToWidth, 1);
@@ -311,15 +650,7 @@ test("the details sheet is set up to print on one A4 page", async () => {
 
 test("the details sheet asks everything the website asks, plus what an order needs", async () => {
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Your Details");
-  const labels = [];
-  for (let row = 4; row <= 40; row += 1) {
-    const value = sheet.getCell(`B${row}`).value;
-    const asText = value && typeof value === "object" && value.richText
-      ? value.richText.map((part) => part.text).join("")
-      : value;
-    if (asText) labels.push(String(asText).replace(/ \*$/, "").trim());
-  }
+  const labels = detailLabels(workbook.getWorksheet("Start here"));
 
   // Everything the website request form collects.
   ["First name", "Last name", "Email", "Phone", "Cabinet brand"].forEach((field) => {
@@ -327,60 +658,67 @@ test("the details sheet asks everything the website asks, plus what an order nee
   });
   assert.ok(labels.includes("Suburb"), "the website asks for a delivery suburb");
 
-  // And what an ORDER needs that a website enquiry does not: somewhere to send
-  // it, and the company name for the trade customers this form is really for.
+  // And what an ORDER needs that a website enquiry does not.
   ["Company", "Street address", "State", "Postcode", "Delivery or pickup"].forEach((field) => {
     assert.ok(labels.includes(field), `an order needs ${field}`);
+  });
+
+  // And what a MEASURE needs that neither of them does.
+  ["Measured by", "Date measured", "Existing hinge brand", "Door overlay"].forEach((field) => {
+    assert.ok(labels.includes(field), `a measure needs ${field}`);
   });
 });
 
 test("the cabinet brand on the details sheet is the website's own list", async () => {
   const workbook = await build();
-  const lists = workbook.getWorksheet("Lists");
-  const range = workbook.definedNames.model.find((entry) => entry.name === "cabinetbrands").ranges[0];
-  const match = String(range).match(/\$([A-Z]+)\$(\d+):\$[A-Z]+\$(\d+)/);
-  const values = [];
-  for (let row = Number(match[2]); row <= Number(match[3]); row += 1) {
-    values.push(String(lists.getCell(`${match[1]}${row}`).value));
+  assert.deepEqual(namedValues(workbook, "cabinetbrands"), CABINET_BRANDS);
+});
+
+test("every answer box on the details sheet is the same width", async () => {
+  // Boxes of three different widths stacked down a page look like a mistake
+  // even when each one is deliberate. They all span the same four columns.
+  const workbook = await build();
+  const details = workbook.getWorksheet("Start here");
+  const spans = [];
+  for (let row = 5; row <= 90; row += 1) {
+    if (details.getCell(`C${row}`).protection?.locked !== false) continue;
+    let last = "C";
+    ["D", "E", "F"].forEach((letter) => {
+      if (details.getCell(`${letter}${row}`).protection?.locked === false) last = letter;
+    });
+    spans.push(`C:${last}`);
   }
-  assert.deepEqual(values, CABINET_BRANDS);
+  assert.ok(spans.length >= 20, "no answer boxes found");
+  assert.equal(new Set(spans).size, 1, `boxes come in ${new Set(spans).size} widths`);
 });
 
-test("height is asked for before width", async () => {
-  // Every size in this business is written height first: on the site, on a
-  // quote, on the workshop sheet. A form that put width first would be the one
-  // place they were the other way round, and that costs a door.
+test("a hint sits under the box it is about, not beside it", async () => {
+  // Parked in the column to the right it needed a column wide enough to hold
+  // it, which on A4 there is not, so it wrapped and got cut off mid sentence.
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  const at = headings(sheet, 7);
-  assert.ok(at.has("Height mm") && at.has("Width mm"));
-  assert.ok(
-    columnLetter.length && at.get("Height mm") < at.get("Width mm"),
-    `height is in ${at.get("Height mm")} and width in ${at.get("Width mm")}`
-  );
-  // And the standard size label says which way round it reads.
-  assert.ok([...at.keys()].some((head) => /height x width/i.test(head)));
+  const details = workbook.getWorksheet("Start here");
+  for (let row = 4; row <= 90; row += 1) {
+    assert.ok(!details.getCell(`G${row}`).value, `something is still parked in G${row}`);
+  }
+  const emailRow = detailRow(details, "Email");
+  assert.ok(emailRow, "the email question is missing");
+  assert.match(String(details.getCell(`C${emailRow + 1}`).value), /where the quote goes/i);
 });
 
-test("the kit cabinet columns come after the type and before the board", async () => {
-  // The order the answers actually arrive in: what it is, whose carcass it goes
-  // on, which of their sizes, and only then what it is made of. The size list
-  // cannot be offered before the type, because a drawer front and a door are
-  // sold in different sizes.
+test("the machinery behind the job defaults is out of the printed area and hidden", async () => {
   const workbook = await build();
-  const at = headings(workbook.getWorksheet("Order Form"), 7);
-  const order = ["Type", "Which cabinet", "Standard size", "Material"];
-  const letters = order.map((head) => at.get(head) || [...at.entries()].find(([k]) => k.startsWith(head))?.[1]);
-  letters.forEach((letter, i) => {
-    if (i === 0) return;
-    assert.ok(letter > letters[i - 1], `${order[i]} should come after ${order[i - 1]}`);
-  });
+  const details = workbook.getWorksheet("Start here");
+  for (let column = 9; column <= 21; column += 1) {
+    assert.equal(details.getColumn(columnLetter(column)).hidden, true, `${columnLetter(column)} is visible`);
+  }
 });
+
+// ── The lists behind the dropdowns ──────────────────────────────────────────
 
 test("every list on the hidden sheet is reachable by name", async () => {
   // A dropdown points at a defined name. A list published without one, or a
-  // name pointing at the wrong column, is a dropdown that opens empty, and the
-  // customer has no way to tell that from "we do not stock any".
+  // name pointing at the wrong column, is a dropdown that opens empty, and
+  // nobody can tell that from "we do not stock any".
   const workbook = await build();
   const built = tree();
   const lists = workbook.getWorksheet("Lists");
@@ -399,8 +737,6 @@ test("every list on the hidden sheet is reachable by name", async () => {
     const ranges = names.get(entry.name);
     assert.ok(ranges && ranges.length, `${entry.key} has no defined name`);
 
-    // A list of one is written as a single cell rather than a range of one,
-    // which is the same thing to Excel and a different string here.
     const match = String(ranges[0]).match(/\$([A-Z]+)\$(\d+)(?::\$[A-Z]+\$(\d+))?$/);
     assert.ok(match, `unreadable range for ${entry.key}: ${ranges[0]}`);
     const [, letter, from, to = match[2]] = match;
@@ -412,13 +748,45 @@ test("every list on the hidden sheet is reachable by name", async () => {
   });
 });
 
+test("every fallback a column can widen to is a real defined name", async () => {
+  // A fallback naming a list that was never published is a dropdown that opens
+  // empty on exactly the row somebody was in a hurry on.
+  const workbook = await build();
+  const names = new Set(workbook.definedNames.model.map((entry) => entry.name));
+  [
+    "materials", "thicknesses", "finishes", "colours", "edges", "profilegroups", "profiles",
+    "fronttypes", "paneluses", "rooms", "grains", "edgefinishes", "suppliedby",
+    "cabinettypes", "hardwaretypes", "hardwareitems", "hingebrands", "overlays", "jobkinds",
+  ].forEach((name) => assert.ok(names.has(name), `${name} is not defined`));
+});
+
+test("the rooms and panel uses come from the editable lists", async () => {
+  // Both are plain vocabulary that nothing branches on, so they live in
+  // Settings, Lists. A business doing more shopfitting than kitchens adds its
+  // own without a deploy.
+  const workbook = await build({ rooms: ["Shop floor", "Store room"], panelUses: ["Shroud"] });
+  assert.deepEqual(namedValues(workbook, "rooms"), ["Shop floor", "Store room"]);
+  assert.deepEqual(namedValues(workbook, "paneluses"), ["Shroud"]);
+  // And fall back to the built-in words rather than shipping an empty dropdown.
+  const plain = await build();
+  assert.deepEqual(namedValues(plain, "rooms"), ROOM_AREAS);
+});
+
+test("the hardware kinds are the ones we hold stock in", async () => {
+  // Offered from the catalogue rather than as a fixed list, so a kind we hold
+  // nothing in is not a dropdown entry leading to an empty second dropdown.
+  const workbook = await build();
+  assert.deepEqual(namedValues(workbook, "hardwaretypes"), ["Hinge", "Drawer runner"]);
+  const built = tree();
+  assert.deepEqual(
+    built.lists.find((list) => list.key === "HARDWARE|Hinge").values,
+    ["Blum 110 Deg Inserta", "Blum 155 Deg"]
+  );
+});
+
 test("the placeholder list says what to do rather than opening empty", async () => {
   const workbook = await build();
-  const names = new Map(workbook.definedNames.model.map((entry) => [entry.name, entry.ranges]));
-  assert.ok(names.has("opt_none"));
-  const lists = workbook.getWorksheet("Lists");
-  const cell = String(names.get("opt_none")[0]).match(/\$([A-Z]+)\$(\d+)/);
-  assert.match(String(lists.getCell(`${cell[1]}${cell[2]}`).value), /fill in the columns/i);
+  assert.match(String(namedValues(workbook, "opt_none")[0]), /fill in the columns/i);
 });
 
 test("the filtered columns validate against their helper cell and nothing more", async () => {
@@ -427,70 +795,72 @@ test("the filtered columns validate against their helper cell and nothing more",
   // validation, so anything more here is a dropdown that quietly stops working
   // in somebody else's copy of Excel.
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  const at = headings(sheet, 7);
-  const filtered = [
-    "Material",
-    "Thickness",
-    "Finish",
-    "Colour",
-    "Edge profile",
-    "Profile group",
-    "Door profile",
-  ];
-  filtered.forEach((head) => {
-    const letter = at.get(head);
-    const validation = sheet.getCell(`${letter}8`).dataValidation;
-    assert.ok(validation, `${head} has no validation`);
-    assert.equal(validation.type, "list");
-    assert.match(validation.formulae[0], /^INDIRECT\(\$[A-Z]+8\)$/, `${head}: ${validation.formulae[0]}`);
-  });
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
+  ["Material", "Thickness", "Finish", "Colour", "Edge profile", "Door profile group", "Door profile"].forEach(
+    (head) => {
+      const validation = sheet.getCell(`${at.get(head)}8`).dataValidation;
+      assert.ok(validation, `${head} has no validation`);
+      assert.equal(validation.type, "list");
+      assert.match(validation.formulae[0], /^INDIRECT\(\$[A-Z]+8\)$/, `${head}: ${validation.formulae[0]}`);
+    }
+  );
 });
 
-test("a filtered dropdown falls back to the placeholder rather than an error", async () => {
+test("a filtered dropdown falls back rather than showing an error", async () => {
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  // IFERROR around the lookup. Without it a row with no type yet shows #N/A in
-  // the helper cell and the dropdown beside it refuses to open at all.
-  const lookups = helperFormulas(sheet, 8).filter((formula) => formula.includes("VLOOKUP"));
-  assert.ok(lookups.length >= 8, "every filtered column needs a helper");
-  lookups.forEach((formula) => {
-    assert.match(formula, /^IFERROR\(VLOOKUP\(/, formula);
-    assert.match(formula, /"opt_none"\)$/, formula);
+  // IFERROR around every lookup. Without it a row with no type yet shows #N/A
+  // in the helper cell and the dropdown beside it refuses to open at all.
+  TABS.forEach((tab) => {
+    const lookups = helperFormulas(workbook.getWorksheet(tab.sheet), 8).filter((formula) =>
+      formula.includes("VLOOKUP")
+    );
+    assert.ok(lookups.length, `${tab.sheet} has no filtered columns`);
+    lookups.forEach((formula) => {
+      assert.ok(!/VLOOKUP/.test(formula.replace(/IFERROR\(VLOOKUP\([^)]*\)[^)]*\)/g, "")), formula);
+      assert.match(formula, /IFERROR\(VLOOKUP\(/, formula);
+      assert.ok(formula.includes('"opt_none"'), formula);
+    });
   });
 });
 
 test("every item row is wired, not just the first", async () => {
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  const at = headings(sheet, 7);
   const last = 8 + ITEM_ROWS - 1;
-  [8, 9, Math.floor((8 + last) / 2), last].forEach((row) => {
-    const colour = sheet.getCell(`${at.get("Colour")}${row}`).dataValidation;
-    assert.match(colour.formulae[0], new RegExp(`^INDIRECT\\(\\$[A-Z]+${row}\\)$`), `row ${row}`);
-    assert.ok(sheet.getCell(`${at.get("Is this line complete?")}${row}`).formula, `row ${row} has no check`);
+  TABS.forEach((tab) => {
+    const sheet = workbook.getWorksheet(tab.sheet);
+    const at = headings(sheet);
+    [8, 9, Math.floor((8 + last) / 2), last].forEach((row) => {
+      assert.ok(
+        sheet.getCell(`${at.get("Is this line complete?")}${row}`).formula,
+        `${tab.sheet} row ${row} has no check`
+      );
+    });
+    assert.equal(sheet.getCell(`A${last}`).value, ITEM_ROWS, tab.sheet);
   });
-  assert.equal(sheet.getCell(`A${last}`).value, ITEM_ROWS);
 });
 
 test("the helper columns are hidden and the lists sheet cannot be stumbled into", async () => {
-  // Not for secrecy. The helpers are machinery, and a customer who deletes one
+  // Not for secrecy. The helpers are machinery, and somebody who deletes one
   // silently breaks the dropdown next to it with nothing to say why.
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  for (let column = 28; column <= 40; column += 1) {
-    const excel = sheet.getColumn(columnLetter(column));
-    if (excel.width && excel.width > 5) {
-      assert.equal(excel.hidden, true, `${columnLetter(column)} should be hidden`);
+  TABS.forEach((tab) => {
+    const sheet = workbook.getWorksheet(tab.sheet);
+    for (let column = 1; column <= 45; column += 1) {
+      const letter = columnLetter(column);
+      if (!sheet.getCell(`${letter}8`).formula) continue;
+      if (sheet.getCell(`${letter}7`).value) continue; // a real column, with a heading
+      assert.equal(sheet.getColumn(letter).hidden, true, `${tab.sheet} ${letter} should be hidden`);
     }
-  }
+  });
   assert.equal(workbook.getWorksheet("Lists").state, "veryHidden");
+  assert.equal(workbook.getWorksheet("Colour list").state, "veryHidden");
 });
 
 test("the cells a person fills in are the only ones left unlocked", async () => {
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  const at = headings(sheet, 7);
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
   assert.equal(sheet.getCell(`${at.get("Type")}8`).protection?.locked, false, "type is theirs to fill in");
   assert.equal(sheet.getCell(`${at.get("Notes for this line")}8`).protection?.locked, false);
   // The line number and the check are ours, and a paste over either takes the
@@ -498,63 +868,28 @@ test("the cells a person fills in are the only ones left unlocked", async () => 
   assert.notEqual(sheet.getCell("A8").protection?.locked, false);
   assert.notEqual(sheet.getCell(`${at.get("Is this line complete?")}8`).protection?.locked, false);
 
-  // The details sheet is the same: the answers are unlocked, the labels are not.
-  const details = workbook.getWorksheet("Your Details");
-  const firstAnswer = [];
-  for (let row = 5; row <= 40; row += 1) {
-    if (details.getCell(`C${row}`).protection?.locked === false) firstAnswer.push(row);
+  const details = workbook.getWorksheet("Start here");
+  const answers = [];
+  for (let row = 5; row <= 90; row += 1) {
+    if (details.getCell(`C${row}`).protection?.locked === false) answers.push(row);
   }
-  assert.ok(firstAnswer.length >= 14, "every question needs a box that can be typed in");
-  assert.notEqual(details.getCell(`B${firstAnswer[0]}`).protection?.locked, false, "its label is not editable");
+  assert.ok(answers.length >= 20, "every question needs a box that can be typed in");
+  assert.notEqual(details.getCell(`B${answers[0]}`).protection?.locked, false, "its label is not editable");
 });
 
-test("every answer box on the details sheet is the same width", async () => {
-  // Boxes of three different widths stacked down a page look like a mistake
-  // even when each one is deliberate. They all span the same four columns now.
-  const workbook = await build();
-  const details = workbook.getWorksheet("Your Details");
-  const spans = [];
-  for (let row = 5; row <= 40; row += 1) {
-    if (details.getCell(`C${row}`).protection?.locked !== false) continue;
-    let last = "C";
-    ["D", "E", "F"].forEach((letter) => {
-      if (details.getCell(`${letter}${row}`).protection?.locked === false) last = letter;
-    });
-    spans.push(`C:${last}`);
-  }
-  assert.ok(spans.length, "no answer boxes found");
-  assert.equal(new Set(spans).size, 1, `boxes come in ${new Set(spans).size} widths: ${[...new Set(spans)].join(", ")}`);
-});
-
-test("a hint sits under the box it is about, not beside it", async () => {
-  // Parked in the column to the right it needed a column wide enough to hold
-  // it, which on A4 there is not, so it wrapped and got cut off mid sentence.
-  const workbook = await build();
-  const details = workbook.getWorksheet("Your Details");
-  // Nothing at all in the column past the answer boxes.
-  for (let row = 4; row <= 40; row += 1) {
-    assert.ok(!details.getCell(`G${row}`).value, `something is still parked in G${row}`);
-  }
-  // And the hint for the email question is on the row under it.
-  let emailRow = 0;
-  for (let row = 5; row <= 40; row += 1) {
-    if (String(details.getCell(`B${row}`).value || "").startsWith("Email")) emailRow = row;
-  }
-  assert.ok(emailRow, "the email question is missing");
-  assert.match(String(details.getCell(`C${emailRow + 1}`).value), /where the quote goes/i);
-});
-
-test("the logo is on both sheets a customer looks at", async () => {
-  // They are two tabs of one document, and one of them turning up plain reads
-  // as a different, less careful document.
+test("the logo is on every sheet a person looks at", async () => {
+  // They are tabs of one document, and one of them turning up plain reads as a
+  // different, less careful document.
   const workbook = await buildOrderFormWorkbook({
     colours: COLOURS,
     hardware: HARDWARE,
     generatedOn: "1 January 2026",
     logo: PNG_PIXEL,
   });
-  assert.equal(workbook.getWorksheet("Your Details").getImages().length, 1);
-  assert.equal(workbook.getWorksheet("Order Form").getImages().length, 1, "the Order Form tab lost its branding");
+  assert.equal(workbook.getWorksheet("Start here").getImages().length, 1);
+  TABS.forEach((tab) => {
+    assert.equal(workbook.getWorksheet(tab.sheet).getImages().length, 1, `${tab.sheet} lost its branding`);
+  });
 });
 
 // ── The standard size fills in the height and the width ─────────────────────
@@ -563,8 +898,8 @@ test("picking a standard size fills in the height and width columns", async () =
   // There is one place a size lives on a row whichever kind of line it is, so
   // nobody reading the sheet back has to look in two columns to find it.
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  const at = headings(sheet, 7);
+  const sheet = workbook.getWorksheet("Kit fronts");
+  const at = headings(sheet);
 
   const height = sheet.getCell(`${at.get("Height mm")}8`).formula;
   const width = sheet.getCell(`${at.get("Width mm")}8`).formula;
@@ -581,24 +916,42 @@ test("picking a standard size fills in the height and width columns", async () =
   assert.ok(helpers.some((formula) => formula.startsWith("IFERROR(VALUE(MID(")), "the width is the right half");
 });
 
-test("a blank row says nothing at all, even though every row carries formulas", async () => {
-  // SUMPRODUCT rather than COUNTA. The height and width columns hold a formula
-  // on every one of the hundred rows, and COUNTA counts a formula returning ""
-  // as filled in, so every row would have reported itself incomplete.
+test("height is asked for before width", async () => {
+  // Every size in this business is written height first: on the site, on a
+  // quote, on the workshop sheet. A form that put width first would be the one
+  // place they were the other way round, and that costs a door.
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  const at = headings(sheet, 7);
-  const check = sheet.getCell(`${at.get("Is this line complete?")}8`).formula;
-  assert.match(check, /^IF\(SUMPRODUCT\(--\(\$B8:\$[A-Z]+8<>""\)\)=0,""/);
-  assert.ok(!check.includes("COUNTA"), "COUNTA counts a formula-blank as filled in");
+  TABS.filter((tab) => tab.id !== "hardware").forEach((tab) => {
+    const at = headings(workbook.getWorksheet(tab.sheet));
+    assert.ok(at.has("Height mm") && at.has("Width mm"), tab.sheet);
+    assert.ok(at.get("Height mm") < at.get("Width mm"), `${tab.sheet}: width comes first`);
+  });
+  const kit = headings(workbook.getWorksheet("Kit fronts"));
+  assert.ok([...kit.keys()].some((head) => /height x width/i.test(head)));
+});
+
+test("the kit columns come in the order the answers arrive", async () => {
+  // What it goes on, what kind of piece, which of their sizes, and only then
+  // what it is made of. The size list cannot be offered before the type,
+  // because a drawer front and a door are sold in different sizes.
+  const workbook = await build();
+  const at = headings(workbook.getWorksheet("Kit fronts"));
+  const order = ["Cabinet range", "Front type", "Standard size", "Material"];
+  const letters = order.map(
+    (head) => at.get(head) || [...at.entries()].find(([key]) => key.startsWith(head))?.[1]
+  );
+  letters.forEach((letter, i) => {
+    if (i === 0) return;
+    assert.ok(letter > letters[i - 1], `${order[i]} should come after ${order[i - 1]}`);
+  });
 });
 
 // ── The check column ────────────────────────────────────────────────────────
 
-function gapsFormula(workbook) {
-  const sheet = workbook.getWorksheet("Order Form");
-  const found = helperFormulas(sheet, 8).find((formula) => formula.includes("a product type, "));
-  if (!found) throw new Error("the gaps helper is missing");
+function gapsFormula(workbook, sheetName = "Fronts and panels") {
+  const sheet = workbook.getWorksheet(sheetName);
+  const found = helperFormulas(sheet, 8).find((formula) => formula.includes("a colour, "));
+  if (!found) throw new Error(`the gaps helper is missing on ${sheetName}`);
   return found;
 }
 
@@ -620,7 +973,7 @@ test("the check column asks for exactly what lib/pcd-quote-ready.js asks for", a
   assert.ok(lineIsReady(board), "the fixture is a line the site would quote");
 
   [
-    ["productType", "a product type"],
+    ["productType", "a type"],
     ["material", "a material"],
     ["thickness", "a thickness"],
     ["colour", "a colour"],
@@ -651,29 +1004,38 @@ test("the check catches an answer left behind when the column above it changed",
 test("the check catches a standard size typed over", async () => {
   // The one cost of letting the height and width be typed over: a row typed
   // over and THEN given a standard size would not update itself.
-  const formula = gapsFormula(await build());
+  const formula = gapsFormula(await build(), "Kit fronts");
   assert.ok(formula.includes('"the height and width to match the standard size, or clear the standard size, "'));
 });
 
-test("the check reads a hardware line on its own terms", async () => {
-  // A hardware line is bought rather than made, so it has no board, size or
-  // finish to be missing. Judging it by the board rules would report six things
-  // wrong with a line that is perfectly complete.
+test("a hardware line is judged on the two things it needs", async () => {
+  // On its own tab there are no board columns to teach the check to ignore.
   const workbook = await build();
-  const at = headings(workbook.getWorksheet("Order Form"), 7);
-  const check = workbook.getWorksheet("Order Form").getCell(`${at.get("Is this line complete?")}8`).formula;
-  assert.match(check, /="Hardware"/);
-  assert.match(check, /Needs: which hardware item/);
+  const sheet = workbook.getWorksheet("Hardware");
+  const formula = helperFormulas(sheet, 8).find((entry) => entry.includes("which hardware item, "));
+  assert.ok(formula, "the hardware check is missing");
+  assert.ok(formula.includes('"a hardware type, "'));
+  assert.ok(!formula.includes('"a material, "'), "a handle has no board");
   assert.ok(lineIsReady({ productType: "Hardware", hardwareId: "blum-110" }));
   assert.ok(!lineIsReady({ productType: "Hardware" }));
+});
+
+test("a corner box is asked for its second width", async () => {
+  // Without the return leg there is no cut list for half the cabinet.
+  const workbook = await build();
+  const carcassGaps = helperFormulas(workbook.getWorksheet("Carcasses"), 8).find((entry) =>
+    entry.includes("the second width for a corner, ")
+  );
+  assert.ok(carcassGaps, "a corner with one width imports as half a cabinet");
+  assert.ok(carcassGaps.includes('SEARCH("corner"'), "it should only ask a corner");
 });
 
 test("the drilling positions are two numbered columns, not a sentence in the notes", async () => {
   // "100 from each end" written in prose has to be read and retyped by a person,
   // and that is how a run of doors ends up drilled to two different patterns.
   const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  const at = headings(sheet, 7);
+  const sheet = workbook.getWorksheet("Fronts and panels");
+  const at = headings(sheet);
 
   ["Bottom hinge, mm from bottom", "Top hinge, mm from top"].forEach((head) => {
     const cell = sheet.getCell(`${at.get(head)}8`);
@@ -687,22 +1049,7 @@ test("the drilling positions are two numbered columns, not a sentence in the not
   // is half a pattern, which is what somebody leaves behind mid-thought.
   const formula = gapsFormula(workbook);
   assert.ok(formula.includes('"both hinge positions, or neither, "'));
-  assert.ok(!formula.includes("As set out in the next two columns"), "the mode column is gone");
-});
-
-test("the middle cups are asked for on a door that has any", async () => {
-  // Only on three or four hinges, and only once there are two ends to space
-  // between. A middle measurement with no bottom and top is a number with
-  // nothing to measure it against.
-  const workbook = await build();
-  const sheet = workbook.getWorksheet("Order Form");
-  const at = headings(sheet, 7);
-  ["2nd hinge, mm from bottom", "3rd hinge, mm from bottom"].forEach((head) => {
-    const cell = sheet.getCell(`${at.get(head)}8`);
-    assert.equal(cell.dataValidation.type, "decimal", head);
-    assert.equal(cell.numFmt, "0");
-  });
-  assert.ok(gapsFormula(workbook).includes('"the bottom and top hinge as well, "'));
+  assert.ok(formula.includes('"the bottom and top hinge as well, "'));
 });
 
 // ── The reference sheet and the file name ───────────────────────────────────

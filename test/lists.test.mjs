@@ -20,7 +20,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 
 import {
   LISTS,
@@ -213,9 +213,22 @@ test("the migration seeds what the code already holds, and can be run twice", ()
   const sql = readFileSync(new URL("../supabase/202608281000_pcd_list_items.sql", import.meta.url), "utf8");
   assert.match(sql, /on conflict \(list_key, item_key\) do nothing/, "a second run must add nothing");
   assert.match(sql, /create unique index if not exists pcd_list_items_key/);
-  // Every list in the code has to be seeded, or its screen opens empty.
+
+  // EVERY LIST IN THE CODE HAS TO BE SEEDED, or its screen opens empty. A list
+  // added after this migration is seeded by the one that added it, so the seed
+  // is looked for across all of them rather than only in the first: the rule is
+  // that a list is seeded somewhere, not that they all arrived on the same day.
+  const seeds = readdirSync(new URL("../supabase/", import.meta.url))
+    .filter((name) => name.endsWith(".sql"))
+    .map((name) => readFileSync(new URL(`../supabase/${name}`, import.meta.url), "utf8"))
+    .filter((body) => body.includes("pcd_list_items"))
+    .join("\n");
+
   for (const key of LIST_KEYS) {
-    assert.ok(sql.includes(`('${key}',`), `${key} is not seeded by the migration`);
+    assert.ok(
+      seeds.includes(`('${key}',`) || seeds.includes(`'${key}', word`),
+      `${key} is not seeded by any migration`
+    );
   }
 });
 

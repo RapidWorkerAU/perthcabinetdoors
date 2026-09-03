@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconEdit, IconPlus, IconSearch, IconTrash, IconUpload } from "@tabler/icons-react";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
+import { HARDWARE_TYPES, hardwareTypeLabel } from "../../../lib/pcd-hardware-types";
 import { AdminPagination, useAdminPagination } from "../_components/AdminPagination";
 import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { Button } from "@/components/ui/Button";
@@ -13,17 +14,6 @@ import { useToast } from "@/components/ui/Toast";
 import AdminLoading from "@/components/admin/AdminLoading";
 import { cn } from "@/lib/utils";
 
-const HARDWARE_TYPES = [
-  { value: "handle", label: "Handle" },
-  { value: "hinge", label: "Hinge" },
-  { value: "drawer_runner", label: "Drawer runner" },
-  { value: "push_to_open", label: "Push-to-Open" },
-  { value: "cutlery_tray", label: "Cutlery Tray" },
-  { value: "wardrobe_hanging_rail", label: "Wardrobe Hanging Rail" },
-  { value: "slide_out_bin", label: "Slide Out Bin" },
-  { value: "bi_fold_door", label: "Bi-fold Door" },
-  { value: "cabinet_inserts", label: "Cabinet Inserts" },
-];
 
 const EMPTY_DRAFT = {
   id: null,
@@ -48,9 +38,6 @@ const EMPTY_DRAFT = {
 const inputClass = "h-[36px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[13px] text-[#1a1a18] outline-none transition-colors focus:border-[#6b9e61]";
 const mutedDisabledClass = "disabled:border-[#edf4eb] disabled:bg-[#f5f5f4] disabled:text-[#9a988f]";
 
-function typeLabel(type) {
-  return HARDWARE_TYPES.find((item) => item.value === type)?.label || "Hardware";
-}
 
 function money(value) {
   return `$${Number(value || 0).toFixed(2)}`;
@@ -150,7 +137,7 @@ export default function HardwareManager() {
         return String(a.name || "").localeCompare(String(b.name || ""));
       })
       .filter((row) => {
-        const searchable = [row.type, typeLabel(row.type), row.brand, row.name, row.sku, row.description, dimensionLabel(row)];
+        const searchable = [row.type, hardwareTypeLabel(row.type), row.brand, row.name, row.sku, row.description, dimensionLabel(row)];
         return (!typeFilter || row.type === typeFilter) && (!q || searchable.filter(Boolean).some((value) => String(value).toLowerCase().includes(q)));
       });
   }, [rows, searchQuery, typeFilter]);
@@ -340,7 +327,7 @@ export default function HardwareManager() {
                       </span>
                     </td>
                     <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{row.name}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{typeLabel(row.type)}</td>
+                    <td className="px-4 py-[11px] text-[#1a1a18]">{hardwareTypeLabel(row.type)}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{row.brand || "-"}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{row.sku || "-"}</td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{dimensionLabel(row)}</td>

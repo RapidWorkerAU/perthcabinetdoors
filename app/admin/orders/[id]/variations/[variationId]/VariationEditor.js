@@ -9,6 +9,7 @@ import LockedRegion from "../../../../_components/LockedRegion";
 import { editability } from "../../../../../../lib/pcd-document-lock";
 import { cabinetOptions, orderItemLabel, orderItemOptions } from "../../../../../../lib/pcd-order-item-label";
 import { edgeImageSrc } from "../../../../../../lib/pcd-profile-images";
+import { hardwareTypeLabel } from "../../../../../../lib/pcd-hardware-types";
 import AdminLoading from "@/components/admin/AdminLoading";
 import { useToast } from "@/components/ui/Toast";
 import { QuoteColourCombobox, QuoteImageCombobox, QuoteTileCombobox } from "@/components/admin/QuoteComboboxes";
@@ -207,19 +208,6 @@ function hardwareOptionLabel(item) {
   return [item.brand, item.name, item.sku ? `(${item.sku})` : ""].filter(Boolean).join(" ");
 }
 
-function hardwareTypeLabel(type) {
-  return {
-    handle: "Handle",
-    hinge: "Hinge",
-    drawer_runner: "Drawer runner",
-    push_to_open: "Push-to-Open",
-    cutlery_tray: "Cutlery Tray",
-    wardrobe_hanging_rail: "Wardrobe Hanging Rail",
-    slide_out_bin: "Slide Out Bin",
-    bi_fold_door: "Bi-fold Door",
-    cabinet_inserts: "Cabinet Inserts",
-  }[type] || "Hardware";
-}
 
 function hardwareOptionsFromRows(rows = []) {
   return rows

@@ -42,6 +42,22 @@ const trim = (value, max) => {
   return text ? text.slice(0, max) : null;
 };
 
+/**
+ * A percent encoded header value as the words in it.
+ *
+ * Returned as it arrived when it will not decode: a stray % in a city name is
+ * not worth losing the city over.
+ */
+function decodeHeader(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 // Said once per cold start rather than once per visitor, so a missing salt is
 // visible in the log without burying everything else in it.
 let saltWarned = false;
@@ -125,8 +141,14 @@ export async function POST(request) {
       device: deviceFrom(userAgent, body.w),
       // Vercel's own headers. City and state only, and only when it is behind
       // Vercel at all, so this is empty in development and that is correct.
+      //
+      // DECODED. Vercel percent encodes the city, so it arrives as
+      // "Frankfurt%20am%20Main" and was being filed exactly like that. Any city
+      // with a space in its name read as a mistake.
       region: trim(
-        [headers.get("x-vercel-ip-city"), headers.get("x-vercel-ip-country-region")].filter(Boolean).join(", "),
+        [decodeHeader(headers.get("x-vercel-ip-city")), headers.get("x-vercel-ip-country-region")]
+          .filter(Boolean)
+          .join(", "),
         120
       ),
       // Kept rather than dropped, so "how much of this was crawlers" stays an

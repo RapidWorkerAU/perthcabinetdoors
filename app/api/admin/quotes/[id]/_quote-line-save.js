@@ -4,6 +4,9 @@ import { isEdgeProfileSelectionAvailable, profileTypesForSelection, profileNames
 import { createSupplierGuard } from "../../../../../lib/pcd-supplier-guard";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 import { normaliseHingeSide, readMiddles } from "../../../../../lib/pcd-hinges";
+import { EDGE_FINISHES, GRAIN_DIRECTIONS, SUPPLIED_BY, oneOf, panelUseFor } from "../../../../../lib/pcd-line-details";
+import { HARDWARE_TYPE_VALUES } from "../../../../../lib/pcd-hardware-types";
+import { isHardwareType } from "../../../../../lib/pcd-product-fields";
 
 export async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -109,6 +112,22 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     markup_amount_ex_gst: dbNumber(line.markup_amount_ex_gst),
     unit_price_ex_gst: dbNumber(line.unit_price_ex_gst),
     line_total_ex_gst: dbNumber(line.line_total_ex_gst),
+    // WHAT THE MEASURE KNEW THAT A BOARD SIZE DOES NOT. Each one changes what
+    // the workshop does or whether the line is priced, so each is a column
+    // rather than a sentence in the notes. Every one goes through the shared
+    // vocabulary, so a spreadsheet cannot get a word past the database that no
+    // screen can then show. See lib/pcd-line-details.js.
+    panel_use: dbText(panelUseFor(line.product_type, line.panel_use)),
+    grain_direction: dbText(oneOf(GRAIN_DIRECTIONS, line.grain_direction)),
+    edge_finish: dbText(oneOf(EDGE_FINISHES, line.edge_finish)),
+    supplied_by: dbText(oneOf(SUPPLIED_BY, line.supplied_by)),
+    // WHICH KIND OF HARDWARE. The catalogue row knows it and the line did not,
+    // so the quote viewer could only ever say the bare word "Hardware" and the
+    // customer never saw whether they were being quoted a hinge or a handle.
+    // Only on a hardware line: a door is not a kind of hardware.
+    hardware_type: isHardwareType(line.product_type)
+      ? dbText(HARDWARE_TYPE_VALUES.includes(line.hardware_type) ? line.hardware_type : "")
+      : null,
     client_note: dbText(line.client_note),
     notes: dbText(line.notes),
   };
@@ -124,6 +143,11 @@ const LATE_COLUMNS = [
   "hinge_from_bottom_mm",
   "hinge_from_top_mm",
   "hinge_middles_mm",
+  "panel_use",
+  "grain_direction",
+  "edge_finish",
+  "supplied_by",
+  "hardware_type",
 ];
 
 export function isMissingSupplierNameSchemaError(error) {

@@ -8,6 +8,7 @@ import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-h
 import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
+import { hardwareTypeLabel } from "../../../../lib/pcd-hardware-types";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { asSelectionRows, useProfileLibrary } from "../../../../lib/use-profile-library";
@@ -103,6 +104,8 @@ const emptyLine = {
   hinge_from_bottom_mm: "",
   hinge_from_top_mm: "",
   hinge_middles_mm: [],
+  // Which kind of hardware, on a hardware line. Blank on everything else.
+  hardware_type: "",
   product_unit_cost_ex_gst: "",
   unit_cost_mode: "manual",
   unit_cost_source_id: null,
@@ -937,20 +940,6 @@ const RESIZE_HANDLE_INDICES = new Set(Array.from({ length: QUOTE_COL_DEFAULTS.le
 
 function hardwareOptionLabel(item) {
   return [item.brand, item.name, item.sku ? `(${item.sku})` : ""].filter(Boolean).join(" ");
-}
-
-function hardwareTypeLabel(type) {
-  return {
-    handle: "Handle",
-    hinge: "Hinge",
-    drawer_runner: "Drawer runner",
-    push_to_open: "Push-to-Open",
-    cutlery_tray: "Cutlery Tray",
-    wardrobe_hanging_rail: "Wardrobe Hanging Rail",
-    slide_out_bin: "Slide Out Bin",
-    bi_fold_door: "Bi-fold Door",
-    cabinet_inserts: "Cabinet Inserts",
-  }[type] || "Hardware";
 }
 
 function hardwareOptionsFromRows(rows = []) {
@@ -1833,8 +1822,12 @@ export default function QuoteEditor({ quoteId }) {
       if (patch.product_type !== BASE_CABINET_TYPE) {
         next.cabinet_config = null;
       }
+      if (patch.product_type !== "Hardware") {
+        next.hardware_type = "";
+      }
       if (patch.product_type === "Hardware") {
         next.product_name = "";
+        next.hardware_type = "";
         next.description = "";
         next.material = "";
         next.supplier_name = "";
@@ -1878,6 +1871,10 @@ export default function QuoteEditor({ quoteId }) {
       if (item) {
         const label = hardwareOptionLabel(item);
         next.product_type = "Hardware";
+        // WHICH KIND, carried onto the line rather than left in the catalogue.
+        // Without it the quote viewer can only say the bare word "Hardware",
+        // and the customer never sees whether it is a hinge or a handle.
+        next.hardware_type = item.type || "";
         next.product_name = label;
         next.description = item.description || label;
         next.material = "";

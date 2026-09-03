@@ -1,12 +1,16 @@
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
 import { assertQuoteEditable } from "../../../../../../lib/pcd-quote-lock";
-import { readOrderForm, quotePatchFromDetails } from "../../../../../../lib/pcd-order-form-import";
+import { readOrderForm, quotePatchFromDetails, lineForQuote } from "../../../../../../lib/pcd-order-form-import";
+// The one builder that turns a box into a costed cabinet line, shared with the
+// design importer so the two cannot come to different cut lists.
+import { withCalculatedCabinetCost } from "../../../../../../lib/pcd-design-to-lines";
 import { calculateQuoteLine } from "../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../lib/pcd-business-defaults";
 // The same pair every other write path uses. Going straight to insert is how a
 // converted quote once opened with zero dollar lines: nothing had computed the
 // markup, the hinge drilling or the totals.
 import {
+  cabinetConfigRow,
   isMissingSupplierNameSchemaError,
   quoteLineRow,
   recalculateQuoteTotals,
@@ -131,6 +135,8 @@ export async function POST(request, { params }) {
         matched: parsed.matched,
         unmatched: parsed.unmatched,
         availableHeadings: parsed.availableHeadings,
+        tabs: parsed.tabs,
+        cabinets: parsed.cabinets.length,
         existingLines: existingCount || 0,
       });
     }
@@ -146,7 +152,20 @@ export async function POST(request, { params }) {
     // After whatever is already there, so an added set lands underneath rather
     // than interleaved with lines somebody has already priced.
     const startAt = read.mode === "replace" ? 0 : existingCount || 0;
-    const rows = parsed.lines.map((line, index) =>
+
+    // A CARCASS IS NOT PRICED LIKE A BOARD. It is a line with a box attached,
+    // and the box is what the cut list and the cost come out of. Run through
+    // the SAME builder the design importer uses, so a cabinet measured on site
+    // and a cabinet drawn in the tool arrive costed the same way.
+    //
+    // Rates are deliberately left at zero here, exactly as they are for every
+    // other line on this form. What a board costs is a fact about today's
+    // colour library, and this file is a record of what somebody wants.
+    const prepared = parsed.lines
+      .map(lineForQuote)
+      .map((line) => (line.source_tab === "carcasses" ? withCalculatedCabinetCost(line) : line));
+
+    const rows = prepared.map((line, index) =>
       quoteLineRow(
         calculateQuoteLine({ ...line, markup_percent: businessDefaults.markup_percent }, businessDefaults),
         quoteId,
@@ -154,15 +173,36 @@ export async function POST(request, { params }) {
       )
     );
 
-    const { error: insertError } = await context.supabase.from("pcd_quote_line_items").insert(rows);
-    if (insertError) {
+    // Written with their ids handed back, because a carcass row is only half a
+    // cabinet until its configuration is attached to the line that was created
+    // for it.
+    const insertLines = async (payload) =>
+      context.supabase.from("pcd_quote_line_items").insert(payload).select("id, sort_order");
+
+    let written = await insertLines(rows);
+    if (written.error) {
       // A database missing one of the later columns drops it and keeps the
       // lines, rather than losing an import over a field it has not got yet.
-      if (!isMissingSupplierNameSchemaError(insertError)) throw insertError;
-      const { error: retryError } = await context.supabase
-        .from("pcd_quote_line_items")
-        .insert(rows.map(withoutSupplierName));
-      if (retryError) throw retryError;
+      if (!isMissingSupplierNameSchemaError(written.error)) throw written.error;
+      written = await insertLines(rows.map(withoutSupplierName));
+      if (written.error) throw written.error;
+    }
+
+    // ── The boxes ─────────────────────────────────────────────────────────
+    const idBySortOrder = new Map((written.data || []).map((row) => [row.sort_order, row.id]));
+    const configs = prepared
+      .map((line, index) => ({ line, lineId: idBySortOrder.get(startAt + index) }))
+      .filter((entry) => entry.line.cabinet_config && entry.lineId)
+      .map((entry) => cabinetConfigRow(entry.line.cabinet_config, quoteId, entry.lineId));
+
+    if (configs.length) {
+      const { error } = await context.supabase
+        .from("pcd_cabinet_configs")
+        .upsert(configs, { onConflict: "line_item_id" });
+      // NOT fatal. The lines are in and each one names its cabinet, so the
+      // recovery is opening the configurator rather than uploading the file
+      // again and getting every line twice.
+      if (error) console.error("[import-order-form] lines written, cabinets not:", error.message);
     }
 
     // The quote total has to move with its lines. Without this the subtotal,
@@ -170,7 +210,16 @@ export async function POST(request, { params }) {
     await recalculateQuoteTotals(context.supabase, quoteId, businessDefaults);
 
     if (read.withCustomer && Object.keys(patch).length) {
-      const { error } = await context.supabase.from("pcd_quotes").update(patch).eq("id", quoteId);
+      let { error } = await context.supabase.from("pcd_quotes").update(patch).eq("id", quoteId);
+      // A database that has not run the migration for the two refresh answers
+      // still gets the name, the address and the notes. Losing the whole patch
+      // over a column added last week would be the wrong trade.
+      if (error?.code === "PGRST204") {
+        const { existing_hinge_brand, door_overlay, ...rest } = patch;
+        void existing_hinge_brand;
+        void door_overlay;
+        ({ error } = await context.supabase.from("pcd_quotes").update(rest).eq("id", quoteId));
+      }
       // NOT fatal. The lines are in, which is the part that was going to be
       // retyped; failing the whole request now would have somebody upload the
       // same file again and get the lines twice.
@@ -181,6 +230,8 @@ export async function POST(request, { params }) {
       ok: true,
       applied: true,
       added: rows.length,
+      cabinets: configs.length,
+      tabs: parsed.tabs,
       replaced: read.mode === "replace",
       warnings: parsed.warnings,
     });

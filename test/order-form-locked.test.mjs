@@ -15,6 +15,7 @@ import ExcelJS from "exceljs";
 import JSZip from "jszip";
 
 import { buildOrderFormWorkbook, SHEET_PASSWORD } from "../lib/pcd-order-form-workbook.js";
+import { TABS } from "../lib/pcd-order-form-tabs.js";
 import {
   excelPasswordHash,
   insertWorkbookProtection,
@@ -91,27 +92,29 @@ test("every sheet is protected, and with the password rather than without", asyn
       `${sheet.name} does not open with the password we tell people`
     );
   });
-  assert.equal(sheets, 5);
+  assert.equal(sheets, 8, "one details sheet, four measuring tabs, help, colours and lists");
 });
 
 // ── And yet they can still fill it in ───────────────────────────────────────
 
 test("every column a person answers is still theirs to type in", async () => {
-  // The one that matters. A lockdown that catches a real input column is worse
-  // than no lockdown: they cannot finish the form and they do not know why.
+  // The one that matters, on all four tabs. A lockdown that catches a real
+  // input column is worse than no lockdown: they cannot finish the form and
+  // they do not know why.
   const { workbook } = await built();
-  const sheet = workbook.getWorksheet("Order Form");
-
-  const locked = [];
-  for (let column = 1; column <= 27; column += 1) {
-    const letter = sheet.getColumn(column).letter;
-    const head = String(sheet.getCell(`${letter}7`).value || "").replace(/ \*$/, "");
-    if (!head) continue;
-    if (sheet.getCell(`${letter}8`).protection?.locked !== false) locked.push(head);
-  }
-  // Only these two, and both for a reason: the line number is ours and the
-  // check column is a formula that a paste over would take with it.
-  assert.deepEqual(locked, ["#", "Is this line complete?"]);
+  TABS.forEach((tab) => {
+    const sheet = workbook.getWorksheet(tab.sheet);
+    const locked = [];
+    for (let column = 1; column <= 30; column += 1) {
+      const letter = sheet.getColumn(column).letter;
+      const head = String(sheet.getCell(`${letter}7`).value || "").replace(/ \*$/, "");
+      if (!head) continue;
+      if (sheet.getCell(`${letter}8`).protection?.locked !== false) locked.push(head);
+    }
+    // Only these two, and both for a reason: the line number is ours and the
+    // check column is a formula that a paste over would take with it.
+    assert.deepEqual(locked, ["#", "Is this line complete?"], tab.sheet);
+  });
 });
 
 test("the height and width can still be typed over", async () => {
@@ -119,7 +122,7 @@ test("the height and width can still be typed over", async () => {
   // the workbook locked those, a line that is not a kit cabinet could never be
   // given a size at all.
   const { workbook } = await built();
-  const sheet = workbook.getWorksheet("Order Form");
+  const sheet = workbook.getWorksheet("Kit fronts");
   ["Height mm", "Width mm"].forEach((head) => {
     const letter = headingColumn(sheet, head);
     assert.ok(sheet.getCell(`${letter}8`).formula, `${head} should carry the standard size formula`);
@@ -129,9 +132,9 @@ test("the height and width can still be typed over", async () => {
 
 test("every question on the details sheet has a box that can be typed in", async () => {
   const { workbook } = await built();
-  const sheet = workbook.getWorksheet("Your Details");
+  const sheet = workbook.getWorksheet("Start here");
   let questions = 0;
-  for (let row = 5; row <= 40; row += 1) {
+  for (let row = 5; row <= 90; row += 1) {
     const label = sheet.getCell(`B${row}`).value;
     if (!label || typeof label !== "string") continue;
     const text = label.trim();
@@ -141,15 +144,21 @@ test("every question on the details sheet has a box that can be typed in", async
     questions += 1;
     assert.equal(sheet.getCell(`C${row}`).protection?.locked, false, `"${text}" has no box to answer in`);
   }
-  assert.ok(questions >= 14, `only found ${questions} questions`);
+  assert.ok(questions >= 25, `only found ${questions} questions`);
 });
 
 test("the last row is wired the same as the first, so a long order still works", async () => {
   const { workbook } = await built();
-  const sheet = workbook.getWorksheet("Order Form");
-  ["Brand", "Colour", "Height mm", "Notes for this line"].forEach((head) => {
-    const letter = headingColumn(sheet, head);
-    assert.equal(sheet.getCell(`${letter}107`).protection?.locked, false, `${head} is locked on the last row`);
+  TABS.forEach((tab) => {
+    const sheet = workbook.getWorksheet(tab.sheet);
+    ["Qty", "Notes for this line"].forEach((head) => {
+      const letter = headingColumn(sheet, head);
+      assert.equal(
+        sheet.getCell(`${letter}107`).protection?.locked,
+        false,
+        `${tab.sheet}: ${head} is locked on the last row`
+      );
+    });
   });
 });
 
@@ -160,7 +169,7 @@ test("the columns holding the machinery cannot be unhidden", async () => {
   // back into view and edit it. Row height stays theirs, so a long note still
   // grows its row.
   const { workbook } = await built();
-  ["Your Details", "Order Form", "How to fill this in"].forEach((name) => {
+  ["Start here", ...TABS.map((tab) => tab.sheet), "How to fill this in"].forEach((name) => {
     const protection = workbook.getWorksheet(name).sheetProtection || {};
     assert.notEqual(protection.formatColumns, true, `${name} allows columns to be reformatted`);
   });
@@ -170,7 +179,7 @@ test("the sheet can still be filtered and sorted", async () => {
   // Locked down is not the same as unusable. A hundred rows with no filter is
   // worse to work in than a sheet somebody might have broken.
   const { workbook } = await built();
-  const protection = workbook.getWorksheet("Order Form").sheetProtection || {};
+  const protection = workbook.getWorksheet("Fronts and panels").sheetProtection || {};
   assert.equal(protection.autoFilter, true);
   assert.equal(protection.sort, true);
 
@@ -193,7 +202,7 @@ test("the two machinery sheets are out of the tab strip and cannot be unhidden",
   const { workbook } = await built();
   assert.equal(workbook.getWorksheet("Lists").state, "veryHidden");
   assert.equal(workbook.getWorksheet("Colour list").state, "veryHidden");
-  ["Your Details", "Order Form", "How to fill this in"].forEach((name) => {
+  ["Start here", ...TABS.map((tab) => tab.sheet), "How to fill this in"].forEach((name) => {
     const state = workbook.getWorksheet(name).state;
     assert.ok(state === "visible" || state === undefined, `${name} should be on the tab strip`);
   });
@@ -245,7 +254,7 @@ test("locking keeps the workbook readable and does not bloat it", async () => {
   assert.ok(locked.length < written.length * 1.5, `${written.length} became ${locked.length}`);
   const reopened = new ExcelJS.Workbook();
   await reopened.xlsx.load(locked);
-  assert.ok(reopened.getWorksheet("Order Form"), "the locked file no longer opens");
+  assert.ok(reopened.getWorksheet("Fronts and panels"), "the locked file no longer opens");
 });
 
 test("a file that is not a workbook is refused rather than half written", async () => {

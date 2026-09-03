@@ -19,6 +19,25 @@ import { useToast } from "@/components/ui/Toast";
 
 const STEPS = ["The file", "The mapping", "What will happen"];
 
+/** Which sheet a column came off, so four "Colour" rows can be told apart. */
+function tabLabel(preview, id) {
+  return (preview?.tabs || []).find((tab) => tab.id === id)?.sheet || id || "";
+}
+
+/**
+ * The tabs this file actually had something on.
+ *
+ * Most jobs use two of the four, so naming them is how somebody spots the one
+ * that did not read: a carcass tab filled in on a file whose sheet was renamed
+ * comes back missing, and a count of lines alone would not show it.
+ */
+function tabsRead(preview) {
+  const used = (preview?.tabs || []).filter((tab) => tab.lines > 0).map((tab) => tab.sheet);
+  if (!used.length) return "the sheet";
+  if (used.length === 1) return used[0];
+  return `${used.slice(0, -1).join(", ")} and ${used[used.length - 1]}`;
+}
+
 const btnPlain =
   "h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors";
 const btnDark =
@@ -183,7 +202,7 @@ export default function ImportOrderFormModal({ quoteId, onClose, onImported }) {
                 <>
                   <span className="block font-mono text-[12.5px] font-medium text-[#1a1a18]">{file?.name}</span>
                   <span className="block text-[13px] text-[#5a5a52] mt-1">
-                    {lines.length} {lines.length === 1 ? "line" : "lines"} read
+                    {lines.length} {lines.length === 1 ? "line" : "lines"} read from {tabsRead(preview)}
                     {preview.unmatched?.length ? `, ${preview.unmatched.length} columns not matched` : ", every column matched"}
                   </span>
                 </>
@@ -245,7 +264,7 @@ export default function ImportOrderFormModal({ quoteId, onClose, onImported }) {
                   <span>
                     <strong className="block text-[13.5px] font-semibold">Also fill in the customer and job details</strong>
                     <small className="block text-[12px] text-[#5a5a52] mt-[3px] leading-[1.5]">
-                      From the Your Details tab. Anything that disagrees with what is on this quote is listed for you
+                      From the Start here tab. Anything that disagrees with what is on this quote is listed for you
                       before it is written.
                     </small>
                   </span>
@@ -274,7 +293,10 @@ export default function ImportOrderFormModal({ quoteId, onClose, onImported }) {
                     entry.found ? "bg-white" : "bg-[#fffdf5]"
                   }`}
                 >
-                  <div className="text-[12.5px] font-medium text-[#1a1a18]">{entry.label}</div>
+                  <div>
+                    <div className="text-[12.5px] font-medium text-[#1a1a18]">{entry.label}</div>
+                    <div className="text-[10.5px] text-[#8b8a81] mt-[1px]">{tabLabel(preview, entry.tab)}</div>
+                  </div>
                   <select
                     className="h-[32px] w-full px-2 border border-[#dbd8cc] rounded-[6px] bg-white text-[12px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
                     value={mapping[entry.key] !== undefined ? mapping[entry.key] : entry.from}
@@ -301,7 +323,7 @@ export default function ImportOrderFormModal({ quoteId, onClose, onImported }) {
                   n: mode === "replace" ? preview.existingLines : preview.existingLines,
                   l: mode === "replace" ? "lines removed first" : "lines kept",
                 },
-                { n: preview.matched.filter((entry) => entry.found).length, l: "columns matched", good: true },
+                { n: preview.cabinets || 0, l: "of them cabinets", good: true },
                 { n: preview.warnings.length + preview.conflicts.length, l: "need a look", warn: true },
               ].map((stat) => (
                 <div
