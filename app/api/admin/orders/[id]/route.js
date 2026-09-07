@@ -1,7 +1,7 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
 import { ORDER_STATUSES } from "../../../../../lib/pcd-quote-utils";
-import { applySchedule, isTimeframe } from "../../../../../lib/pcd-order-schedule";
+import { scheduleProblems } from "../../../../../lib/pcd-order-schedule";
 
 async function orderIdFromParams(params) {
   const resolved = await params;
@@ -178,7 +178,6 @@ export async function PATCH(request, { params }) {
       "deposit_paid",
       "deposit_paid_at",
       "scheduled_start_date",
-      "production_lead_days",
       "target_completion_date",
       "customer_comms",
       "internal_notes",
@@ -192,26 +191,20 @@ export async function PATCH(request, { params }) {
       return Response.json({ ok: false, error: "No order updates supplied." }, { status: 400 });
     }
 
-    // A timeframe is only ever one of the ones we offer. Anything else would
-    // produce a due date nobody could explain.
-    if (updates.production_lead_days !== undefined && updates.production_lead_days !== null) {
-      const days = Number(updates.production_lead_days);
-      if (!isTimeframe(days)) {
-        return Response.json({ ok: false, error: "Invalid production timeframe." }, { status: 400 });
-      }
-      updates.production_lead_days = days;
-    }
-
     const { data: beforeOrder } = await context.supabase
       .from("pcd_orders")
       .select("*")
       .eq("id", id)
       .maybeSingle();
 
-    // The due date follows from the schedule, and is settled HERE rather than
-    // in the browser so the stored date can never disagree with the start date
-    // and timeframe sitting beside it.
-    Object.assign(updates, applySchedule(beforeOrder || {}, updates));
+    // BOTH DATES ARE TYPED, so the pair has to be checked against each other
+    // rather than one worked out from the other. Checked against what the order
+    // WILL hold, not only against what was sent, so moving the start date past
+    // a completion date already stored is caught the same as sending both.
+    const schedule = scheduleProblems({ ...(beforeOrder || {}), ...updates });
+    if (schedule.length) {
+      return Response.json({ ok: false, error: schedule[0].message }, { status: 400 });
+    }
 
     const { data, error } = await context.supabase
       .from("pcd_orders")
@@ -235,8 +228,7 @@ export async function PATCH(request, { params }) {
       deposit_paid: "Deposit paid",
       deposit_paid_at: "Deposit paid at",
       scheduled_start_date: "Scheduled start",
-      production_lead_days: "Production timeframe",
-      target_completion_date: "Target completion",
+      target_completion_date: "Estimated completion",
       internal_notes: "Internal notes",
     });
     if (changes.length) {

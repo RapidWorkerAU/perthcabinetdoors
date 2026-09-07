@@ -37,7 +37,6 @@ const ORDER_FIELDS = [
   "customer_name",
   "status",
   "scheduled_start_date",
-  "production_lead_days",
   "target_completion_date",
   "labour_hours",
   "site_suburb",

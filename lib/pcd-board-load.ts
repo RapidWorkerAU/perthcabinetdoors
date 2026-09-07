@@ -76,7 +76,7 @@ export async function loadBoard(supabase: Supabase) {
   // board, and the payments, items and issues below are all read by the ids of
   // the orders that are.
   const ordersQ = await supabase.from('pcd_orders')
-    .select('id, order_number, name, customer_id, customer_name, customer_email, status, accepted_at, created_at, completed_at, total_inc_gst, scheduled_start_date, production_lead_days, target_completion_date, deposit_amount')
+    .select('id, order_number, name, customer_id, customer_name, customer_email, status, accepted_at, created_at, completed_at, total_inc_gst, scheduled_start_date, target_completion_date, deposit_amount')
     // on_hold is read but never worked. Being paused does not mean a customer
     // stopped owing you, so a payment already requested keeps its chase card
     // (see chasePayments below). Everything else is gated on 'active', so no
@@ -481,7 +481,7 @@ export async function loadBoard(supabase: Supabase) {
     // Planning: the schedule, or the panel decisions.
     const missing: string[] = []
     if (!order.scheduled_start_date) missing.push('Scheduled start')
-    if (!order.production_lead_days) missing.push('How long it takes')
+    if (!order.target_completion_date) missing.push('Estimated completion')
     const undecided = panels.filter(p => !p.fulfilment_method).length
     if (undecided) missing.push('Item planning')
     if (missing.length && (depositPaid.has(order.id as string) || !order.deposit_amount)) {
@@ -491,12 +491,12 @@ export async function loadBoard(supabase: Supabase) {
         missing,
         panelsMissing: undecided > 0,
         why: [
-          !order.scheduled_start_date && !order.production_lead_days
-            ? 'No start date and no timeframe, so the job has no due date.'
+          !order.scheduled_start_date && !order.target_completion_date
+            ? 'No start date and no completion date, so the job is not scheduled at all.'
             : !order.scheduled_start_date
               ? 'No start date, so it cannot be booked onto the bench.'
-              : !order.production_lead_days
-                ? 'Has a start date but no timeframe, so the job has no due date.'
+              : !order.target_completion_date
+                ? 'Has a start date but no completion date, so nothing knows when it is due.'
                 : '',
           undecided ? `${undecided} panel${undecided === 1 ? '' : 's'} with nobody set to make ${undecided === 1 ? 'it' : 'them'}.` : '',
         ].filter(Boolean).join(' '),

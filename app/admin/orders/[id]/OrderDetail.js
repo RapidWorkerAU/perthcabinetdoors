@@ -68,9 +68,10 @@ import { Button } from "@/components/ui/Button";
 import { IconAlertCircleFilled } from "@tabler/icons-react";
 import { SUPPLIER, isDecided, isMadeHere, isSupplierMade } from "../../../../lib/pcd-order-planning";
 import {
-  PRODUCTION_TIMEFRAMES,
-  targetCompletionFrom,
-  hasLegacyTarget,
+  durationDays,
+  fallsOnWeekend,
+  isScheduled,
+  scheduleProblems,
 } from "../../../../lib/pcd-order-schedule";
 import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
@@ -1442,22 +1443,15 @@ export default function OrderDetail({ orderId }) {
                 />
               </label>
               <label className={tw.fieldLabel}>
-                How long it takes
-                <select
+                Estimated completion
+                <input
                   className={tw.fieldInput}
-                  value={order.production_lead_days || ""}
-                  onChange={e => saveOrder({ production_lead_days: e.target.value ? Number(e.target.value) : null })}
-                  disabled={isSavingOrder}
-                >
-                  <option value="">Not set</option>
-                  {lists
-                    .optionsFor("production_timeframes", String(order.production_lead_days || ""))
-                    .map(t => (
-                      <option key={t.key} value={t.extras?.days ?? t.key}>
-                        {t.label}{t.retired ? " (no longer offered)" : ""}
-                      </option>
-                    ))}
-                </select>
+                  type="date"
+                  value={order.target_completion_date || ""}
+                  min={order.scheduled_start_date || undefined}
+                  onChange={e => updateOrderField("target_completion_date", e.target.value)}
+                  onBlur={e => saveOrder({ target_completion_date: e.target.value })}
+                />
               </label>
             </div>
             <ScheduleOutcome order={order} />
@@ -3858,40 +3852,46 @@ export default function OrderDetail({ orderId }) {
 
 
 
-// What the schedule adds up to. The due date is derived, never typed, so this
-// says what it is and where it came from instead of offering a box that would
-// let the two disagree.
+// What the two dates add up to.
+//
+// Both are typed, so this does not explain where a date came from any more. It
+// says how long the job is booked for, and it says the two things a typed pair
+// of dates can be wrong about: a completion date before the start, and one that
+// lands on a weekend. Neither is corrected for you. The second is not even an
+// error, only worth knowing.
 function ScheduleOutcome({ order }) {
-  const derived = targetCompletionFrom(order.scheduled_start_date, order.production_lead_days);
-  const legacy = hasLegacyTarget(order);
+  const problems = scheduleProblems(order);
+  const days = durationDays(order);
+  const weekend = fallsOnWeekend(order.target_completion_date);
 
   const dateWords = (value) =>
     new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", {
       weekday: "short", day: "numeric", month: "short", year: "numeric",
     });
 
-  if (derived) {
+  if (problems.length) {
     return (
-      <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 border border-[#a8c5a0] bg-[#f5fff5] rounded-[6px] px-3 py-2">
-        <span className="text-[11px] text-[#5a5a52]">Due</span>
-        <span className="text-[13px] font-semibold text-[#2d5e28]">{dateWords(derived)}</span>
-        <span className="text-[11px] text-[#8b8a81]">
-          worked out from the start date and how long it takes. Never a weekend.
-        </span>
+      <div className="mt-3 border border-[#e0a0a0] bg-[#fff5f5] rounded-[6px] px-3 py-2">
+        {problems.map((problem) => (
+          <div key={problem.field} className="text-[11px] text-[#b42318]">{problem.message}</div>
+        ))}
       </div>
     );
   }
 
-  if (legacy) {
+  if (isScheduled(order)) {
     return (
-      <div className="mt-3 border border-[#f0d060] bg-[#fffef0] rounded-[6px] px-3 py-2">
-        <div className="text-[11px] text-[#8a6d0b]">
-          <b className="font-semibold">Due {dateWords(order.target_completion_date)}</b>, typed in by hand before jobs
-          were scheduled.
+      <div className="mt-3 border border-[#a8c5a0] bg-[#f5fff5] rounded-[6px] px-3 py-2">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-[11px] text-[#5a5a52]">Due</span>
+          <span className="text-[13px] font-semibold text-[#2d5e28]">{dateWords(order.target_completion_date)}</span>
+          <span className="text-[11px] text-[#8b8a81]">
+            {days} {days === 1 ? "day" : "days"} on the bench from {dateWords(order.scheduled_start_date)}
+          </span>
         </div>
-        <div className="text-[11px] text-[#8b8a81] mt-[2px]">
-          Set a start date and a timeframe above and this will be worked out for you from then on.
-        </div>
+        {weekend && (
+          <div className="text-[11px] text-[#8a6d0b] mt-[2px]">That is a weekend.</div>
+        )}
       </div>
     );
   }
@@ -3900,10 +3900,10 @@ function ScheduleOutcome({ order }) {
     <div className="mt-3 border border-[#dbd8cc] bg-[#faf9f5] rounded-[6px] px-3 py-2">
       <div className="text-[11px] text-[#8b8a81]">
         {order.scheduled_start_date
-          ? "Pick how long it takes and the due date follows."
-          : order.production_lead_days
-            ? "Set the start date and the due date follows."
-            : "Not scheduled yet. Set a start date and how long it takes, and the due date follows."}
+          ? "Set the completion date to finish scheduling this job."
+          : order.target_completion_date
+            ? "Set the start date to finish scheduling this job."
+            : "Not scheduled yet. Set a start date and a completion date."}
       </div>
     </div>
   );

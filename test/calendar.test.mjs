@@ -70,32 +70,33 @@ test("a run is derived from the order's start and timeframe, never from a stored
     order_number: "PCD-O-2026-A3F91C",
     name: "Hollis kitchen",
     scheduled_start_date: "2026-08-10",
-    production_lead_days: 21,
-    // Deliberately disagreeing with the derived answer. The order screen and the
-    // calendar must never show different ends for the same job, so the derived
-    // date wins over a stale stored one.
-    target_completion_date: "2026-09-30",
+    // Both ends are typed on the order now, so the bar is drawn between them
+    // and there is nothing left for the calendar to work out or override.
+    target_completion_date: "2026-08-31",
     labour_hours: 46,
     status: "active",
   });
 
   assert.equal(run.start, "2026-08-10");
-  assert.equal(run.end, "2026-08-31", "start plus twenty one days is a Monday, so nothing is pulled back");
+  assert.equal(run.end, "2026-08-31");
+  assert.equal(run.leadDays, 22, "the bar covers the start day and every day to the end");
   assert.equal(run.labourHours, 46);
   assert.equal(run.scheduled, true);
 });
 
-test("a due date that lands on a weekend is pulled back to the Friday", () => {
-  // 3 August plus 21 days is Monday 24 August. Take one day off the lead and it
-  // lands on a Sunday, which is a day nothing is ever finished on.
+test("a completion date on a weekend is drawn where it was typed", () => {
+  // The calendar used to pull a weekend due date back to the Friday, because
+  // the date was worked out rather than chosen. A typed date is drawn on the
+  // day it says: moving somebody's date behind their back is how the calendar
+  // and the order screen come to disagree.
   const run = runFromOrder({
     id: "o2",
     scheduled_start_date: "2026-08-03",
-    production_lead_days: 20,
+    target_completion_date: "2026-08-23",
     labour_hours: 10,
   });
-  assert.equal(new Date(`${run.end}T00:00:00Z`).getUTCDay(), 5, "the due date is a Friday");
-  assert.equal(run.end, "2026-08-21");
+  assert.equal(new Date(`${run.end}T00:00:00Z`).getUTCDay(), 0, "a Sunday, as typed");
+  assert.equal(run.end, "2026-08-23");
 });
 
 test("an order with a hand typed due date and no schedule is still drawn, and says it is unscheduled", () => {

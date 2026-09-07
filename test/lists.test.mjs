@@ -165,10 +165,6 @@ test("adding something already on the list says to switch it back on", () => {
 });
 
 test("a list whose items carry settings will not take one without them", () => {
-  assert.match(validateNewItem("production_timeframes", { label: "5 weeks" }).days, /has to be a number/);
-  assert.match(validateNewItem("production_timeframes", { label: "5 weeks", extras: { days: 0 } }).days, /above zero/);
-  assert.deepEqual(validateNewItem("production_timeframes", { label: "5 weeks", extras: { days: 35 } }), {});
-
   assert.match(validateNewItem("dismiss_reasons", { label: "Wrong number" }).words, /is needed/);
   assert.deepEqual(
     validateNewItem("dismiss_reasons", { label: "Wrong number", extras: { words: "Not the right person." } }),
@@ -179,7 +175,10 @@ test("a list whose items carry settings will not take one without them", () => {
 test("settings are kept to the fields that list actually has", () => {
   const extras = cleanExtras("settlement_methods", { wantsReference: "yes", sneaky: "dropped" });
   assert.deepEqual(extras, { wantsReference: true });
-  assert.deepEqual(cleanExtras("production_timeframes", { days: "35" }), { days: 35 });
+  assert.deepEqual(
+    cleanExtras("dismiss_reasons", { words: "  Not the right person. ", sneaky: "dropped" }),
+    { words: "Not the right person." }
+  );
   assert.deepEqual(cleanExtras("issue_kinds", { anything: 1 }), {}, "a plain list carries no settings");
 });
 
@@ -331,7 +330,7 @@ test("every route that validates one of these values reads the live list", () =>
 
 test("every screen that offers one of these lists reads it live", () => {
   const wired = [
-    ["../app/admin/orders/[id]/OrderDetail.js", ["issue_kinds", "production_timeframes"]],
+    ["../app/admin/orders/[id]/OrderDetail.js", ["issue_kinds"]],
     ["../app/admin/_components/SettlePaymentModal.js", ["settlement_methods"]],
     ["../app/admin/board/BoardClient.tsx", ["dismiss_reasons"]],
     ["../app/admin/options/ColourLibraryManager.tsx", ["colour_suppliers"]],

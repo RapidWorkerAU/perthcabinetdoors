@@ -17,7 +17,7 @@ import {
 } from "../lib/pcd-order-planning.js";
 
 const panel = (method, extra = {}) => ({ plan: { fulfilment_method: method }, ...extra });
-const SCHEDULED = { scheduled_start_date: "2026-09-07", production_lead_days: 14 };
+const SCHEDULED = { scheduled_start_date: "2026-09-07", target_completion_date: "2026-09-21" };
 
 // ── the three states ───────────────────────────────────────────────────────
 
@@ -79,13 +79,13 @@ test("a fully planned order has no gaps", () => {
 });
 
 test("a missing start date is a gap", () => {
-  const gaps = planningGaps({ production_lead_days: 14 }, [panel(IN_HOUSE)]);
+  const gaps = planningGaps({ target_completion_date: "2026-09-21" }, [panel(IN_HOUSE)]);
   assert.deepEqual(gaps.map((g) => g.key), ["scheduled_start"]);
 });
 
-test("a missing timeframe is a gap", () => {
+test("a missing completion date is a gap", () => {
   const gaps = planningGaps({ scheduled_start_date: "2026-09-07" }, [panel(IN_HOUSE)]);
-  assert.deepEqual(gaps.map((g) => g.key), ["timeframe"]);
+  assert.deepEqual(gaps.map((g) => g.key), ["completion"]);
 });
 
 test("undecided panels are a gap, and the count is carried", () => {
@@ -102,7 +102,7 @@ test("one undecided panel reads in the singular", () => {
 
 test("an order with nothing done at all reports all three gaps", () => {
   const gaps = planningGaps({}, [panel(UNSET)]);
-  assert.deepEqual(gaps.map((g) => g.key), ["scheduled_start", "timeframe", "panels"]);
+  assert.deepEqual(gaps.map((g) => g.key), ["scheduled_start", "completion", "panels"]);
   assert.equal(isPlanned({}, [panel(UNSET)]), false);
 });
 
@@ -110,19 +110,19 @@ test("an order with nothing done at all reports all three gaps", () => {
 // only the schedule can hold it up.
 test("a thermolaminate only order just needs its schedule", () => {
   const rows = [panel(SUPPLIER, { thermolaminated: true })];
-  assert.deepEqual(planningGaps({}, rows).map((g) => g.key), ["scheduled_start", "timeframe"]);
+  assert.deepEqual(planningGaps({}, rows).map((g) => g.key), ["scheduled_start", "completion"]);
   assert.equal(isPlanned(SCHEDULED, rows), true);
 });
 
 test("the summary names the parts that are outstanding", () => {
   assert.equal(
     planningSummary({}, [panel(UNSET)]),
-    "Scheduled start, How long it takes, Item planning outstanding"
+    "Scheduled start, Estimated completion, Item planning outstanding"
   );
 });
 
-// A lead time of zero is not a timeframe, and must not read as one.
-test("a zero timeframe is still missing", () => {
-  const gaps = planningGaps({ scheduled_start_date: "2026-09-07", production_lead_days: 0 }, [panel(IN_HOUSE)]);
-  assert.deepEqual(gaps.map((g) => g.key), ["timeframe"]);
+// An empty date is not a date, and must not read as one.
+test("a blank completion date is still missing", () => {
+  const gaps = planningGaps({ scheduled_start_date: "2026-09-07", target_completion_date: "" }, [panel(IN_HOUSE)]);
+  assert.deepEqual(gaps.map((g) => g.key), ["completion"]);
 });
