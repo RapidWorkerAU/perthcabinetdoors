@@ -363,19 +363,38 @@ function Details({ booking, mobile, contactName, address }) {
     <section className={styles.panel}>
       <div className={styles.panelHeader}>Your Appointment</div>
       <div className={styles.panelBody}>
-        <div className={styles.quoteViewSummaryGrid}>
-          <Item label="What" value={booking.kindLabel} />
-          <Item label="When" value={booking.dayLong} />
-          <Item label="Time" value={booking.timeRange} />
-          <Item
-            label="Where"
-            value={where || (booking.needAddress ? "We need this from you below" : "Not recorded")}
-          />
-          <Item label="Best contact" value={contactName || booking.customerName || "Not recorded"} />
-          <Item
-            label="Best number"
-            value={mobile || (booking.needMobile ? "We need this from you below" : "Not recorded")}
-          />
+        {/* A booking is six facts, so it is a two column table with the same
+            green heading row the quote uses, not a bar of tiles. It keeps its
+            box on a phone and stacks each row inside it. */}
+        <div className={styles.tableWrap}>
+          <table className={styles.detailTable}>
+            <tbody>
+              <tr>
+                <td>What</td>
+                <td>{booking.kindLabel}</td>
+              </tr>
+              <tr>
+                <td>When</td>
+                <td>{booking.dayLong}</td>
+              </tr>
+              <tr>
+                <td>Time</td>
+                <td>{booking.timeRange}</td>
+              </tr>
+              <tr className={!where && booking.needAddress ? styles.detailTableWanting : undefined}>
+                <td>Where</td>
+                <td>{where || (booking.needAddress ? "We need this from you below" : "Not recorded")}</td>
+              </tr>
+              <tr>
+                <td>Best contact</td>
+                <td>{contactName || booking.customerName || "Not recorded"}</td>
+              </tr>
+              <tr className={!mobile && booking.needMobile ? styles.detailTableWanting : undefined}>
+                <td>Best number</td>
+                <td>{mobile || (booking.needMobile ? "We need this from you below" : "Not recorded")}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -410,15 +429,6 @@ function Answered({ booking, answer, notes }) {
           ) : null}
         </div>
       </section>
-    </div>
-  );
-}
-
-function Item({ label, value }) {
-  return (
-    <div className={styles.summaryItem}>
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }

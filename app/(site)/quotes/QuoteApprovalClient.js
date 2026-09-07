@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { edgeImageSrc } from "@/lib/pcd-profile-images";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { edgeImageSrc, profileImageSrc } from "@/lib/pcd-profile-images";
 import { isHardwareLine, lineHeading, lineSubLines } from "../../../lib/pcd-quote-line-display";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
-import { rowCapHeight } from "../../../lib/pcd-row-cap";
 import { toTermsHtml } from "../../../lib/pcd-terms-html";
 import PcdLoader from "@/components/public/PcdLoader";
 import styles from "./quote-public.module.css";
@@ -27,6 +26,14 @@ function sortedAttachments(quote) {
   return [...(quote?.pcd_quote_attachments || [])]
     .filter((attachment) => !attachment.superseded_at)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+}
+
+// A status prints on its own in the summary, where it is the start of a line
+// and not the middle of a sentence, so it takes a capital. The database keeps
+// it lower case because that is what the rest of the app compares against.
+function capitalise(value) {
+  const text = String(value || "").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : "-";
 }
 
 function lineValue(value) {
@@ -54,15 +61,6 @@ function quoteLineSizeText(line) {
   return width || height ? `${height || "-"} x ${width || "-"}` : "";
 }
 
-function assetSlug(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 function colourSrcForLine(line) {
   return line.colour_src || "";
 }
@@ -85,29 +83,11 @@ function edgeOptionSrc(label) {
   return edgeImageSrc(label);
 }
 
+// The photo for a front profile, from the one resolver that knows where the
+// library actually sits. This used to build the path by hand and left out the
+// brand folder, so every profile a customer clicked opened a broken image.
 function profileOptionSrc(profileType, label) {
-  return profileType && label ? `/images/profiles/${assetSlug(profileType)}/${assetSlug(label)}.jpg` : "";
-}
-
-function SelectionTile({ src, label, onPreview }) {
-  if (src) {
-    return (
-      <button
-        type="button"
-        className={`${styles.publicSelectionTile} ${styles.publicSelectionTileButton}`}
-        onClick={() => onPreview({ src, label: lineValue(label) })}
-      >
-        <img alt="" src={src} onError={(event) => { event.currentTarget.style.display = "none"; }} />
-        <span>{lineValue(label)}</span>
-      </button>
-    );
-  }
-
-  return (
-    <span className={styles.publicSelectionTile}>
-      <span>{lineValue(label)}</span>
-    </span>
-  );
+  return profileImageSrc(profileType, label) || "";
 }
 
 // THE CELL THE CUSTOMER READS FIRST.
@@ -118,25 +98,6 @@ function SelectionTile({ src, label, onPreview }) {
 // never said WHICH hinge, even though the line knew its name all along. What a
 // line is called and what sits under it is now one shared answer. See
 // lib/pcd-quote-line-display.js.
-function DetailStack({ line }) {
-  const subLines = lineSubLines(line);
-  return (
-    <div className={styles.quoteItemDetailStack}>
-      <strong>{lineHeading(line)}</strong>
-      {subLines.map((sub) =>
-        // A board line keeps its N/A: a door with no finish recorded is a gap
-        // worth showing. A hardware line has nothing to leave a gap in, so a
-        // row it does not have is not printed at all.
-        isHardwareLine(line) ? (
-          sub.value ? <span key={sub.key}>{sub.value}</span> : null
-        ) : (
-          <span key={sub.key}>{lineValue(sub.value)}</span>
-        )
-      )}
-    </div>
-  );
-}
-
 function PreviewName({ src, label, onPreview }) {
   const displayLabel = lineValue(label);
   if (!src || displayLabel === "N/A") {
@@ -157,6 +118,156 @@ function PreviewName({ src, label, onPreview }) {
   );
 }
 
+
+// SIZE, WITH ITS UNITS IN THE CELL.
+//
+// A column heading is read once and a cell is read eight times, so which way
+// round the numbers go and what they are measured in belong in the cell.
+const SIZE_MARKS = ["H", "W", "D"];
+
+function SizeText({ line }) {
+  const text = quoteLineSizeText(line);
+  if (!text) return <span className={styles.quoteItemNo}>-</span>;
+  return (
+    <span className={styles.sizeCell}>
+      {text.split(" x ").map((part, index) => (
+        <span key={index}>
+          {index ? " x " : ""}
+          {part}
+          {SIZE_MARKS[index] ? <span className={styles.sizeUnit}> ({SIZE_MARKS[index]})</span> : null}
+        </span>
+      ))}
+      <span className={styles.sizeUnit}> mm</span>
+    </span>
+  );
+}
+
+// THE NOTE IS A COLUMN, AND THE BUTTON IS DRAWN ON EVERY LINE.
+//
+// A line with nothing to read keeps the button, greyed and dead, so the column
+// never changes shape and a customer can see at a glance which lines carry one.
+function NoteButton({ line, onOpen }) {
+  const note = String(line.client_note || "").trim();
+  if (!note) {
+    return (
+      <button type="button" className={styles.noteButton} disabled aria-label="No note on this line">
+        Note
+      </button>
+    );
+  }
+  return (
+    <button type="button" className={styles.noteButton} onClick={() => onOpen(line)}>
+      Note
+    </button>
+  );
+}
+
+function showsProfile(line) {
+  return (
+    line.material === "Thermolaminate" &&
+    line.product_type !== "Panel" &&
+    line.product_type !== "Table top"
+  );
+}
+
+// THE COLUMNS A GROUP STILL NEEDS.
+//
+// A column is dropped when no line in the group has anything to put in it,
+// which is the difference between "the question does not arise" and "we have
+// not filled it in". Hinges is the exception and is always drawn: not drilling
+// is a fact a customer has to be told, the same as drilling.
+const CONFIG_COLUMNS = [
+  {
+    key: "edge",
+    label: "Edge profile",
+    has: (line) => Boolean(String(line.edge_mould || "").trim()),
+    cell: (line, onPreview) => (
+      <PreviewName src={edgeOptionSrc(line.edge_mould)} label={line.edge_mould} onPreview={onPreview} />
+    ),
+  },
+  {
+    key: "profile",
+    label: "Profile",
+    has: (line) => showsProfile(line) && Boolean(String(line.profile || "").trim()),
+    cell: (line, onPreview) =>
+      showsProfile(line) ? (
+        <PreviewName
+          src={profileOptionSrc(line.profile_type, line.profile)}
+          label={line.profile}
+          onPreview={onPreview}
+        />
+      ) : (
+        <span className={styles.quoteItemNo}>-</span>
+      ),
+  },
+  {
+    key: "hinges",
+    label: "Hinges",
+    has: () => true,
+    cell: (line) => (
+      <span className={styles.quoteItemDetailStack}>
+        {line.hinge_holes ? (
+          <span className={styles.quoteItemYes}>Hinge holes drilled</span>
+        ) : (
+          <span className={styles.quoteItemStated}>No hinge holes</span>
+        )}
+        {line.hinge_holes && line.hinge_qty ? <span>Hinge qty: {line.hinge_qty}</span> : null}
+      </span>
+    ),
+  },
+];
+
+// ONE GROUP A BOARD.
+//
+// Material, finish and colour decide the group, so a quote that is mostly one
+// board reads as one block with three fewer columns in it. Hardware has no
+// board at all and forms its own group with no specification columns.
+//
+// The line number stays the number the line has on the quote, not its position
+// after grouping, so a customer ringing up about line seven and the office
+// looking at line seven are looking at the same thing.
+function groupLinesByBoard(lines) {
+  const order = [];
+  const map = new Map();
+
+  lines.forEach((line, index) => {
+    const numbered = { ...line, lineIndex: index + 1 };
+    const key = isHardwareLine(line)
+      ? "hardware"
+      : ["material", "finish", "colour"]
+          .map((field) => String(line[field] || "").trim().toLowerCase())
+          .join("|");
+    if (!map.has(key)) {
+      map.set(key, []);
+      order.push(key);
+    }
+    map.get(key).push(numbered);
+  });
+
+  return order.map((key) => {
+    const grouped = map.get(key);
+    const first = grouped[0];
+    const hardware = isHardwareLine(first);
+    return {
+      key,
+      hardware,
+      lines: grouped,
+      title: hardware ? "Hardware" : String(first.colour || "").trim() || "Board not recorded",
+      lifted: hardware
+        ? []
+        : [
+            ["Material", first.material],
+            ["Finish", first.finish],
+            ["Colour", first.colour],
+          ].filter((pair) => String(pair[1] || "").trim()),
+      colourSrc: hardware ? "" : colourSrcForLine(first),
+      qty: grouped.reduce((sum, line) => sum + (Number(line.qty) || 0), 0),
+      total: grouped.reduce((sum, line) => sum + toNumber(line.line_total_ex_gst), 0),
+      cols: hardware ? [] : CONFIG_COLUMNS.filter((col) => grouped.some((line) => col.has(line))),
+    };
+  });
+}
+
 const DETAIL_INPUTS = {
   name: { label: "Full name", type: "text", placeholder: "Sarah Jones", autoComplete: "name" },
   email: { label: "Email", type: "email", placeholder: "sarah@example.com", autoComplete: "email" },
@@ -165,54 +276,6 @@ const DETAIL_INPUTS = {
   suburb: { label: "Suburb", type: "text", placeholder: "Subiaco", autoComplete: "address-level2" },
   postcode: { label: "Postcode", type: "text", placeholder: "6008", autoComplete: "postal-code", inputMode: "numeric" },
 };
-
-// Quote Items stops growing after this many rows and scrolls inside itself.
-// The page still scrolls; what it does not do is turn one section into an
-// endless run that buries the totals and the Approve button below it.
-const VISIBLE_ITEM_ROWS = 5;
-
-// Reads the real rows off the page and hands them to rowCapHeight. offsetHeight
-// is used rather than a bounding rect because it does not change as the box is
-// scrolled, so re-measuring a list that is already capped gives the same answer
-// instead of drifting.
-function useRowCap(itemCount, visibleRows) {
-  const [node, setNode] = useState(null);
-  const [maxHeight, setMaxHeight] = useState(null);
-  const ref = useCallback((element) => setNode(element), []);
-  const capped = itemCount > visibleRows;
-
-  useEffect(() => {
-    if (!node || !capped) {
-      setMaxHeight(null);
-      return undefined;
-    }
-
-    const rows = () => Array.from(node.querySelectorAll("[data-cap-row]"));
-
-    function measure() {
-      setMaxHeight(
-        rowCapHeight({
-          rowHeights: rows().map((row) => row.offsetHeight),
-          // A card list is a grid with a gap between cards; a table has none.
-          gap: Number.parseFloat(window.getComputedStyle(node).rowGap) || 0,
-          headHeight: node.querySelector("thead")?.offsetHeight || 0,
-          visibleRows,
-        })
-      );
-    }
-
-    measure();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    // Row heights change when the window narrows and when a mobile card is
-    // opened, so the cap has to follow rather than being measured once.
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    rows().forEach((row) => observer.observe(row));
-    return () => observer.disconnect();
-  }, [node, capped, itemCount, visibleRows]);
-
-  return [ref, maxHeight];
-}
 
 // The four tiles that can be edited, in the order they read in the summary.
 const SUMMARY_TILES = [
@@ -239,19 +302,19 @@ function SummaryDetail({ label, keys, value, details, errors, touched, locked, i
   if (locked || !isOpen) {
     return (
       <div className={`${styles.summaryItem} ${missing && !locked ? styles.summaryItemMissing : ""}`}>
-        <span>{label}</span>
+        <span>
+          {label}
+          {!locked && value && !missing ? (
+            <button type="button" className={styles.detailEdit} onClick={onOpen}>Change</button>
+          ) : null}
+        </span>
         <strong>
           {missing && !locked ? (
             <button type="button" className={styles.detailAdd} onClick={onOpen}>
               Add {label.toLowerCase()}
             </button>
           ) : (
-            <>
-              {value || "-"}
-              {!locked && value ? (
-                <button type="button" className={styles.detailEdit} onClick={onOpen}>Change</button>
-              ) : null}
-            </>
+            value || "-"
           )}
         </strong>
       </div>
@@ -310,8 +373,9 @@ export default function QuoteApprovalClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(false);
-  const [expandedMobileLineId, setExpandedMobileLineId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
+  const [responseOnScreen, setResponseOnScreen] = useState(false);
+  const [noteLine, setNoteLine] = useState(null);
   const [paymentAcknowledged, setPaymentAcknowledged] = useState(false);
   // The details we must hold before this can be accepted. Pre-filled from the
   // customer record by the get route, and edited in the summary panel where
@@ -333,12 +397,10 @@ export default function QuoteApprovalClient() {
   );
 
   const lines = useMemo(() => sortedLines(quote), [quote]);
+  const lineGroups = useMemo(() => groupLinesByBoard(lines), [lines]);
   const attachments = useMemo(() => sortedAttachments(quote), [quote]);
   // The two renderings of the same lines each get their own cap, because a
   // table row and a mobile card are nothing like the same height.
-  const [desktopItemsRef, desktopItemsMax] = useRowCap(lines.length, VISIBLE_ITEM_ROWS);
-  const [mobileItemsRef, mobileItemsMax] = useRowCap(lines.length, VISIBLE_ITEM_ROWS);
-  const itemsAreCapped = lines.length > VISIBLE_ITEM_ROWS;
   // LOCKED MEANS FINISHED, NOT ANSWERED.
   //
   // awaiting_deposit is deliberately not locked. The customer approved, went to
@@ -460,6 +522,30 @@ export default function QuoteApprovalClient() {
     }
   }
 
+  // THE RESPONSE BAR.
+  //
+  // A twenty line order puts the buttons well below the fold, and a customer
+  // who does not scroll to the bottom never answers. The bar sits on the
+  // bottom edge until the response section is actually on screen and then
+  // takes itself away. It accepts nothing: it carries you to the form,
+  // because accepting still needs a name, a number and a tick.
+  useEffect(() => {
+    if (isLoading || !quote) return undefined;
+    const target = document.getElementById("quote-response");
+    if (!target || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => setResponseOnScreen(entries[0].isIntersecting),
+      { threshold: 0.15 }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [isLoading, quote]);
+
+  function scrollToResponse() {
+    const target = document.getElementById("quote-response");
+    if (target) target.scrollIntoView({ block: "start" });
+  }
+
   if (isLoading) {
     return (
       <section className={styles.panel}>
@@ -496,7 +582,7 @@ export default function QuoteApprovalClient() {
               the reason is stated once, next to the button it blocks. */}
           <div className={styles.quoteViewSummaryGrid}>
             <div className={styles.summaryItem}><span>Quote title</span><strong>{quote.title || "Cabinetry Quote"}</strong></div>
-            <div className={styles.summaryItem}><span>Status</span><strong>{quote.status}</strong></div>
+            <div className={styles.summaryItem}><span>Status</span><strong>{capitalise(quote.status)}</strong></div>
             <div className={styles.summaryItem}><span>Quote number</span><strong>{quote.quote_number}</strong></div>
 
             {SUMMARY_TILES.map((tile) => (
@@ -520,221 +606,138 @@ export default function QuoteApprovalClient() {
         </div>
       </section>
 
-      <section className={styles.panel}>
-        <div className={styles.panelHeader}>Quote Items</div>
-        <div className={styles.panelBody}>
-          <div
-            ref={desktopItemsRef}
-            className={`${styles.tableWrap} ${styles.quoteItemsDesktopTable} ${desktopItemsMax ? styles.quoteItemsCapped : ""}`}
-            style={desktopItemsMax ? { maxHeight: desktopItemsMax } : undefined}
-          >
+      {/* THE LIST IS GROUPED BY THE BOARD IT IS MADE FROM.
+          A quote is a handful of boards used over and over, so the board is
+          said once at the top of its group and its three columns come out of
+          the rows underneath. What is left in a row is what actually differs
+          between one line and the next. */}
+      {lineGroups.map((group) => (
+        <section className={`${styles.panel} ${styles.lineGroup}`} key={group.key}>
+          <div className={styles.lineGroupHead}>
+            {group.colourSrc ? (
+              <button
+                type="button"
+                className={styles.lineGroupSwatch}
+                aria-label={`View ${group.title}`}
+                onClick={() => setPreviewImage({ src: group.colourSrc, label: group.title })}
+              >
+                <img alt="" src={group.colourSrc} onError={(event) => { event.currentTarget.style.display = "none"; }} />
+              </button>
+            ) : (
+              <span className={styles.lineGroupSwatch} aria-hidden="true" />
+            )}
+            <div className={styles.lineGroupNames}>
+              <span className={styles.lineGroupName}>{group.title}</span>
+              {group.lifted.length ? (
+                <dl className={styles.lineGroupPairs}>
+                  {group.lifted.map((pair) => (
+                    <div key={pair[0]}>
+                      <dt>{pair[0]}</dt>
+                      <dd>{pair[1]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+            </div>
+            <span className={styles.lineGroupSum}>
+              {group.lines.length} {group.lines.length === 1 ? "line" : "lines"}, {group.qty} items
+              <b>{formatMoney(group.total, quote.currency)}</b>
+            </span>
+          </div>
+
+          <div className={`${styles.tableWrap} ${styles.quoteItemsDesktopTable}`}>
             <table className={`${styles.table} ${styles.quoteItemsPublicTable}`}>
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Item details</th>
-                  <th>Client notes</th>
-                  <th>W x H x D (mm)</th>
-                  <th>Qty</th>
-                  <th>Edge profile</th>
-                  <th>Profile</th>
-                  <th>Hinges</th>
-                  <th>Unit cost</th>
-                  <th>Total ex GST</th>
+                  <th data-align="center">#</th>
+                  <th>Item</th>
+                  <th data-align="center" data-key="start">Size H x W</th>
+                  <th data-align="center" data-key="end">Qty</th>
+                  {group.cols.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
+                  <th data-align="center" data-zone>Unit cost</th>
+                  <th data-align="center">Total ex GST</th>
+                  <th data-align="center" data-zone>Note</th>
                 </tr>
               </thead>
               <tbody>
-                {lines.map((line, index) => {
-                  const isHardware = isHardwareLine(line);
-                  const showProfiles = line.material === "Thermolaminate" && line.product_type !== "Panel" && line.product_type !== "Table top";
-                  const hingesApplicable = line.product_type === "Door";
-                  const colourSrc = colourSrcForLine(line);
-                  const edgeSrc = edgeOptionSrc(line.edge_mould);
-                  const profileSrc = showProfiles ? profileOptionSrc(line.profile_type, line.profile) : "";
-                  const clientNote = String(line.client_note || "").trim();
-                  return (
-                    <tr key={line.id || index} data-cap-row>
-                      <td><span className={styles.quoteItemNumber}>{index + 1}</span></td>
-                      <td><DetailStack line={line} /></td>
-                      <td>
-                        {clientNote ? (
-                          <span className={styles.quoteLineClientNote}>{clientNote}</span>
-                        ) : (
-                          <span className={styles.quoteLineClientNoteEmpty}>-</span>
-                        )}
-                      </td>
-                      {/* A hinge has no size, no edge profile and no drilling.
-                          Printing N/A in four columns made a complete line read
-                          as an unfinished one, so a hardware row says the
-                          question does not arise instead. */}
-                      <td>{isHardware ? "-" : lineValue(quoteLineSizeText(line))}</td>
-                      <td>{line.qty || "1"}</td>
-                      <td>
-                        {isHardware ? "-" : <PreviewName src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} />}
-                      </td>
-                      <td>
-                        {isHardware ? (
-                          "-"
-                        ) : (
-                          <div className={styles.quoteItemDetailStack}>
-                            <span>{showProfiles ? lineValue(line.profile_type) : "N/A"}</span>
-                            {showProfiles ? <PreviewName src={profileSrc} label={line.profile} onPreview={setPreviewImage} /> : <span>N/A</span>}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        {isHardware ? (
-                          "-"
-                        ) : (
-                          <div className={styles.quoteItemDetailStack}>
-                            <span>Drill: {hingesApplicable ? line.hinge_holes ? "Yes" : "No" : "N/A"}</span>
-                            <span>Qty: {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td>{formatMoney(line.unit_price_ex_gst, quote.currency)}</td>
-                      <td>{formatMoney(line.line_total_ex_gst, quote.currency)}</td>
-                    </tr>
-                  );
-                })}
+                {group.lines.map((line) => (
+                  <tr key={line.id || line.lineIndex} data-cap-row>
+                    <td data-align="center">
+                      <span className={styles.quoteItemNumber}>{line.lineIndex}</span>
+                    </td>
+                    <td>
+                      <span className={styles.quoteItemName}>{lineHeading(line)}</span>
+                    </td>
+                    <td data-align="center" data-key="start">
+                      <SizeText line={line} />
+                    </td>
+                    <td data-align="center" data-key="end">{line.qty || "1"}</td>
+                    {group.cols.map((col) => (
+                      <td key={col.key}>{col.cell(line, setPreviewImage)}</td>
+                    ))}
+                    <td data-align="center" data-zone>{formatMoney(line.unit_price_ex_gst, quote.currency)}</td>
+                    <td data-align="center">{formatMoney(line.line_total_ex_gst, quote.currency)}</td>
+                    <td data-align="center" data-zone>
+                      <NoteButton line={line} onOpen={setNoteLine} />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-          <div
-            ref={mobileItemsRef}
-            className={`${styles.quoteItemsMobileList} ${mobileItemsMax ? styles.quoteItemsCapped : ""}`}
-            style={mobileItemsMax ? { maxHeight: mobileItemsMax } : undefined}
-          >
-            {lines.map((line, index) => {
-              const isHardware = isHardwareLine(line);
-              const showProfiles = line.material === "Thermolaminate" && line.product_type !== "Panel" && line.product_type !== "Table top";
-              const hingesApplicable = line.product_type === "Door";
-              const colourSrc = colourSrcForLine(line);
-              const edgeSrc = edgeOptionSrc(line.edge_mould);
-              const profileSrc = showProfiles ? profileOptionSrc(line.profile_type, line.profile) : "";
-              const lineKey = line.id || `line-${index}`;
-              const isExpanded = expandedMobileLineId === lineKey;
-              const clientNote = String(line.client_note || "").trim();
-              return (
-                <article className={`${styles.quoteItemMobileCard} ${isExpanded ? styles.quoteItemMobileCardOpen : ""}`} key={lineKey} data-cap-row>
-                  <button
-                    type="button"
-                    className={styles.quoteItemMobileHeader}
-                    aria-expanded={isExpanded}
-                    onClick={() => setExpandedMobileLineId((current) => (current === lineKey ? null : lineKey))}
-                  >
-                    <span className={styles.quoteItemNumber}>{index + 1}</span>
-                    <div>
-                      <p>{lineHeading(line)}</p>
-                      <strong>{formatMoney(line.line_total_ex_gst, quote.currency)}</strong>
-                    </div>
-                    <span className={styles.quoteItemMobileToggle} aria-hidden="true" />
-                  </button>
-                  {isExpanded ? (
-                    <div className={styles.quoteItemMobileContent}>
-                      <div className={styles.quoteItemMobileSpecs}>
-                        {/* A hinge has no board and no size. What it does have
-                            is a name, which is the one thing somebody opening
-                            this card is looking for. */}
-                        {isHardware ? (
-                          lineSubLines(line).map((sub) =>
-                            sub.value ? (
-                              <div key={sub.key}><span>{sub.label}</span><strong>{sub.value}</strong></div>
-                            ) : null
-                          )
-                        ) : (
-                          <>
-                            <div><span>Material</span><strong>{lineValue(line.material)}</strong></div>
-                            <div><span>Size</span><strong>{lineValue(quoteLineSizeText(line))}</strong></div>
-                          </>
-                        )}
-                        <div><span>Qty</span><strong>{line.qty || "1"}</strong></div>
-                        <div><span>Unit cost</span><strong>{formatMoney(line.unit_price_ex_gst, quote.currency)}</strong></div>
-                      </div>
-                      <div className={styles.quoteItemMobileSelections}>
-                        {isHardware ? null : (
-                          <>
-                            <div>
-                              <span>Colour</span>
-                              <SelectionTile src={colourSrc} label={line.colour} onPreview={setPreviewImage} />
-                            </div>
-                            <div>
-                              <span>Edge profile</span>
-                              <SelectionTile src={edgeSrc} label={line.edge_mould} onPreview={setPreviewImage} />
-                            </div>
-                          </>
-                        )}
-                        {showProfiles ? (
-                          <>
-                            <div>
-                              <span>Profile type</span>
-                              <strong>{lineValue(line.profile_type)}</strong>
-                            </div>
-                            <div>
-                              <span>Profile name</span>
-                              <SelectionTile src={profileSrc} label={line.profile} onPreview={setPreviewImage} />
-                            </div>
-                          </>
-                        ) : null}
-                      </div>
-                      {isHardware ? null : (
-                        <div className={styles.quoteItemMobileHinges}>
-                          <span className={hingesApplicable && line.hinge_holes ? styles.quoteItemYes : styles.quoteItemNo}>
-                            {hingesApplicable && line.hinge_holes ? "Yes" : hingesApplicable ? "No" : "N/A"} drill holes
-                          </span>
-                          <span>Hinge qty: {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}</span>
-                        </div>
-                      )}
-                      {clientNote ? (
-                        <div className={styles.quoteLineClientNote}>
-                          <strong>Note:</strong> {clientNote}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-          {/* Overlay scrollbars stay invisible until something is scrolled, so
-              a capped list needs to say out loud that there is more in it. */}
-          {itemsAreCapped ? (
-            <p className={styles.quoteItemsScrollNote}>
-              {lines.length} items. Scroll inside the list to see them all.
-            </p>
-          ) : null}
-        </div>
-      </section>
 
-      <div className={styles.quoteViewTwoColumn}>
-        <section className={styles.panel}>
-          <div className={styles.panelHeader}>Quote Totals</div>
-          <div className={styles.panelBody}>
-            <div className={`${styles.totals} ${styles.publicTotalsBreakdown}`}>
-              {costSummaryRows.map((row) => (
-                <div className={styles.publicCostRow} key={row.label}>
-                  <span>
-                    <strong>{row.label}</strong>
-                    <small>{row.description}</small>
-                  </span>
-                  <strong>{formatMoney(row.amount, quote.currency)}</strong>
+          {/* THE SAME GROUP ON A PHONE.
+              The board is still said once at the top, and each line becomes a
+              block with its size and quantity first, because that is what a
+              customer checks, then the rest of what makes it. */}
+          <div className={styles.quoteItemsMobileList}>
+            {group.lines.map((line) => (
+              <article className={styles.quoteItemMobileCard} key={line.id || `m-${line.lineIndex}`}>
+                <div className={styles.quoteItemMobileHeader}>
+                  <span className={styles.quoteItemNumber}>{line.lineIndex}</span>
+                  <p>{lineHeading(line)}</p>
+                  <NoteButton line={line} onOpen={setNoteLine} />
                 </div>
-              ))}
-              <div className={styles.publicTotalFocus}>
-                <div className={styles.totalRow}><span>Subtotal ex GST</span><strong>{formatMoney(quote.subtotal_ex_gst, quote.currency)}</strong></div>
-                <div className={styles.totalRow}><span>GST</span><strong>{formatMoney(quote.gst_amount, quote.currency)}</strong></div>
-                <div className={`${styles.totalRow} ${styles.totalRowGrand}`}><span>Total inc GST</span><strong>{formatMoney(quote.total_inc_gst, quote.currency)}</strong></div>
-              </div>
-            </div>
-            {attachments.length ? (
-              <button type="button" className={styles.attachmentModalButton} onClick={() => setIsAttachmentsOpen(true)}>
-                Attachments ({attachments.length})
-              </button>
-            ) : null}
+                <div className={styles.quoteItemMobileKey}>
+                  <div>
+                    <span>Size H x W</span>
+                    <strong><SizeText line={line} /></strong>
+                  </div>
+                  <div>
+                    <span>Qty</span>
+                    <strong>{line.qty || "1"}</strong>
+                  </div>
+                </div>
+                {group.cols.length ? (
+                  <dl className={styles.specGrid}>
+                    {group.cols.map((col) => (
+                      <div className={styles.specSlot} key={col.key}>
+                        <dt>{col.label}</dt>
+                        <dd>{col.cell(line, setPreviewImage)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+                <div className={styles.quoteItemMobileFigures}>
+                  <div>
+                    <span>Unit</span>
+                    <strong>{formatMoney(line.unit_price_ex_gst, quote.currency)}</strong>
+                  </div>
+                  <div>
+                    <span>Total ex GST</span>
+                    <strong>{formatMoney(line.line_total_ex_gst, quote.currency)}</strong>
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
         </section>
+      ))}
 
-        <section className={styles.panel}>
+      <div className={styles.quoteViewTwoColumn}>
+        <section className={styles.panel} id="quote-response">
           <div className={styles.panelHeader}>Your Response</div>
           <div className={styles.panelBody}>
             {isLocked ? (
@@ -805,6 +808,33 @@ export default function QuoteApprovalClient() {
             )}
           </div>
         </section>
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>Quote Totals</div>
+          <div className={styles.panelBody}>
+            <div className={`${styles.totals} ${styles.publicTotalsBreakdown}`}>
+              {costSummaryRows.map((row) => (
+                <div className={styles.publicCostRow} key={row.label}>
+                  <span>
+                    <strong>{row.label}</strong>
+                    <small>{row.description}</small>
+                  </span>
+                  <strong>{formatMoney(row.amount, quote.currency)}</strong>
+                </div>
+              ))}
+              <div className={styles.publicTotalFocus}>
+                <div className={styles.totalRow}><span>Subtotal ex GST</span><strong>{formatMoney(quote.subtotal_ex_gst, quote.currency)}</strong></div>
+                <div className={styles.totalRow}><span>GST</span><strong>{formatMoney(quote.gst_amount, quote.currency)}</strong></div>
+                <div className={`${styles.totalRow} ${styles.totalRowGrand}`}><span>Total inc GST</span><strong>{formatMoney(quote.total_inc_gst, quote.currency)}</strong></div>
+              </div>
+            </div>
+            {attachments.length ? (
+              <button type="button" className={styles.attachmentModalButton} onClick={() => setIsAttachmentsOpen(true)}>
+                Attachments ({attachments.length})
+              </button>
+            ) : null}
+          </div>
+        </section>
+
       </div>
 
       {quote.client_notes || quote.assumptions || quote.exclusions || quote.terms ? (
@@ -833,6 +863,25 @@ export default function QuoteApprovalClient() {
             </div>
           </div>
         </section>
+      ) : null}
+
+      {!isLocked && !isExpired && !responseOnScreen ? (
+        <div className={styles.responseBar}>
+          <div className={styles.responseBarInner}>
+            <div className={styles.responseBarText}>
+              <span>Total inc GST</span>
+              <strong>{formatMoney(quote.total_inc_gst, quote.currency)}</strong>
+            </div>
+            <div className={styles.responseBarButtons}>
+              <button type="button" className={styles.buttonSecondary} onClick={scrollToResponse}>
+                Decline
+              </button>
+              <button type="button" className={styles.button} onClick={scrollToResponse}>
+                Go to accept
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {isAttachmentsOpen ? (
@@ -875,6 +924,34 @@ export default function QuoteApprovalClient() {
             </div>
             <div className={styles.attachmentModalFooter}>
               <button type="button" className={styles.buttonSecondary} onClick={() => setIsAttachmentsOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {noteLine ? (
+        <div
+          className={styles.modalOverlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Line note"
+          onClick={() => setNoteLine(null)}
+        >
+          <div className={styles.attachmentModal} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.attachmentModalHeader}>
+              <div>
+                <span>Line {noteLine.lineIndex}</span>
+                <h2>{lineHeading(noteLine)}</h2>
+                <p>Your note on this line</p>
+              </div>
+            </div>
+            <div className={styles.attachmentModalBody}>
+              <p className={styles.noteText}>{String(noteLine.client_note || "").trim()}</p>
+            </div>
+            <div className={styles.attachmentModalFooter}>
+              <button type="button" className={styles.buttonSecondary} onClick={() => setNoteLine(null)}>
                 Close
               </button>
             </div>

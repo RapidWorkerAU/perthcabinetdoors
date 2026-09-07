@@ -35,6 +35,7 @@ import {
   supplierOffersEdges,
   supplierOffersProfiles,
 } from "../../../../../../lib/pcd-supplier-selection";
+import { checkSize, sizeLimitRange } from "../../../../../../lib/pcd-size-limits";
 import {
   JOB_COST_ACTION,
   JOB_COST_TYPES,
@@ -66,6 +67,9 @@ const tw = {
   cardTitle: "text-[13px] font-semibold text-[#1a1a18]",
   cardBody: "px-4 py-4",
   fieldLabel: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
+  // The range we can press, and the message when a size is outside it.
+  fieldHint: "text-[10px] font-normal text-[#8b8a81]",
+  fieldWarning: "text-[10.5px] font-medium text-[#b42318]",
   fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
   textarea: "w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-y",
   primaryBtn: "h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors",
@@ -448,6 +452,8 @@ export default function VariationEditor({ orderId, variationId }) {
   // old material-wide lists stand, because an empty dropdown and a failed read
   // look identical on screen.
   const selectedSupplier = String(lineDraft.supplier_name || "").trim();
+  const sizeCheck = checkSize(lineDraft);
+  const sizeRange = sizeLimitRange(sizeCheck.limit);
   const useLibrary = profileLibrary.isReady && Boolean(selectedSupplier);
   const lineDraftEdgeOptions = useLibrary
     ? edgesForSupplier(profileRows, { supplier: selectedSupplier, material: lineDraft.material }).map((row) => ({
@@ -1239,11 +1245,19 @@ export default function VariationEditor({ orderId, variationId }) {
         <label className={tw.fieldLabel}>Thickness
           <input className={tw.fieldInput} value={lineDraft.thickness || ""} placeholder="Set by the colour" disabled readOnly />
         </label>
+        {/* A SIZE WE CANNOT PRESS IS MARKED, NOT REFUSED.
+            A variation is written by staff, who quote the odd special that is
+            made another way, so this warns and still saves. The customer's own
+            request form blocks. See lib/pcd-size-limits.js. */}
         <label className={tw.fieldLabel}>Height mm
+          {sizeRange ? <span className={tw.fieldHint}>{sizeRange.height}</span> : null}
           <input className={tw.fieldInput} type="number" value={lineDraft.height_mm} disabled={isRemove || isPriceAdjustment} onChange={(event) => updateLineDraft({ height_mm: event.target.value })} />
+          {sizeCheck.height ? <span className={tw.fieldWarning}>{sizeCheck.height}</span> : null}
         </label>
         <label className={tw.fieldLabel}>Width mm
+          {sizeRange ? <span className={tw.fieldHint}>{sizeRange.width}</span> : null}
           <input className={tw.fieldInput} type="number" value={lineDraft.width_mm} disabled={isRemove || isPriceAdjustment} onChange={(event) => updateLineDraft({ width_mm: event.target.value })} />
+          {sizeCheck.width ? <span className={tw.fieldWarning}>{sizeCheck.width}</span> : null}
         </label>
 
         <label className={tw.fieldLabel}>Qty

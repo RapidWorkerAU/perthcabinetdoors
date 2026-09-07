@@ -1,5 +1,53 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
+import { getDatabaseColourItems } from "../../../../lib/pcd-colour-library";
 import { prefillDetails } from "../../../../lib/pcd-contact-details";
+
+// THE COLOUR'S PHOTO, RESOLVED HERE RATHER THAN IN THE BROWSER.
+//
+// colour_src is not a column on a quote line and never was, so the public page
+// asked for it, got nothing, and the colour was the one selection a customer
+// could not click to see. The image belongs to the colour library row, so it is
+// looked up there, by the same library id the line already stores against its
+// cost, falling back to matching on finish and colour for lines saved before
+// ids were captured. Same rule the quote editor uses, so the swatch a customer
+// opens is the swatch we priced.
+//
+// Done on the server because the page is read by somebody with no sign-in and
+// should not be making a second call to work out a picture.
+async function colourImageIndex(supabase) {
+  const byId = new Map();
+  const byName = new Map();
+  let items = [];
+  try {
+    items = await getDatabaseColourItems(supabase);
+  } catch {
+    // A missing swatch is cosmetic. The colour name still reads, so a library
+    // that will not load is not worth failing a quote over.
+    return { byId, byName };
+  }
+  items.forEach((item) => {
+    if (!item?.src) return;
+    if (item.id) byId.set(item.id, item.src);
+    const colour = String(item.colour || "").trim().toLowerCase();
+    if (!colour) return;
+    const finish = String(item.finish || "").trim().toLowerCase();
+    if (!byName.has(`${finish}|${colour}`)) byName.set(`${finish}|${colour}`, item.src);
+    if (!byName.has(`|${colour}`)) byName.set(`|${colour}`, item.src);
+  });
+  return { byId, byName };
+}
+
+function colourSrcForLine(line, index) {
+  if (line.colour_src) return line.colour_src;
+  if (!line.colour) return "";
+  if (line.unit_cost_source_id) {
+    const byId = index.byId.get(line.unit_cost_source_id);
+    if (byId) return byId;
+  }
+  const colour = String(line.colour).trim().toLowerCase();
+  const finish = String(line.finish || "").trim().toLowerCase();
+  return index.byName.get(`${finish}|${colour}`) || index.byName.get(`|${colour}`) || "";
+}
 
 export async function GET(request) {
   try {
@@ -88,6 +136,8 @@ export async function GET(request) {
       customer = data || null;
     }
 
+    const colours = await colourImageIndex(supabase);
+
     return Response.json({
       ok: true,
       quote: {
@@ -95,6 +145,7 @@ export async function GET(request) {
         pcd_quote_line_items: (quote.pcd_quote_line_items || []).map((line) => ({
           ...line,
           cabinet_config: configsByLineId.get(line.id) || null,
+          colour_src: colourSrcForLine(line, colours),
         })),
       },
       details: prefillDetails({ customer, quote }),

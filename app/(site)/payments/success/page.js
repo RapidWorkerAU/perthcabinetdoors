@@ -3,6 +3,13 @@ import { retrieveCheckoutSession } from "../../../../lib/pcd-stripe";
 import { finaliseDepositAcceptance } from "../../../../lib/pcd-deposit-gate";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import styles from "../../quotes/quote-public.module.css";
+import {
+  BUSINESS_ABN,
+  BUSINESS_PHONE,
+  LEGAL_ENTITY,
+  SALES_EMAIL,
+  TRADING_NAME,
+} from "@/lib/pcd-business-identity";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -54,9 +61,15 @@ export default async function PaymentSuccessPage({ searchParams }) {
     <div className={`${styles.page} ${styles.quoteViewPage}`}>
       <section className={styles.quoteViewHero}>
         <div className={styles.quoteViewHeroInner}>
-          <img src="/images/light-pcd-logo-horizontal.png" alt="Perth Cabinet Doors" className={styles.quoteViewLogo} />
-          <h1>Payment successful</h1>
-          <p>Your payment has been received.</p>
+          <img
+            src="/images/light-pcd-logo-horizontal.png"
+            alt="Perth Cabinet Doors"
+            className={styles.quoteViewLogo}
+          />
+          <div>
+            <h1>Receipt</h1>
+            <p>Your payment has been received. Keep this page for your records.</p>
+          </div>
         </div>
       </section>
       <main className={styles.quoteViewMain}>
@@ -74,14 +87,31 @@ export default async function PaymentSuccessPage({ searchParams }) {
                 <p className={styles.noteText}>
                   The PCD team will be in contact within the next 2 business days with next steps.
                 </p>
-                <Link className={styles.button} href="/">
-                  Return to homepage
-                </Link>
+                {/* Wrapped, because a bare button is a grid child and
+                    stretches the full width of the panel. */}
+                <div className={styles.actions}>
+                  <Link className={styles.button} href="/">
+                    Return to homepage
+                  </Link>
+                </div>
               </div>
             )}
           </div>
         </section>
       </main>
+      {/* The same block the tax invoice closes with, so the page a customer
+          answers on and the invoice they file afterwards say the same thing
+          about who we are. lib/pcd-business-identity.js is the one source. */}
+      <footer className={styles.docFooter}>
+        <div className={styles.docFooterInner}>
+          <span>
+            {TRADING_NAME} is a trading entity under {LEGAL_ENTITY}. ABN {BUSINESS_ABN}.
+          </span>
+          <span>
+            Questions about this page? Email {SALES_EMAIL} or call {BUSINESS_PHONE}.
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-h
 import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
+import { checkSize } from "../../../../lib/pcd-size-limits";
 import { hardwareTypeLabel } from "../../../../lib/pcd-hardware-types";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
@@ -2961,6 +2962,12 @@ export default function QuoteEditor({ quoteId }) {
                 {form.lines.map((savedLine, index) => {
                   const isEditable = editableLineIndex === index
                   const line = isEditable && editableLineDraft ? editableLineDraft : savedLine
+                  // A SIZE WE CANNOT PRESS IS MARKED, NOT REFUSED.
+                  // Staff quote the odd special that is made another way, so
+                  // this warns and lets it save. The customer's own form does
+                  // block, because they have no way to know the exception is
+                  // possible. See lib/pcd-size-limits.js.
+                  const sizeCheck = checkSize(line)
                   const {
                     calculated,
                     materialOptions,
@@ -3165,7 +3172,10 @@ export default function QuoteEditor({ quoteId }) {
                           {isBaseCabinet ? (
                             cabinetSizeCell(cabinetSizeText(line, 'height_mm'), index, cabinetOwnsBoard)
                           ) : isEditable ? (
-                            <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                            <div
+                              title={sizeCheck.height || undefined}
+                              className={`flex items-center h-[22px] border rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61] ${sizeCheck.height ? 'border-[#b42318]' : 'border-[#a8c5a0]'}`}
+                            >
                               <span className="px-[3px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0 select-none">H</span>
                               <input
                                 type="text"
@@ -3188,7 +3198,10 @@ export default function QuoteEditor({ quoteId }) {
                           {isBaseCabinet ? (
                             cabinetSizeCell(cabinetSizeText(line, 'width_mm'), index, cabinetOwnsBoard)
                           ) : isEditable ? (
-                            <div className="flex items-center h-[22px] border border-[#a8c5a0] rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61]">
+                            <div
+                              title={sizeCheck.width || undefined}
+                              className={`flex items-center h-[22px] border rounded-[3px] overflow-hidden bg-white focus-within:border-[#6b9e61] ${sizeCheck.width ? 'border-[#b42318]' : 'border-[#a8c5a0]'}`}
+                            >
                               <span className="px-[3px] h-full flex items-center text-[10px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] font-mono flex-shrink-0 select-none">W</span>
                               <input
                                 type="text"

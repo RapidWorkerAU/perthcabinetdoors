@@ -15,6 +15,7 @@ import {
 } from "@/lib/pcd-supplier-selection";
 import { clearList as clearQuoteList, entriesToQuoteLines, readQuoteList } from "@/lib/pcd-quote-list";
 import { describeGaps, lineGaps, missingFields } from "@/lib/pcd-quote-ready";
+import { checkSize, sizeLimitFor, sizeLimitRange, sizeProblems } from "@/lib/pcd-size-limits";
 // Handing and cup positions. Shared so the form, the quote editor, the order
 // and the Excel sheet cannot come to different answers about the same door.
 import { HINGE_SIDES, evenMiddles, hingeCount, hingeProblems } from "@/lib/pcd-hinges";
@@ -137,6 +138,17 @@ function materialText(item) {
 function colourText(item) {
   return [item.finish, item.colour].filter(Boolean).join(" - ");
 }
+
+// The range beside a size label. Quiet, because it is a note about the box
+// rather than a warning about what is in it.
+const sizeRangeStyle = {
+  marginLeft: 8,
+  fontSize: 11.5,
+  fontWeight: 400,
+  color: "#7a766c",
+  letterSpacing: 0,
+  textTransform: "none",
+};
 
 function colourOptionMetaLabel(finish, option, supplier) {
   // The brand is only worth repeating on a row that predates the brand step and
@@ -640,6 +652,11 @@ export default function RequestQuoteFormClient() {
   // What each row is still missing, keyed by row id. Set when someone tries to
   // save a half-filled row or send the form, and cleared as they fix it.
   const [lineErrors, setLineErrors] = useState({});
+  // A SIZE WE CANNOT MAKE IS A DIFFERENT PROBLEM FROM A MISSING ONE.
+  // lineErrors answers "what has not been filled in". This answers "what has
+  // been filled in that we cannot press", which is why it is kept apart: a line
+  // can be complete and still be unmakeable. See lib/pcd-size-limits.js.
+  const [sizeErrors, setSizeErrors] = useState({});
   const [nextId, setNextId] = useState(1);
   const [status, setStatus] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -889,6 +906,16 @@ export default function RequestQuoteFormClient() {
       setLineErrors((current) => ({ ...current, [id]: gaps }));
       return;
     }
+    const outOfRange = sizeProblems(item);
+    if (outOfRange.length) {
+      setSizeErrors((current) => ({ ...current, [id]: outOfRange }));
+      return;
+    }
+    setSizeErrors((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setLineErrors((current) => {
       const next = { ...current };
       delete next[id];
@@ -955,6 +982,24 @@ export default function RequestQuoteFormClient() {
         message: incomplete.length === 1
           ? `One line is missing ${describeGaps(incomplete[0].gaps)}. Please complete it so we can price it.`
           : `${incomplete.length} lines are missing details we need to price them. Open each one and finish it.`,
+      });
+      return;
+    }
+
+    // Rows from the configurator and the list drawer never passed through
+    // saveItem, so the size is checked again here rather than trusted.
+    const unmakeable = quoteRows
+      .map((item) => ({ item, problems: sizeProblems(item) }))
+      .filter((entry) => entry.problems.length);
+    if (unmakeable.length) {
+      setSizeErrors(Object.fromEntries(unmakeable.map((entry) => [entry.item.id, entry.problems])));
+      setErrors({});
+      setStatus({
+        type: "error",
+        message:
+          unmakeable.length === 1
+            ? unmakeable[0].problems[0]
+            : `${unmakeable.length} lines are a size we cannot make. Open each one and change it.`,
       });
       return;
     }
@@ -1131,6 +1176,9 @@ export default function RequestQuoteFormClient() {
                 <strong>{item.type || "Product"}</strong>
                 {lineErrors[item.id] ? (
                   <span className={styles.fieldError} style={{ display: "block" }}>Needs {describeGaps(lineErrors[item.id])}</span>
+                ) : null}
+                {sizeErrors[item.id] ? (
+                  <span className={styles.fieldError} style={{ display: "block" }}>{sizeErrors[item.id][0]}</span>
                 ) : null}
               </div>
               <div>{materialText(item) || "-"}</div>
@@ -1354,20 +1402,57 @@ export default function RequestQuoteFormClient() {
                       <input min="1" type="number" value={editingItem.qty} onChange={(event) => updateItem(editingItem.id, { qty: event.target.value })} />
                     </div>
 
-                    {fields.size ? (
-                      <>
-                        {/* Height before width, the same way round as every other
-                            screen and every cut list we print. */}
-                        <div className={styles.field}>
-                          <label>Height (mm)<Required /></label>
-                          <input className={flag("height", "")} min="1" placeholder="700" type="number" value={editingItem.height} onChange={(event) => updateItem(editingItem.id, { height: event.target.value })} />
-                        </div>
-                        <div className={styles.field}>
-                          <label>Width (mm)<Required /></label>
-                          <input className={flag("width", "")} min="1" placeholder="400" type="number" value={editingItem.width} onChange={(event) => updateItem(editingItem.id, { width: event.target.value })} />
-                        </div>
-                      </>
-                    ) : null}
+                    {fields.size ? (() => {
+                      // WHAT WE CAN PRESS, SAID BEFORE IT IS TYPED.
+                      // The range sits beside the label so somebody sees it on
+                      // the way in, and the message under the box only appears
+                      // once a size is actually outside it. A board we have not
+                      // set limits for shows neither, rather than a made up
+                      // range. See lib/pcd-size-limits.js.
+                      const limit = sizeLimitFor(editingItem.material, editingItem.supplierName);
+                      const range = sizeLimitRange(limit);
+                      const outOfRange = checkSize(editingItem);
+                      return (
+                        <>
+                          {/* Height before width, the same way round as every other
+                              screen and every cut list we print. */}
+                          <div className={styles.field}>
+                            <label>
+                              Height (mm)
+                              <Required />
+                              {range ? <span style={sizeRangeStyle}>{range.height}</span> : null}
+                            </label>
+                            <input
+                              className={`${flag("height", "")}${outOfRange.height ? ` ${styles.fieldInputError}` : ""}`}
+                              min={limit ? limit.minHeightMm : 1}
+                              max={limit ? limit.maxHeightMm : undefined}
+                              placeholder="700"
+                              type="number"
+                              value={editingItem.height}
+                              onChange={(event) => updateItem(editingItem.id, { height: event.target.value })}
+                            />
+                            {outOfRange.height ? <span className={styles.fieldError}>{outOfRange.height}</span> : null}
+                          </div>
+                          <div className={styles.field}>
+                            <label>
+                              Width (mm)
+                              <Required />
+                              {range ? <span style={sizeRangeStyle}>{range.width}</span> : null}
+                            </label>
+                            <input
+                              className={`${flag("width", "")}${outOfRange.width ? ` ${styles.fieldInputError}` : ""}`}
+                              min={limit ? limit.minWidthMm : 1}
+                              max={limit ? limit.maxWidthMm : undefined}
+                              placeholder="400"
+                              type="number"
+                              value={editingItem.width}
+                              onChange={(event) => updateItem(editingItem.id, { width: event.target.value })}
+                            />
+                            {outOfRange.width ? <span className={styles.fieldError}>{outOfRange.width}</span> : null}
+                          </div>
+                        </>
+                      );
+                    })() : null}
 
                     {fields.board ? (
                       <div className={`${styles.field} ${styles.productModalColourField}`}>
@@ -1542,6 +1627,14 @@ export default function RequestQuoteFormClient() {
                     // filled in, so pressing Save is never the first anyone hears
                     // of a missing field. Turns green when the line is complete.
                     const gaps = lineGaps(editingItem);
+                    const unmakeable = sizeProblems(editingItem);
+                    if (unmakeable.length) {
+                      return (
+                        <p className={styles.fieldError} style={{ padding: "0 18px", margin: 0, fontSize: 12.5 }}>
+                          {unmakeable[0]}
+                        </p>
+                      );
+                    }
                     const drilling = hingeProblems({
                       hinge_holes: editingItem.type === "Door" && editingItem.preDrill,
                       hinge_qty: editingItem.hingeQty,

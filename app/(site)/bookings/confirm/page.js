@@ -2,6 +2,13 @@ import { Suspense } from "react";
 import BookingConfirmClient from "../BookingConfirmClient";
 import PcdLoader from "@/components/public/PcdLoader";
 import styles from "../../quotes/quote-public.module.css";
+import {
+  BUSINESS_ABN,
+  BUSINESS_PHONE,
+  LEGAL_ENTITY,
+  SALES_EMAIL,
+  TRADING_NAME,
+} from "@/lib/pcd-business-identity";
 
 // The same shell the quote and variation pages use, deliberately. A customer
 // who has approved a quote on this site should recognise where they are, and a
@@ -21,11 +28,10 @@ export default function BookingConfirmPage() {
             alt="Perth Cabinet Doors"
             className={styles.quoteViewLogo}
           />
-          <h1>Confirm your appointment</h1>
-          <p>
-            Check the details below, then tell us whether the time still works. It takes a few seconds and it
-            tells our team whether to head out.
-          </p>
+          <div>
+            <h1>Appointment</h1>
+            <p>Tell us whether the time still suits. It takes a few seconds and it tells our team whether to head out.</p>
+          </div>
         </div>
       </section>
       <main className={styles.quoteViewMain}>
@@ -46,6 +52,19 @@ export default function BookingConfirmPage() {
           <BookingConfirmClient />
         </Suspense>
       </main>
+      {/* The same block the tax invoice closes with, so the page a customer
+          answers on and the invoice they file afterwards say the same thing
+          about who we are. lib/pcd-business-identity.js is the one source. */}
+      <footer className={styles.docFooter}>
+        <div className={styles.docFooterInner}>
+          <span>
+            {TRADING_NAME} is a trading entity under {LEGAL_ENTITY}. ABN {BUSINESS_ABN}.
+          </span>
+          <span>
+            Questions about this page? Email {SALES_EMAIL} or call {BUSINESS_PHONE}.
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

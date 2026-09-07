@@ -1,683 +1,841 @@
+/* ============================================================================
+   THE CUSTOMER DOCUMENT
+   One stylesheet for every page a customer reaches by a link: the quote, the
+   variation, the appointment, the receipt and the access code page.
+
+   IT IS THE TAX INVOICE, ON SCREEN.
+   The layout follows lib/pcd-tax-invoice-pdf.js on purpose. A deep green band
+   carries the logo and the document name, then who it is for and who it is
+   from, then a ruled table whose description cell carries the specification,
+   then the money, then the response. A customer who has had our invoices for
+   years should recognise the paperwork before they read a word of it.
+
+   THE SPECIFICATION IS SLOTS, NOT A SENTENCE.
+   Material, colour, size, edge, profile and hinges sit in six labelled slots
+   in a fixed order, and a slot that does not apply to a line is left empty
+   rather than closed up. That is what lets somebody check one attribute down
+   a column of eight items instead of reading eight sentences.
+
+   EVERY COLOUR IS FROM app/globals.css. Nothing here invents one.
+   ============================================================================ */
+
 .page {
-  min-height: 100dvh;
-  background: #f4efe7;
-  color: #181d27;
-  font-family: "Source Sans 3", Arial, sans-serif;
-}
+  --green-deep: #111b13;
+  --green: #1c2b1e;
+  --green-dark: #2d5e28;
+  --green-mid: #6b9e61;
+  --green-soft: #a8c5a0;
+  --green-panel: #edf4eb;
+  --green-tint: #f5f8f4;
+  --ink: #1a1a18;
+  --ink-soft: #3a3a34;
+  --mut: #5a5a52;
+  --mut-light: #8b8a81;
+  --line: #dbd8cc;
+  --line-strong: #c6c2b4;
+  --stone: #f0ede4;
+  --paper: #faf9f6;
+  --danger: #b42318;
+  --danger-soft: #fdf3f1;
+  --danger-line: #dfbab5;
+  --warning: #dcbf55;
+  --placeholder: #9a978d;
 
-.accessPage {
-  background:
-    radial-gradient(circle at 8% 28%, rgba(191, 124, 45, 0.14) 0 190px, transparent 191px),
-    linear-gradient(180deg, #f7f0e5 0%, #f3eadc 100%);
-  overflow-x: hidden;
-}
+  --doc-font: "Source Sans 3", Arial, "Helvetica Neue", Helvetica, sans-serif;
+  --t-body: 15px;
+  --t-sm: 13.5px;
+  --t-tbl: 13px;
+  --t-xs: 10.5px;
+  --t-total: 20px;
 
-.accessHero {
-  position: relative;
-  min-height: 360px;
-  background:
-    radial-gradient(circle at 88% 6%, rgba(214, 161, 84, 0.2) 0 150px, transparent 151px),
-    linear-gradient(135deg, #2b231b 0%, #604318 52%, #9a651f 100%);
-  color: #ffffff;
-  padding: 52px 22px 130px;
-  overflow: hidden;
-}
+  /* The grouped item table wants more room than 1160 gave it. 1280 is what
+     a 13 inch laptop has, so the document fills that screen and centres on
+     anything larger. One number, and the band, the body, the response bar
+     and the footer all follow it. */
+  --maxw: 1280px;
+  --gut: 34px;
 
-.accessHero::before,
-.accessHero::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-  opacity: 0.14;
-}
-
-.accessHero::before {
-  width: 390px;
-  height: 390px;
-  left: -155px;
-  bottom: -232px;
-  border: 54px solid #e9c083;
-  transform: rotate(18deg);
-}
-
-.accessHero::after {
-  width: 340px;
-  height: 340px;
-  right: -120px;
-  top: -170px;
-  border: 64px solid #f6dfbb;
-  transform: rotate(-12deg);
-}
-
-.accessHeroInner {
-  position: relative;
-  z-index: 1;
-  width: min(1200px, 100%);
-  margin: 0 auto;
-}
-
-.accessLogo {
-  width: 232px;
-  max-width: 46vw;
-  height: auto;
-  display: block;
-  margin-bottom: 26px;
-}
-
-.accessHero h1 {
-  margin: 0;
-  font-family: Montserrat, Arial, sans-serif;
-  font-size: clamp(1.55rem, 2.8vw, 2.25rem);
-  line-height: 1.12;
-  letter-spacing: 0;
-}
-
-.accessHero p {
-  max-width: 680px;
-  margin: 12px 0 0;
-  color: rgba(255, 245, 230, 0.86);
-  font-size: 0.98rem;
-  line-height: 1.5;
-}
-
-.accessMain {
-  width: min(1200px, calc(100% - 36px));
-  margin: -130px auto 0;
-  padding: 0 0 72px;
-  position: relative;
-  z-index: 2;
-}
-
-.accessCard {
-  width: 100%;
-  background: #ffffff;
-  border: 1px solid rgba(112, 75, 30, 0.12);
-  border-radius: 18px;
-  box-shadow: 0 24px 42px rgba(73, 48, 20, 0.14);
-  overflow: hidden;
-}
-
-.accessCardBody {
-  padding: 34px 28px 28px;
-}
-
-.accessIntro {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 26px;
-}
-
-.accessIntro h2 {
-  margin: 0;
-  color: #181d27;
-  font-family: Montserrat, Arial, sans-serif;
-  font-size: 1.55rem;
-  line-height: 1.2;
-  letter-spacing: 0;
-}
-
-.accessIntro p {
-  margin: 0;
-  color: #303846;
-  font-size: 0.98rem;
-  line-height: 1.45;
-}
-
-.accessPage .formStack {
-  gap: 16px;
-}
-
-.accessPage .button {
-  width: 100%;
-  min-height: 34px;
-  border-color: #2c231a;
-  border-radius: 6px;
-  background: #2c231a;
-  font-family: Montserrat, Arial, sans-serif;
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.accessPage .button:hover {
-  border-color: #8a571a;
-  background: #8a571a;
-}
-
-.accessPage .input {
-  min-height: 34px;
-  border-radius: 4px;
-  background: #fbf8f2;
-}
-
-.accessPage .label {
-  gap: 9px;
-  color: #181d27;
-  font-size: 0.92rem;
-  font-weight: 700;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--doc-font);
+  font-size: var(--t-body);
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
 }
 
 .quoteViewPage {
-  background:
-    radial-gradient(circle at 6% 30%, rgba(191, 124, 45, 0.12) 0 190px, transparent 191px),
-    linear-gradient(180deg, #f7f0e5 0%, #f3eadc 100%);
-  overflow-x: hidden;
+  composes: page;
 }
 
-.quoteViewHero {
-  position: relative;
-  min-height: 360px;
-  background:
-    radial-gradient(circle at 88% 6%, rgba(214, 161, 84, 0.2) 0 150px, transparent 151px),
-    linear-gradient(135deg, #2b231b 0%, #604318 52%, #9a651f 100%);
-  color: #ffffff;
-  padding: 54px 22px 136px;
-  overflow: hidden;
+.accessPage {
+  composes: page;
 }
 
-.quoteViewHero::before,
-.quoteViewHero::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-  opacity: 0.14;
+.page *,
+.page *::before,
+.page *::after {
+  box-sizing: border-box;
 }
 
-.quoteViewHero::before {
-  width: 390px;
-  height: 390px;
-  left: -155px;
-  bottom: -232px;
-  border: 54px solid #e9c083;
-  transform: rotate(18deg);
-}
-
-.quoteViewHero::after {
-  width: 340px;
-  height: 340px;
-  right: -120px;
-  top: -170px;
-  border: 64px solid #f6dfbb;
-  transform: rotate(-12deg);
-}
-
-.quoteViewHeroInner {
-  position: relative;
-  z-index: 1;
-  width: min(1540px, calc(100% - 36px));
-  margin: 0 auto;
-}
-
-.quoteViewLogo {
-  width: 232px;
-  max-width: 46vw;
-  height: auto;
-  display: block;
-  margin-bottom: 26px;
-}
-
-.quoteViewHero h1 {
+.page .formStack > p,
+.page .panelBody > p,
+.page .secBody > p {
   margin: 0;
-  font-family: Montserrat, Arial, sans-serif;
-  font-size: clamp(1.55rem, 2.8vw, 2.25rem);
-  line-height: 1.12;
-  letter-spacing: 0;
 }
 
-.quoteViewHero p {
-  max-width: 700px;
-  margin: 12px 0 0;
-  color: rgba(255, 245, 230, 0.86);
-  font-size: 0.98rem;
+.page :focus-visible {
+  outline: 2px solid var(--green-mid);
+  outline-offset: 2px;
+}
+
+/* ── The green band ──────────────────────────────────────────────────────── */
+
+.quoteViewHero,
+.accessHero {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--green);
+  color: #ffffff;
+  padding: 22px 0 24px;
+}
+
+.quoteViewHeroInner,
+.accessHeroInner {
+  width: 100%;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding: 0 var(--gut);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px 28px;
+  flex-wrap: wrap;
+}
+
+.quoteViewLogo,
+.accessLogo {
+  height: 34px;
+  width: auto;
+  display: block;
+}
+
+.quoteViewHeroInner h1,
+.accessHeroInner h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-align: right;
+}
+
+.quoteViewHeroInner p,
+.accessHeroInner p {
+  margin: 5px 0 0;
+  font-size: var(--t-sm);
   line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
+  text-align: right;
+  max-width: 46ch;
 }
 
-.quoteViewMain {
-  width: min(1540px, calc(100% - 36px));
-  margin: -128px auto 0;
-  padding: 0 0 72px;
-  position: relative;
-  z-index: 2;
+/* The document name and its line are one block on the right of the band. */
+.quoteViewHeroInner > div:last-child,
+.accessHeroInner > div:last-child {
+  margin-left: auto;
+}
+
+/* ── The page body ───────────────────────────────────────────────────────── */
+
+.quoteViewMain,
+.accessMain {
+  flex: 1;
+  width: 100%;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding: 22px var(--gut) 44px;
 }
 
 .quoteViewCard {
   display: grid;
-  gap: 24px;
-  width: 100%;
-  border: 1px solid rgba(112, 75, 30, 0.12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 24px 42px rgba(73, 48, 20, 0.14);
-  padding: 28px;
+  gap: 16px;
 }
 
-.quoteViewCard .panel {
-  border-radius: 6px;
-  box-shadow: none;
-  border-color: #e0d5c5;
+/* ── A section, which is the only container ──────────────────────────────
+   Nothing boxed sits inside anything else boxed. A table meets the panel
+   edge rather than drawing a second border a pixel inside the first.       */
+
+.panel {
   background: #ffffff;
+  border: 1px solid var(--line-strong);
+  scroll-margin-top: 118px;
 }
 
-.quoteViewCard .panelHeader {
-  border-bottom: 0;
-  background: #2c231a;
-  color: #ffffff;
-  padding: 12px;
-  font-size: 0.82rem;
-  font-weight: 900;
+.panelHeader {
+  background: var(--green);
+  border-bottom: 1px solid var(--green);
+  padding: 9px 14px;
+  font-size: var(--t-xs);
+  font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: #ffffff;
 }
 
-.quoteViewCard .panelBody {
-  padding: 12px;
+.panelBody {
+  padding: 14px;
+  display: grid;
+  gap: 14px;
 }
+
+/* The money and the decision sit side by side and are dressed as a pair,
+   with the deep green heading the item table uses. */
+.quoteViewTwoColumn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  gap: 16px;
+  align-items: start;
+}
+
+/* ── Who it is for, who it is from ───────────────────────────────────────── */
 
 .quoteViewSummaryGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 72px;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 16px 32px;
 }
 
-.quoteViewCard .summaryItem {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.quoteViewCard .summaryItem span {
-  color: #9a7650;
-  letter-spacing: 0.08em;
-}
-
-.quoteViewCard .summaryItem strong {
-  color: #1f2937;
-  font-family: "Source Sans 3", Arial, sans-serif;
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.quoteViewCard .tableWrap {
-  overflow-x: visible;
-}
-
-.quoteViewCard .table th {
-  background: #6f4918;
-  color: #ffffff;
-  font-size: 0.7rem;
-  letter-spacing: 0.04em;
-}
-
-.quoteViewCard .table th,
-.quoteViewCard .table td {
-  padding: 11px 12px;
-}
-
-.quoteViewCard .table td {
-  color: #253041;
-  font-size: 0.9rem;
-}
-
-.quoteViewCard .table small {
-  display: block;
-  color: #7a674f;
-  margin-top: 4px;
-}
-
-.variationScopeNotice {
-  margin: 0 0 16px;
-  border: 1px solid #c7d8bf;
-  border-left: 4px solid #6b9e61;
-  border-radius: 12px;
-  background: #f8fbf6;
-  color: #1f2937;
-  padding: 12px 14px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.variationScopeNotice strong {
-  display: block;
-  margin-bottom: 3px;
-  color: #17321f;
-  font-size: 0.92rem;
-  font-weight: 800;
-}
-
-.variationScopeFootnote {
-  margin: 10px 0 0;
-  color: #5a6470;
-  font-size: 0.82rem;
-  line-height: 1.45;
-}
-
-.variationChangeSpec {
+.summaryItem {
   display: grid;
   gap: 3px;
-  min-width: 220px;
+  align-content: start;
+  min-width: 0;
 }
 
-.variationChangeSpec > span {
-  color: #9a7650;
-  font-size: 0.66rem;
-  font-weight: 800;
+.summaryItem > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 19px;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--green-dark);
+}
+
+.summaryItem > strong {
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--ink);
+  line-height: 1.4;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.summaryItemMissing > span {
+  color: var(--danger);
+}
+
+/* The tile that edits itself. Nothing opens below it, the value is replaced
+   by its field or fields in place. */
+.detailAdd,
+.detailEdit {
+  font: inherit;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+  border: 0;
+}
+
+.detailAdd {
+  font-size: var(--t-body);
+  font-weight: 700;
+  color: var(--danger);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  justify-self: start;
+}
+
+.detailAdd:hover {
+  color: var(--ink);
+}
+
+.detailEdit {
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mut);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.detailEdit:hover {
+  color: var(--green-dark);
+}
+
+.detailFields {
+  display: grid;
+  gap: 6px;
+}
+
+.detailInput {
+  font: inherit;
+  font-size: var(--t-sm);
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+.detailInput::placeholder {
+  color: var(--placeholder);
+}
+
+.detailError {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--t-xs);
+  color: var(--danger);
+}
+
+.inputError {
+  border-color: var(--danger);
+}
+
+/* ── The item table ──────────────────────────────────────────────────────
+   Full grid, because a trade customer checks a figure against its heading
+   and the rules are what make that possible.                              */
+
+/* A table meets the panel edge instead of drawing a second border a pixel
+   inside the first. It only pulls up to the header when it is the first thing
+   in the body, so a notice above it keeps its gap. */
+.tableWrap {
+  overflow-x: auto;
+  margin: 0 -14px -14px;
+}
+
+.panelBody > .tableWrap:first-child {
+  margin-top: -14px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-tbl);
+}
+
+.table thead th {
+  text-align: left;
+  font-size: var(--t-xs);
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: #ffffff;
+  background: var(--green);
+  padding: 9px 10px;
+  white-space: nowrap;
+  vertical-align: middle;
+  border-right: 1px solid rgba(255, 255, 255, 0.24);
 }
 
-.variationChangeSpec > strong {
-  color: #1f2937;
-  font-size: 0.9rem;
-  font-weight: 800;
+.table thead th:last-child {
+  border-right: 0;
 }
 
-.quoteViewCard .variationChangeSpec small {
-  margin-top: 0;
+.table tbody td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.table tbody td:last-child {
+  border-right: 0;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table th[data-align="right"],
+.table td[data-align="right"] {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th[data-align="center"],
+.table td[data-align="center"] {
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .quoteItemsPublicTable {
-  width: 100%;
-  table-layout: fixed;
+  composes: table;
+  font-size: 12px;
 }
 
-.quoteItemsMobileList {
-  display: none;
+.quoteItemsPublicTable thead th,
+.quoteItemsPublicTable tbody td {
+  border-right: 0;
+  padding: 6px 8px;
 }
 
-/* Quote Items stops at five rows and scrolls inside itself, so a long quote
-   does not push the totals and the Approve button off the bottom of the page.
-   The max-height is set inline from the measured rows; this only supplies the
-   scrolling and the edge that shows there is more below.
-
-   overflow-x is stated as well as overflow-y: setting one axis to auto forces
-   a `visible` on the other axis to compute as auto anyway, and the desktop
-   wrapper sets overflow-x: visible. Saying both keeps it from being a surprise. */
-.quoteItemsCapped,
-.quoteViewCard .quoteItemsCapped {
-  overflow-x: auto;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  border-bottom: 1px solid #e0d6c6;
+.quoteItemsPublicTable thead th {
+  font-size: 10px;
 }
 
-/* The header has to stay put once the rows start moving under it, otherwise
-   five rows in you are reading unlabelled columns. It already carries its own
-   background, so nothing shows through. */
-.quoteItemsCapped thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+/* THE FOUR DESCRIPTIVE COLUMNS READ AS ONE BLOCK.
+   Item, size, profile and hinges describe the same thing, so there are no
+   rules between them. The rule returns after hinges, and the three money
+   columns stay tabulated, which is what a customer checks a figure against.
+   That is also what lets a note run the width of the four without looking
+   like it has broken out of a cell. */
+.quoteItemsPublicTable th:nth-child(2),
+.quoteItemsPublicTable td:nth-child(2),
+.quoteItemsPublicTable th:nth-child(3),
+.quoteItemsPublicTable td:nth-child(3),
+.quoteItemsPublicTable th:nth-child(4),
+.quoteItemsPublicTable td:nth-child(4) {
+  border-right: 0;
 }
 
-.quoteItemsScrollNote {
-  color: #7c725f;
-  font-size: 0.76rem;
-  margin: 8px 0 0;
-}
-
-.quoteViewCard .quoteItemsPublicTable th {
-  border-top: 1px solid #d8cbb8;
-  border-bottom: 1px solid #d8cbb8;
-  background: #f4f0e8;
-  color: #7c725f;
-  font-size: 0.56rem;
-  letter-spacing: 0.07em;
-  line-height: 1.15;
-  white-space: normal;
-}
-
-.quoteViewCard .quoteItemsPublicTable td {
-  border-bottom: 1px solid #ebe1d3;
-  color: #001f36;
-  font-size: 0.74rem;
-  line-height: 1.25;
+/* A figure sits against the middle of the item it belongs to, not against the
+   top of a cell four lines tall. */
+.quoteItemsPublicTable td:nth-child(n + 6) {
   vertical-align: middle;
-  overflow-wrap: anywhere;
 }
 
-.quoteItemsPublicTable th:nth-child(1),
-.quoteItemsPublicTable td:nth-child(1) {
-  width: 3%;
-}
-
+/* The name and its three lines take a settled width, and the size never
+   wraps mid measurement. */
 .quoteItemsPublicTable th:nth-child(2),
 .quoteItemsPublicTable td:nth-child(2) {
-  width: 16%;
+  width: 210px;
 }
 
 .quoteItemsPublicTable th:nth-child(3),
 .quoteItemsPublicTable td:nth-child(3) {
-  width: 14%;
+  white-space: nowrap;
 }
 
-.quoteItemsPublicTable th:nth-child(4),
-.quoteItemsPublicTable td:nth-child(4) {
-  width: 7%;
+.quoteItemsDesktopTable {
+  composes: tableWrap;
 }
 
-.quoteItemsPublicTable th:nth-child(5),
-.quoteItemsPublicTable td:nth-child(5) {
-  width: 5%;
+/* ── ONE CARD A BOARD ─────────────────────────────────────────────────
+   The board is said once at the top of its group and its three columns
+   come out of the rows underneath, so what is left in a row is what
+   actually differs from the line above it. */
+.lineGroup {
+  overflow: hidden;
 }
 
-.quoteItemsPublicTable th:nth-child(6),
-.quoteItemsPublicTable td:nth-child(6) {
-  width: 12%;
+.lineGroupHead {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  background: var(--green-panel);
+  border-bottom: 1px solid var(--green-soft);
 }
 
-.quoteItemsPublicTable th:nth-child(7),
-.quoteItemsPublicTable td:nth-child(7) {
-  width: 12%;
-}
-
-.quoteItemsPublicTable th:nth-child(8),
-.quoteItemsPublicTable td:nth-child(8) {
-  width: 13%;
-}
-
-.quoteItemsPublicTable th:nth-child(9),
-.quoteItemsPublicTable td:nth-child(9) {
-  width: 8%;
-  text-align: right;
-}
-
-.quoteItemsPublicTable th:nth-child(10),
-.quoteItemsPublicTable td:nth-child(10) {
-  width: 13%;
-  text-align: right;
-}
-
-.quoteItemDetailStack {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.quoteItemDetailStack strong {
-  color: #001f36;
-  font-size: 0.78rem;
-  line-height: 1.2;
-}
-
-.quoteItemDetailStack span {
-  color: #253041;
-  font-size: 0.72rem;
-  line-height: 1.2;
-}
-
-.quoteLineClientNote {
-  color: #253041;
-  font-size: 0.74rem;
-  line-height: 1.35;
-  white-space: pre-wrap;
-}
-
-.quoteLineClientNoteEmpty {
-  color: #9a8b78;
-}
-
-.quoteLineClientNote strong {
-  color: #2c231a;
-}
-
-.quoteItemNumber {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: #2c231a;
-  color: #ffffff;
-  font-size: 0.72rem;
-  font-weight: 900;
-}
-
-.publicSelectionTile {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  color: inherit;
-  font: inherit;
-}
-
-.publicSelectionTile img {
-  width: 30px;
-  height: 30px;
-  display: block;
-  border: 1px solid #d8cbb8;
-  border-radius: 4px;
-  background: #ffffff;
-  object-fit: contain;
-}
-
-.publicSelectionTile span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.publicSelectionTileButton {
-  width: 100%;
-  border: 0;
-  background: transparent;
+.lineGroupSwatch {
+  width: 46px;
+  height: 46px;
+  flex: none;
   padding: 0;
-  text-align: left;
+  border: 1px solid var(--green-soft);
+  background: #ffffff;
+  overflow: hidden;
+  display: block;
+}
+
+button.lineGroupSwatch {
   cursor: pointer;
 }
 
-.publicSelectionTileButton:hover span {
-  color: #8a571a;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+button.lineGroupSwatch:hover {
+  border-color: var(--green-dark);
+}
+
+.lineGroupSwatch img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lineGroupNames {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.lineGroupName {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.lineGroupPairs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  margin: 0;
+}
+
+.lineGroupPairs > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.lineGroupPairs dt {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--green-dark);
+}
+
+.lineGroupPairs dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+
+.lineGroupSum {
+  margin-left: auto;
+  text-align: right;
+  font-size: 12px;
+  color: var(--mut);
+  white-space: nowrap;
+}
+
+.lineGroupSum b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.lineGroup .tableWrap,
+.lineGroup .quoteItemsMobileList {
+  margin: 0;
+  border: 0;
+}
+
+.quoteItemName {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ── SIZE AND QUANTITY, THE PAIR A CUSTOMER CHECKS TOGETHER ──
+   Sat apart, the eye crosses the whole row between the two. Sat together
+   and marked off, one glance answers both. */
+.table th[data-key],
+.table td[data-key] {
+  background: var(--green-tint);
+}
+
+.table thead th[data-key] {
+  background: #25392b;
+}
+
+.table th[data-key="start"],
+.table td[data-key="start"] {
+  border-left: 1px solid var(--line-strong);
+}
+
+.table th[data-key="end"],
+.table td[data-key="end"] {
+  border-right: 1px solid var(--line-strong);
+}
+
+.table thead th[data-key="start"] {
+  border-left-color: rgba(255, 255, 255, 0.38);
+}
+
+.table thead th[data-key="end"] {
+  border-right-color: rgba(255, 255, 255, 0.38);
+}
+
+/* The money and the note each open with an edge of their own. */
+.table th[data-zone],
+.table td[data-zone] {
+  border-left: 1px solid var(--line-strong);
+}
+
+.table thead th[data-zone] {
+  border-left-color: rgba(255, 255, 255, 0.38);
+}
+
+.sizeCell {
+  white-space: nowrap;
+}
+
+.sizeUnit {
+  color: var(--mut);
+  font-weight: 400;
+}
+
+.noteButton {
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--green-dark);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.noteButton:hover:not([disabled]) {
+  border-color: var(--green-dark);
+  background: var(--green-tint);
+}
+
+.noteButton[disabled] {
+  color: #b3b0a6;
+  cursor: default;
+}
+
+/* The line number, quiet, in its own narrow column. */
+.quoteItemNumber {
+  font-variant-numeric: tabular-nums;
+  color: var(--mut);
+  font-size: var(--t-tbl);
+}
+
+/* Item name, then the six labelled slots. */
+.quoteItemDetailStack {
+  display: grid;
+  gap: 2px;
+}
+
+.quoteItemDetailStack > strong {
+  font-size: var(--t-body);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.quoteItemDetailStack > span {
+  font-size: var(--t-sm);
+  color: var(--mut);
+}
+
+.specGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px 20px;
+  margin: 6px 0 0;
+}
+
+.table .specGrid {
+  margin-top: 0;
+}
+
+.specSlot {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.specSlot dt {
+  margin: 0;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--green-dark);
+}
+
+.specSlot dd {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  color: var(--ink);
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
+
+.quoteItemYes {
+  color: var(--green-dark);
+  font-weight: 700;
+}
+
+/* A dash is an absence. A stated negative is a value, so it is set in the
+   ink of the page rather than in the grey we use for nothing to report. */
+.quoteItemNo {
+  color: var(--mut);
+}
+
+.quoteItemStated {
+  color: var(--ink);
 }
 
 .quotePreviewName {
   display: inline;
-  min-width: 0;
 }
 
 .quotePreviewTextButton {
-  border: 0;
-  background: transparent;
-  color: #6f4918;
-  padding: 0;
   font: inherit;
-  font-weight: 800;
+  font-size: var(--t-sm);
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: inline;
   text-align: left;
   text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-  overflow-wrap: anywhere;
+  text-decoration-color: var(--green-soft);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 .quotePreviewTextButton:hover {
-  color: #8a571a;
+  color: var(--green-dark);
+  text-decoration-color: var(--green-dark);
 }
 
-.imagePreviewOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
+/* ── The same items on a phone ───────────────────────────────────────────
+   One card an item, everything visible. The specification is two columns
+   so a word never breaks, and the figures are right aligned at the foot in
+   the size of the labels around them, so they do not become the feature.  */
+
+.quoteItemsMobileList {
+  display: none;
+  margin: -14px;
+}
+
+.quoteItemsMobileList .specGrid {
+  grid-template-columns: 1fr 1fr;
+  gap: 9px 16px;
+}
+
+.quoteItemsMobileList .specEmpty {
+  display: none;
+}
+
+.quoteItemsMobileList .specSlot dd {
+  font-size: var(--t-body);
+}
+
+.quoteItemMobileCard {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
   display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(24, 29, 39, 0.78);
+  gap: 4px;
 }
 
-.imagePreviewModal {
-  width: min(920px, 100%);
-  min-height: min(680px, calc(100dvh - 48px));
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 14px;
-  justify-items: center;
-  border: 1px solid #d7c7b4;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 18px;
-  box-shadow: 0 24px 60px rgba(34, 25, 16, 0.26);
+.quoteItemsMobileList > .quoteItemMobileCard:last-child {
+  border-bottom: 0;
 }
 
-.imagePreviewModal img {
-  width: 100%;
-  height: 100%;
-  max-height: calc(100dvh - 190px);
-  display: block;
-  object-fit: contain;
-}
-
-.imagePreviewModal p {
-  margin: 0;
-  color: #2c231a;
-  font-size: 0.95rem;
-  font-weight: 800;
-  text-align: center;
-}
-
-.imagePreviewClose {
-  justify-self: end;
-  min-height: 34px;
-  border: 1px solid #d7c7b4;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #2c231a;
-  padding: 0 12px;
+.quoteItemMobileHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   font: inherit;
-  font-size: 0.82rem;
-  font-weight: 800;
-  cursor: pointer;
+  text-align: left;
+  color: inherit;
 }
 
-.imagePreviewClose:hover {
-  border-color: #8a571a;
-  color: #8a571a;
-}
-
-.quoteViewTwoColumn {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-  gap: 18px;
-}
-
-.quoteViewCard .totals {
-  width: 100%;
+.quoteItemMobileHeader p {
   margin: 0;
-  border: 0;
-  border-radius: 0;
-  padding: 4px 0 0;
+  font-size: var(--t-body);
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
 }
 
-.quoteViewCard .totalRow {
-  color: #253041;
-  font-size: 0.94rem;
+.quoteItemMobileKey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  padding: 8px 10px;
+  margin: 2px 0 4px;
+  background: var(--green-tint);
+  border: 1px solid var(--line);
 }
 
-.quoteViewCard .totalRowGrand {
-  color: #111827;
-  font-weight: 800;
+.quoteItemMobileKey > div {
+  display: grid;
+  gap: 1px;
+}
+
+.quoteItemMobileKey span {
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--green-dark);
+}
+
+.quoteItemMobileKey strong {
+  font-size: var(--t-body);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.quoteItemMobileHeader .noteButton {
+  margin-left: auto;
+}
+
+.quoteItemMobileFigures {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 16px;
+  align-items: baseline;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.quoteItemMobileFigures > div {
+  display: flex;
+  gap: 7px;
+}
+
+.quoteItemMobileFigures span {
+  color: var(--mut);
+}
+
+.quoteItemMobileFigures strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.quoteItemMobileFigures > div:last-child strong {
+  font-weight: 700;
+}
+
+/* ── Money ───────────────────────────────────────────────────────────────── */
+
+.totals {
+  display: grid;
 }
 
 .publicTotalsBreakdown {
@@ -686,11 +844,11 @@
 
 .publicCostRow {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 18px;
-  border-bottom: 0;
-  color: #5f5346;
-  padding: 7px 0;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .publicCostRow > span {
@@ -699,442 +857,118 @@
   min-width: 0;
 }
 
-.publicCostRow > span strong {
-  color: #2c231a;
-  font-size: 0.86rem;
+.publicCostRow strong {
+  font-size: var(--t-sm);
   font-weight: 700;
 }
 
 .publicCostRow small {
-  color: #8a7a66;
-  font-size: 0.74rem;
-  line-height: 1.25;
+  font-size: var(--t-xs);
+  color: var(--mut);
+  line-height: 1.45;
 }
 
 .publicCostRow > strong {
-  color: #40372e;
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .publicTotalFocus {
   display: grid;
-  gap: 7px;
-  margin-top: 14px;
-  border: 0;
-  border-top: 1px solid #d7c7b4;
-  border-radius: 0;
-  background: transparent;
-  padding: 14px 0 0;
-}
-
-.publicTotalFocus .totalRow {
-  color: #2c231a;
-  font-size: 0.95rem;
-}
-
-.publicTotalFocus .totalRowGrand {
-  margin-top: 5px;
-  border-top-color: #c6ae91;
-  color: #111827;
-  font-size: 1.08rem;
-  font-weight: 900;
-}
-
-.publicTotalFocus .totalRowGrand strong {
-  font-size: 1.18rem;
-}
-
-.attachmentModalButton {
-  min-height: 40px;
-  width: fit-content;
-  margin-top: 14px;
-  border: 1px solid #d7c7b4;
-  border-radius: 999px;
-  background: #fbf8f2;
-  color: #2c231a;
-  padding: 0 15px;
-  font: inherit;
-  font-size: 0.86rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.attachmentModalButton:hover {
-  border-color: #9a651f;
-  color: #8a571a;
-}
-
-.quoteViewCard .button {
-  border-color: #2c231a;
-  background: #2c231a;
-}
-
-.quoteViewCard .button:hover {
-  border-color: #8a571a;
-  background: #8a571a;
-}
-
-.modalOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(24, 29, 39, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-.attachmentModal {
-  width: min(1280px, 100%);
-  max-height: min(86vh, 720px);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  overflow: hidden;
-  border: 1px solid #cdbb9f;
-  border-radius: 20px;
-  background: #ffffff;
-  box-shadow: 0 30px 70px rgba(34, 25, 16, 0.28);
-}
-
-.attachmentModalHeader {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  border-bottom: 1px solid #d7c7b4;
-  background: #f4e4ce;
-  padding: 20px 24px;
-}
-
-.attachmentModalHeader span {
-  color: #8a571a;
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.attachmentModalHeader h2 {
-  margin: 2px 0 0;
-  color: #181d27;
-  font-family: Montserrat, Arial, sans-serif;
-  font-size: 1.2rem;
-  letter-spacing: 0;
-}
-
-.attachmentModalHeader p {
-  margin: 8px 0 0;
-  color: #665746;
-  font-size: 0.92rem;
-}
-
-.attachmentModalBody {
-  overflow: auto;
-  padding: 20px 22px;
-}
-
-.attachmentModalTable {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.attachmentModalTable th,
-.attachmentModalTable td {
-  border-bottom: 1px solid #eee4d8;
-  padding: 13px 8px;
-  text-align: left;
-  font-size: 0.86rem;
-}
-
-.attachmentModalTable th {
-  background: #fbf8f2;
-  color: #9a7650;
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.attachmentModalTable td:last-child,
-.attachmentModalTable th:last-child {
-  text-align: right;
-}
-
-.attachmentModalFooter {
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid #eee4d8;
-  padding: 16px 22px 20px;
-}
-
-.hero {
-  background: linear-gradient(180deg, #242424 0%, #111111 100%);
-  color: #ffffff;
-  padding: 28px 22px;
-}
-
-.heroInner {
-  width: min(1120px, 100%);
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.logo {
-  width: 180px;
-  max-width: 38vw;
-  height: auto;
-  display: block;
-}
-
-.hero h1 {
-  margin: 0;
-  font-family: Montserrat, Arial, sans-serif;
-  font-size: clamp(1.8rem, 4vw, 3rem);
-  line-height: 1;
-}
-
-.hero p {
-  margin: 8px 0 0;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.main {
-  width: min(1120px, calc(100% - 36px));
-  margin: 0 auto;
-  padding: 28px 0 48px;
-}
-
-.panel {
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(24, 29, 39, 0.08);
-  border-radius: 20px;
-  box-shadow: 0 18px 34px rgba(24, 29, 39, 0.08);
-  overflow: hidden;
-}
-
-.panelHeader {
-  padding: 16px 18px;
-  border-bottom: 1px solid rgba(24, 29, 39, 0.08);
-  background: #ffffff;
-  font-family: Montserrat, Arial, sans-serif;
-  font-weight: 700;
-}
-
-.panelBody {
-  padding: 18px;
-}
-
-.formStack {
-  display: grid;
-  gap: 14px;
-}
-
-.label {
-  display: grid;
-  gap: 7px;
-  color: #2f3744;
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.publicPaymentAck {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-  border: 1px solid #d7dee8;
-  border-radius: 12px;
-  background: #f8fbf6;
-  color: #1f2937;
-  padding: 12px;
-  font-size: 0.88rem;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.publicPaymentAck input {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  accent-color: #17321f;
-}
-
-.input,
-.textarea {
-  width: 100%;
-  border: 1px solid #d7dee8;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #1f2937;
-  padding: 10px 12px;
-  font: inherit;
-  box-sizing: border-box;
-}
-
-.input {
-  min-height: 44px;
-}
-
-.textarea {
-  min-height: 110px;
-  resize: vertical;
-}
-
-.button,
-.buttonSecondary,
-.buttonDanger {
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  padding: 0 16px;
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.button {
-  border: 1px solid #181d27;
-  background: #181d27;
-  color: #ffffff;
-}
-
-.buttonSecondary {
-  border: 1px solid #d7dee8;
-  background: #ffffff;
-  color: #243041;
-}
-
-.buttonDanger {
-  border: 1px solid #b42318;
-  background: #b42318;
-  color: #ffffff;
-}
-
-.button:disabled,
-.buttonSecondary:disabled,
-.buttonDanger:disabled {
-  opacity: 0.7;
-  cursor: default;
-}
-
-.message {
-  margin: 0;
-  border: 1px solid #d7dee8;
-  border-radius: 12px;
-  background: #f8fafc;
-  color: #334155;
-  padding: 10px 12px;
-  font-size: 0.9rem;
-}
-
-.noteText {
-  margin: 0;
-  color: #334155;
-  font-size: 0.94rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
-.noteText strong {
-  color: #181d27;
-}
-
-.attachmentList {
-  display: grid;
-  gap: 10px;
-}
-
-.attachmentList a {
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  max-width: 100%;
-  border: 1px solid #d7dee8;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #181d27;
-  padding: 0 14px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-
-.summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.summaryItem {
-  display: grid;
-  gap: 4px;
-  padding: 12px;
-  border-radius: 14px;
-  background: #fbfcfe;
-  border: 1px solid rgba(24, 29, 39, 0.08);
-}
-
-.summaryItem span {
-  color: #697383;
-  font-size: 0.75rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.summaryItem strong {
-  font-family: Montserrat, Arial, sans-serif;
-}
-
-.tableWrap {
-  overflow-x: auto;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  padding: 12px;
-  border-bottom: 1px solid rgba(24, 29, 39, 0.08);
-  text-align: left;
-  vertical-align: top;
-}
-
-.table th {
-  color: #687386;
-  font-size: 0.78rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  background: #f8f4ef;
-}
-
-.totals {
-  display: grid;
-  gap: 8px;
-  width: min(360px, 100%);
-  margin-left: auto;
+  margin-top: 4px;
 }
 
 .totalRow {
   display: flex;
   justify-content: space-between;
-  gap: 18px;
+  gap: 20px;
+  padding: 6px 0;
+  font-size: var(--t-sm);
+  color: var(--mut);
+}
+
+.totalRow strong {
+  color: var(--ink);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .totalRowGrand {
-  border-top: 1px solid rgba(24, 29, 39, 0.14);
-  padding-top: 10px;
-  font-size: 1.1rem;
+  border-top: 2px solid var(--ink);
+  margin-top: 2px;
+  padding-top: 12px;
+  font-size: var(--t-total);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  align-items: baseline;
+}
+
+.totalRowGrand strong {
+  font-weight: 700;
+  font-size: var(--t-total);
+  color: var(--green-dark);
+}
+
+/* ── Forms and the response ──────────────────────────────────────────────── */
+
+.formStack {
+  display: grid;
+  gap: 13px;
+}
+
+.label {
+  display: grid;
+  gap: 5px;
+  font-size: var(--t-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.input,
+.textarea {
+  font: inherit;
+  font-size: var(--t-body);
+  font-weight: 400;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 9px 11px;
+  width: 100%;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--placeholder);
+}
+
+.textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.publicPaymentAck {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--mut);
+  cursor: pointer;
+}
+
+.publicPaymentAck input {
+  margin: 2px 0 0;
+  accent-color: var(--green-dark);
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.publicPaymentAck strong {
+  color: var(--ink);
+  font-weight: 700;
 }
 
 .actions {
@@ -1143,434 +977,547 @@
   gap: 10px;
 }
 
-@media (max-width: 760px) {
-  .accessHero {
-    min-height: 330px;
-    padding: 34px 18px 116px;
-  }
+.button,
+.buttonDanger,
+.buttonSecondary {
+  font: inherit;
+  font-size: var(--t-body);
+  font-weight: 700;
+  padding: 10px 20px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid var(--green-dark);
+  background: var(--green-dark);
+  color: #ffffff;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
 
-  .accessLogo {
-    width: 190px;
-    max-width: 68vw;
-    margin-bottom: 22px;
-  }
+.button:hover {
+  background: var(--green-deep);
+  border-color: var(--green-deep);
+}
 
-  .accessMain {
-    width: min(100% - 28px, 1200px);
-    margin-top: -104px;
-    padding-bottom: 48px;
-  }
+.buttonDanger {
+  background: none;
+  color: var(--danger);
+  border-color: var(--danger-line);
+}
 
-  .accessCardBody {
-    padding: 24px 18px 20px;
-  }
+.buttonDanger:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
 
-  .quoteViewHero {
-    min-height: 330px;
-    padding: 34px 18px 116px;
-  }
+.buttonSecondary {
+  background: none;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
 
-  .quoteViewLogo {
-    width: 190px;
-    max-width: 68vw;
-    margin-bottom: 22px;
-  }
+.buttonSecondary:hover {
+  border-color: var(--ink);
+}
 
-  .quoteViewMain {
-    width: min(100% - 28px, 1200px);
-    margin-top: -104px;
-    padding-bottom: 48px;
-  }
+.button:disabled,
+.buttonDanger:disabled,
+.buttonSecondary:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
 
-  .quoteViewCard {
-    gap: 18px;
-    padding: 18px;
-  }
+.acceptBlocked {
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-left: 3px solid var(--danger);
+  padding: 9px 12px;
+}
 
-  .quoteViewSummaryGrid,
+.depositPending {
+  font-size: var(--t-sm);
+  line-height: 1.55;
+  color: var(--ink);
+  background: #fdfaf0;
+  border-left: 3px solid var(--warning);
+  padding: 10px 12px;
+}
+
+.message {
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+/* Notes and terms run the width of their panel. They were capped at a 78
+   character reading measure, which is right for a page of prose and wrong
+   here: it wrapped a numbered term half way across a panel that was twice as
+   wide and left the rest of the box empty. The tax invoice wraps its closing
+   text to the full page width too. */
+.noteText {
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: 1.65;
+  color: var(--mut);
+}
+
+.noteText strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* ── The response bar ────────────────────────────────────────────────────
+   A long order puts the accept form well below the fold, and a customer who
+   does not scroll to the bottom never answers. This sits on the bottom edge
+   until the response section is on screen and then takes itself away. It
+   accepts nothing: it carries you to the form, because accepting still needs
+   a name, a number and a tick.                                            */
+
+.responseBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  background: #ffffff;
+  border-top: 1px solid var(--line-strong);
+  box-shadow: 0 -6px 18px rgba(26, 26, 24, 0.09);
+}
+
+.responseBarInner {
+  width: 100%;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px var(--gut);
+}
+
+.responseBarText {
+  display: grid;
+  gap: 1px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.responseBarText span {
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--mut);
+}
+
+.responseBarText strong {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.responseBarButtons {
+  display: flex;
+  gap: 10px;
+}
+
+.responseBarButtons .button,
+.responseBarButtons .buttonSecondary {
+  padding: 8px 16px;
+  font-size: var(--t-sm);
+}
+
+/* ── The variation ───────────────────────────────────────────────────────── */
+
+.variationScopeNotice {
+  display: grid;
+  gap: 4px;
+  padding: 11px 13px;
+  background: var(--green-panel);
+  border-left: 3px solid var(--green-mid);
+  font-size: var(--t-sm);
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 0;
+}
+
+.variationScopeNotice strong {
+  font-weight: 700;
+}
+
+.variationScopeFootnote {
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  color: var(--mut);
+}
+
+.variationChangeSpec {
+  display: grid;
+  gap: 2px;
+  font-size: var(--t-sm);
+}
+
+.variationChangeSpec strong {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.variationChangeSpec span {
+  color: var(--mut);
+}
+
+/* ── The appointment details, as a green header table ────────────────────── */
+
+.detailTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+
+.detailTable thead th {
+  text-align: left;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: var(--green);
+  padding: 9px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.detailTable thead th:last-child {
+  border-right: 0;
+}
+
+.detailTable tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.detailTable tbody td:last-child {
+  border-right: 0;
+}
+
+.detailTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.detailTable tbody td:first-child {
+  width: 220px;
+  font-weight: 700;
+  color: var(--mut);
+  font-size: var(--t-xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.detailTableWanting td:last-child {
+  color: var(--danger);
+}
+
+/* ── Modals ──────────────────────────────────────────────────────────────── */
+
+.modalOverlay,
+.imagePreviewOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(17, 27, 19, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.attachmentModal,
+.imagePreviewModal {
+  background: #ffffff;
+  border: 1px solid var(--line-strong);
+  width: 100%;
+  max-width: 720px;
+  max-height: 86vh;
+  overflow: auto;
+}
+
+.attachmentModalHeader {
+  padding: 14px 18px;
+  background: var(--green);
+  color: #ffffff;
+}
+
+.attachmentModalHeader span {
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.attachmentModalHeader h2 {
+  margin: 3px 0 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.attachmentModalHeader p {
+  margin: 4px 0 0;
+  font-size: var(--t-sm);
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.attachmentModalBody {
+  padding: 14px 18px;
+  overflow-x: auto;
+}
+
+.attachmentModalTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+
+.attachmentModalTable th {
+  text-align: left;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--mut);
+  padding: 0 12px 8px 0;
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+
+.attachmentModalTable td {
+  padding: 9px 12px 9px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.attachmentModalTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.attachmentModalFooter {
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.attachmentModalButton {
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 700;
+  color: var(--green-dark);
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 8px 14px;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.attachmentModalButton:hover {
+  border-color: var(--green-dark);
+}
+
+.imagePreviewModal {
+  max-width: 520px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+
+.imagePreviewModal img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+}
+
+.imagePreviewModal p {
+  margin: 0;
+  font-size: var(--t-sm);
+  font-weight: 700;
+}
+
+.imagePreviewClose {
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 7px 14px;
+  cursor: pointer;
+  justify-self: end;
+}
+
+.imagePreviewClose:hover {
+  border-color: var(--ink);
+}
+
+/* ── The access code page ────────────────────────────────────────────────── */
+
+.accessMain {
+  display: grid;
+  place-items: start center;
+}
+
+.accessCard {
+  composes: panel;
+  width: 100%;
+  max-width: 520px;
+}
+
+.accessCardBody {
+  composes: panelBody;
+}
+
+.accessIntro {
+  font-size: var(--t-sm);
+  line-height: 1.6;
+  color: var(--mut);
+}
+
+/* ── The footer line ─────────────────────────────────────────────────────── */
+
+.docFooter {
+  border-top: 1px solid var(--line);
+  padding: 16px 0 22px;
+  font-size: var(--t-xs);
+  line-height: 1.7;
+  color: var(--mut);
+}
+
+.docFooterInner {
+  width: 100%;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding: 0 var(--gut);
+  display: grid;
+  gap: 3px;
+}
+
+/* ── Narrower screens ────────────────────────────────────────────────────── */
+
+@media (max-width: 1000px) {
   .quoteViewTwoColumn {
-    grid-template-columns: 1fr;
-  }
-
-  .modalOverlay {
-    padding: 12px;
-  }
-
-  .attachmentModalTable {
-    min-width: 720px;
-  }
-
-  .heroInner {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .summaryGrid {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 520px) {
-  .page,
-  .quoteViewPage,
-  .quoteApprovalPage {
-    overflow-x: hidden;
-  }
-
-  .quoteViewShell,
-  .quoteApprovalShell,
-  .quotePublicShell {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .heroTitle,
-  .quoteViewTitle,
-  .quoteApprovalTitle {
-    font-size: 34px;
-    line-height: 1.08;
-  }
-
-  .quoteViewCard,
-  .approvalCard,
-  .totalsCard {
-    min-width: 0;
-    padding: 18px;
-  }
-
-  .quoteViewHeader,
-  .quoteActions,
-  .approvalActions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .quoteActions a,
-  .quoteActions button,
-  .approvalActions button {
-    width: 100%;
-  }
-
-  .summaryGrid,
-  .approvalGrid,
-  .totalsGrid,
-  .detailGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .tableWrap,
-  .quoteViewCard .tableWrap {
-    margin-left: -18px;
-    margin-right: -18px;
-    overflow-x: auto;
-    padding-left: 18px;
-    padding-right: 18px;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .quoteViewCard .quoteItemsDesktopTable {
+@media (max-width: 860px) {
+  .quoteItemsDesktopTable {
     display: none;
   }
 
   .quoteItemsMobileList {
-    display: grid;
-    gap: 14px;
+    display: block;
+  }
+}
+
+@media (max-width: 760px) {
+  .page {
+    --gut: 20px;
   }
 
-  .quoteItemMobileCard {
-    display: grid;
-    gap: 0;
-    border: 1px solid #dfd2bf;
-    border-radius: 8px;
-    background: #fffaf3;
-    padding: 0;
-    overflow: hidden;
-    box-shadow: 0 12px 28px rgba(44, 35, 26, 0.08);
+  .quoteViewHero,
+  .accessHero {
+    padding: 12px 0;
   }
 
-  .quoteItemMobileCardOpen {
-    gap: 14px;
-  }
-
-  .quoteItemMobileHeader {
-    width: 100%;
-    display: flex;
+  .quoteViewHeroInner,
+  .accessHeroInner {
     align-items: center;
-    gap: 12px;
-    border: 0;
-    background: transparent;
-    padding: 16px;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
+    flex-wrap: nowrap;
+    gap: 16px;
   }
 
-  .quoteItemMobileHeader div {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: grid;
-    gap: 3px;
+  .quoteViewLogo,
+  .accessLogo {
+    height: 26px;
   }
 
-  .quoteItemMobileCardOpen .quoteItemMobileHeader {
-    border-bottom: 1px solid #eadfce;
+  .quoteViewHeroInner h1,
+  .accessHeroInner h1 {
+    font-size: 18px;
   }
 
-  .quoteItemMobileToggle {
-    width: 28px;
-    height: 28px;
-    flex: 0 0 28px;
-    display: inline-grid;
-    place-items: center;
-    border: 1px solid #dfd2bf;
-    border-radius: 999px;
-    background: #ffffff;
+  .quoteViewHeroInner p,
+  .accessHeroInner p {
+    display: none;
   }
 
-  .quoteItemMobileToggle::before {
-    content: "";
-    width: 8px;
-    height: 8px;
-    border-right: 2px solid #6f4918;
-    border-bottom: 2px solid #6f4918;
-    transform: rotate(45deg) translate(-1px, -1px);
+  .panel {
+    scroll-margin-top: 62px;
   }
 
-  .quoteItemMobileCardOpen .quoteItemMobileToggle::before {
-    transform: rotate(225deg) translate(-1px, -1px);
-  }
-
-  .quoteItemMobileContent {
-    display: grid;
-    gap: 14px;
-    padding: 0 16px 16px;
-  }
-
-  .quoteItemMobileHeader p {
-    margin: 0;
-    color: #001f36;
-    font-family: var(--pcd-font-display);
-    font-size: 1.18rem;
-    line-height: 1.1;
-  }
-
-  .quoteItemMobileHeader strong {
-    color: #6f4918;
-    font-size: 0.96rem;
-  }
-
-  .quoteItemMobileSpecs,
-  .quoteItemMobileSelections {
-    display: grid;
-    gap: 10px;
-  }
-
-  .quoteItemMobileSpecs {
+  .quoteViewSummaryGrid {
     grid-template-columns: 1fr 1fr;
   }
 
-  .quoteItemMobileSelections {
-    grid-template-columns: 1fr;
+  .actions .button,
+  .actions .buttonDanger,
+  .actions .buttonSecondary {
+    flex: 1 1 100%;
   }
 
-  .quoteItemMobileSpecs div,
-  .quoteItemMobileSelections div {
-    min-width: 0;
-    display: grid;
-    gap: 5px;
+  .responseBarText {
+    display: none;
   }
 
-  .quoteItemMobileSpecs span,
-  .quoteItemMobileSelections > div > span {
-    color: #7c725f;
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
+  .responseBarButtons {
+    flex: 1;
   }
 
-  .quoteItemMobileSpecs strong,
-  .quoteItemMobileSelections strong {
-    color: #001f36;
-    font-size: 0.9rem;
-    line-height: 1.25;
+  .responseBarButtons .button,
+  .responseBarButtons .buttonSecondary {
+    flex: 1;
   }
 
-  .quoteItemMobileSelections .publicSelectionTile {
-    grid-template-columns: 34px minmax(0, 1fr);
-    min-height: 40px;
-    border: 1px solid #eadfce;
-    border-radius: 6px;
-    background: #ffffff;
-    padding: 5px 7px;
+  /* The appointment table keeps its box and stacks rather than disappearing. */
+  .detailTable thead {
+    display: none;
   }
 
-  .quoteItemMobileSelections .publicSelectionTile:not(.publicSelectionTileButton) {
-    grid-template-columns: 1fr;
+  .detailTable,
+  .detailTable tbody,
+  .detailTable tr,
+  .detailTable td {
+    display: block;
+    width: auto;
   }
 
-  .quoteItemMobileSelections .publicSelectionTile span {
-    width: 100%;
-    word-break: normal;
-    overflow-wrap: anywhere;
+  .detailTable tbody tr {
+    border-bottom: 1px solid var(--line);
   }
 
-  .quoteItemMobileSelections .publicSelectionTile img[style*="display: none"] {
-    display: none !important;
+  .detailTable tbody tr:last-child {
+    border-bottom: 0;
   }
 
-  .quoteItemMobileSelections .publicSelectionTile:has(img[style*="display: none"]) {
-    grid-template-columns: 1fr;
+  .detailTable tbody td {
+    border: 0;
+    padding: 1px 12px;
   }
 
-  .quoteItemMobileSelections .publicSelectionTile img {
-    width: 34px;
-    height: 34px;
+  .detailTable tbody td:first-child {
+    width: auto;
+    padding-top: 10px;
   }
 
-  .quoteItemMobileHinges {
-    display: grid;
-    gap: 8px;
-    border-top: 1px solid #eadfce;
-    padding-top: 12px;
+  .detailTable tbody td:last-child {
+    padding-bottom: 10px;
   }
-
-  .quoteItemMobileHinges span {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    min-height: 26px;
-    border-radius: 999px;
-    background: #f4f0e8;
-    color: #5d5548;
-    padding: 0 10px;
-    font-size: 0.76rem;
-    font-weight: 800;
-  }
-
-  .quoteItemMobileHinges .quoteItemYes {
-    background: #eaf5e8;
-    color: #2f6b3b;
-  }
-
-  .quoteItemMobileHinges .quoteItemNo {
-    background: #f5eee8;
-    color: #7a674f;
-  }
-
-  .table,
-  .quoteViewCard .table {
-    min-width: 720px;
-  }
-}
-
-/* ── details required before acceptance ──────────────────────────────────────
-   The Quote Summary has always printed a dash where we hold no address or
-   mobile, which is how jobs reached the delivery run with nowhere to go. The
-   dash is now the fix: it becomes an Add button that opens the fields inline,
-   in the place the customer can already see something is missing. */
-
-/* Nothing announces the gap at the top of the page. A tile that blocks
-   acceptance is marked, the button it blocks carries the sentence, and the two
-   share a colour so the connection is obvious when the customer scrolls back up.
-   In this card the tiles are flat label-and-value pairs with no box of their
-   own, so the marker is the label and the Add pill turning red rather than a
-   panel appearing. Matches .quoteViewCard .summaryItem span for specificity,
-   which sets the label colour these have to beat. */
-.quoteViewCard .summaryItemMissing > span,
-.summaryItemMissing > span {
-  color: #a3372c;
-}
-
-/* The Add button replaces the dash, so it has to sit on the same baseline as a
-   value would and not look like a form control dropped into a summary. */
-.detailAdd {
-  border: 1px solid #d9847a;
-  border-radius: 20px;
-  background: #fbe6e3;
-  color: #9c3126;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
-  padding: 3px 11px;
-}
-.detailAdd:hover { background: #f7d6d1; border-color: #c96a5e; }
-
-.detailEdit {
-  border: 0;
-  background: none;
-  color: #5d6675;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.74rem;
-  font-weight: 800;
-  margin-left: 8px;
-  padding: 0;
-  text-decoration: underline;
-}
-.detailEdit:hover { color: #181d27; }
-
-/* The field, in the tile, in place of the value. Stacked because the address
-   puts three of them in a column the width of one summary tile. */
-.detailFields {
-  display: grid;
-  gap: 6px;
-}
-.detailInput {
-  border: 1px solid rgba(24, 29, 39, 0.18);
-  border-radius: 8px;
-  background: #ffffff;
-  color: #181d27;
-  font: inherit;
-  font-size: 0.85rem;
-  padding: 7px 9px;
-  width: 100%;
-}
-.detailInput:focus {
-  border-color: #181d27;
-  outline: 2px solid rgba(24, 29, 39, 0.12);
-  outline-offset: 1px;
-}
-.inputError { border-color: #d9847a; background: #fffaf9; }
-.detailError {
-  color: #a3372c;
-  display: block;
-  font-size: 0.74rem;
-  font-weight: 600;
-  margin-top: 3px;
-}
-
-/* Said once, next to the button it disables. */
-.acceptBlocked {
-  border: 1px solid #d9847a;
-  border-left-width: 3px;
-  border-radius: 10px;
-  background: #fdf4f3;
-  color: #9c3126;
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1.5;
-  margin: 0;
-  padding: 10px 13px;
-}
-
-/* WHERE THEY STAND, NOT WHAT IS STOPPING THEM.
-   Deliberately not .acceptBlocked, which means "this is why the button is
-   disabled" and is stated exactly once for that reason. Nothing is blocked
-   here: they approved, the deposit has not arrived, and the button below is
-   live and waiting. Amber rather than red, because being part way through
-   paying is not an error. */
-.depositPending {
-  border: 1px solid #d8a33f;
-  border-left-width: 3px;
-  border-radius: 10px;
-  background: #fdf7ea;
-  color: #7a5405;
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1.5;
-  margin: 0;
-  padding: 10px 13px;
 }

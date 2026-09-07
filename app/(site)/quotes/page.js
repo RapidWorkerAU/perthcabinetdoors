@@ -10,18 +10,24 @@ export default function QuoteAccessPage() {
     <div className={`${styles.page} ${styles.accessPage}`}>
       <section className={styles.accessHero}>
         <div className={styles.accessHeroInner}>
-          <img src="/images/light-pcd-logo-horizontal.png" alt="Perth Cabinet Doors" className={styles.accessLogo} />
-          <h1>Quote &amp; Proposal</h1>
-          <p>Enter your access code to review your quote and project breakdown.</p>
+          <img
+            src="/images/light-pcd-logo-horizontal.png"
+            alt="Perth Cabinet Doors"
+            className={styles.accessLogo}
+          />
+          <div>
+            <h1>Secure link</h1>
+            <p>Enter the code from the email we sent you and we will bring up your quote.</p>
+          </div>
         </div>
       </section>
       <main className={styles.accessMain}>
         <section className={styles.accessCard}>
+          <div className={styles.panelHeader}>Enter your code</div>
           <div className={styles.accessCardBody}>
-            <div className={styles.accessIntro}>
-              <h2>Access your quote</h2>
-              <p>Enter the access code provided by Perth Cabinet Doors to view your quote.</p>
-            </div>
+            <p className={styles.accessIntro}>
+              Enter the access code we sent you. Codes are not case sensitive.
+            </p>
             <QuoteAccessForm />
           </div>
         </section>
