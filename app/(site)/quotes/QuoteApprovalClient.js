@@ -2,7 +2,15 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { edgeImageSrc, profileImageSrc } from "@/lib/pcd-profile-images";
-import { isHardwareLine, lineHeading, lineSubLines } from "../../../lib/pcd-quote-line-display";
+import {
+  boardGroupKey,
+  boardGroupSpec,
+  isHardwareLine,
+  lineFrontProfile,
+  lineHeading,
+  lineSubLines,
+} from "../../../lib/pcd-quote-line-display";
+import { hingeCustomerLines } from "../../../lib/pcd-hinges";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
 import { toTermsHtml } from "../../../lib/pcd-terms-html";
@@ -162,14 +170,6 @@ function NoteButton({ line, onOpen }) {
   );
 }
 
-function showsProfile(line) {
-  return (
-    line.material === "Thermolaminate" &&
-    line.product_type !== "Panel" &&
-    line.product_type !== "Table top"
-  );
-}
-
 // THE COLUMNS A GROUP STILL NEEDS.
 //
 // A column is dropped when no line in the group has anything to put in it,
@@ -188,9 +188,9 @@ const CONFIG_COLUMNS = [
   {
     key: "profile",
     label: "Profile",
-    has: (line) => showsProfile(line) && Boolean(String(line.profile || "").trim()),
+    has: (line) => Boolean(lineFrontProfile(line)),
     cell: (line, onPreview) =>
-      showsProfile(line) ? (
+      lineFrontProfile(line) ? (
         <PreviewName
           src={profileOptionSrc(line.profile_type, line.profile)}
           label={line.profile}
@@ -204,14 +204,21 @@ const CONFIG_COLUMNS = [
     key: "hinges",
     label: "Hinges",
     has: () => true,
+    // The drilling in full: how many, which side, and where the cups go. It is
+    // the one thing on a door that cannot be checked once it is made, so the
+    // customer gets all of it here and the same words on the PDF.
     cell: (line) => (
       <span className={styles.quoteItemDetailStack}>
-        {line.hinge_holes ? (
-          <span className={styles.quoteItemYes}>Hinge holes drilled</span>
-        ) : (
-          <span className={styles.quoteItemStated}>No hinge holes</span>
-        )}
-        {line.hinge_holes && line.hinge_qty ? <span>Hinge qty: {line.hinge_qty}</span> : null}
+        {hingeCustomerLines(line).map((detail, index) => (
+          <span
+            key={detail}
+            className={
+              index ? undefined : line.hinge_holes ? styles.quoteItemYes : styles.quoteItemStated
+            }
+          >
+            {detail}
+          </span>
+        ))}
       </span>
     ),
   },
@@ -232,11 +239,7 @@ function groupLinesByBoard(lines) {
 
   lines.forEach((line, index) => {
     const numbered = { ...line, lineIndex: index + 1 };
-    const key = isHardwareLine(line)
-      ? "hardware"
-      : ["material", "finish", "colour"]
-          .map((field) => String(line[field] || "").trim().toLowerCase())
-          .join("|");
+    const key = boardGroupKey(line);
     if (!map.has(key)) {
       map.set(key, []);
       order.push(key);
@@ -253,13 +256,7 @@ function groupLinesByBoard(lines) {
       hardware,
       lines: grouped,
       title: hardware ? "Hardware" : String(first.colour || "").trim() || "Board not recorded",
-      lifted: hardware
-        ? []
-        : [
-            ["Material", first.material],
-            ["Finish", first.finish],
-            ["Colour", first.colour],
-          ].filter((pair) => String(pair[1] || "").trim()),
+      lifted: boardGroupSpec(first),
       colourSrc: hardware ? "" : colourSrcForLine(first),
       qty: grouped.reduce((sum, line) => sum + (Number(line.qty) || 0), 0),
       total: grouped.reduce((sum, line) => sum + toNumber(line.line_total_ex_gst), 0),

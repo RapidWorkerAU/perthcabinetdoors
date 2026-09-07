@@ -551,6 +551,101 @@ function formatFileSize(bytes) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// THE LINE NOTES, READ WITHOUT OPENING THEM.
+//
+// The button said a line HAD notes and then made you open a modal to find out
+// what they were, which is three clicks a line when you are checking a quote
+// over. Hovering shows them, clicking still opens them to edit.
+//
+// Both notes are shown, labelled, because they are different things: one is
+// printed on the customer's quote and one never leaves the office, and reading
+// them side by side is how you catch the internal one that was typed into the
+// customer's box.
+//
+// POSITIONED FIXED, off the button's own rectangle. The lines table scrolls
+// sideways inside its own box, and a panel placed absolutely inside a row is
+// cut off at the edge of that box.
+const NOTE_HOVER_WIDTH = 300;
+
+function LineNoteButton({ index, clientNote, internalNote, disabled, onOpen }) {
+  const [anchor, setAnchor] = useState(null);
+  const hasNote = Boolean(clientNote || internalNote);
+
+  function show(event) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    // Below the button when there is room for it, above when there is not.
+    const below = window.innerHeight - rect.bottom > 170;
+    setAnchor({
+      right: Math.max(12, window.innerWidth - rect.right),
+      top: below ? rect.bottom + 6 : undefined,
+      bottom: below ? undefined : window.innerHeight - rect.top + 6,
+    });
+  }
+
+  const hide = () => setAnchor(null);
+
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+    >
+      <button
+        type="button"
+        onClick={() => {
+          hide();
+          onOpen();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") hide();
+        }}
+        disabled={disabled}
+        aria-label={hasNote ? `View notes for quote line ${index + 1}` : `Add notes for quote line ${index + 1}`}
+        className={`inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+          hasNote
+            ? "border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28] hover:bg-[#dfeedd]"
+            : "border-[#dbd8cc] bg-white text-[#8b8a81] hover:bg-[#f5f8f4] hover:text-[#1a1a18]"
+        }`}
+      >
+        <span className="relative inline-flex">
+          <IconMessage size={13} />
+          {hasNote && (
+            <span className="absolute -right-[3px] -top-[3px] h-[5px] w-[5px] rounded-full bg-[#2d5e28] ring-1 ring-white" />
+          )}
+        </span>
+      </button>
+
+      {anchor && (
+        <span
+          role="tooltip"
+          className="pointer-events-none fixed z-[60] flex flex-col gap-[8px] rounded-[6px] bg-[#1a1a18] px-3 py-[10px] text-[11px] leading-[1.45] text-white shadow-[0_8px_24px_rgba(26,26,24,0.28)]"
+          style={{ width: NOTE_HOVER_WIDTH, right: anchor.right, top: anchor.top, bottom: anchor.bottom }}
+        >
+          {clientNote && (
+            <span className="flex flex-col gap-[2px]">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.09em] text-[#a8c5a0]">
+                Shown on the quote
+              </span>
+              <span className="whitespace-pre-wrap break-words">{clientNote}</span>
+            </span>
+          )}
+          {internalNote && (
+            <span className="flex flex-col gap-[2px]">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.09em] text-[#a8c5a0]">
+                Internal only
+              </span>
+              <span className="whitespace-pre-wrap break-words">{internalNote}</span>
+            </span>
+          )}
+          {!hasNote && <span className="text-[#dbd8cc]">No notes on this line. Click to add one.</span>}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function assetSlug(value) {
   return String(value || "")
     .trim()
@@ -2994,7 +3089,6 @@ export default function QuoteEditor({ quoteId }) {
                   // nobody could see or change it.
                   const cabinetOwnsBoard = isEditable && isBaseCabinet
                   const isLineSaving = savingLineIndex === index
-                  const hasLineNote = Boolean(line.notes || line.client_note)
                   const canMoveLines = editableLineIndex === null && savingLineIndex === null && savedLine.id
                   const libraryProfiles = useLibrary
                     ? profilesForSupplier(profileRows, { supplier, thickness: line.thickness })
@@ -3475,28 +3569,13 @@ export default function QuoteEditor({ quoteId }) {
                               >
                                 <IconEdit size={13} />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => runLineAction(() => openLineNoteModal(index))}
+                              <LineNoteButton
+                                index={index}
+                                clientNote={line.client_note}
+                                internalNote={line.notes}
                                 disabled={isLineSaving || savingLineIndex !== null}
-                                title={hasLineNote ? [
-                                  line.client_note && `Client: ${line.client_note}`,
-                                  line.notes && `Internal: ${line.notes}`,
-                                ].filter(Boolean).join('\n') : 'No notes attached'}
-                                aria-label={hasLineNote ? `View notes for quote line ${index + 1}` : `Add notes for quote line ${index + 1}`}
-                                className={`inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                                  hasLineNote
-                                    ? 'border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28] hover:bg-[#dfeedd]'
-                                    : 'border-[#dbd8cc] bg-white text-[#8b8a81] hover:bg-[#f5f8f4] hover:text-[#1a1a18]'
-                                }`}
-                              >
-                                <span className="relative inline-flex">
-                                  <IconMessage size={13} />
-                                  {hasLineNote && (
-                                    <span className="absolute -right-[3px] -top-[3px] h-[5px] w-[5px] rounded-full bg-[#2d5e28] ring-1 ring-white" />
-                                  )}
-                                </span>
-                              </button>
+                                onOpen={() => runLineAction(() => openLineNoteModal(index))}
+                              />
                               <button
                                 type="button"
                                 onClick={() => runLineAction(() => duplicateLine(index))}
@@ -3562,7 +3641,6 @@ export default function QuoteEditor({ quoteId }) {
             const isLineSaving = savingLineIndex === index
             const line = savedLine
             const { calculated, colourSrc } = lineViewModel(line)
-            const hasLineNote = Boolean(line.notes || line.client_note)
 
             return (
               <div key={savedLine.id || index} className={`bg-white border border-[#dbd8cc] rounded-[8px] p-3 ${isLineSaving ? 'opacity-60' : ''}`}>
@@ -3572,28 +3650,13 @@ export default function QuoteEditor({ quoteId }) {
                     <span className="text-[13px] font-semibold text-[#1a1a18] truncate">{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">No type</span>}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => runLineAction(() => openLineNoteModal(index))}
+                    <LineNoteButton
+                      index={index}
+                      clientNote={line.client_note}
+                      internalNote={line.notes}
                       disabled={isLineSaving || savingLineIndex !== null}
-                      title={hasLineNote ? [
-                        line.client_note && `Client: ${line.client_note}`,
-                        line.notes && `Internal: ${line.notes}`,
-                      ].filter(Boolean).join('\n') : 'No notes attached'}
-                      aria-label={hasLineNote ? `View notes for quote line ${index + 1}` : `Add notes for quote line ${index + 1}`}
-                      className={`inline-flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                        hasLineNote
-                          ? 'border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28] hover:bg-[#dfeedd]'
-                          : 'border-[#dbd8cc] bg-white text-[#8b8a81] hover:bg-[#f5f8f4] hover:text-[#1a1a18]'
-                      }`}
-                    >
-                      <span className="relative inline-flex">
-                        <IconMessage size={13} />
-                        {hasLineNote && (
-                          <span className="absolute -right-[3px] -top-[3px] h-[5px] w-[5px] rounded-full bg-[#2d5e28] ring-1 ring-white" />
-                        )}
-                      </span>
-                    </button>
+                      onOpen={() => runLineAction(() => openLineNoteModal(index))}
+                    />
                     <ActionMenu label={`Open actions for quote line ${index + 1}`} size="xs" disabled={isLineSaving || savingLineIndex !== null}>
                       <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => runLineAction(() => editLine(index))}>
                         Edit

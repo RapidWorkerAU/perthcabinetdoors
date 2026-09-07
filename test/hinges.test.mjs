@@ -226,10 +226,17 @@ test("the drilling reaches the order, and the production sheet summarises it", (
       assert.ok(carry.includes(`"${column}"`), `${column} is not in CARRIED_SPEC_COLUMNS`);
     });
 
-  // On the production sheet it goes in the Details column, NOT in columns of
-  // its own: three more columns on a full page makes every other one narrower.
+  // On the customer's quote it goes in the Hinges column, in the SAME words on
+  // the screen and on the PDF. The drilling is the one thing about a door that
+  // cannot be checked once it is made, and two documents describing it two ways
+  // is how a customer ends up ringing to ask which one is right.
   const pdf = readFileSync(new URL("../lib/pcd-cabinet-pdf.js", import.meta.url), "utf8");
-  assert.match(pdf, /hingeSummaryLines\(line\)\.forEach/);
+  assert.match(pdf, /hingeCustomerLines\(line\)/, "the quote PDF has to read the shared describer");
+  const viewer = readFileSync(
+    new URL("../app/(site)/quotes/QuoteApprovalClient.js", import.meta.url),
+    "utf8"
+  );
+  assert.match(viewer, /hingeCustomerLines\(line\)/, "the quote viewer has to read the same one");
 });
 
 test("a variation line carries it too", () => {
