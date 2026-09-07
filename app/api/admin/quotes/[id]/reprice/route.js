@@ -155,7 +155,7 @@ export async function POST(request, { params }) {
       let updateError = (await context.supabase.from("pcd_quote_line_items").update(row).eq("id", line.id)).error;
       if (updateError && isMissingSupplierNameSchemaError(updateError)) {
         updateError = (
-          await context.supabase.from("pcd_quote_line_items").update(withoutSupplierName(row)).eq("id", line.id)
+          await context.supabase.from("pcd_quote_line_items").update(withoutSupplierName(row, updateError)).eq("id", line.id)
         ).error;
       }
       if (updateError) throw updateError;

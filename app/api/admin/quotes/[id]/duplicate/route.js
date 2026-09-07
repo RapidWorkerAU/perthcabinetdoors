@@ -145,7 +145,7 @@ export async function POST(_request, { params }) {
       const rows = totals.lines.map((line, index) => quoteLineRow(line, newQuote.id, index));
       let { error: insertLineError } = await context.supabase.from("pcd_quote_line_items").insert(rows);
       if (isMissingSupplierNameSchemaError(insertLineError)) {
-        const retry = await context.supabase.from("pcd_quote_line_items").insert(rows.map(withoutSupplierName));
+        const retry = await context.supabase.from("pcd_quote_line_items").insert(rows.map((row) => withoutSupplierName(row, insertLineError)));
         insertLineError = retry.error;
       }
       if (insertLineError) throw insertLineError;

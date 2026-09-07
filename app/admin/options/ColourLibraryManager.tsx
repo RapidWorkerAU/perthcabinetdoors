@@ -35,6 +35,7 @@ interface ColourRow {
   order_types?:              string[] | null
   preferred_board_width_mm?: number | null
   preferred_board_height_mm?: number | null
+  has_grain?:                boolean | null
   cost_per_board_ex_gst?:    number | null
   cost_per_sqm_ex_gst?:     number | null
   sort_order?:               number | null
@@ -55,6 +56,7 @@ interface Draft {
   order_types:               string[]
   preferred_board_width_mm:  number | string
   preferred_board_height_mm: number | string
+  has_grain:                 boolean
   cost_per_board_ex_gst:     number | string
   cost_per_sqm_ex_gst:       number | string
   last_cost_field:           string | null
@@ -86,6 +88,7 @@ const emptyDraft: Draft = {
   order_types:               ['supply board'],
   preferred_board_width_mm:  '',
   preferred_board_height_mm: '',
+  has_grain:                 false,
   cost_per_board_ex_gst:     '',
   cost_per_sqm_ex_gst:       '',
   last_cost_field:           null,
@@ -170,6 +173,7 @@ function rowFromDraft(draft: Draft, image: { imageUrl: string; imagePath: string
     order_types:               draft.order_types.length ? draft.order_types : ['supply board'],
     preferred_board_width_mm:  numericDraftValue(draft.preferred_board_width_mm),
     preferred_board_height_mm: numericDraftValue(draft.preferred_board_height_mm),
+    has_grain:                 !!draft.has_grain,
     cost_per_board_ex_gst:     costs.cost_per_board_ex_gst,
     cost_per_sqm_ex_gst:       costs.cost_per_sqm_ex_gst,
     sort_order:                sortOrder,
@@ -349,6 +353,7 @@ export default function ColourLibraryManager({
       original_image_url:        row.image_url || '',
       preferred_board_width_mm:  row.preferred_board_width_mm  ?? '',
       preferred_board_height_mm: row.preferred_board_height_mm ?? '',
+      has_grain:                 row.has_grain ?? false,
       cost_per_board_ex_gst:     row.cost_per_board_ex_gst     ?? '',
       cost_per_sqm_ex_gst:       row.cost_per_sqm_ex_gst       ?? '',
       last_cost_field:           null,
@@ -454,10 +459,22 @@ export default function ColourLibraryManager({
       // The live brands, so a supplier added in Settings keeps the exact
       // spelling it was given rather than being title-cased on the way in.
       const payload  = rowFromDraft(draft, image, sortOrderForDraft(), lists.itemsFor('colour_suppliers'))
-      const query    = draft.id
-        ? supabase.from('pcd_colour_library').update(payload).eq('id', draft.id)
-        : supabase.from('pcd_colour_library').insert(payload)
-      const { data, error } = await query.select('*').single()
+      // has_grain arrived after this screen shipped (migration 202609071900).
+      // A database that has not had it run answers PGRST204 naming the column,
+      // and the whole colour line would fail to save over one field. Saved
+      // without it instead, the same way the quote line save handles its own
+      // late columns.
+      const write = (body: Record<string, unknown>) =>
+        (draft.id
+          ? supabase.from('pcd_colour_library').update(body).eq('id', draft.id)
+          : supabase.from('pcd_colour_library').insert(body)
+        ).select('*').single()
+
+      let { data, error } = await write(payload)
+      if (error?.code === 'PGRST204' && String(error.message || '').includes('has_grain')) {
+        const { has_grain: _unsupported, ...withoutGrain } = payload
+        ;({ data, error } = await write(withoutGrain))
+      }
       if (error) throw error
       setRows(cur =>
         draft.id
@@ -715,6 +732,29 @@ export default function ColourLibraryManager({
                     value={draft.preferred_board_height_mm as string | number}
                     onChange={e => updateDraft('preferred_board_height_mm', e.target.value)}
                   />
+                </label>
+                {/* DOES THIS BOARD HAVE A GRAIN?
+                    Beside the board size because it is the same kind of fact: what
+                    the sheet IS, rather than what it costs. A solid colour has no
+                    direction, so a panel cut from it can be turned to pack tighter;
+                    a woodgrain cannot, and four tall doors that all have to run the
+                    same way can cost an extra board. Read by the Boards to Order tab
+                    on a quote. Seeded from the finish name in migration
+                    202609071900, so check the rows it guessed. */}
+                <label className="md:col-span-2 flex items-start gap-2 cursor-pointer text-[13px] text-[#1a1a18] font-normal">
+                  <input
+                    type="checkbox"
+                    checked={draft.has_grain}
+                    onChange={e => updateDraft('has_grain', e.target.checked)}
+                    className="accent-[#6b9e61] mt-[3px]"
+                  />
+                  <span>
+                    Has a grain
+                    <span className="block text-[11px] text-[#8b8a81]">
+                      The board runs one way, so panels cut from it cannot be turned.
+                      Leave this off for a solid colour.
+                    </span>
+                  </span>
                 </label>
                 <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
                   Cost / board ex GST

@@ -184,7 +184,10 @@ export async function POST(request, { params }) {
       // A database missing one of the later columns drops it and keeps the
       // lines, rather than losing an import over a field it has not got yet.
       if (!isMissingSupplierNameSchemaError(written.error)) throw written.error;
-      written = await insertLines(rows.map(withoutSupplierName));
+      // Read before the reassignment below, so the retry drops the column this
+      // attempt complained about rather than the next one.
+      const missing = written.error;
+      written = await insertLines(rows.map((row) => withoutSupplierName(row, missing)));
       if (written.error) throw written.error;
     }
 

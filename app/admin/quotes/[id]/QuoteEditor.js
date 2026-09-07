@@ -30,6 +30,8 @@ import AddressFields from "../../../../components/admin/AddressFields";
 import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNote";
 import OverrideModal from "../../_components/OverrideModal";
 import ImportOrderFormModal from "./ImportOrderFormModal";
+import BoardOrderPanel from "./BoardOrderPanel";
+import { BOARD_ORDER_DEFAULTS } from "../../../../lib/pcd-board-order";
 import LockedRegion from "../../_components/LockedRegion";
 import AcceptForCustomerModal from "../../_components/AcceptForCustomerModal";
 import { editability } from "../../../../lib/pcd-document-lock";
@@ -61,6 +63,10 @@ const sections = [
   { key: "details", label: "Information & Contacts" },
   { key: "items", label: "Quote Items" },
   { key: "cabinets", label: "Base Cabinets" },
+  // AFTER BASE CABINETS ON PURPOSE. What it counts is the lines above it plus
+  // the carcass panels off the cabinets, so it reads as the thing those two
+  // add up to rather than as a settings screen.
+  { key: "boards", label: "Boards to Order" },
   { key: "costs", label: "Costs & Markup" },
   { key: "totals", label: "Quote Totals" },
   { key: "notes", label: "Notes" },
@@ -185,6 +191,10 @@ const emptyForm = {
   // can say what is already on it. The wording in `terms` is the truth; this is
   // for that list and nothing else.
   terms_term_ids: [],
+  // What this quote decided about its boards, on the Boards to Order tab. Null
+  // until somebody changes something away from the colour library and the
+  // business defaults, which is the normal case. See lib/pcd-board-order.js.
+  board_order_settings: null,
   lines: [emptyLineWithDefaults()],
   attachments: [],
 };
@@ -297,6 +307,7 @@ function formFromQuote(quote) {
     exclusions: quote.exclusions || "",
     terms: quote.terms ?? "",
     terms_term_ids: Array.isArray(quote.terms_term_ids) ? quote.terms_term_ids : [],
+    board_order_settings: quote.board_order_settings || null,
     lines: lines.length ? lines : [{ ...emptyLine }],
     attachments: [...(quote.pcd_quote_attachments || [])].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -339,6 +350,7 @@ function mergeQuoteIntoForm(current, quote) {
     exclusions: quote.exclusions || "",
     terms: quote.terms ?? "",
     terms_term_ids: Array.isArray(quote.terms_term_ids) ? quote.terms_term_ids : [],
+    board_order_settings: quote.board_order_settings || null,
     lines: current.lines,
     attachments: current.attachments,
   };
@@ -565,6 +577,15 @@ function formatFileSize(bytes) {
 // POSITIONED FIXED, off the button's own rectangle. The lines table scrolls
 // sideways inside its own box, and a panel placed absolutely inside a row is
 // cut off at the edge of that box.
+//
+// AND PORTALLED TO THE BODY, which fixed does not do on its own. This button
+// lives in the actions column, and that column is `sticky right-0 z-20` so it
+// stays put while the table scrolls sideways. A positioned element with a
+// z-index starts its own stacking context, so the bubble's z-60 only ordered
+// it against its OWN cell's contents: every row below had an actions cell at
+// the same z-20, later in the document, and each one painted straight over the
+// bubble. You saw the top sliver of it and nothing else. Rendered on the body
+// the bubble is outside that stacking context and sits over the whole table.
 const NOTE_HOVER_WIDTH = 300;
 
 function LineNoteButton({ index, clientNote, internalNote, disabled, onOpen }) {
@@ -617,31 +638,34 @@ function LineNoteButton({ index, clientNote, internalNote, disabled, onOpen }) {
         </span>
       </button>
 
-      {anchor && (
-        <span
-          role="tooltip"
-          className="pointer-events-none fixed z-[60] flex flex-col gap-[8px] rounded-[6px] bg-[#1a1a18] px-3 py-[10px] text-[11px] leading-[1.45] text-white shadow-[0_8px_24px_rgba(26,26,24,0.28)]"
-          style={{ width: NOTE_HOVER_WIDTH, right: anchor.right, top: anchor.top, bottom: anchor.bottom }}
-        >
-          {clientNote && (
-            <span className="flex flex-col gap-[2px]">
-              <span className="text-[9px] font-semibold uppercase tracking-[0.09em] text-[#a8c5a0]">
-                Shown on the quote
+      {anchor && typeof document !== "undefined"
+        ? createPortal(
+          <span
+            role="tooltip"
+            className="pointer-events-none fixed z-[60] flex flex-col gap-[8px] rounded-[6px] bg-[#1a1a18] px-3 py-[10px] text-[11px] leading-[1.45] text-white shadow-[0_8px_24px_rgba(26,26,24,0.28)]"
+            style={{ width: NOTE_HOVER_WIDTH, right: anchor.right, top: anchor.top, bottom: anchor.bottom }}
+          >
+            {clientNote && (
+              <span className="flex flex-col gap-[2px]">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.09em] text-[#a8c5a0]">
+                  Shown on the quote
+                </span>
+                <span className="whitespace-pre-wrap break-words">{clientNote}</span>
               </span>
-              <span className="whitespace-pre-wrap break-words">{clientNote}</span>
-            </span>
-          )}
-          {internalNote && (
-            <span className="flex flex-col gap-[2px]">
-              <span className="text-[9px] font-semibold uppercase tracking-[0.09em] text-[#a8c5a0]">
-                Internal only
+            )}
+            {internalNote && (
+              <span className="flex flex-col gap-[2px]">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.09em] text-[#a8c5a0]">
+                  Internal only
+                </span>
+                <span className="whitespace-pre-wrap break-words">{internalNote}</span>
               </span>
-              <span className="whitespace-pre-wrap break-words">{internalNote}</span>
-            </span>
-          )}
-          {!hasNote && <span className="text-[#dbd8cc]">No notes on this line. Click to add one.</span>}
-        </span>
-      )}
+            )}
+            {!hasNote && <span className="text-[#dbd8cc]">No notes on this line. Click to add one.</span>}
+          </span>,
+          document.body
+        )
+        : null}
     </span>
   );
 }
@@ -927,6 +951,35 @@ const QuoteImageCombobox = memo(function QuoteImageCombobox({ className = "", di
   );
 });
 
+// A DROPDOWN MUST NEVER SHOW BLANK FOR A VALUE THE LINE ACTUALLY HOLDS.
+//
+// ── THE BUG THIS FIXES ───────────────────────────────────────────────────────
+//
+// The match was exact, so a value spelt any other way found nothing and the
+// field rendered as the placeholder. On the Supplier cell that reads as the
+// brand having been wiped, and it was not: the line still said Polytec, the
+// options list said polytec, and === said no.
+//
+// It happens because the two spellings come from different places.
+// normaliseSupplierName is given the live brands list when the Board Library
+// saves a row, so a brand added in Settings is stored as somebody typed it;
+// the read paths call the same function WITHOUT that list, so anything outside
+// the four built-in names gets title-cased on the way out. IKEA is stored IKEA
+// and offered as Ikea. Same brand, two spellings, empty box.
+//
+// That is why it looked like three separate bugs. Open a row to edit and the
+// supplier vanishes, because the read-only cell prints line.supplier_name and
+// the editable one has to match it against a list. Duplicate a line and the
+// copy looks empty, because a duplicate opens in edit mode and the original
+// does not. Pick the brand again to fix it and the colour clears, because
+// changing supplier is supposed to clear the colour.
+//
+// ── THE RULE ─────────────────────────────────────────────────────────────────
+//
+// Match on case and spacing, not on ===. And a value no option carries is still
+// what the line says, so it is added to the list rather than dropped: an older
+// line naming a brand we have stopped stocking reads as that brand instead of
+// silently emptying itself the next time somebody opens the row.
 const QuoteTileCombobox = memo(function QuoteTileCombobox({ compact = true, disabled = false, placeholder, value, options, onChange }) {
   const normalizedOptions = options.map((option) => {
     const item = typeof option === "string" ? { label: option, name: option } : option;
@@ -936,18 +989,27 @@ const QuoteTileCombobox = memo(function QuoteTileCombobox({ compact = true, disa
       label: item.label || item.name || item.value || "",
     };
   });
-  const selected = normalizedOptions.find((option) =>
-    [option.value, option.name, option.label].filter(Boolean).includes(value)
-  );
+  const wanted = String(value ?? "").trim().toLowerCase();
+  const selected = wanted
+    ? normalizedOptions.find((option) =>
+        [option.value, option.name, option.label]
+          .filter(Boolean)
+          .some((candidate) => String(candidate).trim().toLowerCase() === wanted)
+      )
+    : undefined;
+  // Held on the line but not offered: shown anyway, at the end of the list.
+  const shownOptions = wanted && !selected
+    ? [...normalizedOptions, { value: String(value).trim(), label: String(value).trim() }]
+    : normalizedOptions;
 
   return (
     <Dropdown
       disabled={disabled}
       placeholder={placeholder}
-      options={normalizedOptions.map((option) => ({ value: option.value, label: option.label, group: option.group }))}
-      value={selected?.value || ""}
+      options={shownOptions.map((option) => ({ value: option.value, label: option.label, group: option.group }))}
+      value={selected?.value || (wanted ? String(value).trim() : "")}
       onChange={(nextValue) => {
-        const selectedOption = normalizedOptions.find((option) => option.value === nextValue);
+        const selectedOption = shownOptions.find((option) => option.value === nextValue);
         if (selectedOption) onChange(selectedOption);
       }}
       clearable={false}
@@ -3770,6 +3832,26 @@ export default function QuoteEditor({ quoteId }) {
     );
   }
 
+  // BOARDS TO ORDER.
+  //
+  // The panel does the drawing; everything it needs is already on this screen.
+  // colourSwatches is the whole colour library, read once for the swatches, and
+  // it now carries each row's board size and whether it has a grain. So the
+  // board count is worked out from the same library rows the prices come from,
+  // with no second fetch and nothing that can be a version behind.
+  function renderBoards() {
+    return (
+      <BoardOrderPanel
+        lines={form.lines}
+        colours={colourSwatches}
+        settings={form.board_order_settings}
+        defaults={boardOrderDefaults}
+        disabled={isLocked}
+        onChange={(next) => updateForm("board_order_settings", next)}
+        Modal={Modal}
+      />
+    );
+  }
   function renderCosts() {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4122,6 +4204,7 @@ export default function QuoteEditor({ quoteId }) {
   function renderSectionBody() {
     if (activeSection === "items") return renderItems();
     if (activeSection === "cabinets") return renderCabinets();
+    if (activeSection === "boards") return renderBoards();
     if (activeSection === "costs") return renderCosts();
     if (activeSection === "notes") return renderNotes();
     if (activeSection === "totals") return renderTotals();
@@ -4222,6 +4305,17 @@ export default function QuoteEditor({ quoteId }) {
   // it all goes read only in one place, so a field added later is covered
   // without anyone having to remember to cover it. See LockedRegion for why a
   // banner over typeable fields is not a control.
+  // Saw kerf and edge trim are Business Defaults, like the hourly rate: they
+  // are the same on every quote and they change when the blade or the supplier
+  // does. A quote only stores them once somebody has changed them for that job.
+  const boardOrderDefaults = useMemo(
+    () => ({
+      ...BOARD_ORDER_DEFAULTS,
+      kerf_mm: businessDefaults.saw_kerf_mm ?? BOARD_ORDER_DEFAULTS.kerf_mm,
+      trim_mm: businessDefaults.board_edge_trim_mm ?? BOARD_ORDER_DEFAULTS.trim_mm,
+    }),
+    [businessDefaults]
+  );
   const contentPanel = isLoading ? (
     <AdminLoading steps={["Opening the quote", "Loading the line items", "Almost there"]} label="Loading quote" />
   ) : loadError ? (

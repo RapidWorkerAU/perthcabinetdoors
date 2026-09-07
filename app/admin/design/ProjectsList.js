@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconFolderOpen, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconExternalLink, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useToast } from "@/components/ui/Toast";
-import { DataTable } from "@/components/ui/DataTable";
+import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
+import { AdminDataTable } from "@/components/ui/AdminDataTable";
 import { StatusFilterBar } from "@/components/ui/StatusFilterBar";
+import { AdminPagination, useAdminPagination } from "../_components/AdminPagination";
 import { formatAdminLabel } from "../_utils/formatAdminLabel";
 
 const tw = {
@@ -43,6 +45,14 @@ function roomCount(row) {
   return rooms.length;
 }
 
+function StatusPill({ status }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium ${statusPillClass(status)}`}>
+      {designStatusLabel(status || "draft")}
+    </span>
+  );
+}
+
 export default function ProjectsList() {
   const { toast } = useToast();
   const router = useRouter();
@@ -52,6 +62,7 @@ export default function ProjectsList() {
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
   const [designScope, setDesignScope] = useState("ours");
+  const [search, setSearch] = useState("");
 
   useEffect(() => { loadProjects(); }, []);
 
@@ -106,31 +117,54 @@ export default function ProjectsList() {
   }
 
   const columns = [
-    { key: "name", label: "Project" },
     {
-      key: "status", label: "Status",
-      render: (row) => (
-        <span className={`inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium ${statusPillClass(row.status)}`}>
-          {designStatusLabel(row.status || "draft")}
-        </span>
-      ),
+      id: "name",
+      header: "Project",
+      cell: (row) => <span className="font-medium text-[#1a1a18]">{row.name || "Untitled project"}</span>,
     },
     {
-      key: "rooms", label: "Rooms",
-      render: (row) => {
+      id: "status",
+      header: "Status",
+      className: "whitespace-nowrap",
+      cell: (row) => <StatusPill status={row.status} />,
+    },
+    {
+      id: "rooms",
+      header: "Rooms",
+      className: "whitespace-nowrap",
+      cell: (row) => {
         const count = roomCount(row);
         return `${count} room${count !== 1 ? "s" : ""}`;
       },
     },
     {
-      key: "created_at",
-      label: "Created",
-      render: (row) => formatDate(row.created_at),
+      id: "created_at",
+      header: "Created",
+      className: "whitespace-nowrap",
+      cell: (row) => formatDate(row.created_at),
     },
     {
-      key: "updated_at",
-      label: "Last edited",
-      render: (row) => formatDate(row.updated_at || row.created_at),
+      id: "updated_at",
+      header: "Last edited",
+      className: "whitespace-nowrap",
+      cell: (row) => formatDate(row.updated_at || row.created_at),
+    },
+    {
+      id: "actions",
+      header: "",
+      className: "text-right",
+      cell: (row) => (
+        <div className="flex justify-end">
+          <ActionMenu label={`Open actions for ${row.name || "design project"}`}>
+            <ActionMenuItem icon={<IconExternalLink size={14} />} onClick={() => router.push(`/admin/design/${row.id}`)}>
+              Open designer
+            </ActionMenuItem>
+            <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" onClick={() => handleDelete(row)}>
+              Delete
+            </ActionMenuItem>
+          </ActionMenu>
+        </div>
+      ),
     },
   ];
 
@@ -143,19 +177,67 @@ export default function ProjectsList() {
     ];
   }, [projects]);
 
-  const visibleProjects = useMemo(
-    () => projects.filter((project) => (designScope === "public" ? project.is_public : !project.is_public)),
-    [designScope, projects]
+  // The scope tabs and the search box narrow the same list, in that order, and
+  // what is left is what gets paged. Searching inside a page rather than across
+  // the whole list is the bug this order avoids.
+  const visibleProjects = useMemo(() => {
+    const scoped = projects.filter((project) => (designScope === "public" ? project.is_public : !project.is_public));
+    const wanted = search.trim().toLowerCase();
+    if (!wanted) return scoped;
+    return scoped.filter((project) =>
+      [project.name, designStatusLabel(project.status)]
+        .map((value) => String(value || "").toLowerCase())
+        .some((value) => value.includes(wanted))
+    );
+  }, [designScope, projects, search]);
+
+  // Reset to page one whenever the tab or the search changes, so a filter never
+  // lands you on an empty page four.
+  const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(
+    visibleProjects,
+    `${designScope}|${search}`
   );
 
-  const rowMenuItems = () => [
-    { label: "Open designer", icon: <IconFolderOpen size={14} />, action: "open" },
-    { label: "Delete", icon: <IconTrash size={14} />, action: "delete", variant: "danger" },
-  ];
-
-  function handleRowAction(action, row) {
-    if (action === "open") router.push(`/admin/design/${row.id}`);
-    else if (action === "delete") handleDelete(row);
+  function renderMobileCard(row) {
+    return (
+      <article className="rounded-[8px] border border-[#dbd8cc] bg-white p-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={() => router.push(`/admin/design/${row.id}`)}
+              className="text-left text-[14px] font-semibold text-[#1a1a18] underline-offset-2 hover:text-[#2d5e28] hover:underline"
+            >
+              {row.name || "Untitled project"}
+            </button>
+            <p className="text-[12px] text-[#5a5a52]">
+              {roomCount(row)} room{roomCount(row) !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <StatusPill status={row.status} />
+        </div>
+        <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+          <div>
+            <dt className="text-[#8b8a81]">Created</dt>
+            <dd className="text-[#1a1a18]">{formatDate(row.created_at)}</dd>
+          </div>
+          <div>
+            <dt className="text-[#8b8a81]">Last edited</dt>
+            <dd className="text-[#1a1a18]">{formatDate(row.updated_at || row.created_at)}</dd>
+          </div>
+        </dl>
+        <div className="flex justify-end">
+          <ActionMenu label={`Open actions for ${row.name || "design project"}`}>
+            <ActionMenuItem icon={<IconExternalLink size={14} />} onClick={() => router.push(`/admin/design/${row.id}`)}>
+              Open designer
+            </ActionMenuItem>
+            <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" onClick={() => handleDelete(row)}>
+              Delete
+            </ActionMenuItem>
+          </ActionMenu>
+        </div>
+      </article>
+    );
   }
 
   return (
@@ -212,17 +294,32 @@ export default function ProjectsList() {
         </div>
       )}
 
-      <DataTable
+      <AdminDataTable
+        rows={pageItems}
         columns={columns}
-        data={visibleProjects}
-        loading={loading}
-        searchPlaceholder="Search projects…"
-        emptyTitle={designScope === "public" ? "No public designs yet" : "No design projects yet"}
-        emptyDescription={designScope === "public" ? "Website-created designs will appear here when customers use the public design tool." : "Create a project to plan rooms and cabinets."}
-        rowMenuItems={rowMenuItems}
-        onRowAction={handleRowAction}
+        getRowId={(row) => row.id}
+        getRowLabel={(row) => row.name || "design project"}
         onRowClick={(row) => router.push(`/admin/design/${row.id}`)}
-        getMobileReference={(row, index) => row.is_public ? `Public design ${index + 1}` : `Design project ${index + 1}`}
+        loading={loading}
+        emptyTitle={designScope === "public" ? "No public designs yet" : "No design projects yet"}
+        emptyDescription={
+          designScope === "public"
+            ? "Website-created designs will appear here when customers use the public design tool."
+            : "Create a project to plan rooms and cabinets."
+        }
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search projects..."
+        mobileCard={renderMobileCard}
+        pagination={totalItems > 0 ? (
+          <AdminPagination
+            label="design projects"
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        ) : undefined}
       />
     </div>
   );

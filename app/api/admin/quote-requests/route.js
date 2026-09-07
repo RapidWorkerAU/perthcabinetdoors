@@ -166,7 +166,7 @@ export async function POST(request) {
         if (!isMissingSupplierNameSchemaError(lineError)) throw lineError;
         ({ data: insertedLines, error: lineError } = await context.supabase
           .from("pcd_quote_line_items")
-          .insert(quoteLines.map(withoutSupplierName))
+          .insert(quoteLines.map((row) => withoutSupplierName(row, lineError)))
           .select("id, sort_order"));
         if (lineError) throw lineError;
       }

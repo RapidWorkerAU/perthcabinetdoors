@@ -158,7 +158,7 @@ export async function POST(request) {
       }));
       let { error: lineError } = await context.supabase.from("pcd_quote_line_items").insert(rows);
       if (isMissingSupplierNameSchemaError(lineError)) {
-        const retry = await context.supabase.from("pcd_quote_line_items").insert(rows.map(withoutSupplierName));
+        const retry = await context.supabase.from("pcd_quote_line_items").insert(rows.map((row) => withoutSupplierName(row, lineError)));
         lineError = retry.error;
       }
       if (lineError) throw lineError;

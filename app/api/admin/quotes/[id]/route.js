@@ -54,6 +54,45 @@ async function loadQuoteWithRelations(supabase, id) {
 // Set by the customer answering, or by staff answering for them. Never by a save.
 const OUTCOME_STATUSES = new Set(["approved", "rejected"]);
 
+// WHAT THIS QUOTE DECIDED ABOUT ITS BOARDS, cleaned for the jsonb column.
+//
+// Everything is optional and an absent key means "whatever the colour library
+// and the business defaults say", so this keeps only what is actually set and
+// returns null when that is nothing. Kerf and trim are deliberately NOT
+// defaulted here: a quote that has never been near the tab must keep reading
+// the business defaults, and writing today's numbers onto it would freeze them.
+function boardOrderSettingsForDb(value) {
+  if (!value || typeof value !== "object") return null;
+  const settings = {};
+
+  if (typeof value.include_carcass === "boolean") settings.include_carcass = value.include_carcass;
+  if (value.standard_grain === "height" || value.standard_grain === "by_type") {
+    settings.standard_grain = value.standard_grain;
+  }
+  for (const key of ["kerf_mm", "trim_mm"]) {
+    const number = Number(value[key]);
+    if (Number.isFinite(number) && number >= 0) settings[key] = number;
+  }
+
+  const boards = {};
+  for (const [key, board] of Object.entries(value.boards || {})) {
+    if (!board || typeof board !== "object") continue;
+    const cleaned = {};
+    for (const field of ["width_mm", "length_mm"]) {
+      const number = Number(board[field]);
+      if (Number.isFinite(number) && number > 0) cleaned[field] = number;
+    }
+    if (typeof board.has_grain === "boolean") cleaned.has_grain = board.has_grain;
+    if (Object.keys(cleaned).length) boards[String(key)] = cleaned;
+  }
+  if (Object.keys(boards).length) settings.boards = boards;
+
+  return Object.keys(settings).length ? settings : null;
+}
+
+function isMissingBoardOrderColumn(error) {
+  return error?.code === "PGRST204" && String(error.message || "").includes("board_order_settings");
+}
 async function normalizeQuotePayload(supabase, payload = {}) {
   const sourceLines = payload.lines || [];
   const businessDefaults = await getBusinessDefaults(supabase);
@@ -123,6 +162,12 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       // get to shape.
       terms: sanitizeTermsHtml(toTermsHtml(payload.terms ?? "")) || null,
       terms_term_ids: Array.isArray(payload.terms_term_ids) ? payload.terms_term_ids : [],
+      // What this quote decided about its boards, on the Boards to Order tab.
+      // Normalised on the way in rather than trusted: it is a jsonb column, so
+      // without this anything at all could be written into it from a request.
+      // Null when nothing has been changed away from the colour library and the
+      // business defaults, which is the normal case.
+      board_order_settings: boardOrderSettingsForDb(payload.board_order_settings),
     },
     lines: totals.lines.map((line, index) => ({
       ...line,
@@ -164,10 +209,21 @@ export async function PUT(request, { params }) {
       .eq("id", id)
       .maybeSingle();
 
-    const { error: quoteError } = await context.supabase
+    // board_order_settings arrived after this route shipped (migration
+    // 202609071900). A database that has not had it run answers PGRST204
+    // naming the column, and the whole quote would fail to save over a field
+    // nobody had touched. Saved without it instead.
+    let { error: quoteError } = await context.supabase
       .from("pcd_quotes")
       .update(normalized.quote)
       .eq("id", id);
+    if (isMissingBoardOrderColumn(quoteError)) {
+      const { board_order_settings: _unsupported, ...withoutBoards } = normalized.quote;
+      ({ error: quoteError } = await context.supabase
+        .from("pcd_quotes")
+        .update(withoutBoards)
+        .eq("id", id));
+    }
     if (quoteError) throw quoteError;
 
     const quoteChanges = describeChanges(beforeQuote || {}, normalized.quote, {
@@ -215,7 +271,7 @@ export async function PUT(request, { params }) {
     if (isMissingSupplierNameSchemaError(savedLinesError)) {
       const retry = await context.supabase
         .from("pcd_quote_line_items")
-        .upsert(lineRows.map(withoutSupplierName), { onConflict: "id" })
+        .upsert(lineRows.map((row) => withoutSupplierName(row, savedLinesError)), { onConflict: "id" })
         .select("*");
       savedLines = retry.data || [];
       savedLinesError = retry.error;

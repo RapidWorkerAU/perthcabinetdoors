@@ -151,27 +151,61 @@ const LATE_COLUMNS = [
 ];
 
 export function isMissingSupplierNameSchemaError(error) {
-  const message = String(error?.message || "");
-  return error?.code === "PGRST204" && LATE_COLUMNS.some((column) => message.includes(column));
+  return Boolean(missingLateColumn(error));
 }
 
-export function withoutSupplierName(row) {
+/** Which ONE of the late columns this error is complaining about. */
+export function missingLateColumn(error) {
+  if (error?.code !== "PGRST204") return "";
+  const message = String(error.message || "");
+  return LATE_COLUMNS.find((column) => message.includes(column)) || "";
+}
+
+// DROP THE COLUMN THE DATABASE COMPLAINED ABOUT, not all eleven.
+//
+// ── THE BUG THIS FIXES ───────────────────────────────────────────────────────
+//
+// This used to delete every late column whenever ANY of them was missing. So a
+// database that had not had one migration run threw away the supplier, the
+// panel use, the grain direction, the edge finish, who supplies it, all four
+// hinge positions and the hardware kind on EVERY line save, silently, and the
+// save reported success. Change a line from Polytec to Laminex, press save, and
+// the brand came back as it was: the update had been sent without that column.
+//
+// One missing column is now one dropped column, and the caller retries until
+// the row is accepted, so at most the fields the database genuinely cannot hold
+// are lost and everything else is written.
+export function withoutSupplierName(row, error) {
   const stripped = { ...row };
+  const named = missingLateColumn(error);
+  if (named) {
+    delete stripped[named];
+    return stripped;
+  }
+  // Called without the error, by a caller that has not been given one to read.
+  // Falls back to the old all-or-nothing behaviour rather than silently doing
+  // nothing, because the alternative is the save failing outright.
   LATE_COLUMNS.forEach((column) => { delete stripped[column]; });
   return stripped;
 }
 
 async function saveQuoteLineRow(supabase, row, { lineId, quoteId }) {
-  const query = lineId
-    ? () => supabase.from("pcd_quote_line_items").update(row).eq("id", lineId).eq("quote_id", quoteId).select("*").single()
-    : () => supabase.from("pcd_quote_line_items").insert(row).select("*").single();
-  const result = await query();
-  if (!isMissingSupplierNameSchemaError(result.error)) return result;
+  const write = (body) =>
+    lineId
+      ? supabase.from("pcd_quote_line_items").update(body).eq("id", lineId).eq("quote_id", quoteId).select("*").single()
+      : supabase.from("pcd_quote_line_items").insert(body).select("*").single();
 
-  const fallbackRow = withoutSupplierName(row);
-  return lineId
-    ? await supabase.from("pcd_quote_line_items").update(fallbackRow).eq("id", lineId).eq("quote_id", quoteId).select("*").single()
-    : await supabase.from("pcd_quote_line_items").insert(fallbackRow).select("*").single();
+  let body = row;
+  let result = await write(body);
+  // One pass per late column at most, so a database missing three of them still
+  // saves the other eight fields instead of losing all eleven on the first.
+  for (let attempt = 0; attempt < LATE_COLUMNS.length; attempt++) {
+    const named = missingLateColumn(result.error);
+    if (!named) break;
+    body = withoutSupplierName(body, result.error);
+    result = await write(body);
+  }
+  return result;
 }
 
 export function cabinetConfigRow(config, quoteId, lineItemId) {

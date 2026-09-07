@@ -87,6 +87,27 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     step:   '0.5',
     hint:   'Per hinge hole, ex GST. Supplied hinges are added as separate hardware line items.',
   },
+  // HOW THE SAW CUTS. Read when working out how many boards a quote needs, on
+  // the Boards to Order tab. They are constants everywhere else in the trade
+  // and they still change: a different blade, a supplier who trims their own
+  // edges. A zero trim is a real answer here, unlike the hourly rate, so
+  // neither of these inherits when it is left at zero.
+  {
+    group:  'Workshop fees',
+    key:    'saw_kerf_mm',
+    label:  'Saw kerf',
+    suffix: 'mm',
+    step:   '0.1',
+    hint:   'How much width the blade takes between two panels cut from the same board.',
+  },
+  {
+    group:  'Workshop fees',
+    key:    'board_edge_trim_mm',
+    label:  'Board edge trim',
+    suffix: 'mm',
+    step:   '1',
+    hint:   'Taken off each of the four edges of a board before anything is cut from it.',
+  },
   {
     group:  'Workshop fees',
     key:    'abs_edging_cost_per_lineal_metre_ex_gst',
