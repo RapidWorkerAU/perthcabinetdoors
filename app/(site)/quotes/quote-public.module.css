@@ -543,6 +543,22 @@ button.lineGroupSwatch:hover {
   color: var(--ink);
 }
 
+/* WHICH HINGE, UNDER THE WORD HINGE.
+   On a hardware line the kind is the heading and the item itself goes here,
+   quieter and smaller, the same way the PDF sets it. Wraps by word, because
+   a Blum TANDEMBOX antaro Drawer Runners 450NL 30kg Pair does not fit on one
+   line of a table column and must not run out over the next one. */
+.quoteItemDetail {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted, #5a5a52);
+  line-height: 1.4;
+  margin-top: 2px;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
 /* ── SIZE AND QUANTITY, THE PAIR A CUSTOMER CHECKS TOGETHER ──
    Sat apart, the eye crosses the whole row between the two. Sat together
    and marked off, one glance answers both. */

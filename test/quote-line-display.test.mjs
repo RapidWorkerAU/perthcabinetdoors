@@ -19,6 +19,7 @@ import {
   isCabinetLine,
   isHardwareLine,
   lineHasBoard,
+  lineDisplayName,
   lineHeading,
   lineSubLines,
 } from "../lib/pcd-quote-line-display.js";
@@ -27,6 +28,7 @@ import { quoteLineRow } from "../app/api/admin/quotes/[id]/_quote-line-save.js";
 
 const VIEWER = readFileSync(new URL("../app/(site)/quotes/QuoteApprovalClient.js", import.meta.url), "utf8");
 const EDITOR = readFileSync(new URL("../app/admin/quotes/[id]/QuoteEditor.js", import.meta.url), "utf8");
+const PDF = readFileSync(new URL("../lib/pcd-cabinet-pdf.js", import.meta.url), "utf8");
 
 const HINGE = {
   product_type: "Hardware",
@@ -167,31 +169,75 @@ test("every kind we offer reads as words", () => {
 // ── and the viewer actually uses it ─────────────────────────────────────────
 
 test("the viewer reads the shared describer rather than keeping its own", () => {
-  assert.match(VIEWER, /from "\.\.\/\.\.\/\.\.\/lib\/pcd-quote-line-display"/);
-  assert.match(VIEWER, /lineHeading\(line\)/);
-  assert.match(VIEWER, /lineSubLines\(line\)/);
+  assert.ok(VIEWER.includes("from \"../../../lib/pcd-quote-line-display\""));
+  assert.ok(VIEWER.includes("lineDisplayName(line)"), "what the line is called");
+  assert.ok(VIEWER.includes("lineSubLines(line)"), "and what goes under it");
   // The old local copy is gone, so there is nothing left to drift.
-  assert.ok(!/function productDisplayName/.test(VIEWER), "the viewer still has its own naming");
+  assert.ok(!VIEWER.includes("function productDisplayName"), "the viewer still has its own naming");
 });
 
+test("the PDF and the online copy call a line the same thing", () => {
+  // They used to disagree twice over. The PDF led with the item and the page
+  // led with the kind, and the page never named a hardware item at all: a hinge
+  // read as the bare word "Hardware" while the PDF printed which hinge it was.
+  //
+  // Asserted on the ANSWER rather than on the two files, because two documents
+  // both importing the right function and then using it differently is exactly
+  // how they came apart in the first place.
+  const board = { product_type: "Door", material: "Decorative Board", finish: "Matt", colour: "Classic White" };
+  const hinge = { product_type: "Hardware", product_name: "Blum 110 Deg Inserta" };
+
+  // The bold line is WHAT KIND OF THING IT IS, on every row without exception,
+  // so a hardware row reads the same shape as the door row above it.
+  assert.equal(lineDisplayName(board), "Door");
+  assert.equal(lineDisplayName(hinge), "Hardware", "the kind, with which one underneath");
+  assert.equal(lineDisplayName({ product_type: "Hardware", hardware_type: "hinge" }), "Hinge");
+
+  // And which one it is goes under it, as a name on its own rather than
+  // labelled: nobody writes "Item: Blum 110 Deg Inserta" on a quote.
+  const under = lineSubLines(hinge);
+  assert.equal(under[0].key, "item");
+  assert.equal(under[0].value, "Blum 110 Deg Inserta");
+
+  // And what a board line is made from is never on the row: it is on the group.
+  assert.deepEqual(lineSubLines(board).map((part) => part.key), ["material", "finish", "colour"]);
+  assert.ok(VIEWER.includes("isHardwareLine(line)"), "so the viewer only prints them on hardware");
+});
 test("a hardware row is not asked about a board it has not got", () => {
   // Four columns used to print N/A on a hardware row, which made a complete
   // line read as an unfinished one.
-  const desktop = VIEWER.slice(VIEWER.indexOf("const isHardware = isHardwareLine(line)"), VIEWER.indexOf("</tbody>"));
-  ["quoteLineSizeText(line)", "line.edge_mould", "line.profile_type", "line.hinge_holes"].forEach((field) => {
-    const at = desktop.indexOf(field);
-    assert.ok(at > 0, `${field} is not on the row any more`);
-    assert.ok(
-      desktop.lastIndexOf("isHardware", at) > desktop.lastIndexOf("<td>", at) - 200,
-      `${field} is still printed on a hardware row`
-    );
-  });
+  //
+  // WRITTEN AGAINST THE GROUPING, not against the row. This used to look for a
+  // guard beside each field, and the viewer has since been rebuilt so the board
+  // columns are decided once for the whole group and a hardware group is given
+  // none. Same rule, one decision instead of four, and the test that went on
+  // looking for the old shape was reporting a bug that had already been fixed.
+  assert.ok(VIEWER.includes("cols: hardware ? [] : CONFIG_COLUMNS.filter"), "the group decides the columns");
+  assert.ok(VIEWER.includes("colourSrc: hardware ? \"\" :"), "and no swatch either");
 });
 
-test("the mobile card leaves the board sections off a hardware line too", () => {
-  // Same page, same rule. The two views disagreeing about what a line says is
-  // how somebody on a phone rings up about a quote that reads differently.
-  const mobile = VIEWER.slice(VIEWER.indexOf("quoteItemMobileSpecs"));
-  assert.match(mobile, /isHardware \?/);
-  assert.ok(mobile.includes("lineSubLines(line)"), "the card never names the item");
+test("the two views read the same columns, so neither can grow one of its own", () => {
+  // The same page disagreeing with itself is how somebody on a phone rings up
+  // about a quote that reads differently from the one on their laptop.
+  assert.ok(VIEWER.split("group.cols").length - 1 >= 3, "the table and the card both render group.cols");
+});
+
+test("a hardware line is named, in both views and on the PDF", () => {
+  // A hardware line was reading as the bare word "Hardware": lineHeading names
+  // the KIND, and these lines carry no kind. Which hinge it was sat in
+  // product_name, printed on the PDF and shown nowhere on the page the customer
+  // actually opens.
+  assert.ok(VIEWER.includes("function ItemName(" + "{" + " line " + "}" + ")"), "the viewer names the item");
+  assert.ok(VIEWER.includes("lineSubLines(line)"), "read from the shared describer");
+
+  // Used by the table AND by the phone card, not one of them.
+  const tag = "<ItemName line=" + "{" + "line" + "}" + " />";
+  assert.equal(VIEWER.split(tag).length - 1, 2, "the table and the phone card");
+
+  // And the PDF reads the same describer, so the two documents cannot drift.
+  assert.ok(PDF.includes("lineSubLines(line)"), "the PDF names it the same way");
+
+  // Nothing is added to a board line: its board is said once at the top of its
+  // group, and repeating it on every row is what the grouping was built to stop.
+  assert.ok(VIEWER.includes("isHardwareLine(line)"), "only a hardware line gets the detail");
 });

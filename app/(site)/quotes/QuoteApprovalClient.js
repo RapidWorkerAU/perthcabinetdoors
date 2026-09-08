@@ -7,7 +7,7 @@ import {
   boardGroupSpec,
   isHardwareLine,
   lineFrontProfile,
-  lineHeading,
+  lineDisplayName,
   lineSubLines,
 } from "../../../lib/pcd-quote-line-display";
 import { hingeCustomerLines } from "../../../lib/pcd-hinges";
@@ -133,6 +133,49 @@ function PreviewName({ src, label, onPreview }) {
 // round the numbers go and what they are measured in belong in the cell.
 const SIZE_MARKS = ["H", "W", "D"];
 
+// WHAT THE LINE IS, said the same way in both views and in the PDF.
+//
+// A hardware line was reading as the bare word "Hardware" and nothing else,
+// because lineHeading names the KIND and these lines carry no kind. Which
+// hinge it was sat in product_name, printed on the PDF and shown nowhere on
+// the page the customer actually opens. Both now read lineSubLines, which is
+// the one describer, so the two documents cannot say different things.
+//
+// Nothing is added to a board line: its material, finish and colour are said
+// once at the top of its group and repeating them on every row is what the
+// grouping was built to stop.
+// A BOLD LABEL, THEN EVERYTHING ELSE UNDER IT, the way the PDF sets a cell.
+//
+// The note used to be a column with a button that opened a dialog: three
+// clicks and a layer over the page to read one sentence, on the one screen a
+// customer is meant to check and answer. It reads under the line it is about
+// now, in the same quiet type as the rest of the detail.
+//
+// Material, finish and colour are NOT here on a board line. They are said
+// once at the top of the group, which is the whole reason the lines are
+// grouped, so only a hardware line gets its detail on the row.
+function ItemName({ line }) {
+  const detail = isHardwareLine(line)
+    ? lineSubLines(line)
+        .filter((part) => part.value)
+        // The item is a name and stands on its own. Anything else is a fact
+        // about the line and has to say what it is.
+        .map((part) => ({ key: part.key, text: part.key === "item" ? part.value : `${part.label} ${part.value}` }))
+    : [];
+
+  const note = String(line.client_note || "").trim();
+  if (note) detail.push({ key: "note", text: `Note: ${note}` });
+
+  return (
+    <>
+      <span className={styles.quoteItemName}>{lineDisplayName(line)}</span>
+      {detail.map((part) => (
+        <span className={styles.quoteItemDetail} key={part.key}>{part.text}</span>
+      ))}
+    </>
+  );
+}
+
 function SizeText({ line }) {
   const text = quoteLineSizeText(line);
   if (!text) return <span className={styles.quoteItemNo}>-</span>;
@@ -147,26 +190,6 @@ function SizeText({ line }) {
       ))}
       <span className={styles.sizeUnit}> mm</span>
     </span>
-  );
-}
-
-// THE NOTE IS A COLUMN, AND THE BUTTON IS DRAWN ON EVERY LINE.
-//
-// A line with nothing to read keeps the button, greyed and dead, so the column
-// never changes shape and a customer can see at a glance which lines carry one.
-function NoteButton({ line, onOpen }) {
-  const note = String(line.client_note || "").trim();
-  if (!note) {
-    return (
-      <button type="button" className={styles.noteButton} disabled aria-label="No note on this line">
-        Note
-      </button>
-    );
-  }
-  return (
-    <button type="button" className={styles.noteButton} onClick={() => onOpen(line)}>
-      Note
-    </button>
   );
 }
 
@@ -372,7 +395,6 @@ export default function QuoteApprovalClient() {
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [responseOnScreen, setResponseOnScreen] = useState(false);
-  const [noteLine, setNoteLine] = useState(null);
   const [paymentAcknowledged, setPaymentAcknowledged] = useState(false);
   // The details we must hold before this can be accepted. Pre-filled from the
   // customer record by the get route, and edited in the summary panel where
@@ -655,7 +677,6 @@ export default function QuoteApprovalClient() {
                   ))}
                   <th data-align="center" data-zone>Unit cost</th>
                   <th data-align="center">Total ex GST</th>
-                  <th data-align="center" data-zone>Note</th>
                 </tr>
               </thead>
               <tbody>
@@ -665,7 +686,7 @@ export default function QuoteApprovalClient() {
                       <span className={styles.quoteItemNumber}>{line.lineIndex}</span>
                     </td>
                     <td>
-                      <span className={styles.quoteItemName}>{lineHeading(line)}</span>
+                      <ItemName line={line} />
                     </td>
                     <td data-align="center" data-key="start">
                       <SizeText line={line} />
@@ -676,9 +697,6 @@ export default function QuoteApprovalClient() {
                     ))}
                     <td data-align="center" data-zone>{formatMoney(line.unit_price_ex_gst, quote.currency)}</td>
                     <td data-align="center">{formatMoney(line.line_total_ex_gst, quote.currency)}</td>
-                    <td data-align="center" data-zone>
-                      <NoteButton line={line} onOpen={setNoteLine} />
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -694,8 +712,7 @@ export default function QuoteApprovalClient() {
               <article className={styles.quoteItemMobileCard} key={line.id || `m-${line.lineIndex}`}>
                 <div className={styles.quoteItemMobileHeader}>
                   <span className={styles.quoteItemNumber}>{line.lineIndex}</span>
-                  <p>{lineHeading(line)}</p>
-                  <NoteButton line={line} onOpen={setNoteLine} />
+                  <p><ItemName line={line} /></p>
                 </div>
                 <div className={styles.quoteItemMobileKey}>
                   <div>
@@ -921,34 +938,6 @@ export default function QuoteApprovalClient() {
             </div>
             <div className={styles.attachmentModalFooter}>
               <button type="button" className={styles.buttonSecondary} onClick={() => setIsAttachmentsOpen(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {noteLine ? (
-        <div
-          className={styles.modalOverlay}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Line note"
-          onClick={() => setNoteLine(null)}
-        >
-          <div className={styles.attachmentModal} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.attachmentModalHeader}>
-              <div>
-                <span>Line {noteLine.lineIndex}</span>
-                <h2>{lineHeading(noteLine)}</h2>
-                <p>Your note on this line</p>
-              </div>
-            </div>
-            <div className={styles.attachmentModalBody}>
-              <p className={styles.noteText}>{String(noteLine.client_note || "").trim()}</p>
-            </div>
-            <div className={styles.attachmentModalFooter}>
-              <button type="button" className={styles.buttonSecondary} onClick={() => setNoteLine(null)}>
                 Close
               </button>
             </div>

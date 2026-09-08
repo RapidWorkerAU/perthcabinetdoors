@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import TermsEditor from "../../_components/TermsEditor";
 import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-html";
-import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
+import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconRuler, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
 import { checkSize } from "../../../../lib/pcd-size-limits";
@@ -31,7 +31,16 @@ import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNot
 import OverrideModal from "../../_components/OverrideModal";
 import ImportOrderFormModal from "./ImportOrderFormModal";
 import BoardOrderPanel from "./BoardOrderPanel";
+import SiteMeasureModal from "./SiteMeasureModal";
+import { measuredQuoteLine } from "../../../../lib/pcd-site-measure";
 import { BOARD_ORDER_DEFAULTS } from "../../../../lib/pcd-board-order";
+import {
+  itemTypeFromValue,
+  itemTypeGroup,
+  itemTypeLabel,
+  itemTypeOptions,
+  itemTypeValue,
+} from "../../../../lib/pcd-line-details";
 import LockedRegion from "../../_components/LockedRegion";
 import AcceptForCustomerModal from "../../_components/AcceptForCustomerModal";
 import { editability } from "../../../../lib/pcd-document-lock";
@@ -80,15 +89,27 @@ const BENCHTOP_TYPE = "Benchtop";
 // set the conversion and the reprice route use.
 const NON_BOARD_PRODUCT_TYPES = new Set(["Hardware", BENCHTOP_TYPE]);
 const colourOptionsCache = new Map();
+// WHAT A LINE IS, offered as the thing somebody would call it.
+//
+// A filler and a scribe are Panels, and they are offered here as themselves:
+// picking one sets product_type Panel AND panel_use Filler, so every rule
+// downstream sees exactly the Panel it always saw, and the row can finally say
+// which kind it is. The kinds come from PANEL_USES, so one added in Settings,
+// Lists turns up here without this file changing. See lib/pcd-line-details.js.
 const quoteProductTypes = [
-  ...PRODUCT_TYPES.map((type) => ({ value: type, label: type })),
-  ...(PRODUCT_TYPES.includes(BENCHTOP_TYPE) ? [] : [{ value: BENCHTOP_TYPE, label: BENCHTOP_TYPE }]),
-  { value: BASE_CABINET_TYPE, label: "Base cabinet" },
+  ...itemTypeOptions({ productTypes: PRODUCT_TYPES }),
+  ...(PRODUCT_TYPES.includes(BENCHTOP_TYPE)
+    ? []
+    : [{ value: BENCHTOP_TYPE, label: BENCHTOP_TYPE, group: itemTypeGroup(BENCHTOP_TYPE) }]),
+  { value: BASE_CABINET_TYPE, label: "Base cabinet", group: itemTypeGroup(BASE_CABINET_TYPE) },
 ];
 const ADMIN_DROPDOWN_OPEN_EVENT = "pcd-admin-dropdown-open";
 
 const emptyLine = {
   product_type: "",
+  // Which kind of panel, on a Panel line. Blank on everything else, and blank
+  // on a panel nobody has said. See itemTypeOptions in lib/pcd-line-details.js.
+  panel_use: "",
   product_name: "",
   material: "",
   thickness: "",
@@ -450,6 +471,13 @@ function humanizeUnknownProductType(value) {
   const text = String(value || "").replace(/[_-]+/g, " ").trim();
   if (!text) return "";
   return text.replace(/\S+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
+// WHAT THE ROW SAYS. A panel with a kind on it reads as that kind, so a run
+// of six lines all called Panel now reads End panel, Filler, Scribe.
+function displayLineType(line) {
+  if (normalizeProductTypeKey(line?.product_type) === normalizeProductTypeKey(BASE_CABINET_TYPE)) return "Base cabinet";
+  return itemTypeLabel(line) ? displayProductType(itemTypeLabel(line)) : "";
 }
 
 function displayProductType(value) {
@@ -2224,6 +2252,36 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+  // SITE MEASURE.
+  //
+  // Opened over the quote it belongs to, and every item it adds goes through
+  // saveLineAtIndex, the same save the items table uses for a line typed by
+  // hand. No new endpoint, no second way for a line to reach the quote: a
+  // measured line is an ordinary line that happened to be typed in a kitchen.
+  async function openSiteMeasure() {
+    // A row left open for editing is saved first, exactly as adding a line
+    // does, so the measure cannot append underneath an unsaved draft.
+    if (editableLineIndex !== null) {
+      const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex], { updateDraft: false });
+      if (!saved) return;
+      setEditableLineIndex(null);
+      setEditableLineDraft(null);
+    }
+    setSiteMeasureOpen(true);
+  }
+
+  async function addMeasuredItem(item) {
+    const index = form.lines.length;
+    const line = measuredQuoteLine(item, emptyLineWithDefaults(businessDefaults, defaultsLoaded));
+    setForm((current) => ({ ...current, lines: [...current.lines, line] }));
+    // saveLineAtIndex is given the line and the index outright, so it does not
+    // wait on the state above having settled.
+    const saved = await saveLineAtIndex(index, line, { updateDraft: false });
+    // A save that failed has already said why. The line is taken back off so
+    // the list cannot show something the quote has not got.
+    if (!saved) setForm((current) => ({ ...current, lines: current.lines.filter((_, i) => i !== index) }));
+    return saved;
+  }
   async function addLine() {
     if (editableLineIndex !== null) {
       const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex], { updateDraft: false });
@@ -3078,6 +3136,16 @@ export default function QuoteEditor({ quoteId }) {
             </button>
             <button
               type="button"
+              className="h-[32px] px-3 bg-[#1c2b1e] text-white text-[12px] font-semibold rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors inline-flex items-center gap-[6px]"
+              onClick={openSiteMeasure}
+              disabled={isLocked || savingLineIndex !== null}
+              title="Capture sizes and hinges on site. Each item is saved to this quote as you add it."
+            >
+              <IconRuler size={14} />
+              Site measure
+            </button>
+            <button
+              type="button"
               className="h-[32px] px-4 bg-[#1c2b1e] text-white text-[12px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors"
               onClick={addLine}
             >
@@ -3219,12 +3287,12 @@ export default function QuoteEditor({ quoteId }) {
                           {isEditable ? (
                             <QuoteTileCombobox
                               placeholder="Select type"
-                              value={displayProductType(line.product_type)}
-                              options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
-                              onChange={option => updateProductLine(index, { product_type: option.value || option.name || option.label })}
+                              value={itemTypeValue(line)}
+                              options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, group: t.group, meta: t.group }))}
+                              onChange={option => updateProductLine(index, itemTypeFromValue(option.value || option.name || option.label))}
                             />
                           ) : (
-                            <span className={v1}>{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">-</span>}</span>
+                            <span className={v1}>{displayLineType(line) || <span className="text-[#c5cdd8]">-</span>}</span>
                           )}
                         </td>
 
@@ -3709,7 +3777,7 @@ export default function QuoteEditor({ quoteId }) {
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[10px] font-medium text-[#8b8a81] bg-[#f5f8f4] w-[18px] h-[18px] rounded-[3px] flex items-center justify-center flex-shrink-0">{index + 1}</span>
-                    <span className="text-[13px] font-semibold text-[#1a1a18] truncate">{displayProductType(line.product_type) || <span className="text-[#c5cdd8]">No type</span>}</span>
+                    <span className="text-[13px] font-semibold text-[#1a1a18] truncate">{displayLineType(line) || <span className="text-[#c5cdd8]">No type</span>}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <LineNoteButton
@@ -4296,6 +4364,7 @@ export default function QuoteEditor({ quoteId }) {
   // went to the wrong address. Nothing about the quote changes. Only an accepted
   // one is past sending, and generating its PDF is read-only either way.
   const isAccepted = Boolean(form.order_id);
+  const [siteMeasureOpen, setSiteMeasureOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -4524,6 +4593,13 @@ export default function QuoteEditor({ quoteId }) {
 
       </div>
 
+      <SiteMeasureModal
+        open={siteMeasureOpen}
+        lines={form.lines}
+        onClose={() => setSiteMeasureOpen(false)}
+        onAdd={addMeasuredItem}
+        Modal={Modal}
+      />
       {publishEmail && (
         <Modal
           open={true}
@@ -4969,9 +5045,9 @@ export default function QuoteEditor({ quoteId }) {
                     <QuoteTileCombobox
                       compact={false}
                       placeholder="Select type"
-                      value={displayProductType(line.product_type)}
-                      options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, meta: 'Product type' }))}
-                      onChange={option => updateProductLine(idx, { product_type: option.value || option.name || option.label })}
+                      value={itemTypeValue(line)}
+                      options={quoteProductTypes.map(t => ({ label: t.label, name: t.label, value: t.value, group: t.group, meta: t.group }))}
+                      onChange={option => updateProductLine(idx, itemTypeFromValue(option.value || option.name || option.label))}
                     />
                   </div>
                   <div className="col-span-2">
