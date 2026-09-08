@@ -69,7 +69,15 @@ test("a type only offers the materials it can be made from", () => {
   assert.equal(listFor(built, listKey("MATERIAL", "Hardware")), null);
   // A table top is a work surface, so no thermolaminate.
   assert.deepEqual(listFor(built, listKey("MATERIAL", "Table top")), ["Decorative Board", "Compact Laminate"]);
-  assert.deepEqual(listFor(built, listKey("MATERIAL", "Door")), MATERIAL_LABELS);
+  // A laminate sheet is sold as the sheet. It is not the stock a door is cut
+  // out of, so an unrestricted type gets every material EXCEPT the standalone
+  // ones. A Laminate row gets the one material it can be, itself.
+  assert.deepEqual(listFor(built, listKey("MATERIAL", "Door")), [
+    "Decorative Board",
+    "Thermolaminate",
+    "Compact Laminate",
+  ]);
+  assert.deepEqual(listFor(built, listKey("MATERIAL", "Laminate")), ["Laminate"]);
 });
 
 test("thickness comes from the material", () => {

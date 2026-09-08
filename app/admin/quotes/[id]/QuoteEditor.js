@@ -31,7 +31,7 @@ import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNot
 import OverrideModal from "../../_components/OverrideModal";
 import ImportOrderFormModal from "./ImportOrderFormModal";
 import BoardOrderPanel from "./BoardOrderPanel";
-import SiteMeasureModal from "./SiteMeasureModal";
+import SiteMeasurePanel from "./SiteMeasurePanel";
 import { measuredQuoteLine } from "../../../../lib/pcd-site-measure";
 import { BOARD_ORDER_DEFAULTS } from "../../../../lib/pcd-board-order";
 import {
@@ -767,8 +767,12 @@ const tw = {
   cardTitle: "text-[13px] font-semibold text-[#1a1a18]",
   cardBody: "px-4 py-4",
   fieldLabel: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
-  fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
-  textarea: "min-h-[90px] w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-y",
+  // font-normal on both, for the same reason .fieldInput carries font-weight
+  // 400 in admin-content.module.css: these controls sit inside fieldLabel
+  // above, which is font-medium, and a control with no weight of its own
+  // inherits it. What somebody types is not emphasis.
+  fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] font-normal text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
+  textarea: "min-h-[90px] w-full border border-[#dbd8cc] rounded-[6px] px-3 py-2 text-[13px] font-normal text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] resize-y",
   grid2: "grid grid-cols-1 md:grid-cols-2 gap-3",
   grid3: "grid grid-cols-2 md:grid-cols-3 gap-3",
   wide: "md:col-span-2",
@@ -2268,6 +2272,16 @@ export default function QuoteEditor({ quoteId }) {
       setEditableLineDraft(null);
     }
     setSiteMeasureOpen(true);
+  }
+
+  // ONE WAY TO CHANGE SECTION. There are two navs, the desktop rail and the
+  // phone list, and a site measure that takes the content area over the top of
+  // whichever section you were in. Picking a section has to leave the measure
+  // as well as set the section, or the builder shows the measure with Costs &
+  // Markup lit up in the sidebar and no way to tell what the back arrow does.
+  function goToSection(key) {
+    setSiteMeasureOpen(false);
+    setActiveSection(key);
   }
 
   async function addMeasuredItem(item) {
@@ -4270,6 +4284,15 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   function renderSectionBody() {
+    // SITE MEASURE IS A DRILL DOWN, NOT A DIALOG. It takes the content area the
+    // way a section does, so on a desktop the card and the running list sit
+    // side by side and adding an item does not push the list off the bottom.
+    // Rendered here rather than mounted separately so it is inside the same
+    // form and the same locked region as every other section, and so the one
+    // sidebar keeps working while it is open.
+    if (siteMeasureOpen) {
+      return <SiteMeasurePanel lines={form.lines} onClose={() => setSiteMeasureOpen(false)} onAdd={addMeasuredItem} />;
+    }
     if (activeSection === "items") return renderItems();
     if (activeSection === "cabinets") return renderCabinets();
     if (activeSection === "boards") return renderBoards();
@@ -4515,7 +4538,7 @@ export default function QuoteEditor({ quoteId }) {
               <button
                 key={section.key}
                 type="button"
-                onClick={() => setActiveSection(section.key)}
+                onClick={() => goToSection(section.key)}
                 className={`flex items-center px-3 py-[9px] rounded-[6px] w-full text-left text-[13px] font-medium transition-colors ${
                   activeSection === section.key
                     ? "bg-[#edf4eb] text-[#1c2b1e]"
@@ -4547,7 +4570,7 @@ export default function QuoteEditor({ quoteId }) {
                 <button
                   key={section.key}
                   type="button"
-                  onClick={() => setActiveSection(section.key)}
+                  onClick={() => goToSection(section.key)}
                   className="w-full flex items-center justify-between px-4 py-[14px] text-[14px] font-medium text-[#1a1a18] bg-white border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors"
                 >
                   {section.label}
@@ -4560,14 +4583,14 @@ export default function QuoteEditor({ quoteId }) {
               <div className="flex items-center gap-2 px-4 py-3 bg-white border-b border-[#edf4eb] flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => setActiveSection("")}
+                  onClick={() => (siteMeasureOpen ? setSiteMeasureOpen(false) : setActiveSection(""))}
                   className="w-[32px] h-[32px] flex items-center justify-center text-[#5a5a52] hover:text-[#1a1a18] transition-colors -ml-1"
-                  aria-label="Back to sections"
+                  aria-label={siteMeasureOpen ? "Back to quote items" : "Back to sections"}
                 >
                   {"<-"}
                 </button>
                 <span className="text-[15px] font-semibold text-[#1a1a18]">
-                  {sections.find((s) => s.key === activeSection)?.label}
+                  {siteMeasureOpen ? "Site measure" : sections.find((s) => s.key === activeSection)?.label}
                 </span>
               </div>
               <div className="p-4 bg-[#f5f8f4]">
@@ -4585,7 +4608,7 @@ export default function QuoteEditor({ quoteId }) {
           {/* On the Items tab the panel fills the height and lets the table
               scroll internally (sticky header); other tabs scroll normally so
               the sidebar stays put either way. */}
-          <form onSubmit={saveQuote} className={`flex-1 min-h-0 p-6 ${activeSection === 'items' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
+          <form onSubmit={saveQuote} className={`flex-1 min-h-0 p-6 ${activeSection === 'items' && !siteMeasureOpen ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
             <LockedRegion locked={isLocked && !isLoading && !loadError}>{contentPanel}</LockedRegion>
             {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order, so it can no longer be edited. Raise a variation on the order to change the work.</div> : null}
           </form>
@@ -4593,13 +4616,6 @@ export default function QuoteEditor({ quoteId }) {
 
       </div>
 
-      <SiteMeasureModal
-        open={siteMeasureOpen}
-        lines={form.lines}
-        onClose={() => setSiteMeasureOpen(false)}
-        onAdd={addMeasuredItem}
-        Modal={Modal}
-      />
       {publishEmail && (
         <Modal
           open={true}

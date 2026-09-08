@@ -38,7 +38,7 @@ import { cupPositions, hingeCount, normaliseHingeSide, usesStandardPositions } f
 import { quoteLineRow } from "../app/api/admin/quotes/[id]/_quote-line-save.js";
 
 const EDITOR = readFileSync(new URL("../app/admin/quotes/[id]/QuoteEditor.js", import.meta.url), "utf8");
-const MODAL = readFileSync(new URL("../app/admin/quotes/[id]/SiteMeasureModal.js", import.meta.url), "utf8");
+const PANEL = readFileSync(new URL("../app/admin/quotes/[id]/SiteMeasurePanel.js", import.meta.url), "utf8");
 
 const door = (over = {}) => ({
   ref: "D1", type: "door", height_mm: 2100, width_mm: 497, qty: 1,
@@ -250,22 +250,100 @@ test("the card says what the item will become before it is added", () => {
 test("nothing on the card is left to wrap", () => {
   // Six tiles in a three column grid is two tidy rows. Left to wrap they broke
   // into a ragged one and a half, which is what the first attempt at this did.
-  assert.match(MODAL, /gridTemplateColumns: `repeat\(\$\{cols\},minmax\(0,1fr\)\)`/);
-  assert.match(MODAL, /cols=\{3\}/, "the item types");
-  assert.match(MODAL, /cols=\{2\}/, "the hinge side");
-  assert.match(MODAL, /cols=\{4\}/, "the hinge count");
-  assert.match(MODAL, /whitespace-nowrap/);
+  assert.match(PANEL, /gridTemplateColumns: `repeat\(\$\{cols\},minmax\(0,1fr\)\)`/);
+  assert.match(PANEL, /cols=\{3\}/, "the item types");
+  assert.match(PANEL, /cols=\{2\}/, "the hinge side");
+  assert.match(PANEL, /cols=\{4\}/, "the hinge count");
+  assert.match(PANEL, /whitespace-nowrap/);
 });
 
 test("the card does not delete, because those are quote lines now", () => {
   // A delete belongs where every other line is deleted, not behind a second
   // button that only some lines have.
-  assert.equal(/onRemove|data-remove|Delete/.test(MODAL), false);
-  assert.match(MODAL, /These are quote lines already/);
+  assert.equal(/onRemove|data-remove|Delete/.test(PANEL), false);
+  assert.match(PANEL, /These are quote lines already/);
 });
 
 test("the type is asked of the shared list, not written out again", () => {
-  assert.match(MODAL, /SITE_MEASURE_TYPES\.map/);
-  assert.match(MODAL, /hingesForHeight/, "the hinge count starts from the height rule everything else uses");
+  assert.match(PANEL, /SITE_MEASURE_TYPES\.map/);
+  assert.match(PANEL, /hingesForHeight/, "the hinge count starts from the height rule everything else uses");
   assert.equal(siteMeasureType("nonsense").key, "door", "an unknown key falls back rather than throwing");
+});
+
+/*
+ * IT IS A DRILL DOWN, NOT A DIALOG.
+ *
+ * It shipped as a modal and that was wrong on a desktop. Measuring is a job you
+ * sit in for an hour, not a question you answer and dismiss, and a dialog has
+ * to stack the card on top of the running list. You then add an item and the
+ * thing you want to check, what is already down, is pushed off the bottom.
+ *
+ * Two panes, the card on the left at a fixed width and the list on the right,
+ * is what was agreed. These pin it, along with the two things that go wrong
+ * around it: a second back arrow on the phone, and a sidebar left lit up on a
+ * section the content area is not showing.
+ *
+ * Written with includes rather than patterns because these are checks on exact
+ * strings in a source file, and a pattern here reads as though it is allowing
+ * for variation it is not.
+ */
+test("the measure takes the content area rather than opening a dialog", () => {
+  assert.equal(PANEL.includes("<Modal"), false, "the measure is back inside a dialog");
+  assert.equal(PANEL.includes("Modal"), false, "the panel still knows about Modal");
+  assert.ok(PANEL.includes("export default function SiteMeasurePanel"));
+  // The builder renders it where a section body goes, so it sits inside the
+  // same form and the same locked region as every other section on the screen.
+  const body = EDITOR.slice(EDITOR.indexOf("function renderSectionBody()"));
+  assert.ok(body.slice(0, 900).includes("<SiteMeasurePanel"), "it is not rendered as a section body");
+  assert.equal(EDITOR.includes("SiteMeasureModal"), false);
+});
+
+test("the card and the running list sit side by side on a desktop", () => {
+  // 420px holds the card at the width its fields were drawn for. minmax(0,1fr)
+  // is what stops a long line in the list widening the grid instead of
+  // truncating inside its own column.
+  assert.ok(PANEL.includes("xl:grid-cols-[420px_minmax(0,1fr)]"), "the two panes are gone");
+  // Below the breakpoint they stack, card first, which is also the phone
+  // layout. Same one class, so there is no second definition to keep in step.
+  assert.ok(PANEL.includes('className="grid gap-4 items-start xl:grid-cols-'));
+});
+
+test("there is exactly one way back, whichever size the screen is", () => {
+  // The desktop heading carries the back arrow and Done. The phone gets a Done
+  // at the foot instead, because the builder's own bar is already showing an
+  // arrow there and two arrows is a guess about which one goes where.
+  assert.ok(PANEL.includes("hidden md:flex"), "the panel heading doubles the phone bar's back arrow");
+  assert.ok(PANEL.includes("md:hidden"), "there is no way out on a phone");
+  assert.ok(EDITOR.includes('siteMeasureOpen ? "Site measure" :'), "the phone bar does not say where you are");
+  assert.ok(EDITOR.includes('siteMeasureOpen ? setSiteMeasureOpen(false) : setActiveSection("")'));
+});
+
+test("picking a section leaves the measure", () => {
+  // Both navs go through the one function, so the sidebar cannot end up lit up
+  // on a section the content area is not showing.
+  assert.ok(EDITOR.includes("function goToSection(key) {"));
+  const fn = EDITOR.slice(EDITOR.indexOf("function goToSection(key) {"), EDITOR.indexOf("function goToSection(key) {") + 160);
+  assert.ok(fn.includes("setSiteMeasureOpen(false)"), "changing section leaves the measure open");
+  assert.ok(fn.includes("setActiveSection(key)"));
+  assert.equal(EDITOR.includes("setActiveSection(section.key)"), false, "a nav still sets the section directly");
+  assert.equal(
+    EDITOR.split("goToSection(section.key)").length - 1,
+    2,
+    "both the desktop rail and the phone list should go through it"
+  );
+});
+
+test("the measure panel scrolls, even though the items table does not", () => {
+  // The items tab pins its own height so the table scrolls under a sticky
+  // header. The measure opens from that tab and would be clipped by it.
+  assert.ok(EDITOR.includes("activeSection === 'items' && !siteMeasureOpen ? 'flex flex-col overflow-hidden'"));
+});
+
+test("nothing in the measure submits the quote", () => {
+  // Moving out of a dialog moved it INSIDE the builder's form, so a button with
+  // no type is a submit button now. Add item would save the whole quote and
+  // Done would too. Every button says what it is.
+  const buttons = PANEL.split("<button").length - 1;
+  const typed = PANEL.split('type="button"').length - 1;
+  assert.equal(typed, buttons, "a button in the measure has no type and will submit the quote");
 });

@@ -16,6 +16,22 @@
 // Which is also why the list underneath does not delete. Those are real quote
 // lines now, and a delete belongs where every other line is deleted rather than
 // behind a second button that only some lines have.
+//
+// ── WHY IT IS A PANEL AND NOT A MODAL ────────────────────────────────────────
+//
+// This is a drill down inside the quote builder: it takes over the content area
+// the way a section does, and the back arrow returns to the items table. It was
+// built as a modal first and that was wrong on a desktop. Measuring is not a
+// question you answer and dismiss, it is a job you sit in for an hour, and a
+// dialog gives it a fixed box that has to stack the card on top of the list.
+// You then add an item and the thing you want to check, what is already down,
+// is pushed off the bottom.
+//
+// So the two panes: the card on the left at a fixed 420px, because the fields
+// in it are a known width and it should not stretch, and the running list on
+// the right taking whatever is left. Side by side, adding an item shows up in
+// the list without anything moving. Under 1280px there is not room for both, so
+// they stack in the same order, which is also the phone layout.
 
 import React, { useMemo, useState } from "react";
 import {
@@ -79,7 +95,7 @@ function emptyItem(lines, from) {
   };
 }
 
-export default function SiteMeasureModal({ open, lines = [], onClose, onAdd, Modal }) {
+export default function SiteMeasurePanel({ lines = [], onClose, onAdd }) {
   const [draft, setDraft] = useState(() => emptyItem(lines));
   const [saving, setSaving] = useState(false);
   const [added, setAdded] = useState([]);
@@ -149,26 +165,42 @@ export default function SiteMeasureModal({ open, lines = [], onClose, onAdd, Mod
     );
   }
 
-  if (!Modal) return null;
-
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Site measure"
-      subtitle="Each item is saved to the quote as you add it. The board and the colour are set back at the office."
-      size="lg"
-      footer={
+    <section className="flex flex-col gap-4">
+      {/* The heading. Hidden under md because the builder's own mobile bar is
+          already showing a back arrow and the name of where you are, and two
+          back arrows on one screen is a guess about which one goes where. */}
+      <header className="hidden md:flex items-start justify-between gap-4">
+        <div className="flex items-start gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Back to quote items"
+            className="w-[32px] h-[32px] -ml-1 mt-[1px] flex-shrink-0 rounded-[6px] flex items-center justify-center text-[#5a5a52] hover:bg-white hover:text-[#1a1a18] transition-colors"
+          >
+            {"<-"}
+          </button>
+          <div className="min-w-0">
+            <h2 className="text-[16px] font-semibold text-[#1a1a18] leading-tight">Site measure</h2>
+            <p className={`${MUTED} mt-[2px]`}>
+              Each item is saved to the quote as you add it. The board and the colour are set back at the office.
+            </p>
+          </div>
+        </div>
         <button
           type="button"
           onClick={onClose}
-          className="h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] transition-colors"
+          className="h-[34px] px-4 flex-shrink-0 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] whitespace-nowrap transition-colors"
         >
           Done
         </button>
-      }
-    >
-      {/* ── The card ─────────────────────────────────────────────────────── */}
+      </header>
+
+      {/* THE TWO PANES. Fixed 420px for the card so the fields keep the width
+          they were drawn at, and minmax(0,1fr) for the list so a long line
+          truncates inside its own column instead of widening the grid. */}
+      <div className="grid gap-4 items-start xl:grid-cols-[420px_minmax(0,1fr)]">
+        {/* ── The card ─────────────────────────────────────────────────────── */}
       <div className="bg-white border border-[#dbd8cc] rounded-[10px] overflow-hidden">
         <div className="px-4 py-3 border-b border-[#edf4eb] flex items-center justify-between gap-3">
           <span className="text-[13px] font-semibold text-[#1a1a18]">Next item</span>
@@ -378,7 +410,17 @@ export default function SiteMeasureModal({ open, lines = [], onClose, onAdd, Mod
           off on the items table, the same as any other line. Everything a measure does not ask, the board, the colour,
           the finish and the edge, is still to be filled in and each line is flagged for it.
         </p>
+        </div>
       </div>
-    </Modal>
+
+      {/* The way out on a phone, where the header above is hidden. */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="md:hidden h-[44px] w-full bg-[#1c2b1e] text-white text-[14px] font-medium rounded-[8px] hover:bg-[#2d3f2f] transition-colors"
+      >
+        Done
+      </button>
+    </section>
   );
 }

@@ -665,6 +665,17 @@
   color: var(--pcd-admin-text);
   font: inherit;
   font-size: 13px;
+  /* THE LABEL IS BOLD. WHAT SOMEBODY TYPES INTO IT IS NOT.
+   *
+   * Every one of these controls sits inside its label element, and .fieldLabel
+   * is 600 weight, so `font: inherit` above was pulling that weight down into
+   * the control itself. Notes, colours, sizes and prices all came out bold, as
+   * though the value had been emphasised on purpose. Reset here rather than on
+   * the one field somebody noticed, because it is the same fault in every form
+   * on the admin and fixing it once is what stops it coming back a field at a
+   * time. It has to sit after `font: inherit`, which is a shorthand and would
+   * otherwise put the weight straight back. */
+  font-weight: 400;
   line-height: 1.45;
   min-height: 38px;
   padding: 8px 10px;
