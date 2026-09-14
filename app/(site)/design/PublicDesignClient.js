@@ -8,6 +8,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import CabinetElevation from "../../../components/public/CabinetElevation";
 import PcdLoader from "../../../components/public/PcdLoader";
@@ -2025,7 +2026,9 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
   };
   const setDoorOpening = (opening) => set({ front_type: "doors", door_config: doorConfigPatchForOpening(item.door_config || {}, opening) });
   const setDrawerCount = (n) => set({ front_type: "drawers", drawer_config: { ...(item.drawer_config || {}), heights_mm: equalDrawers(item.height_mm, n) } });
-  const setShelfCount = (n) => set({ shelf_qty: n });
+  // A new count respaces the shelves rather than keeping positions saved for
+  // the old one. See cabinetShelfHeightsMm in lib/pcd-door-utils.js.
+  const setShelfCount = (n) => set({ shelf_qty: n, shelf_heights_mm: [] });
   const setFinger = (on) => (isDrawers
     ? set({ drawer_config: { ...(item.drawer_config || {}), gap_enabled: on } })
     : set({ door_config: { ...(item.door_config || {}), row_gap_enabled: on } }));
@@ -2452,7 +2455,7 @@ function AccSection({ k, label, summary, openKey, setOpen, children }) {
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "11px 12px", background: isOpen ? "#f7f5ef" : "#fff", border: "none", cursor: "pointer", font: "inherit" }}>
         <span style={{ fontWeight: 700, fontSize: 13, color: C.ink }}>{label}</span>
         <span style={{ marginLeft: "auto", fontSize: 12, color: C.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140 }}>{isOpen ? "" : summary}</span>
-        <span style={{ color: C.soft, fontSize: 12 }}>{isOpen ? "▾" : "▸"}</span>
+        <span style={{ color: C.soft, display: "inline-flex" }}>{isOpen ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}</span>
       </button>
       {isOpen && <div style={{ padding: "8px 12px 14px" }}>{children}</div>}
     </div>

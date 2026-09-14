@@ -1,6 +1,7 @@
 import Link from "next/link";
 import PublicArrowIcon from "@/components/public/PublicArrowIcon";
 import PublicFooter from "@/components/public/PublicFooter";
+import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
 import PublicSiteNav from "../PublicSiteNav";
 import styles from "../journey.module.css";
 
@@ -117,6 +118,25 @@ export default function StartPage() {
             </span>
             <PublicArrowIcon className={styles.catchAllArrow} />
           </Link>
+
+          {/* THE FAST LANE, AND DELIBERATELY NOT A BOX.
+              The three cards above answer "what are you working with", which is
+              a question about the customer's kitchen. The shop answers "how do
+              you want to buy", which is a different question, so it is not a
+              fourth card. It was a bordered strip for a while and that was
+              worse: two green containers stacked, both offering another way in,
+              and the newer one shouting over the catch-all with a filled button
+              where that has only an arrow.
+
+              So it is a closing line rather than a panel. Nothing is added to
+              the page, which is why nothing can look tacked onto it. */}
+          {SHOP_ENABLED ? (
+            <p className={styles.shopLine}>
+              <strong>Already know your sizes?</strong> Plain flat doors, drawer fronts and panels in Polytec
+              decorative board are priced on this site.{" "}
+              <Link href="/products">Buy them now without a quote</Link>.
+            </p>
+          ) : null}
         </div>
 
         <section className={styles.reassure}>

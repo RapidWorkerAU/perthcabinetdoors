@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { IconArrowDown, IconArrowUp } from '@tabler/icons-react'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 
@@ -210,7 +211,7 @@ export default function ListsManager() {
                               aria-label={`Move ${item.label} up`}
                               className="h-[22px] w-[22px] rounded-[4px] border border-[#dbd8cc] text-[11px] text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-30"
                             >
-                              ↑
+                              <IconArrowUp size={13} />
                             </button>
                             <button
                               type="button"
@@ -219,7 +220,7 @@ export default function ListsManager() {
                               aria-label={`Move ${item.label} down`}
                               className="h-[22px] w-[22px] rounded-[4px] border border-[#dbd8cc] text-[11px] text-[#5a5a52] hover:bg-[#f5f8f4] disabled:opacity-30"
                             >
-                              ↓
+                              <IconArrowDown size={13} />
                             </button>
                           </div>
                         </td>

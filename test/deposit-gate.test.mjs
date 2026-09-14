@@ -145,14 +145,23 @@ test("finalising claims the quote conditionally, so only one caller wins", () =>
   const from = GATE.indexOf("THE CLAIM.");
   assert.ok(from > 0, "the claim must be marked");
   const claim = GATE.slice(from, GATE.indexOf("if (!claimed)", from));
-  assert.match(claim, /\.eq\("status", AWAITING_DEPOSIT\)/, "conditional on the held state");
+  assert.match(claim, /\.in\("status", HELD_STATUSES\)/, "conditional on the held state");
+  // A deposit quote or a web order waiting on its payment, and nothing else.
+  assert.match(GATE, /const HELD_STATUSES = \[AWAITING_DEPOSIT, WEB_CHECKOUT\]/);
   assert.match(claim, /\.update\(\{ status: "approved"/);
 });
 
 test("all three callers go through the one finaliser", () => {
-  assert.match(WEBHOOK, /finaliseDepositAcceptance/, "the webhook");
-  assert.match(SUCCESS, /finaliseDepositAcceptance/, "the thank you page");
-  assert.match(SWEEP, /finaliseDepositAcceptance/, "and the sweep");
+  // Through completeGateSession, which finalises and then tells sales@ and the
+  // customer when that caller is the one that made the order. The thank you
+  // page used to finalise and tell nobody, so an order it made was silent.
+  const COMPLETE = read("lib/pcd-gate-complete.js");
+  assert.match(COMPLETE, /await finaliseDepositAcceptance\(supabase, session/, "the step finalises");
+  assert.match(COMPLETE, /if \(!result\.ok \|\| result\.alreadyDone\) return result;/, "and only the winner sends");
+  assert.match(WEBHOOK, /completeGateSession\(/, "the webhook");
+  assert.match(SUCCESS, /completeGateSession\(/, "the thank you page");
+  assert.match(SWEEP, /completeGateSession\(/, "and the sweep");
+  assert.match(read("app/(site)/orders/confirmed/page.js"), /completeGateSession\(/, "and the web order confirmation");
 });
 
 test("an order is only ever created from inside the gate", () => {

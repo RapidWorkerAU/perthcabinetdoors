@@ -162,19 +162,69 @@ test("an unknown type still gets a form", () => {
 
 const FORM = read("app/(site)/request-quote/RequestQuoteFormClient.js");
 
-test("the type is asked first, on its own", () => {
+test("the type is asked first, and nothing below it until it is answered", () => {
+  // It used to be a screen of its own, because a modal had no room for both.
+  // The builder lives on the page now, so it is the first numbered question in
+  // the same card: somebody can change what it is without losing the rest, and
+  // the questions under it still do not exist until there is a type to shape
+  // them. Which is the part that actually matters.
   assert.match(FORM, /<ProductTypeChooser/);
-  assert.match(FORM, /const pickingType = pickingTypeState \|\| !editingItem\.type/);
-  assert.match(FORM, /Step 1 of 2/);
+  assert.match(FORM, /\[\{ key: "itemType", label: "What is it" \}\]/, "what is it stands alone until answered");
+  assert.ok(!FORM.includes("Step 1 of 2"), "the two screen shape is gone");
 });
 
-test("step two renders from the field set rather than a wall of conditionals", () => {
+// ── ONE QUESTION PER BLOCK, AND THE ORDER IS NOT THIS PAGE'S ────────────────
+//
+// The page used to hold its own copy of the sequence, laid out as a single grid
+// of every field with the ones that did not apply switched off. That is how a
+// thermolaminate front came to be asked which of its edges to band. The
+// questions are written down once now, in stepsForLine, and this page renders
+// whatever that hands it.
+test("the questions come from the shared spine, not a copy on the page", () => {
+  assert.match(FORM, /stepsForLine\(\{/, "the page has to ask the rules what to render");
+  assert.match(FORM, /steps\.map\(\(step, index\) =>/, "and render what comes back, in that order");
+  assert.match(FORM, /<span className=\{styles\.stepNum\}>\{index \+ 1\}<\/span>/, "numbered by position");
+  assert.ok(!FORM.includes("productModalGrid"), "the one grid of every field is gone");
+});
+
+// The failure this guards against is silent: a step the spine emits with no
+// branch to draw it renders a numbered heading with nothing underneath it. That
+// looks like a question that failed to load, and there is nothing to click to
+// find out otherwise.
+test("every question the rules can ask has something to render", async () => {
+  const { STEP_KEYS } = await import("../lib/pcd-quote-steps.js");
+  STEP_KEYS.forEach((key) => {
+    assert.ok(FORM.includes(`key === "${key}"`), `the page draws no ${key} step`);
+  });
+});
+
+test("the page only drops a step for a reason the rules cannot see", () => {
+  // Whether the BRAND has anything to offer. Laminex makes no edges at all, and
+  // there are no profiles to list until a brand is chosen. Those are the only
+  // two, and an empty dropdown is a question somebody tries to answer and
+  // cannot.
+  const filter = FORM.slice(FORM.indexOf("}).filter((step) => {"), FORM.indexOf("return true;"));
+  assert.match(filter, /step\.key === "frontProfile"/);
+  assert.match(filter, /step\.key === "edgeMould"/);
+  assert.ok(!/bandedEdges|hinges|size|colour/.test(filter), "every other rule belongs in the spine");
+});
+
+test("each step still renders from the field set", () => {
   assert.match(FORM, /const fields = fieldsForProductType\(editingItem\.type\)/);
-  ["fields.hardware", "fields.board", "fields.size", "fields.edge", "fields.profile", "fields.hinges"].forEach(
-    (guard) => {
-      assert.ok(FORM.includes(guard), `step two does not consult ${guard}`);
-    }
-  );
+  ["fields.hardware", "fields.board", "fields.size", "fields.hinges"].forEach((guard) => {
+    assert.ok(FORM.includes(guard), `the page no longer consults ${guard}`);
+  });
+});
+
+// A remark about ONE door was going in the request-wide notes box with nothing
+// to say which door it meant. The field it writes to has been carried to the
+// endpoint all along; there was simply nowhere on the page to type it.
+test("a line can carry a note of its own", () => {
+  assert.match(FORM, /key === "notes"/);
+  assert.match(FORM, /updateItem\(editingItem\.id, \{ note: event\.target\.value \}\)/);
+  // The payload is lib/pcd-quote-request-payload.js now, because
+  // /request-quote/send is what sends it.
+  assert.match(read("lib/pcd-quote-request-payload.js"), /notes: item\.note \|\| ""/, "and it goes out with the line");
 });
 
 // The point of the change: a field that does not apply is not rendered at all.
@@ -187,14 +237,23 @@ test("no field is rendered only to be marked N/A", () => {
 });
 
 test("there is a way back to the type", () => {
-  assert.match(FORM, /Choose something else/);
+  // There is no back link any more because there is nothing to go back to: what
+  // it is is the first block on the same card, in view the whole time, so
+  // changing it is picking a different tile rather than retracing a step.
+  assert.match(FORM, /key === "itemType"/);
+  assert.ok(!FORM.includes("Choose something else"), "a back link to a question already on screen is noise");
+  assert.ok(!FORM.includes("pickingType"), "and the state behind it stopped gating anything");
 });
 
 // A door drilled for hinges that becomes a table top must not still be drilled,
 // and hardware has no board, so a colour left on it would be a spec we cannot
 // act on.
 test("changing the type drops what the new type cannot use", () => {
-  assert.match(FORM, /function chooseType\(id, type\)/);
+  // It takes a VALUE, not a type: "Panel :: Scribe" is one answer that sets
+  // both product_type and panel_use, the way the admin picker does it. The
+  // function splits it before anything below runs.
+  assert.match(FORM, /function chooseType\(id, value\)/);
+  assert.match(FORM, /String\(value\)\.split\(" :: "\)/);
   assert.match(FORM, /preDrill: next\.hinges \? row\.preDrill : false/);
   assert.match(FORM, /hardwareId: next\.hardware \? row\.hardwareId : ""/);
   assert.match(
@@ -205,8 +264,9 @@ test("changing the type drops what the new type cannot use", () => {
 });
 
 test("the chosen hardware travels with the request", () => {
-  assert.match(FORM, /hardwareCatalogueId: item\.hardwareId \|\| undefined/);
-  assert.match(FORM, /productName: item\.hardwareName \|\| item\.type/, "so the line names what they picked");
+  const payload = read("lib/pcd-quote-request-payload.js");
+  assert.match(payload, /hardwareCatalogueId: item\.hardwareId \|\| undefined/);
+  assert.match(payload, /productName: item\.hardwareName \|\| item\.type/, "so the line names what they picked");
   const api = read("app/api/quote-requests/route.js");
   assert.match(api, /hardwareCatalogueId: z\.string\(\)\.uuid\(\)\.optional\(\)/, "or zod strips it silently");
 });

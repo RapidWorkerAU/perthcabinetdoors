@@ -2,7 +2,7 @@ import { createOrderFromQuote } from "../../../../lib/pcd-order-from-quote";
 import { sendQuoteApprovedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { approvalEvidence } from "../../../../lib/pcd-approval-evidence";
-import { siteUrl } from "../../../../lib/pcd-stripe";
+import { returnOrigin } from "../../../../lib/pcd-stripe";
 import { cancelOpenCheckouts, startDepositCheckout } from "../../../../lib/pcd-deposit-gate";
 import { depositAmountForQuote } from "../../../../lib/pcd-quote-acceptance";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
@@ -174,7 +174,9 @@ export async function POST(request) {
       // they could not come back and finish.
       if (quote.deposit_required && depositAmountForQuote(quote) > 0) {
         const started = await startDepositCheckout(supabase, quote, {
-          baseUrl: siteUrl(request.url),
+          // Back to the site they approved the quote on, not to whichever
+          // address is configured as the canonical one. See returnOrigin.
+          baseUrl: returnOrigin(request),
           clientName: payload.client_name,
         });
         if (!started.ok) {

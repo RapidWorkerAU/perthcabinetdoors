@@ -24,4 +24,20 @@ pnpm-debug.log*
 # and a push carrying them is refused outright.
 .nv-*/
 .nv*/
+# EVERY build directory, not a list of the ones we have thought of.
+#
+# The two rules above name .next-verify and .nv-anything, and a build written to
+# .next-build matched neither. It went into a commit with 1277 files in it, and
+# GitHub refused the push on the two webpack caches inside it:
+#
+#     .next-build/cache/webpack/server-production/0.pack is 246.15 MB
+#     .next-build/cache/webpack/client-production/0.pack is 135.37 MB
+#
+# PCD_DIST_DIR can be given any name at all, so the pattern has to cover the
+# shape rather than the names already used. Anything beginning .next that is a
+# directory is build output.
+.next*/
+# And the logs a dev server is redirected into, which are not build output but
+# are not ours to keep either.
+.next-dev*.log
 

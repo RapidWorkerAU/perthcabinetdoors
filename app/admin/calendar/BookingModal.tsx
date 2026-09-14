@@ -59,7 +59,12 @@ export interface BookingDraft {
   minutes:         number
   customerId:      string | null
   customerName:    string
+  // WHICH JOB, AND WHICH KIND OF JOB. Two fields rather than one, because a
+  // measure is booked against a quote and an install against an order, and
+  // those are two different links on the booking. A quote's id put in orderId
+  // is not an order, and the database refused the whole booking for it.
   orderId:         string | null
+  quoteId:         string | null
   siteAddress:     string
   notes:           string
   addToOutlook:    boolean
@@ -88,6 +93,18 @@ function fromTimeValue(value: string, fallback: number) {
   const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || ''))
   if (!match) return fallback
   return Number(match[1]) * 60 + Number(match[2])
+}
+
+/** "order:<id>" or "quote:<id>". One dropdown, two tables behind it. */
+function jobValueOf(job: JobOption) {
+  return `${job.kind}:${job.id}`
+}
+
+/** Which row of that dropdown a booking is already against. */
+function jobValueOfDraft(form: BookingDraft) {
+  if (form.orderId) return `order:${form.orderId}`
+  if (form.quoteId) return `quote:${form.quoteId}`
+  return ''
 }
 
 function addressOf(customer: Customer) {
@@ -184,6 +201,7 @@ export default function BookingModal({ open, onClose, onSaved, draft, orders }: 
         customerName: name,
         // A job chosen for the last customer is not this customer's job.
         orderId: customer?.id === prev.customerId ? prev.orderId : null,
+        quoteId: customer?.id === prev.customerId ? prev.quoteId : null,
         // The address comes across so nobody types it twice, and stays editable
         // because the job is not always at the address on file.
         siteAddress: customer ? addressOf(customer) || prev.siteAddress : prev.siteAddress,
@@ -327,13 +345,16 @@ export default function BookingModal({ open, onClose, onSaved, draft, orders }: 
         <Select
           label="About which job"
           optional
-          value={form.orderId || ''}
+          value={jobValueOfDraft(form)}
           onChange={e => {
-            const jobId = e.target.value || null
-            const job = jobs.find(entry => entry.id === jobId)
+            const job = jobs.find(entry => jobValueOf(entry) === e.target.value) || null
             setForm(prev => prev && ({
               ...prev,
-              orderId: jobId,
+              // THE ID GOES IN THE LINK IT BELONGS TO. Both orders and quotes
+              // are offered here, and they are separate links on the booking,
+              // so a quote picked from this list is a quote and never an order.
+              orderId: job?.kind === 'order' ? job.id : null,
+              quoteId: job?.kind === 'quote' ? job.id : null,
               // THE JOB'S ADDRESS, when the customer record has none. Half the
               // customer list has no address on it, and the address is usually
               // on the quote instead, which is where it was typed. Never
@@ -358,7 +379,9 @@ export default function BookingModal({ open, onClose, onSaved, draft, orders }: 
             // offered Ian Brennan's raw profiled doors and picking one would
             // have filed her site measure against his job.
             ...jobs.map(job => ({
-              value: job.id,
+              // The kind travels with the id, because an order and a quote can
+              // only be told apart by which list the row came from.
+              value: jobValueOf(job),
               // WHICH KIND, SAID OUT LOUD. A measure is booked against a
               // quote and an install against an order, so the two have to be
               // tellable apart at a glance rather than by reading the letter

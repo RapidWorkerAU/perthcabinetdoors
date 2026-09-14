@@ -34,7 +34,7 @@ import {
   siteMeasureType,
 } from "../lib/pcd-site-measure.js";
 import { PANEL_USES, itemTypeLabel } from "../lib/pcd-line-details.js";
-import { cupPositions, hingeCount, normaliseHingeSide, usesStandardPositions } from "../lib/pcd-hinges.js";
+import { cupPositions, hingePositionLines, hingeCount, normaliseHingeSide, usesStandardPositions } from "../lib/pcd-hinges.js";
 import { quoteLineRow } from "../app/api/admin/quotes/[id]/_quote-line-save.js";
 
 const EDITOR = readFileSync(new URL("../app/admin/quotes/[id]/QuoteEditor.js", import.meta.url), "utf8");
@@ -42,7 +42,7 @@ const PANEL = readFileSync(new URL("../app/admin/quotes/[id]/SiteMeasurePanel.js
 
 const door = (over = {}) => ({
   ref: "D1", type: "door", height_mm: 2100, width_mm: 497, qty: 1,
-  hinge_side: "Left", hinge_count: 4, cups: [110, 770, 1430, 1990], standard: false, ...over,
+  hinge_side: "Left", hinge_count: 4, cups: [110, 770, 1430, 110], standard: false, ...over,
 });
 
 // ── The six things it asks ───────────────────────────────────────────────────
@@ -117,21 +117,29 @@ test("a new line keeps everything the form did not ask about", () => {
 
 // ── The hinges ───────────────────────────────────────────────────────────────
 
-test("cups are typed up from the bottom, and stored the way the line stores them", () => {
-  // One datum for the whole door: a tape hooked over the bottom edge. The line
-  // holds the top cup as a distance from the TOP, so the turn-round happens
-  // here rather than in somebody's head.
+test("cups are measured the way every other screen asks, and stored as typed", () => {
+  // The bottom cup up from the bottom edge, the top cup down from the top edge,
+  // and the ones between up from the bottom: the same as the website, the quote
+  // editor and the Excel order form, so a door measured here reads back in the
+  // numbers somebody actually measured.
   const line = measuredQuoteLine(door(), {});
   assert.equal(line.hinge_from_bottom_mm, 110);
   assert.deepEqual(line.hinge_middles_mm, [770, 1430]);
-  assert.equal(line.hinge_from_top_mm, 110, "1990 up a 2100 door is 110 down from the top");
+  assert.equal(line.hinge_from_top_mm, 110, "typed as 110 from the top, stored as 110 from the top");
 
-  // And read back the other way it is the list that was typed.
-  assert.deepEqual(cupPositions({ ...line, hinge_holes: true }), [110, 770, 1430, 1990]);
+  // And read back in those same words.
+  assert.deepEqual(hingePositionLines({ ...line, hinge_holes: true }), [
+    "Bottom hinge 110mm from bottom",
+    "2nd hinge 770mm from bottom",
+    "3rd hinge 1430mm from bottom",
+    "Top hinge 110mm from top",
+  ]);
 });
 
-test("cups out of order are still read bottom first", () => {
-  const line = measuredQuoteLine(door({ cups: [1990, 110, 1430, 770] }), {});
+test("the top box is the top cup, whatever order the middles are typed in", () => {
+  // The first box is the bottom cup and the last is the top one, because they
+  // are measured from different edges; only the middles are put in order.
+  const line = measuredQuoteLine(door({ cups: [110, 1430, 770, 110] }), {});
   assert.equal(line.hinge_from_bottom_mm, 110);
   assert.deepEqual(line.hinge_middles_mm, [770, 1430]);
   assert.equal(line.hinge_from_top_mm, 110);
@@ -140,6 +148,7 @@ test("cups out of order are still read bottom first", () => {
 test("a cup past the top of the door is not stored as a measurement", () => {
   // A door somebody has mistyped. Nulled rather than kept as a negative, so it
   // reads as "not said" instead of as a number that was meant.
+  // 110 up from the bottom and 2500 down from the top cannot both be on a 2100 door.
   const bad = hingeFieldsFromCups([110, 2500], 2100);
   assert.equal(bad.hinge_from_top_mm, null);
   assert.equal(bad.hinge_from_bottom_mm, 110);
@@ -241,7 +250,7 @@ test("the button sits on the items toolbar and cannot be used on a locked quote"
 test("the card says what the item will become before it is added", () => {
   assert.equal(
     measuredSummary(door({ qty: 2 })),
-    "Door, 2100 x 497, x2, 4 hinges left, cups 110 / 770 / 1430 / 1990 up"
+    "Door, 2100 x 497, x2, 4 hinges left, bottom hinge 110mm from bottom, 2nd hinge 770mm from bottom, 3rd hinge 1430mm from bottom, top hinge 110mm from top"
   );
   assert.equal(measuredSummary({ type: "scribe", height_mm: 2100, width_mm: 40 }), "Scribe, 2100 x 40");
   assert.equal(measuredSummary(door({ standard: true })), "Door, 2100 x 497, 4 hinges left, standard cup positions");

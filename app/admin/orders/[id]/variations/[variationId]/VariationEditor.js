@@ -7,7 +7,7 @@ import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import OverrideModal from "../../../../_components/OverrideModal";
 import LockedRegion from "../../../../_components/LockedRegion";
 import { editability } from "../../../../../../lib/pcd-document-lock";
-import { cabinetOptions, orderItemLabel, orderItemOptions } from "../../../../../../lib/pcd-order-item-label";
+import { cabinetOptions, isCabinetLine, orderItemLabel, orderItemOptions } from "../../../../../../lib/pcd-order-item-label";
 import { edgeImageSrc } from "../../../../../../lib/pcd-profile-images";
 import { hardwareTypeLabel } from "../../../../../../lib/pcd-hardware-types";
 import AdminLoading from "@/components/admin/AdminLoading";
@@ -16,6 +16,7 @@ import { QuoteColourCombobox, QuoteImageCombobox, QuoteTileCombobox } from "@/co
 import styles from "../../../../admin-content.module.css";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, formatItemSpecs, formatMoney, roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
 import { HINGE_SIDES, readMiddles } from "../../../../../../lib/pcd-hinges";
+import { BANDED_EDGES, GRAIN_DIRECTIONS, HOLE_TYPES, PANEL_USES, SUPPLIED_BY, bandedEdgesText } from "../../../../../../lib/pcd-line-details";
 import { cabinetBrandOptions } from "../../../../../../lib/quote-form-data";
 import {
   edgeProfilesForMaterial,
@@ -227,6 +228,14 @@ function hardwareOptionsFromRows(rows = []) {
     }));
 }
 
+// WHAT IS SHOWN IS WHAT IS SAVED. A decorative board line nobody has touched
+// the edges on shows all four banded, which is the standard, so it is saved as
+// all four rather than as "not recorded" while the screen said otherwise.
+function withShownEdges(line) {
+  if (String(line?.material || "").toLowerCase() !== "decorative board" || Array.isArray(line?.banded_edges)) return line;
+  return { ...line, banded_edges: [...BANDED_EDGES] };
+}
+
 function emptyLine() {
   return {
     action: "add",
@@ -262,6 +271,15 @@ function emptyLine() {
     hinge_from_bottom_mm: "",
     hinge_from_top_mm: "",
     hinge_middles_mm: [],
+    // The answers beyond the board, the same ones a quote line carries, so a
+    // door added or changed here reaches the bench as fully described as one
+    // that came from the quote. See lib/pcd-line-details.js.
+    panel_use: "",
+    banded_edges: null,
+    hole_type: "",
+    grain_direction: "",
+    supplied_by: "",
+    hardware_type: "",
     qty: 1,
     original_line_total_ex_gst: 0,
     proposed_line_total_ex_gst: "",
@@ -706,6 +724,7 @@ export default function VariationEditor({ orderId, variationId }) {
       ...current,
       hardware_catalogue_id: item.id,
       product_type: "Hardware",
+      hardware_type: item.type || "",
       title: label,
       description: item.description || label,
       material: "",
@@ -727,8 +746,38 @@ export default function VariationEditor({ orderId, variationId }) {
     }, businessDefaults));
   }
 
+  /**
+   * A CABINET KEEPS ITS SIZE IN ITS CONFIG, NOT ON ITS LINE.
+   *
+   * Every other kind of line carries height_mm and width_mm on the order line
+   * itself. A base cabinet does not: the line is mostly a name and a price, and
+   * the dimensions live in cabinet_config_snapshot along with the shelves, the
+   * carcass board and the cut list. On the cabinets in the live data those two
+   * columns are simply null.
+   *
+   * So picking a cabinet here used to open an empty pair of size boxes, and
+   * there was nothing to change. Not a layout problem: the fields were on
+   * screen, they just had nothing in them, which reads as "cabinets cannot be
+   * varied" and is why this went unreported for so long.
+   *
+   * Read from the line first and fall back to the config, rather than the other
+   * way round, because a cabinet that HAS been varied already carries its new
+   * size on the line and that is the size to start from.
+   */
+  function itemSize(item) {
+    const config = item?.cabinet_config_snapshot || item?.cabinet_config || null;
+    if (!isCabinetLine(item) || !config) {
+      return { height_mm: item?.height_mm || "", width_mm: item?.width_mm || "" };
+    }
+    return {
+      height_mm: item?.height_mm || config.height_mm || "",
+      width_mm: item?.width_mm || config.width_mm || "",
+    };
+  }
+
   function applySourceLineToDraft(itemId, setter = setLineDraft) {
     const item = orderItems.find((entry) => entry.id === itemId);
+    const size = itemSize(item);
     setter((current) => ({
       ...current,
       order_line_item_id: itemId,
@@ -740,8 +789,8 @@ export default function VariationEditor({ orderId, variationId }) {
       material: item?.material || "",
       supplier_name: item?.supplier_name || "",
       thickness: item?.thickness || "",
-      width_mm: item?.width_mm || "",
-      height_mm: item?.height_mm || "",
+      width_mm: size.width_mm,
+      height_mm: size.height_mm,
       finish: item?.finish || "",
       colour: item?.colour || "",
       profile_type: item?.profile_type || "",
@@ -756,6 +805,14 @@ export default function VariationEditor({ orderId, variationId }) {
       hinge_from_bottom_mm: item?.hinge_from_bottom_mm ?? "",
       hinge_from_top_mm: item?.hinge_from_top_mm ?? "",
       hinge_middles_mm: readMiddles(item?.hinge_middles_mm),
+      // And the answers the order line carries, so changing a door's size
+      // starts from its banded edges and boring rather than from blank.
+      panel_use: item?.panel_use || "",
+      banded_edges: Array.isArray(item?.banded_edges) ? [...item.banded_edges] : null,
+      hole_type: item?.hole_type || "",
+      grain_direction: item?.grain_direction || "",
+      supplied_by: item?.supplied_by || "",
+      hardware_type: item?.hardware_type || "",
       qty: item?.qty || 1,
       unit_cost_mode: item?.unit_cost_source_id ? "auto" : "manual",
       unit_cost_source_id: item?.unit_cost_source_id || null,
@@ -801,7 +858,7 @@ export default function VariationEditor({ orderId, variationId }) {
       const response = await fetch(`/api/admin/orders/${orderId}/variations/${variationId}/lines`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lineDraft),
+        body: JSON.stringify(withShownEdges(lineDraft)),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -826,7 +883,7 @@ export default function VariationEditor({ orderId, variationId }) {
       const response = await fetch(`/api/admin/orders/${orderId}/variations/${variationId}/lines/${lineId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lineDraft),
+        body: JSON.stringify(withShownEdges(lineDraft)),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -1097,6 +1154,8 @@ export default function VariationEditor({ orderId, variationId }) {
     // a credit, a variation, an approval. Taking one of two is a CHANGE with the
     // quantity reduced, which prices the difference correctly.
     const sourceQty = Math.max(0, Number(sourceLineForDraft?.qty || 0));
+    const cabinetDepthMm =
+      (sourceLineForDraft?.cabinet_config_snapshot || sourceLineForDraft?.cabinet_config || {}).depth_mm || "";
     const removingWholeQty = isRemove && sourceQty > 1;
     const isHardware = lineDraft.product_type === "Hardware";
     const isBaseCabinet = lineDraft.product_type === BASE_CABINET_TYPE;
@@ -1195,6 +1254,21 @@ export default function VariationEditor({ orderId, variationId }) {
             onChange={(option) => updateLineDraft({ product_type: option.value })}
           />
         </label>
+        {/* WHAT KIND OF PANEL. A scribe and a kickboard both quote as Panel
+            and are made differently, so a panel says which. */}
+        {lineDraft.product_type === "Panel" ? (
+          <label className={tw.fieldLabel}>Kind of panel
+            <select
+              className={tw.fieldInput}
+              disabled={isRemove}
+              value={lineDraft.panel_use || ""}
+              onChange={(event) => updateLineDraft({ panel_use: event.target.value })}
+            >
+              <option value="">Panel</option>
+              {PANEL_USES.map((use) => <option key={use}>{use}</option>)}
+            </select>
+          </label>
+        ) : null}
         {isHardware ? (
           <label className={`${tw.fieldLabel} md:col-span-3`}>Hardware item
             <QuoteImageCombobox
@@ -1205,6 +1279,19 @@ export default function VariationEditor({ orderId, variationId }) {
               options={hardwareOptions}
               onChange={(option) => chooseHardwareOption(option.value)}
             />
+          </label>
+        ) : null}
+        {isHardware ? (
+          <label className={tw.fieldLabel}>Supplied by
+            <select
+              className={tw.fieldInput}
+              disabled={isRemove}
+              value={lineDraft.supplied_by || ""}
+              onChange={(event) => updateLineDraft({ supplied_by: event.target.value })}
+            >
+              <option value="">Not recorded</option>
+              {SUPPLIED_BY.map((who) => <option key={who}>{who}</option>)}
+            </select>
           </label>
         ) : (
           <>
@@ -1236,6 +1323,20 @@ export default function VariationEditor({ orderId, variationId }) {
                 onChange={(patch) => updateLineDraft(patch)}
               />
             </label>
+            {/* WHICH WAY THE GRAIN RUNS, beside the colour it belongs to. */}
+            {lineDraft.material ? (
+              <label className={tw.fieldLabel}>Grain
+                <select
+                  className={tw.fieldInput}
+                  disabled={isRemove || isPriceAdjustment}
+                  value={lineDraft.grain_direction || ""}
+                  onChange={(event) => updateLineDraft({ grain_direction: event.target.value })}
+                >
+                  <option value="">Not recorded</option>
+                  {GRAIN_DIRECTIONS.map((grain) => <option key={grain}>{grain}</option>)}
+                </select>
+              </label>
+            ) : null}
           </>
         )}
 
@@ -1259,6 +1360,19 @@ export default function VariationEditor({ orderId, variationId }) {
           <input className={tw.fieldInput} type="number" value={lineDraft.width_mm} disabled={isRemove || isPriceAdjustment} onChange={(event) => updateLineDraft({ width_mm: event.target.value })} />
           {sizeCheck.width ? <span className={tw.fieldWarning}>{sizeCheck.width}</span> : null}
         </label>
+        {/* A CABINET IS THREE DIMENSIONS AND THIS ONLY VARIES TWO.
+            Height and width rebuild the carcass and its cut list; depth cannot
+            be changed here, because a variation line has no depth to store it
+            in and resnapshotCabinet does not read one. Showing it makes the
+            cabinet legible while somebody is changing the other two, and says
+            plainly which one this screen will not touch, rather than leaving
+            them to find out from the cut list afterwards. */}
+        {cabinetDepthMm ? (
+          <label className={tw.fieldLabel}>Depth mm
+            <input className={tw.fieldInput} value={cabinetDepthMm} disabled readOnly />
+            <span className={tw.muted}>Unchanged by a variation. Alter it on the cabinet itself.</span>
+          </label>
+        ) : null}
 
         <label className={tw.fieldLabel}>Qty
           <input className={tw.fieldInput} type="number" step="0.01" value={lineDraft.qty} disabled={isRemove} onChange={(event) => updateLineDraft({ qty: event.target.value })} />
@@ -1274,6 +1388,34 @@ export default function VariationEditor({ orderId, variationId }) {
             />
           ) : notApplicable}
         </label>
+        {/* WHICH EDGES GET TAPE, beside the edge profile. Decorative board
+            only. Not asked yet shows all four, the standard, so saving always
+            records a real answer. */}
+        {String(lineDraft.material || "").toLowerCase() === "decorative board" ? (
+          <div className={`${tw.fieldLabel} md:col-span-2`}>Banded edges
+            <div className="grid grid-cols-4 gap-[6px]">
+              {BANDED_EDGES.map((edge) => {
+                const current = Array.isArray(lineDraft.banded_edges) ? lineDraft.banded_edges : BANDED_EDGES;
+                const on = current.includes(edge);
+                return (
+                  <button
+                    key={edge}
+                    type="button"
+                    disabled={isRemove}
+                    aria-pressed={on}
+                    onClick={() => updateLineDraft({
+                      banded_edges: BANDED_EDGES.filter((e) => (e === edge ? !on : current.includes(e))),
+                    })}
+                    className={`h-[36px] rounded-[6px] border text-[13px] font-medium transition-colors ${on ? "border-[#1c2b1e] bg-[#1c2b1e] text-white" : "border-[#dbd8cc] bg-[#faf9f6] text-[#1a1a18] hover:bg-[#edf4eb]"}`}
+                  >
+                    {edge}
+                  </button>
+                );
+              })}
+            </div>
+            <span className={tw.fieldHint}>{bandedEdgesText(Array.isArray(lineDraft.banded_edges) ? lineDraft.banded_edges : BANDED_EDGES)}</span>
+          </div>
+        ) : null}
         <label className={tw.fieldLabel}>Profile type
           {showProfiles ? (
             <QuoteTileCombobox
@@ -1322,7 +1464,7 @@ export default function VariationEditor({ orderId, variationId }) {
               onChange={(event) => updateLineDraft(
                 event.target.value === "Yes"
                   ? { hinge_holes: true }
-                  : { hinge_holes: false, hinge_qty: "", hinge_side: "", hinge_from_bottom_mm: "", hinge_from_top_mm: "", hinge_middles_mm: [] }
+                  : { hinge_holes: false, hinge_qty: "", hinge_side: "", hole_type: "", hinge_from_bottom_mm: "", hinge_from_top_mm: "", hinge_middles_mm: [] }
               )}
             >
               <option>No</option>
@@ -1355,6 +1497,17 @@ export default function VariationEditor({ orderId, variationId }) {
               >
                 <option value="">Not recorded</option>
                 {HINGE_SIDES.map((side) => <option key={side}>{side}</option>)}
+              </select>
+            </label>
+            <label className={tw.fieldLabel}>Hole type
+              <select
+                className={tw.fieldInput}
+                disabled={isRemove}
+                value={lineDraft.hole_type || ""}
+                onChange={(event) => updateLineDraft({ hole_type: event.target.value })}
+              >
+                <option value="">Not recorded</option>
+                {HOLE_TYPES.map((type) => <option key={type}>{type}</option>)}
               </select>
             </label>
             <label className={tw.fieldLabel}>Bottom hinge, mm from bottom

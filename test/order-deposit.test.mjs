@@ -47,6 +47,33 @@ test("a deposit ticked by hand on an already active order still stamps accepted_
   assert.equal("status" in out, false, "an active order does not need promoting");
 });
 
+// WHEN THE ORDER WAS RAISED DOES NOT MOVE.
+//
+// This function runs on every deposit sync, and it used to rewrite accepted_at
+// every time: a webhook firing twice, a second payment recorded, a deposit
+// unticked and reticked. Each of those pushed the date to today, so the order
+// overview would have shown a job accepted in June as accepted this morning,
+// and every age the work board measures from it reset with it.
+test("accepted_at is stamped once and never rewritten", () => {
+  const rows = [{ amount: 2655, is_paid: true, paid_at: "2026-06-19" }];
+
+  const first = depositUpdates(rows, PENDING_DEPOSIT, null);
+  assert.ok(first.accepted_at, "the first paid sync stamps it");
+
+  const again = depositUpdates(rows, "active", "2026-06-19T02:14:00.000Z");
+  assert.equal("accepted_at" in again, false, "a later sync must leave the original date alone");
+
+  // Still does everything else it should on that later run.
+  assert.equal(again.deposit_paid, true);
+  assert.equal(again.deposit_paid_at, "2026-06-19");
+});
+
+test("an empty accepted_at is treated as never accepted, not as a date", () => {
+  const rows = [{ amount: 500, is_paid: true, paid_at: "2026-06-19" }];
+  assert.ok(depositUpdates(rows, "active", "").accepted_at, "blank string must still stamp");
+  assert.ok(depositUpdates(rows, "active", undefined).accepted_at, "undefined must still stamp");
+});
+
 // Paying a deposit must never reopen an order somebody closed.
 test("a cancelled order is never promoted by a deposit payment", () => {
   const out = depositUpdates([{ amount: 500, is_paid: true, paid_at: "2026-08-19" }], "cancelled");

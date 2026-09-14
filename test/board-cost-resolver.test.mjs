@@ -240,3 +240,70 @@ test("the finish prefix is only stripped when it is that line's own finish", () 
   assert.equal(colourWithoutFinishPrefix("Classic White", "Matt"), "Classic White");
   assert.equal(colourWithoutFinishPrefix("Classic White", ""), "Classic White");
 });
+
+// ── AN ID THAT NO LONGER DESCRIBES THE BOARD BESIDE IT ──────────────────────
+//
+// 13 September 2026. A wardrobe job set to Polytec Black Texture 16mm reached a
+// quote priced from a Laminex Black AbsoluteMatte 18mm at $145.49 a square
+// metre, printed as "16mm Black Texture". The screens that rewrote the words on
+// the item had left the library id behind, and this trusted the id outright
+// without ever looking at the two together.
+//
+// An id that contradicts the board written beside it is not the board somebody
+// clicked, it is a leftover. It falls through to name matching, which refuses
+// to guess between two prices and says so, so the worst case is a rate nobody
+// filled in rather than a confident wrong one.
+
+test("an id is not trusted when it names a different board", () => {
+  const laminex = row({
+    id: "left-behind", name: "Black", finish_type: "AbsoluteMatte", thickness: "18mm",
+    supplier_name: "Laminex", cost_per_sqm_ex_gst: 145.49,
+  });
+  const polytec = row({
+    id: "the-real-one", name: "Black", finish_type: "Texture", thickness: "16mm",
+    supplier_name: "Polytec", cost_per_sqm_ex_gst: 54.92,
+  });
+  const spec = { material: "Decorative Board", thickness: "16mm", finish: "Texture", colour: "Black" };
+
+  const match = matchBoardCost([laminex, polytec], { ...spec, colourLibraryId: "left-behind" });
+  assert.equal(match.ok, true);
+  assert.equal(match.costPerSqmExGst, 54.92, "priced from the board it actually says it is");
+  assert.equal(match.matchedBy, "name");
+});
+
+test("each of the four things that say which board it is, on its own", () => {
+  const spec = { material: "Decorative Board", thickness: "18mm", finish: "Matt", colour: "Classic White" };
+  const contradiction = (over) => {
+    const stale = row({ id: "stale", cost_per_sqm_ex_gst: 999, ...over });
+    return matchBoardCost([stale], { ...spec, colourLibraryId: "stale" });
+  };
+  assert.notEqual(contradiction({ thickness: "16mm" }).costPerSqmExGst, 999, "a different thickness");
+  assert.notEqual(contradiction({ name: "Snowdrift" }).costPerSqmExGst, 999, "a different colour");
+  assert.notEqual(contradiction({ finish_type: "Texture" }).costPerSqmExGst, 999, "a different finish");
+  assert.notEqual(contradiction({ material_type: "thermolaminate" }).costPerSqmExGst, 999, "a different material");
+  // The supplier is NOT one of them: it is often just the default that came
+  // with a line, and disagreeing with it is no evidence the id is wrong.
+  assert.equal(
+    matchBoardCost([row({ id: "s", supplier_name: "Laminex" })], { ...spec, colourLibraryId: "s", supplier: "Polytec" }).costPerSqmExGst,
+    66.81
+  );
+});
+
+test("an id with nothing beside it to check is still trusted outright", () => {
+  // A public request carries the row the customer clicked and little else.
+  // There is nothing to contradict, so nothing is doubted.
+  const only = row({ id: "clicked", cost_per_sqm_ex_gst: 88 });
+  const match = matchBoardCost([only, row({ id: "other" })], { colourLibraryId: "clicked" });
+  assert.equal(match.matchedBy, "id");
+  assert.equal(match.costPerSqmExGst, 88);
+});
+
+test("a contradiction with nowhere to fall back to says so rather than guessing", () => {
+  const stale = row({ id: "stale", thickness: "18mm", cost_per_sqm_ex_gst: 145.49 });
+  const match = matchBoardCost([stale], {
+    material: "Decorative Board", thickness: "16mm", finish: "Matt", colour: "Classic White",
+    colourLibraryId: "stale",
+  });
+  assert.equal(match.ok, false, "no 16mm row exists, so there is no price to give");
+  assert.equal(match.reason, "not_found");
+});

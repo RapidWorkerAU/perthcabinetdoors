@@ -12,6 +12,7 @@
 
 import { useState } from "react";
 import styles from "../design.module.css";
+import { IconChevronRight } from "@tabler/icons-react";
 import { computeCutList } from "../../../../lib/pcd-cut-list";
 import { computeAllKickboardRuns, hasKickboard, isCornerType } from "../../../../lib/pcd-kickboard-utils";
 import { computeAllBackPanelRuns, splitBackPanelWidths } from "../../../../lib/pcd-backpanel-utils";
@@ -129,7 +130,7 @@ function RunItem({ runId, dot, title, tag, openItems, toggleItem, children }) {
           onClick={(e) => toggleItem(runId, e)}
           title={isExpanded ? "Collapse" : "Show cabinets in this run"}
         >
-          ›
+          <IconChevronRight size={14} />
         </button>
       </div>
       {isExpanded && <div className={styles.cutList}>{children}</div>}
@@ -351,7 +352,7 @@ export function RoomCutList({ room, items = [] }) {
                 onClick={(e) => toggleItem(item.id, e)}
                 title={isOpen ? "Collapse" : "Expand"}
               >
-                ›
+                <IconChevronRight size={14} />
               </button>
             </div>
             {isOpen && (hasCutList(item)

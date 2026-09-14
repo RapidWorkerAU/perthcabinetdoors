@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { IconEye, IconEyeOff } from '@tabler/icons-react'
+import { IconArrowLeft, IconEye, IconEyeOff } from '@tabler/icons-react'
 import { getAllowedAdminEmailClient } from '../../lib/admin-access'
 
 export default function AdminLoginPage() {
@@ -109,7 +109,8 @@ export default function AdminLoginPage() {
           href="/"
           className="inline-flex items-center gap-[6px] text-[12px] font-medium text-[#8b8a81] mb-7 hover:text-[#1a1a18] transition-colors"
         >
-          ← Back to website
+          <IconArrowLeft size={14} />
+          Back to website
         </a>
 
         <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden shadow-[0_1px_6px_rgba(0,0,0,0.05)]">

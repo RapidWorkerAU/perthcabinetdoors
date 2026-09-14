@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { IconArrowLeft } from '@tabler/icons-react'
 
 // THE SECOND SIDEBAR, once.
 //
@@ -62,8 +63,9 @@ export default function SecondarySidebar({
         <div className="px-4 py-4 border-b border-[#edf4eb]">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">{eyebrow}</p>
           <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{current?.label || eyebrow}</p>
-          <Link href={backHref} className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">
-            ← {backLabel}
+          <Link href={backHref} className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] flex items-center gap-[3px]">
+            <IconArrowLeft size={13} />
+            {backLabel}
           </Link>
         </div>
 

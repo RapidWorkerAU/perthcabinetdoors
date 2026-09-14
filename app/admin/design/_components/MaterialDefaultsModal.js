@@ -3,7 +3,9 @@
 import { createPortal } from "react-dom";
 import { useRef, useState } from "react";
 import styles from "../design.module.css";
+import { IconChevronRight } from "@tabler/icons-react";
 import ColourField from "./ColourField";
+import { boardSummary } from "../../../../lib/pcd-colour-library";
 import { FrontStyleFields } from "./DesignRightPanel";
 
 // Every material-bearing item type in the design tool, in one flat list so
@@ -18,19 +20,31 @@ const SECTIONS = [
   { key: "wall_cabinet",         label: "Wall Cabinets",         group: "carcass", kind: "board", boardLabel: "Carcass Board", thicknessDefault: 16 },
   { key: "tall_cabinet",         label: "Tall Cabinets",         group: "carcass", kind: "board", boardLabel: "Carcass Board", thicknessDefault: 16 },
   { key: "corner_base_cabinet",  label: "Corner Cabinets",       group: "carcass", kind: "board", boardLabel: "Carcass Board", thicknessDefault: 16 },
+  // A corner TALL cabinet had a bucket in the defaults and no section here, so
+  // it could never be set and was skipped by every apply: one cabinet type in a
+  // job silently keeping a board nobody chose.
+  { key: "corner_tall_cabinet",  label: "Corner Tall Cabinets",  group: "carcass", kind: "board", boardLabel: "Carcass Board", thicknessDefault: 16 },
   { key: "blind_corner_cabinet", label: "Blind Corner Cabinets", group: "carcass", kind: "board", boardLabel: "Carcass Board", thicknessDefault: 16 },
   { key: "bookcase",             label: "Bookcases",             group: "carcass", kind: "board", boardLabel: "Bookcase Board", thicknessDefault: 18,
     note: "The bookcase carcass — sides, top, bottom and the solid back. Its shelves take their colour from Internal Shelves below, or can be set per bookcase." },
   { key: "shelf_rail",           label: "Shelves & Rails",       group: "top",     kind: "board", boardLabel: "Shelf Board",   thicknessDefault: 18,
-    note: "The SHELF board on a wardrobe Shelf & Rail — its thickness also sets the span guide. The cleats and front rail are always 18mm and take their colour per item." },
+    note: "The SHELF board on a wardrobe Shelf & Rail — its thickness also sets the span guide. The cleats and front rail are set below." },
+  { key: "shelf_rail_cleat",     label: "Cleats & Front Rails",  group: "top",     kind: "board", boardLabel: "Cleat Board",   thicknessDefault: 18,
+    note: "The cleats and front rail on every Shelf & Rail. They are the structural part, so 18mm is what we normally build in, but they are cut from whatever board is set here. Leave it blank and each one matches its own shelf." },
   { key: "floating_shelf",       label: "Floating Shelves",      group: "top",     kind: "board", boardLabel: "Shelf Board",   thicknessDefault: 18,
     note: "Decorative-board floating shelves — the top, bottom and front boards all use this finish." },
   { key: "shelf",                label: "Internal Shelves",      group: "top",     kind: "board", boardLabel: "Shelf Board",   thicknessDefault: 16,
     note: "One default for every internal cabinet shelf, regardless of which cabinet it's in." },
   { key: "door",                 label: "Doors",                 group: "top",     kind: "front", boardLabel: "Door Board" },
   { key: "drawer",               label: "Drawer Fronts",         group: "top",     kind: "front", boardLabel: "Drawer Board" },
+  { key: "kickboard",            label: "Kickboards",            group: "top",     kind: "board", boardLabel: "Kickboard Board", thicknessDefault: 16,
+    note: "The kickboard or plinth on every cabinet that has one. Leave it blank and each is cut from its own cabinet's carcass board, which is what happens today." },
+  { key: "filler_panel",         label: "Filler Panels",         group: "top",     kind: "board", boardLabel: "Filler Board",  thicknessDefault: 16,
+    note: "The filler above a wall or tall cabinet. Leave it blank and each is cut from its own cabinet's carcass board." },
+  { key: "finish_panel",         label: "Finished Panels",       group: "top",     kind: "board", boardLabel: "Panel Board",   thicknessDefault: 18,
+    note: "End panels, finished backs, tops, undersides and side fillers. Leave it blank and they match the doors, which is what happens today." },
   { key: "panel",                label: "Panels & Scribes",      group: "top",     kind: "board", boardLabel: "Panel Board",   thicknessDefault: 18,
-    note: "Standalone filler panels and scribes. Kickboard, end and back panels use the cabinet's own carcass material instead." },
+    note: "Standalone filler panels and scribes: the ones added as their own item, not the ones applied to a cabinet." },
 ];
 
 function emptyDefaults() {
@@ -38,9 +52,13 @@ function emptyDefaults() {
     carcass: { base_cabinet: {}, wall_cabinet: {}, tall_cabinet: {}, corner_base_cabinet: {}, corner_tall_cabinet: {}, blind_corner_cabinet: {}, bookcase: {} },
     floating_shelf: {},
     shelf_rail: {},
+    shelf_rail_cleat: {},
     shelf: {},
     door: {},
     drawer: {},
+    kickboard: {},
+    filler_panel: {},
+    finish_panel: {},
     panel: {},
   };
 }
@@ -58,9 +76,13 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
       carcass: { ...base.carcass, ...(initialDefaults.carcass || {}) },
       floating_shelf: { ...base.floating_shelf, ...(initialDefaults.floating_shelf || {}) },
       shelf_rail: { ...base.shelf_rail, ...(initialDefaults.shelf_rail || {}) },
+      shelf_rail_cleat: { ...base.shelf_rail_cleat, ...(initialDefaults.shelf_rail_cleat || {}) },
       shelf: { ...base.shelf, ...(initialDefaults.shelf || {}) },
       door: { ...base.door, ...(initialDefaults.door || {}) },
       drawer: { ...base.drawer, ...(initialDefaults.drawer || {}) },
+      kickboard: { ...base.kickboard, ...(initialDefaults.kickboard || {}) },
+      filler_panel: { ...base.filler_panel, ...(initialDefaults.filler_panel || {}) },
+      finish_panel: { ...base.finish_panel, ...(initialDefaults.finish_panel || {}) },
       panel: { ...base.panel, ...(initialDefaults.panel || {}) },
     };
   });
@@ -85,9 +107,17 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
     if (sec.group === "carcass") updCarcass(sec.key, patch);
     else updSection(sec.key, patch);
   }
-  // "Same as…" copies only the shared material core (material/finish/colour/
-  // thickness/cost) between any two sections — so a door can match a carcass
-  // without dragging across the door-only profile fields, and vice versa.
+  // "Same as…" copies the shared material core between any two sections — so a
+  // door can match a carcass without dragging across the door-only profile
+  // fields, and vice versa.
+  //
+  // THE LIBRARY ROW AND THE SUPPLIER COME WITH IT. They did not, and that is
+  // what broke a whole job: this wrote the words and left each section pointing
+  // at whatever board it had been on, so every section said "Black Texture
+  // 16mm" while one of them still priced from a Laminex AbsoluteMatte 18mm.
+  // They are set to null when the source has none, never left behind, because a
+  // leftover id is worse than no id: no id prices by name and says when it
+  // cannot, a wrong id prices confidently from the wrong board.
   function copyFrom(targetSec, sourceKey) {
     if (!sourceKey) return;
     const src = SECTIONS.find((s) => s.key === sourceKey);
@@ -99,6 +129,8 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
       colour: s.colour || "",
       thickness_mm: s.thickness_mm ?? targetSec.thicknessDefault,
       cost_per_sqm: Number(s.cost_per_sqm) || 0,
+      colour_library_id: s.colour_library_id || null,
+      supplier: s.supplier || s.supplier_name || "",
     });
   }
 
@@ -220,7 +252,11 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
             {SECTIONS.map((sec) => {
               const data = getSection(sec);
               const isOpen = openKey === sec.key;
-              const summary = data.colour || data.material || "Not set";
+              // Who makes it, what colour, what finish, how thick. The colour on
+              // its own was not enough to check a default by: two brands stock a
+              // Black, and the thickness is the thing most worth catching before
+              // a whole job is cut from it.
+              const summary = boardSummary(data) || "Not set";
               const others = SECTIONS.filter((s) => s.key !== sec.key);
               return (
                 <div key={sec.key} style={{ border: "1px solid var(--dt-border-soft, rgba(0,0,0,0.1))", borderRadius: 6, overflow: "hidden" }}>
@@ -236,11 +272,11 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
                   >
                     <span style={{ fontSize: 12.5, fontWeight: 700 }}>{sec.label}</span>
                     <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <span style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180 }}>
+                      <span style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 340 }}>
                         {summary}
                       </span>
                       <span style={{ fontSize: 12, color: "var(--dt-text-muted, #888780)", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
-                        ▸
+                        <IconChevronRight size={13} />
                       </span>
                     </span>
                   </button>
@@ -268,6 +304,7 @@ export default function MaterialDefaultsModal({ projectId, initialDefaults, onCl
                         <ColourField
                           label={sec.boardLabel}
                           value={data}
+                          detail
                           thicknessDefault={sec.thicknessDefault}
                           onChange={(style) => setSection(sec, style || { material: "", finish: "", colour: "" })}
                         />

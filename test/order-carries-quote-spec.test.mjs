@@ -40,10 +40,14 @@ const VARIATION = readFileSync(new URL("../lib/pcd-order-variations.js", import.
 // mention of the table anywhere above it, in a comment on a helper for
 // instance, would otherwise end the slice before it began and this would check
 // an empty string while passing.
-const ORDER_LINES_START = CONVERSION.indexOf("const orderLines = lines.map(");
+//
+// The mapping is its own exported function now, orderLineFromQuoteLine, so the
+// website to bench trip can be walked without a database (see
+// test/line-answers-reach-the-order.test.mjs). This reads that function.
+const ORDER_LINES_START = CONVERSION.indexOf("export function orderLineFromQuoteLine");
 const ORDER_LINES = CONVERSION.slice(
   ORDER_LINES_START,
-  CONVERSION.indexOf("pcd_order_line_items", ORDER_LINES_START)
+  CONVERSION.indexOf("export async function createOrderFromQuote", ORDER_LINES_START)
 );
 
 test("the order line builder was actually found", () => {

@@ -96,6 +96,18 @@
   grid-template-columns: 1fr 1fr;
 }
 
+/* Three cards once the shop is open. Set from the page rather than from a
+   count, so the two-card layout is what shows if the shop card is not there. */
+.chooserThree {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .chooserThree {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .chooserCard {
   background: #fff;
   border: 2px solid #dbd8cc;
@@ -154,6 +166,13 @@
 .chooserTagGeneral {
   background: #f0ede4;
   color: #5a5a52;
+}
+
+/* The shop's own green, the same one the Cart button and the shop pages use,
+   rather than a third colour invented for this row. */
+.chooserTagShop {
+  background: #e6f2ea;
+  color: #1f6f4a;
 }
 
 .chooserCardTitle {
@@ -356,8 +375,7 @@
   margin: 24px 0;
 }
 
-.submitBtn,
-.addItemBtn {
+.submitBtn {
   border-radius: 2px;
   cursor: pointer;
   font-weight: 700;
@@ -586,18 +604,6 @@
   margin-left: 8px;
   width: 20px;
 }
-
-.addItemBtn {
-  align-items: center;
-  background: #edf4eb;
-  border: 1px solid #c0d9b8;
-  color: #4a7a42;
-  display: flex;
-  font-size: 13px;
-  gap: 6px;
-  padding: 8px 14px;
-}
-
 .lineItems {
   display: flex;
   flex-direction: column;
@@ -706,22 +712,94 @@
   max-width: 1600px;
 }
 
+/* The quote pages have a real explanation to give rather than a one line
+ * strapline, so their lede runs about twice the width of the rest of the site's
+ * and reads as a paragraph instead of a narrow column of five word rows. Scoped
+ * to these pages: the contact page's lede is one sentence and widening it would
+ * only stretch it. */
+.quotePageHeaderInner p {
+  max-width: 1120px;
+}
+
+/* Which cabinets a shop product goes on, under the blurb. Quieter than the
+   blurb because it is the second sentence somebody reads, not the first. */
+.shopFits {
+  color: #7b8e78;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 10px;
+  max-width: 720px;
+}
+
 .quoteTablePageWrap {
   margin: 0 auto;
   padding: 32px 40px 80px;
 }
 
+/* ONE BAND AT THE FOOT, WHERE TWO STRIPS USED TO SIT ON TOP.
+   .quoteCrossWrap stacked two bordered strips between the header and the
+   builder, so the page opened with two panels telling you that you might be in
+   the wrong place before it showed you the thing you came for. The same two
+   questions now close the page instead.
+
+   FULL BLEED DARK, NOT A PANEL ON THE PAGE'S OWN GROUND. A cream card on a
+   cream page is an object floating in the middle of nothing, which is exactly
+   what it looked like. The dark band is the same device every other page on
+   this site closes on, so the foot of /request-quote now reads like the foot of
+   /ikea-kaboodle and /bespoke rather than like a stray box.
+
+   The colour is #1c2b1e, which is journey.module.css's .dark and the same green
+   the site header uses. One dark on this site, not two. */
+.quoteElsewhere {
+  background: #1c2b1e;
+  padding: 56px 0 60px;
+}
+
+/* The band runs edge to edge, the reading does not. 1100px is what the footer
+   below already uses, so the two line up. */
+.quoteElsewhereInner {
+  margin: 0 auto;
+  max-width: 1100px;
+  padding: 0 40px;
+}
+
+.quoteElsewhereInner h2 {
+  color: #f0ede4;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24px;
+  font-weight: 400;
+  margin: 0 0 24px;
+}
+
+/* --cols comes from the page, counted off the links that will actually render:
+   the shop pair is dropped entirely while the shop is closed, and one lonely
+   column in a two column grid is the orphan this project keeps producing. See
+   lib/pcd-grid-columns.js. */
+.quoteElsewhereGrid {
+  display: grid;
+  gap: 28px 44px;
+  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+}
+
+@media (max-width: 860px) {
+  .quoteElsewhereGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .quoteElsewhere {
+    padding: 40px 0 44px;
+  }
+
+  .quoteElsewhereInner {
+    padding: 0 18px;
+  }
+}
+
 .quoteFormTable {
   width: 100%;
 }
-
-.quoteTopStrip {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1.2fr 1fr 1fr;
-  margin-bottom: 28px;
-}
-
 .quoteCard,
 .quoteCardDark {
   border-radius: 6px;
@@ -732,11 +810,6 @@
   background: #fff;
   border: 1px solid #dbd8cc;
 }
-
-.quoteCardDark {
-  background: #1c2b1e;
-}
-
 .quoteCardDark .sectionLabel {
   color: #a8c5a0;
 }
@@ -789,14 +862,6 @@
   color: #8a8a80;
   font-size: 11px;
 }
-
-.productTableWrap {
-  background: #fff;
-  border: 1px solid #dbd8cc;
-  border-radius: 6px;
-  margin-bottom: 16px;
-}
-
 /* Shown when line items have arrived from the site-wide quote list, so it is
    obvious where they came from and that they can still be edited. */
 .importedNote {
@@ -858,124 +923,6 @@
 .productTableScroller {
   overflow-x: auto;
 }
-
-.productSummaryTable {
-  display: block;
-}
-
-.productSummaryHead,
-.productSummaryRow {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(170px, 1.25fr) minmax(110px, 0.8fr) minmax(220px, 1.5fr) 70px 120px;
-}
-
-.productSummaryHead {
-  background: #f5f3ee;
-  border-bottom: 2px solid #dbd8cc;
-  color: #8a8a80;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  min-height: 36px;
-  text-transform: uppercase;
-}
-
-.productSummaryHead > div,
-.productSummaryRow > div {
-  align-items: center;
-  display: flex;
-  min-width: 0;
-  padding: 10px 14px;
-}
-
-.productSummaryRow {
-  border-bottom: 1px solid #edeae0;
-  color: #1a1a18;
-  font-size: 13px;
-  min-height: 56px;
-}
-
-.productSummaryRow:last-child {
-  border-bottom: none;
-}
-
-.productSummaryRow strong {
-  font-weight: 600;
-  margin-left: 10px;
-}
-
-.productSummaryRow > div:not(:first-child) {
-  color: #6a6a62;
-}
-
-.productCardList {
-  display: none;
-}
-
-.productLineCard {
-  background: #fff;
-  border-bottom: 1px solid #edeae0;
-  padding: 16px;
-}
-
-.productLineCardHead {
-  align-items: flex-start;
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.productLineCardHead strong {
-  color: #1a1a18;
-  display: block;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.productLineCardHead small {
-  color: #6a6a62;
-  display: block;
-  font-size: 12px;
-  margin-top: 3px;
-}
-
-.productLineCardMeta {
-  display: grid;
-  gap: 8px 12px;
-  grid-template-columns: minmax(72px, auto) 1fr;
-  margin-bottom: 14px;
-}
-
-.productLineCardMeta span {
-  color: #8a8a80;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.productLineCardMeta strong {
-  color: #1a1a18;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.productEmptyState {
-  align-items: flex-start;
-  color: #6a6a62;
-  display: flex;
-  flex-direction: column;
-  font-size: 13px;
-  gap: 4px;
-  padding: 18px 16px;
-}
-
-.productEmptyState strong {
-  color: #1a1a18;
-  font-weight: 600;
-}
-
 .productGrid {
   align-items: center;
   display: grid;
@@ -1013,20 +960,6 @@
   box-shadow: inset 3px 0 0 #4a7a42;
   z-index: 3;
 }
-
-.productRowNum {
-  align-items: center;
-  background: #1c2b1e;
-  border-radius: 50%;
-  color: #a8c5a0;
-  display: inline-flex;
-  font-size: 10px;
-  font-weight: 700;
-  height: 22px;
-  justify-content: center;
-  width: 22px;
-}
-
 .inlineField,
 .inlineSize,
 .inlineHinges,
@@ -1104,14 +1037,6 @@
   padding: 3px 6px;
   padding-right: 26px;
 }
-
-.productActions {
-  align-items: center;
-  display: flex;
-  gap: 4px;
-  justify-content: flex-end;
-}
-
 .saveRowBtn,
 .cancelRowBtn,
 .editRowBtn,
@@ -1138,28 +1063,6 @@
   font-size: 12px;
   padding: 4px 8px;
 }
-
-.editRowBtn {
-  background: #edf4eb;
-  border: 1px solid #c0d9b8;
-  color: #4a7a42;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 9px;
-}
-
-.deleteRowBtn {
-  background: none;
-  border: none;
-  color: #aaa;
-  font-size: 13px;
-  padding: 3px 5px;
-}
-
-.deleteRowBtn:hover {
-  color: #c0392b;
-}
-
 .tableMuted {
   color: #6a6a62;
   font-size: 12px;
@@ -1273,22 +1176,6 @@
   font-size: 12px;
   padding: 10px;
 }
-
-.colourRead {
-  align-items: center;
-  color: #6a6a62;
-  display: flex;
-  font-size: 12px;
-  gap: 7px;
-  min-width: 0;
-}
-
-.colourRead span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .productModalOverlay {
   align-items: center;
   background: rgba(13, 23, 15, 0.58);
@@ -1342,25 +1229,22 @@
   width: 40px;
 }
 
-.productModalGrid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 22px 24px;
-}
-
-.productModalGrid .field {
-  margin: 0;
-}
-
+/* ONE COLUMN, because there is one control in here now.
+ *
+ * This was two columns for the colour control that used to sit here: a pair of
+ * side-by-side boxes with the label spanning both. That control was replaced by
+ * the shared picker (ColourTiles), which is a single full-width stack, and the
+ * two-column wrapper stayed behind. The picker landed in column one and drew
+ * itself at half the width of every other question on the page: four finish
+ * buttons and four colour tiles to a row, in a field wide enough for eight. */
 .productModalColourField {
   display: grid;
   gap: 6px 16px;
-  grid-column: span 2;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.productModalColourField > label {
+.productModalColourField > label,
+.productModalColourField > * {
   grid-column: 1 / -1;
 }
 
@@ -1517,14 +1401,6 @@
   justify-content: flex-end;
   padding: 16px 24px 20px;
 }
-
-.quoteBottomStrip {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 260px;
-  margin-bottom: 20px;
-}
-
 @media (max-width: 780px) {
   .pageHeader {
     padding: 40px 24px 44px;
@@ -1791,34 +1667,10 @@
   box-shadow: inset 0 0 0 1px #1f6f4a;
 }
 
-.typeBackLink {
-  background: none;
-  border: 0;
-  color: #1f6f4a;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12.5px;
-  padding: 14px 24px 0;
-  text-align: left;
-  text-decoration: underline;
-}
-
 /* ── THE HARDWARE LIST ─────────────────────────────────────────
    A Hardware line has no board, so this is the whole of its spec. Type then
    item, the same shape as the profile pickers above it, because a wall of
    cards reads fine at eight items and not at all at fifty. */
-.productModalWide {
-  display: grid;
-  gap: 6px;
-  grid-column: span 2;
-}
-
-.productModalWide > label {
-  color: #5a5a52;
-  font-size: 12.5px;
-  font-weight: 500;
-}
-
 .hardwareFields {
   display: grid;
   gap: 16px;
@@ -1839,4 +1691,2230 @@
   .productModalWide {
     grid-column: span 1;
   }
+}
+
+/* ── Which edges are banded ──────────────────────────────────────────────────
+ *
+ * Four toggles rather than a dropdown of combinations, because the question is
+ * literally "which of these four", and a list of fifteen permutations is a
+ * puzzle. Built from the same border, radius and green as the type cards above,
+ * so it reads as part of the same form rather than a control from somewhere
+ * else. Fixed track, so four never wraps to a ragged two and one.
+ */
+.edgeToggles {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.edgeToggle {
+  background: #fff;
+  border: 1px solid #e4dfd4;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  min-height: 44px;
+  padding: 10px 6px;
+  text-align: center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+
+.edgeToggle:hover {
+  border-color: #1f6f4a;
+}
+
+.edgeToggleOn {
+  background: #f1f7f3;
+  border-color: #1f6f4a;
+  box-shadow: inset 0 0 0 1px #1f6f4a;
+  font-weight: 600;
+}
+
+/* The line under a field that says what the answer means, for the two questions
+ * where the words matter more than the control. */
+.fieldHint {
+  color: #6b675e;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+
+@media (max-width: 520px) {
+  .edgeToggles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ── The door, drawn as it is described ──────────────────────────────────────
+ *
+ * Sits above the questions in the item editor, so it is the first thing on the
+ * screen and it moves while somebody answers. Same border, radius and green as
+ * everything around it.
+ */
+.doorDrawing {
+  border: 1px solid #e4dfd4;
+  border-radius: 10px;
+  background: #fff;
+  margin: 0 0 20px;
+  padding: 16px;
+}
+
+.doorCanvas {
+  display: block;
+  margin: 0 auto;
+  max-width: 380px;
+}
+
+.doorCanvas svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+/* Front and back. Only shown on a door that is actually drilled, because on
+ * anything else the back is the same board with nothing on it. */
+.doorFaces {
+  display: flex;
+  gap: 0;
+  justify-content: center;
+  margin: 0 0 12px;
+}
+
+.doorFace {
+  background: #fff;
+  border: 1px solid #e4dfd4;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  min-height: 36px;
+  padding: 8px 20px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.doorFace:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.doorFace:last-child {
+  border-left-width: 0;
+  border-radius: 0 8px 8px 0;
+}
+
+.doorFaceOn {
+  background: #1f6f4a;
+  border-color: #1f6f4a;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Which way round you are looking, said in words. Working that out from a
+ * picture is the thing people get wrong. */
+.doorNote {
+  color: #6b675e;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 12px 0 0;
+  text-align: center;
+}
+
+/* ── THE BUILDER ────────────────────────────────────────────────────────────
+ *
+ * The questions used to live in a modal, which is a small box's answer to
+ * having no room. The page has room. So the drawing sits on the left, sticky,
+ * and the questions run down the right, and somebody describing a door can see
+ * the door while they describe it.
+ *
+ * Half and half on a desktop. minmax(0, 1fr) twice rather than 50% twice: a
+ * plain percentage ignores the gap and a bare 1fr refuses to shrink below its
+ * content, so a long profile name would widen the grid instead of truncating
+ * inside its own column.
+ *
+ * Everything else here is the artifact's own: the radius is 2px, the rule is
+ * #edeae0, the border is #dbd8cc and the step number is #6b9e61, which are the
+ * site's colours rather than near misses of them.
+ */
+.builder {
+  align-items: start;
+  display: grid;
+  gap: 40px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 28px;
+}
+
+.builderStage {
+  position: sticky;
+  top: 20px;
+}
+
+/* The right hand column is a stack, not a card: a heading, the card of
+ * questions, then the card that says what they have specified. The heading sits
+ * on the page the way a page heading does, which is what stops the whole column
+ * reading as one enormous box. */
+.builderPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.builderCard {
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  padding: 24px;
+}
+
+.builderHead {
+  margin: 0;
+}
+
+.builderHead h2 {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 8px 0 0;
+}
+
+.builderLede {
+  color: #5a5a52;
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 12px 0 0;
+  max-width: 54ch;
+}
+
+/* Nothing to draw. Said, rather than an empty box, because an empty box reads
+ * as something that failed to load. */
+.builderNoDraw {
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  padding: 28px 20px;
+  text-align: center;
+}
+
+.builderNoDraw strong {
+  display: block;
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.builderNoDraw p {
+  color: #5a5a52;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* A numbered question. Every one after the first is ruled off from the one
+ * above it. The rule is a class rather than an adjacent sibling selector
+ * because the questions a line gets asked change as it is filled in: the first
+ * one on screen has to be the one without a line above it, whichever question
+ * that turns out to be. */
+.stepRuled {
+  border-top: 1px solid #edeae0;
+  margin-top: 24px;
+  padding-top: 24px;
+}
+
+.stepHead {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.stepNum {
+  color: #6b9e61;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  width: 14px;
+}
+
+.stepHead h3 {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+}
+
+/* Two fields to a row inside one question, for the handful that are genuinely
+ * one question in two boxes: a height and a width, a profile family and the
+ * profile itself. */
+.stepGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stepWide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 560px) {
+  .stepGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── THE CONTROLS ───────────────────────────────────────────────────────────
+ *
+ * A tab, not a dropdown, wherever the answers can be seen at once. A dropdown
+ * hides four options behind a click and gives no clue how many there are; four
+ * squares show the whole question. Dropdowns are kept only where the list is
+ * genuinely long, and then they are made to match these.
+ */
+.tabs {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(var(--tabCols, 3), minmax(0, 1fr));
+}
+
+.tab {
+  background: #faf9f6;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  color: #5a5a52;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 40px;
+  overflow: hidden;
+  padding: 7px 8px;
+  text-align: center;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  border-color: #a8c5a0;
+}
+
+.tabOn {
+  background: #1c2b1e;
+  border-color: #1c2b1e;
+  color: #fff;
+}
+
+.tab:disabled {
+  color: #a8a69c;
+  cursor: not-allowed;
+}
+
+/* The field label, in the site's own small uppercase green. Scoped to the
+ * builder so the contact page's grey labels are left alone. */
+.builderCard .field label,
+.builderCard .fieldLabel {
+  color: #6b9e61;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0 0 2px;
+  text-transform: uppercase;
+}
+
+.builderCard .field input,
+.builderCard .field select,
+.builderCard .field textarea {
+  background-color: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  color: #1a1a18;
+  font-size: 14px;
+  padding: 0 12px;
+}
+
+.builderCard .field input,
+.builderCard .field select {
+  height: 44px;
+}
+
+.builderCard .field input[type="number"] {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.builderCard .field textarea {
+  line-height: 1.6;
+  min-height: 78px;
+  padding: 10px 12px;
+}
+
+.builderCard .field input:focus,
+.builderCard .field select:focus,
+.builderCard .field textarea:focus {
+  border-color: #6b9e61;
+  box-shadow: none;
+}
+
+.builderCard .field select {
+  --pcdSelectChip: #ffffff;
+  padding-right: 40px;
+}
+
+/* A note about the box, not a warning about what is in it. */
+.fieldHint {
+  color: #8a8a80;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 8px 0 0;
+}
+
+/* HOW MANY. A stepper, because the answer is almost always one or two and
+ * typing a number for that is more work than pressing a button. */
+/* Row, said out loud. This sits on the same element as .field, which is a
+ * column, so without it the two buttons stacked above and below the number. */
+.qtyRow {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+/* The number takes whatever the two buttons leave, so the three of them run
+ * the full width of the column like every other answer on the page. */
+.qtyRow input {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  height: 44px;
+  min-width: 0;
+  text-align: center;
+  width: auto;
+}
+
+.qtyStep {
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  color: #3a3a34;
+  cursor: pointer;
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 20px;
+  height: 44px;
+  width: 44px;
+}
+
+.qtyStep:hover {
+  background: #faf9f6;
+}
+
+.qtyStep:disabled {
+  color: #c3c0b7;
+  cursor: not-allowed;
+}
+
+/* A tick that is a decision, so it gets the room a decision gets: the whole
+ * row is the target and it changes colour when it is on. */
+.checkCard {
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.checkCardOn {
+  background: #f6f8f5;
+  border-color: #1c2b1e;
+}
+
+.checkCard input {
+  accent-color: #1c2b1e;
+  flex-shrink: 0;
+  height: 16px;
+  margin-top: 3px;
+  width: 16px;
+}
+
+.checkCard strong {
+  display: block;
+  font-size: 13px;
+}
+
+.checkCard span {
+  color: #5a5a52;
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.builderFooter {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.builderFooter .saveRowBtn {
+  flex: 1;
+}
+
+/* ── WHAT THEY HAVE SPECIFIED, AND WHERE THE PRICE WOULD BE ─────────────────
+ *
+ * The shop's product page carries a running total in this position. This is the
+ * same card in the same place, and the amber is the colour the site already
+ * uses for a thing that has not been priced. Somebody who has used the shop
+ * looks here for the money; finding an empty space reads as a page that has not
+ * finished loading, where finding a sentence reads as an answer.
+ */
+.specCard {
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.specRows {
+  border-bottom: 1px solid #edeae0;
+  padding: 16px;
+}
+
+.specRow {
+  display: flex;
+  font-size: 12px;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.specRow span:first-child {
+  color: #5a5a52;
+  flex-shrink: 0;
+}
+
+.specRow span:last-child {
+  color: #1a1a18;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.specPrice {
+  background: #fffdf0;
+  padding: 16px;
+}
+
+.specPriceHead {
+  align-items: flex-end;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 0 0 4px;
+}
+
+.specPriceHead span {
+  color: #8a6d0b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.specPriceHead strong {
+  color: #8a6d0b;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.specPrice > p {
+  color: #8a6d0bd9;
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Kept against the button rather than floating above it, because it is the
+ * answer to why the button says what it says. */
+.specReady {
+  border-top: 1px solid #e8d68f;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+}
+
+.specFoot {
+  color: #8a6d0bd9;
+  font-size: 11px;
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+/* The stage stacks above the questions on a narrow screen, which is the right
+ * order to read them in anyway: what it looks like, then what it is. */
+@media (max-width: 1040px) {
+  .builder {
+    gap: 24px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .builderStage {
+    position: static;
+  }
+
+  .builderCard {
+    padding: 20px 16px;
+  }
+
+  .builderHead h2 {
+    font-size: 26px;
+  }
+}
+
+/* The list of what is on the request. Only ever shown once there is something
+ * on it: a heading over an empty table is a promise of rows that are not there. */
+.listHead {
+  margin: 0 0 14px;
+}
+
+.listHead h2 {
+  font-size: 20px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.listHead p {
+  color: #6b675e;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 6px 0 0;
+}
+
+/* The routed face, photographed, beside the drawing. The drawing shows the size,
+ * the colour, the banded edges and the cups; the photograph shows the profile,
+ * which is the one thing a drawing of ours cannot promise to get right. */
+.doorProfile {
+  align-items: center;
+  border-top: 1px solid #efeae0;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 58px minmax(0, 1fr);
+  margin: 14px 0 0;
+  padding: 14px 0 0;
+}
+
+.doorProfileShot {
+  border: 1px solid #e4dfd4;
+  border-radius: 4px;
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.doorProfile strong {
+  display: block;
+  font-size: 14px;
+}
+
+.doorProfile span {
+  color: #6b675e;
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+/* ── MY LIST ────────────────────────────────────────────────────────────────
+ *
+ * A cart page and a quote list page do the same job and must never be mistaken
+ * for one another, so this is the shop's layout in the site's amber rather than
+ * its green: a card per line on the left, and on the right, in the position a
+ * cart puts its total and its Checkout button, a sentence saying there is no
+ * price yet and a button that sends rather than pays.
+ */
+.listPage {
+  margin: 0 auto;
+  max-width: 1100px;
+  padding: 0 40px 72px;
+}
+
+.listNotice {
+  background: #fffdf0;
+  border: 1px solid #e8d68f;
+  border-radius: 6px;
+  margin: 0 0 24px;
+  padding: 16px 18px;
+}
+
+.listNotice strong {
+  color: #8a6d0b;
+  display: block;
+  font-size: 14px;
+}
+
+.listNotice p {
+  color: #8a6d0bd9;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 3px 0 0;
+}
+
+.listGrid {
+  align-items: start;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.listLines {
+  display: grid;
+  gap: 14px;
+}
+
+.listLine {
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 6px;
+  padding: 18px 20px;
+}
+
+.listLineTop {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.listLineWhat {
+  min-width: 0;
+}
+
+.listLineTitle {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+.listLineTitle strong {
+  font-size: 15px;
+}
+
+/* Said on every line, not once at the top, because a line is the thing somebody
+ * looks at when they are working out what they are about to be charged for. */
+.listPill {
+  background: #fffdf0;
+  border: 1px solid #e8d68f;
+  border-radius: 2px;
+  color: #8a6d0b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.listLineWhat p {
+  color: #6b675e;
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.listLineNote {
+  color: #8a8a80 !important;
+  margin-top: 4px !important;
+}
+
+.listLineSwatch {
+  border: 1px solid #e4dfd4;
+  border-radius: 4px;
+  height: 44px;
+  object-fit: cover;
+  width: 44px;
+}
+
+.listLineFoot {
+  align-items: center;
+  border-top: 1px solid #efeae0;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 14px 0 0;
+  padding: 12px 0 0;
+}
+
+.listQty {
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  display: inline-flex;
+  overflow: hidden;
+}
+
+.listQty button {
+  background: #fff;
+  border: 0;
+  color: #5a5a52;
+  cursor: pointer;
+  font-size: 16px;
+  height: 34px;
+  width: 34px;
+}
+
+.listQty button:disabled {
+  color: #c3c0b7;
+  cursor: not-allowed;
+}
+
+.listQty span {
+  align-items: center;
+  border-left: 1px solid #dbd8cc;
+  border-right: 1px solid #dbd8cc;
+  display: inline-flex;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  justify-content: center;
+  min-width: 42px;
+}
+
+.listLineActions {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.listEditLink,
+.listRemoveBtn {
+  background: none;
+  border: 0;
+  color: #6b675e;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.listEditLink:hover {
+  color: #1f6f4a;
+}
+
+.listRemoveBtn:hover {
+  color: #b42318;
+}
+
+.listAddMore {
+  border: 1px dashed #cfcabc;
+  border-radius: 6px;
+  color: #1f6f4a;
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 16px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.listAddMore:hover {
+  background: #fff;
+  border-color: #1f6f4a;
+}
+
+.listSide {
+  background: #fff;
+  border: 1px solid #e8d68f;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.listSideHead {
+  background: #fffdf0;
+  border-bottom: 1px solid #e8d68f;
+  padding: 14px 18px 10px;
+}
+
+.listSideHead .sectionLabel {
+  color: #8a6d0b;
+  margin: 0;
+}
+
+.listSideBody {
+  padding: 16px 18px 18px;
+}
+
+.listSteps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.listSteps li {
+  color: #6b675e;
+  display: grid;
+  font-size: 13px;
+  gap: 10px;
+  grid-template-columns: 14px minmax(0, 1fr);
+  line-height: 1.6;
+  padding: 5px 0;
+}
+
+.listSteps li span {
+  color: #8a6d0b;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.listTotal {
+  align-items: baseline;
+  border-top: 1px solid #efeae0;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin: 14px 0 0;
+  padding: 14px 0 0;
+}
+
+.listTotal strong {
+  font-size: 14px;
+}
+
+.listTotal span {
+  color: #8a8a80;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.listSendBtn {
+  background: #8a6d0b;
+  border-radius: 2px;
+  color: #fff;
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 14px 0 0;
+  padding: 16px;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.listSendBtn:hover {
+  background: #6f5709;
+}
+
+.listSideFoot {
+  color: #8a6d0bd9;
+  font-size: 11px;
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+.listEmpty {
+  margin: 0 auto;
+  max-width: 560px;
+  padding: 48px 40px 96px;
+  text-align: center;
+}
+
+.listEmpty h2 {
+  font-size: 22px;
+  margin: 0 0 8px;
+}
+
+.listEmpty p {
+  color: #6b675e;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 22px;
+}
+
+.listEmptyBtn {
+  background: #8a6d0b;
+  border-radius: 2px;
+  color: #fff;
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 16px 26px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .listPage {
+    padding: 0 20px 56px;
+  }
+
+  .listGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Adding a line leaves somebody on the same page looking at a blank form, which
+ * reads as though nothing happened. This says it did, and where their list is.
+ *
+ * Green, and the only green on this page. Amber is what the site uses for a
+ * thing that has not been priced, and it is carrying the whole of the message
+ * on the list and the send pages: spending it here on "that worked" would blunt
+ * it in the place it has real work to do. This is a confirmation, not a caveat. */
+.builderStrip {
+  align-items: center;
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 6px;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin: 0 0 28px;
+  padding: 16px 18px;
+}
+
+.builderStrip strong {
+  color: #2d5e28;
+  display: block;
+  font-size: 14px;
+}
+
+.builderStrip span {
+  color: #2d5e28d9;
+  display: block;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 2px;
+}
+
+.builderStripBtn {
+  background: #1c2b1e;
+  border-radius: 2px;
+  color: #fff;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 13px 20px;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.builderStripBtn:hover {
+  background: #2d5e28;
+}
+
+@media (max-width: 640px) {
+  .builderStrip {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .builderStripBtn {
+    text-align: center;
+  }
+}
+
+/* ── REVIEW AND SEND ────────────────────────────────────────────────────────
+ *
+ * The shop's checkout takes an address and a card. This takes a name and an
+ * email, and where the total would be it says there is no price yet. Same
+ * layout, so the flow feels like the site, and a different answer in the one
+ * place it matters.
+ */
+.sendMain {
+  display: grid;
+  gap: 14px;
+}
+
+.sendCard {
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.sendCard .sectionLabel {
+  margin-bottom: 16px;
+}
+
+.sendNote {
+  color: #8a8a80;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
+
+.sendLine {
+  align-items: baseline;
+  border-bottom: 1px solid #efeae0;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 7px 0;
+}
+
+.sendLine:last-of-type {
+  border-bottom: 0;
+}
+
+.sendLine span {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.sendLine strong {
+  color: #8a8a80;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sendBackLink {
+  color: #1f6f4a;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-top: 14px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.sendSideNote {
+  color: #8a6d0bd9;
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* The list page's send button is a link to this page. This one submits, so it
+ * is a real button and has to be told to look the same. */
+.listSendBtnAction {
+  background: #8a6d0b;
+  border: 0;
+  border-radius: 2px;
+  color: #fff;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 14px 0 0;
+  padding: 16px;
+  text-align: center;
+  text-transform: uppercase;
+  width: 100%;
+}
+
+.listSendBtnAction:hover {
+  background: #6f5709;
+}
+
+.listSendBtnAction:disabled {
+  background: #c9b98a;
+  cursor: wait;
+}
+
+/* ── SENT ───────────────────────────────────────────────────────────────────
+ *
+ * Not an order confirmation. Somebody who has been through a list and a Send
+ * button has every reason to think they have bought something, so this says
+ * plainly that they have not.
+ */
+.sentPage {
+  margin: 0 auto;
+  max-width: 680px;
+  padding: 0 40px 80px;
+}
+
+.sentCard {
+  background: #fff;
+  border: 1px solid #e8d68f;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sentHead {
+  background: #fffdf0;
+  border-bottom: 1px solid #e8d68f;
+  padding: 24px 24px 20px;
+  text-align: center;
+}
+
+.sentHead .sectionLabel {
+  color: #8a6d0b;
+  margin-bottom: 8px;
+}
+
+.sentHead strong {
+  color: #8a6d0b;
+  display: block;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.sentHead p {
+  color: #8a6d0bd9;
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+
+.sentBody {
+  padding: 20px 24px 24px;
+}
+
+.sentNotice {
+  background: #faf9f6;
+  border: 1px solid #e4dfd4;
+  border-radius: 4px;
+  color: #3a3a34;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+}
+
+.sentActions {
+  border-top: 1px solid #efeae0;
+  margin: 18px 0 0;
+  padding: 18px 0 0;
+}
+
+@media (max-width: 900px) {
+  .sentPage {
+    padding: 0 20px 56px;
+  }
+}
+
+/* Held while the store is still reading the list off the browser. Deliberately
+ * blank and roughly the height of a list, so the page does not jump and, more
+ * importantly, does not say anything it might have to take back. */
+.listWaiting {
+  min-height: 320px;
+}
+
+/* A family across the top, then its profiles under it, which is how the quote
+ * editor does it. Ninety seven names in one grid is not a choice, it is a
+ * search. */
+.stepStack {
+  display: grid;
+  gap: 16px;
+}
+
+/* The step could not be answered, and after a failed save that has to be
+ * visible on the control itself rather than only in the sentence below. */
+.tabsInvalid .tab {
+  border-color: #e07060;
+}
+
+/* A label above a control that is not an input, so it cannot be a <label>
+ * pointing at one. Same type as the ones that are. */
+.builderCard .fieldLabel {
+  color: #6b9e61;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+/* Said rather than shown empty: a dropdown with nothing in it reads as
+ * something that failed to load. */
+.builderCard .notApplicable {
+  color: #8a8a80;
+  display: block;
+  font-size: 13px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * THE SHOP, AND THE PIECES IT SHARES WITH THE QUOTE BUILDER
+ *
+ * One stylesheet for both paths, because they are one configurator. The shop
+ * is the builder's layout with a price: the same cards, rules, radius and
+ * labels, in the site's green where the quote list uses amber. See the "Two
+ * Paths, One Website" plan, decided 8 September 2026.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── COLOUR TILES: finish first, then colour ───────────────────────────────── */
+.colourTiles {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+}
+
+.colourTile {
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+  padding: 4px;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+
+.colourTile:hover {
+  border-color: #a8c5a0;
+}
+
+.colourTileOn {
+  border-color: #1c2b1e;
+  outline: 2px solid #1c2b1e;
+  outline-offset: 1px;
+}
+
+.colourTileSwatch {
+  aspect-ratio: 1;
+  background: #efece6;
+  border-radius: 1px;
+  display: block;
+  overflow: hidden;
+  position: relative;
+}
+
+.colourTileSwatch img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.colourTileBadge {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.78);
+  color: #8a6d0b;
+  display: flex;
+  font-size: 9px;
+  font-weight: 700;
+  inset: 0;
+  justify-content: center;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  position: absolute;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.colourTileName {
+  color: #3a3a34;
+  display: block;
+  font-size: 10.5px;
+  line-height: 1.3;
+  overflow: hidden;
+  padding: 5px 2px 1px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.colourTileChosen {
+  font-size: 13px;
+  margin: 12px 0 0;
+}
+
+.colourTileChosen strong {
+  color: #1a1a18;
+}
+
+.colourTileChosen span {
+  color: #5a5a52;
+  margin-left: 6px;
+}
+
+/* ── THE CROSSOVER NOTES, SAID AND NEVER MERGED ────────────────────────────── */
+.shopNudge {
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 2px;
+  margin: 12px 0 0;
+  padding: 14px 16px;
+}
+
+.shopNudge strong {
+  color: #2d5e28;
+  display: block;
+  font-size: 13px;
+}
+
+.shopNudge p {
+  color: #2d5e28d9;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 3px 0 10px;
+}
+
+.shopNudgeBtn,
+.crossListBtn,
+.shopElsewhereBtn,
+.shopUnpricedBtn {
+  align-items: center;
+  border: 0;
+  border-radius: 2px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  min-height: 36px;
+  padding: 0 16px;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.shopNudgeBtn {
+  background: #1c2b1e;
+}
+
+.crossList,
+.shopElsewhere,
+.shopUnpriced {
+  background: #fffdf0;
+  border: 1px solid #e8d68f;
+  border-radius: 6px;
+  padding: 16px 18px;
+}
+
+.crossList strong,
+.shopElsewhere strong,
+.shopUnpriced strong {
+  color: #8a6d0b;
+  display: block;
+  font-size: 13px;
+}
+
+.crossList p,
+.shopElsewhere p,
+.shopUnpriced p {
+  color: #8a6d0bd9;
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 3px 0 12px;
+}
+
+.crossListBtn,
+.shopElsewhereBtn,
+.shopUnpricedBtn {
+  background: #8a6d0b;
+}
+
+.crossListBtn:hover,
+.shopElsewhereBtn:hover,
+.shopUnpricedBtn:hover {
+  background: #6f5709;
+}
+
+/* ── THE SHOP FRONT PAGE ───────────────────────────────────────────────────── */
+.shopWrap {
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 40px 40px 80px;
+}
+
+.shopCards {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 24px;
+}
+
+.shopCard {
+  background: #fff;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+
+.shopCard:hover {
+  border-color: #a8c5a0;
+}
+
+/* SQUARE, BECAUSE THE PICTURE IS SQUARE.
+   The three category renders are 1024 x 1024 and each carries its own
+   background out to its own edges. A short letterbox frame would crop that
+   ground away along with the top and bottom of the piece, which is what the
+   drawn version was doing before these arrived. Matching the frame to the
+   picture is the only shape that shows all of it without bars down the sides,
+   and bars would be the wrong colour anyway: all three grounds are different.
+
+   aspect-ratio rather than a height, so the square holds at every card width
+   from a phone to a wide desktop. */
+.shopCardSwatch {
+  aspect-ratio: 1 / 1;
+  background-color: #e8e4da;
+  border-bottom: 1px solid #dbd8cc;
+  display: block;
+  overflow: hidden;
+  width: 100%;
+}
+
+.shopCardSwatch img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.shopCardBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 20px 20px;
+}
+
+.shopCardBody strong {
+  color: #1a1a18;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.shopCardBody > span {
+  color: #5a5a52;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.shopCardBody .shopCardMeta {
+  color: #8a8a80;
+  font-size: 12px;
+}
+
+.shopCardBody .shopCardGo {
+  color: #1f6f4a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-top: auto;
+  padding-top: 12px;
+  text-transform: uppercase;
+}
+
+.shopFacts {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 24px 0 0;
+}
+
+.shopFacts div {
+  border-top: 1px solid #dbd8cc;
+  padding: 14px 0 0;
+}
+
+.shopFacts strong {
+  color: #1a1a18;
+  display: block;
+  font-size: 13px;
+}
+
+.shopFacts span {
+  color: #5a5a52;
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin-top: 3px;
+}
+
+@media (max-width: 860px) {
+  .shopWrap {
+    padding: 28px 20px 56px;
+  }
+
+  .shopCards,
+  .shopFacts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── THE PRODUCT PAGE ──────────────────────────────────────────────────────── */
+.shopFlashActions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.shopFlashKeep {
+  background: #fff;
+  border: 1px solid #a8c5a0;
+  border-radius: 2px;
+  color: #2d5e28;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 13px 18px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hingeSupply {
+  border-top: 1px solid #edeae0;
+  display: grid;
+  gap: 12px;
+  margin: 20px 0 0;
+  padding: 18px 0 0;
+}
+
+.builderCard .hingeSupply .fieldLabel {
+  margin-bottom: 0;
+}
+
+.hingeTiles {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.hingeTile {
+  background: #faf9f6;
+  border: 1px solid #dbd8cc;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+  gap: 2px;
+  padding: 6px;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.hingeTile:hover {
+  border-color: #a8c5a0;
+}
+
+.hingeTileOn {
+  background: #f6f8f5;
+  border-color: #1c2b1e;
+}
+
+.hingeTileImg {
+  aspect-ratio: 16 / 9;
+  background: #fff;
+  border: 1px solid #edeae0;
+  border-radius: 2px;
+  display: block;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.hingeTileImg img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.hingeTile strong {
+  color: #1a1a18;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.hingeTile span {
+  color: #5a5a52;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.hingeTile em {
+  color: #2d5e28;
+  font-size: 11.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.hingeNote {
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 2px;
+  color: #2d5e28;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 8px 12px;
+}
+
+/* The charges under the specification. Short, because the rows above have
+ * just said the size, the edging and which hinge. */
+.shopParts {
+  border-bottom: 1px solid #edeae0;
+  padding: 14px 16px;
+}
+
+.shopPart {
+  display: flex;
+  font-size: 12px;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.shopPart span:first-child {
+  color: #5a5a52;
+}
+
+.shopPart span:last-child {
+  color: #1a1a18;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.shopPartRule {
+  border-top: 1px solid #edeae0;
+  font-size: 13px;
+  margin-top: 8px;
+  padding-top: 10px;
+}
+
+/* WHERE THE QUOTE BUILDER SAYS "PRICED BY HAND" IN AMBER, THIS SAYS A FIGURE
+ * IN GREEN. Same block, same place, different answer. */
+.shopPrice {
+  background: #edf4eb;
+  padding: 16px;
+}
+
+.shopPriceHead {
+  align-items: flex-end;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.shopPriceHead span {
+  color: #2d5e28;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.shopPriceHead strong {
+  color: #1a1a18;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.shopPriceEach {
+  color: #2d5e28d9;
+  font-size: 11.5px;
+  margin: 6px 0 0;
+  text-align: right;
+}
+
+.shopReady {
+  border-top: 1px solid #a8c5a0;
+  color: #2d5e28;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+}
+
+.shopAddBtn,
+.cartPayBtn {
+  background: #1c2b1e;
+  border: 0;
+  border-radius: 2px;
+  color: #fff;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 12px 0 0;
+  min-height: 48px;
+  padding: 0 16px;
+  text-transform: uppercase;
+  width: 100%;
+}
+
+.shopAddBtn:hover,
+.cartPayBtn:hover {
+  background: #2d3f2f;
+}
+
+.shopAddBtn:disabled,
+.cartPayBtn:disabled,
+.shopBarBtn:disabled {
+  background: #e8e5dc;
+  color: #a8a69c;
+  cursor: not-allowed;
+}
+
+.shopPriceFoot,
+.cartSideFoot {
+  color: #2d5e28d9;
+  font-size: 11px;
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+/* THE BAR THAT FOLLOWS THEM DOWN.
+ *
+ * Fixed to the bottom of the WINDOW, edge to edge, not to the page container:
+ * sticky inside the container drew a bar the width of the column it sat in,
+ * with the page showing either side of it. Its contents line up with the page
+ * above it, which is what the middle element is for. The page carries bottom
+ * padding to match, so nothing ends up underneath it. */
+.shopBar {
+  background: #fff;
+  border-top: 1px solid #dbd8cc;
+  bottom: 0;
+  box-shadow: 0 -8px 24px rgba(28, 43, 30, 0.08);
+  left: 0;
+  position: fixed;
+  right: 0;
+  z-index: 20;
+}
+
+.shopBarInner {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 1600px;
+  padding: 12px 40px;
+}
+
+/* Room for the bar, so the footer is never stuck behind it. */
+.shopPageWithBar {
+  padding-bottom: 78px;
+}
+
+.shopBarPrice {
+  min-width: 0;
+}
+
+.shopBarPrice span {
+  color: #8a8a80;
+  display: block;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.shopBarPrice strong {
+  color: #1a1a18;
+  display: block;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  min-height: 23px;
+}
+
+.shopBarBtn {
+  background: #a8c5a0;
+  border: 0;
+  border-radius: 2px;
+  color: #07130a;
+  cursor: pointer;
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  min-height: 44px;
+  padding: 0 22px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.shopBarBtn:hover {
+  background: #b9d3b2;
+}
+
+@media (max-width: 900px) {
+  .shopBarInner {
+    padding: 10px 20px;
+  }
+
+  .shopPageWithBar {
+    padding-bottom: 74px;
+  }
+}
+
+/* ── THE CART ──────────────────────────────────────────────────────────────── */
+.cartPageWrap {
+  margin: 0 auto;
+  padding: 32px 0 0;
+}
+
+.cartNotice {
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 6px;
+  margin: 0 0 24px;
+  padding: 16px 18px;
+}
+
+.cartNotice strong {
+  color: #2d5e28;
+  display: block;
+  font-size: 14px;
+}
+
+.cartNotice p {
+  color: #2d5e28d9;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 3px 0 0;
+}
+
+.cartPill {
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 2px;
+  color: #2d5e28;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cartSpecLabel {
+  color: #8a8a80;
+  display: inline-block;
+  min-width: 86px;
+}
+
+.listLineWhat .cartLineProblem {
+  color: #b42318;
+  margin-top: 6px;
+}
+
+.cartLinePrice {
+  margin-left: auto;
+  text-align: right;
+}
+
+.cartLinePrice span {
+  color: #8a8a80;
+  display: block;
+  font-size: 11.5px;
+}
+
+.cartLinePrice strong {
+  color: #1a1a18;
+  display: block;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cartAddMore {
+  border: 1px dashed #cfcabc;
+  border-radius: 6px;
+  color: #1f6f4a;
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 16px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.cartAddMore:hover {
+  background: #fff;
+  border-color: #1f6f4a;
+}
+
+.cartSide {
+  background: #fff;
+  border: 1px solid #a8c5a0;
+  border-radius: 6px;
+  overflow: hidden;
+  position: sticky;
+  top: 20px;
+}
+
+.cartSideHead {
+  background: #edf4eb;
+  border-bottom: 1px solid #a8c5a0;
+  padding: 14px 18px 10px;
+}
+
+.cartSideHead .sectionLabel {
+  color: #2d5e28;
+  margin: 0;
+}
+
+.cartSideBody {
+  padding: 16px 18px 18px;
+}
+
+.cartRow {
+  display: flex;
+  font-size: 13px;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 5px 0;
+}
+
+.cartRow span:first-child {
+  color: #5a5a52;
+}
+
+.cartRow span:last-child {
+  color: #1a1a18;
+  font-variant-numeric: tabular-nums;
+}
+
+.cartTotal {
+  align-items: flex-end;
+  border-top: 1px solid #edeae0;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 10px 0 0;
+  padding: 14px 0 0;
+}
+
+.cartTotal span {
+  color: #2d5e28;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cartTotal strong {
+  color: #1a1a18;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.cartCheckoutBtn {
+  background: #1c2b1e;
+  border-radius: 2px;
+  color: #fff;
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 14px 0 0;
+  padding: 16px;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.cartCheckoutBtn:hover {
+  background: #2d3f2f;
+}
+
+.cartCheckoutBtnOff,
+.cartCheckoutBtnOff:hover {
+  background: #e8e5dc;
+  color: #a8a69c;
+  cursor: not-allowed;
+}
+
+.cartEmptyBtn {
+  background: #1c2b1e;
+  border-radius: 2px;
+  color: #fff;
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 16px 26px;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .cartSide {
+    position: static;
+  }
+}
+
+/* ── CHECKOUT ──────────────────────────────────────────────────────────────── */
+.checkoutWide {
+  margin: 0 0 10px;
+}
+
+.checkoutDeliveryHead {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.checkoutDeliveryHead strong {
+  color: #1a1a18;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── PAID ──────────────────────────────────────────────────────────────────── */
+.doneCard {
+  background: #fff;
+  border: 1px solid #a8c5a0;
+  border-radius: 6px;
+  margin: 32px 0 0;
+  overflow: hidden;
+}
+
+.doneHead {
+  background: #edf4eb;
+  border-bottom: 1px solid #a8c5a0;
+  padding: 24px;
+  text-align: center;
+}
+
+.doneHead .sectionLabel {
+  color: #2d5e28;
+  margin-bottom: 8px;
+}
+
+.doneHead strong {
+  color: #1a1a18;
+  display: block;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.doneHead p {
+  color: #2d5e28;
+  font-size: 14px;
+  margin: 6px 0 0;
+}
+
+.doneBody {
+  display: grid;
+  gap: 18px;
+  justify-items: start;
+  padding: 22px 24px 26px;
+}
+
+.doneSteps {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.doneSteps li {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 26px minmax(0, 1fr);
+}
+
+.doneSteps li > span {
+  align-items: center;
+  background: #edf4eb;
+  border-radius: 50%;
+  color: #2d5e28;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+
+.doneSteps strong {
+  color: #1a1a18;
+  display: block;
+  font-size: 14px;
+}
+
+.doneSteps p {
+  color: #5a5a52;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 2px 0 0;
+}
+
+.doneLines {
+  border-top: 1px solid #edeae0;
+  padding-top: 16px;
+  width: 100%;
+}
+
+.doneLine {
+  border-bottom: 1px solid #edeae0;
+  padding: 8px 0;
+}
+
+.doneLine:last-child {
+  border-bottom: 0;
+}
+
+.doneLine strong {
+  color: #1a1a18;
+  font-size: 13px;
+}
+
+.doneLine p {
+  color: #5a5a52;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 1px 0 0;
+}
+
+/* The quote list naming the cart, in the cart's green. */
+.crossCart {
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 6px;
+  padding: 16px 18px;
+}
+
+.crossCart strong {
+  color: #2d5e28;
+  display: block;
+  font-size: 13px;
+}
+
+.crossCart p {
+  color: #2d5e28d9;
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 3px 0 12px;
+}
+
+.crossCartBtn {
+  align-items: center;
+  background: #1c2b1e;
+  border-radius: 2px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  min-height: 36px;
+  padding: 0 16px;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* No price yet: said quietly, not in the size a price would be. */
+.shopPriceWaiting {
+  color: #2d5e28d9;
+  font-size: 13px;
+  font-style: normal;
 }

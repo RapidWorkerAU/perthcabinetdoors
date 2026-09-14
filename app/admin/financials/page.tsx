@@ -13,6 +13,15 @@ type PaymentRow = {
   requested_at?: string | null
   request_status?: string | null
   created_at?: string | null
+  // How the money reached us, for the cash view. settlement_method is only set
+  // when a payment was settled outside Stripe; a blank one with a Stripe id on
+  // it came through Stripe, and a blank one with neither is a row somebody
+  // marked paid without saying how.
+  settlement_method?: string | null
+  settlement_reference?: string | null
+  stripe_payment_intent_id?: string | null
+  stripe_checkout_session_id?: string | null
+  receipt_number?: string | null
   pcd_orders?: {
     order_number?: string | null
     customer_name?: string | null
@@ -34,7 +43,7 @@ export default async function AdminFinancialsPage() {
     // and its unpaid payments are not money anyone is still owed.
     supabase
       .from('pcd_order_payments')
-      .select('id, order_id, payment_type, amount, is_paid, paid_at, requested_at, request_status, created_at, pcd_orders(order_number, customer_name, status)'),
+      .select('id, order_id, payment_type, amount, is_paid, paid_at, requested_at, request_status, created_at, settlement_method, settlement_reference, stripe_payment_intent_id, stripe_checkout_session_id, receipt_number, pcd_orders(order_number, customer_name, status)'),
     // Archived orders are out. Archiving is how somebody says "this is not real
     // work, stop counting it", and money is the first place that has to be true.
     supabase
@@ -46,6 +55,27 @@ export default async function AdminFinancialsPage() {
       .select('id, quote_number, customer_name, status, total_inc_gst, gst_amount, sent_at, updated_at, created_at, order_id, markup_amount_ex_gst, labour_cost_ex_gst')
       .in('status', ['sent', 'viewed']),
   ])
+
+  // ARCHIVED ORDERS, FOR THE CASH VIEW ONLY.
+  //
+  // The orders query above leaves archived out on purpose, because archiving is
+  // how somebody says "this is not real work, stop counting it". That is right
+  // for what was confirmed and what is owed. It is wrong for what was banked: a
+  // deposit that cleared in March does not come off the bank statement because
+  // the job was archived in April. So they are fetched separately and used for
+  // nothing except putting the GST rate against a banked payment. They never
+  // reach the confirmed orders list.
+  const { data: archivedData } = await supabase
+    .from('pcd_orders')
+    .select('id, quote_id, total_inc_gst, gst_amount')
+    .eq('status', 'archived')
+
+  const archivedOrders = (archivedData || []).map(order => ({
+    id: order.id,
+    quote_id: order.quote_id || null,
+    total_inc_gst: Number(order.total_inc_gst || 0),
+    gst_amount: Number(order.gst_amount || 0),
+  }))
 
   const orderQuoteIds = Array.from(
     new Set((ordersData || []).map(order => order.quote_id).filter(Boolean))
@@ -59,8 +89,12 @@ export default async function AdminFinancialsPage() {
   // "pcd_quotes(...)" embedded from pcd_orders is ambiguous, and PostgREST
   // answers an ambiguous embed with an error and no rows at all, which took
   // the order totals down with it the last time this was written that way.
-  const { data: orderQuotesData, error: orderQuotesError } = orderQuoteIds.length
-    ? await supabase.from('pcd_quotes').select('id, markup_amount_ex_gst, labour_cost_ex_gst').in('id', orderQuoteIds)
+  const splitQuoteIds = Array.from(
+    new Set([...orderQuoteIds, ...archivedOrders.map(order => order.quote_id).filter(Boolean)])
+  ) as string[]
+
+  const { data: orderQuotesData, error: orderQuotesError } = splitQuoteIds.length
+    ? await supabase.from('pcd_quotes').select('id, markup_amount_ex_gst, labour_cost_ex_gst').in('id', splitQuoteIds)
     : { data: [], error: null }
 
   const payments = ((paymentsData || []) as PaymentRow[]).map(payment => ({
@@ -76,6 +110,11 @@ export default async function AdminFinancialsPage() {
     requested_at: payment.requested_at || null,
     request_status: payment.request_status || 'not_requested',
     created_at: payment.created_at || null,
+    settlement_method: payment.settlement_method || null,
+    settlement_reference: payment.settlement_reference || null,
+    stripe_payment_intent_id: payment.stripe_payment_intent_id || null,
+    stripe_checkout_session_id: payment.stripe_checkout_session_id || null,
+    receipt_number: payment.receipt_number || null,
   }))
 
   const orders = (ordersData || []).map(order => ({
@@ -130,6 +169,7 @@ export default async function AdminFinancialsPage() {
         orders={orders}
         quotes={quotes}
         splits={splits}
+        archivedOrders={archivedOrders}
         orderQuoteIds={orderQuoteIds}
         today={today}
       />

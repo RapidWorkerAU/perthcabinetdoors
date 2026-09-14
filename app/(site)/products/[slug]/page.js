@@ -1,127 +1,79 @@
-import { notFound } from "next/navigation";
+import Link from "next/link";
+import { notFound, permanentRedirect } from "next/navigation";
+import PublicFooter from "@/components/public/PublicFooter";
+import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { shopProduct } from "@/lib/pcd-shop";
+import { loadShopCatalogue, publicShopCatalogue } from "@/lib/pcd-shop-pricing";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import PublicSiteNav from "../../PublicSiteNav";
-import { PRODUCTS_ENABLED } from "../../../../lib/pcd-site-flags";
-import { createSupabaseServerClient } from "../../../../lib/supabase/server";
-import {
-  getProductBySlug,
-  getRelatedProducts,
-  getRelatedProductsFromList,
-  normalizeProduct,
-  normalizeProducts,
-  PRODUCTS,
-} from "../product-data";
-import ProductDetailClient from "./ProductDetailClient";
-import {
-  buildColourAvailabilityFromLibraryRows,
-  getDatabaseColourFamilyForSelection,
-  getDatabaseColourRows,
-  inferThicknessFromMaterial,
-  normaliseColourMaterialKey,
-} from "../../../../lib/pcd-colour-library";
+import styles from "../../contact/contact.module.css";
+import ShopProductClient from "./ShopProductClient";
 
 export const dynamic = "force-dynamic";
 
-const PRODUCT_SELECT = `
-  id,name,slug,category,eyebrow,card_title,page_title,price_from,is_active,sort_order,
-  short_description,long_description,meta_description,cta_label,cta_url,currency,features,finishes,
-  type,type_label,material,material_label,compatibility,compatibility_label,ikea_system,style,
-  standard_size,hero_caption,detail_description,finish_brand,lead_time,made_to_measure,pre_drilled,
-  gallery_images,pricing_rows,info_cards,related_product_ids,product_options
-`;
-
-async function loadProductBySlug(slug) {
-  const supabase = await createSupabaseServerClient();
-  const { data: row } = await supabase
-    .from("products")
-    .select(PRODUCT_SELECT)
-    .eq("slug", slug)
-    .maybeSingle();
-
-  if (!row) {
-    return { product: getProductBySlug(slug), relatedProducts: null };
-  }
-
-  const [{ data: allRows }, { data: allImageRows }] = await Promise.all([
-    supabase
-      .from("products")
-      .select(PRODUCT_SELECT)
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("product_images")
-      .select("product_id,image_url,is_primary,sort_order")
-      .order("sort_order", { ascending: true }),
-  ]);
-
-  const imagesByProduct = (allImageRows || []).reduce((acc, img) => {
-    acc[img.product_id] = acc[img.product_id] || [];
-    acc[img.product_id].push(img);
-    return acc;
-  }, {});
-
-  const product = normalizeProduct(row, imagesByProduct[row.id] || []);
-  const products = normalizeProducts(allRows || [], allImageRows || []);
-  return {
-    product,
-    relatedProducts: getRelatedProductsFromList(product, products),
-  };
-}
+// The old catalogue's addresses, sent somewhere that still answers. The three
+// decorative board products are the shop's own; everything else in the old
+// catalogue is priced by hand, so it goes to the quote form.
+const OLD_SLUGS = {
+  "cabinet-door-decorative-board": "/products/flat-door",
+  "drawer-front-decorative-board": "/products/drawer-front",
+  "panel-decorative-board": "/products/flat-panel",
+  "cabinet-door-thermolaminate": "/request-quote",
+  "drawer-front-thermolaminate": "/request-quote",
+  "panel-thermolaminate": "/request-quote",
+  "compact-laminate-table-top": "/request-quote",
+};
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const { product } = await loadProductBySlug(slug);
-
-  if (!product) {
-    return {
-      title: "Product | Perth Cabinet Doors",
-      description: "Product details for Perth Cabinet Doors.",
-    };
-  }
-
+  const product = shopProduct(slug);
+  if (!product) return { title: "Shop | Perth Cabinet Doors" };
   return {
-    title: `${product.name} | Perth Cabinet Doors`,
-    description: product.detailDesc,
+    title: `${product.name}, made to measure | Perth Cabinet Doors`,
+    // The cabinet names go in the description too, so a search result for
+    // "Kaboodle replacement door" can show the sentence that answers it.
+    description: [product.blurb, product.fits].filter(Boolean).join(" "),
   };
 }
 
-export default async function ProductDetailPage({ params }) {
-  // Switched off site-wide, see lib/pcd-site-flags.js.
-  if (!PRODUCTS_ENABLED) notFound();
-
+export default async function ShopProductPage({ params }) {
+  if (!SHOP_ENABLED) notFound();
   const { slug } = await params;
-  const { product, relatedProducts } = await loadProductBySlug(slug);
+  if (OLD_SLUGS[slug]) permanentRedirect(OLD_SLUGS[slug]);
+  const product = shopProduct(slug);
+  if (!product) notFound();
 
-  if (!product) {
-    notFound();
-  }
-
-  const supabase = await createSupabaseServerClient();
-  const colourRows = await getDatabaseColourRows(supabase, { activeOnly: true });
-  const availability = buildColourAvailabilityFromLibraryRows(colourRows);
-  const materialKey = normaliseColourMaterialKey(product.material);
-  const availableThicknesses = availability[materialKey] || [];
-
-  const inferredThickness = inferThicknessFromMaterial(product.materialLabel || product.material);
-  const resolvedThickness = availableThicknesses.includes(inferredThickness)
-    ? inferredThickness
-    : availableThicknesses[0] || "";
-
-  const colourFamily = await getDatabaseColourFamilyForSelection(supabase, {
-    material: product.material,
-    thickness: resolvedThickness,
-  });
+  // The catalogue as the browser may see it: colours, hinges and marked-up
+  // prices, never a cost. Read on the server so the colour tiles are on the
+  // page from the first paint.
+  const catalogue = publicShopCatalogue(await loadShopCatalogue(createSupabaseAdminClient()));
 
   return (
     <>
-      <PublicSiteNav active="products" variant="solid" />
-      <ProductDetailClient
-        product={product}
-        relatedProducts={relatedProducts || getRelatedProducts(product)}
-        colourFamily={colourFamily}
-        availableThicknesses={availableThicknesses}
-        initialThickness={resolvedThickness}
-      />
+      <PublicSiteNav active="shop" variant="solid" />
+      {/* The page leaves room at the bottom for the price bar, which is fixed
+          to the window rather than to this column. */}
+      <main className={`${styles.page} ${styles.shopPageWithBar}`}>
+        <section className={styles.pageHeader}>
+          <div className={`${styles.pageHeaderInner} ${styles.quotePageHeaderInner}`}>
+            <div className={styles.breadcrumb}>
+              <Link href="/">Home</Link> &rsaquo; <Link href="/products">Shop</Link> &rsaquo; {product.name}
+            </div>
+            <h1>
+              {product.name}, <em>made to measure</em>
+            </h1>
+            <p>{product.blurb}</p>
+            {/* The cabinets it goes on, named. See `fits` in lib/pcd-shop.js. */}
+            {product.fits ? <p className={styles.shopFits}>{product.fits}</p> : null}
+          </div>
+        </section>
+
+        <section className={styles.quoteTablePageWrap}>
+          <ShopProductClient product={product} catalogue={catalogue} />
+        </section>
+
+        <PublicFooter className={styles.siteFooter} />
+      </main>
     </>
   );
 }

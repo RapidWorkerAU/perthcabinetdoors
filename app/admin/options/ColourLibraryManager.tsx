@@ -3,6 +3,7 @@
 import { createPortal } from 'react-dom'
 import { useMemo, useRef, useState } from 'react'
 import { createSupabaseBrowserClient } from '../../../lib/supabase/client'
+import { IconArrowLeft } from '@tabler/icons-react'
 import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import {
   COLOUR_MATERIALS,
@@ -621,7 +622,7 @@ export default function ColourLibraryManager({
                   aria-label="Go back"
                   className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0 disabled:opacity-50"
                 >
-                  ←
+                  <IconArrowLeft size={18} />
                 </button>
                 <h2 id="colour-line-modal-title" className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
                   {draft.id ? 'Edit colour line' : 'Add colour line'}
@@ -1031,10 +1032,23 @@ export default function ColourLibraryManager({
                       />
                     </td>
                     <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
-                      <span className="inline-flex w-[36px] h-[36px] rounded-[4px] overflow-hidden bg-[#f5f5f4] border border-[#edf4eb] flex-shrink-0">
+                      {/* A row with no tile image is not a cosmetic gap. The design
+                          tool paints panels from this picture, so a colour without
+                          one silently stays flat there, and the whole "show colours"
+                          toggle reads as broken on any job drawn in it. An empty
+                          grey square said nothing, so now it says it. */}
+                      <span
+                        title={row.image_url ? undefined : 'No tile image. The design tool cannot paint this colour until one is uploaded.'}
+                        className={cn(
+                          'inline-flex items-center justify-center w-[36px] h-[36px] rounded-[4px] overflow-hidden flex-shrink-0 border',
+                          row.image_url
+                            ? 'bg-[#f5f5f4] border-[#edf4eb]'
+                            : 'bg-[#fdf3dd] border-[#e0aa3c] text-[#8a6410] text-[9px] font-semibold leading-tight text-center'
+                        )}
+                      >
                         {row.image_url ? (
                           <img src={row.image_url} alt="" className="w-full h-full object-cover" />
-                        ) : null}
+                        ) : 'No tile'}
                       </span>
                     </td>
                     <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{row.name}</td>

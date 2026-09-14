@@ -9,6 +9,7 @@
 
 import { createPortal } from "react-dom";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { IconChevronRight } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "../design.module.css";
 import { formatMoney } from "../../../../lib/pcd-quote-utils";
@@ -24,6 +25,9 @@ const PART_LABELS = {
   kickboard: "Kickboard",
   filler: "Filler panel",
   panels: "Finished panels / benchtop",
+  // Rails, bins and lights fitted inside the cabinet, each its own hardware
+  // line priced from the library.
+  accessories: "Accessories",
   include: "Include",
 };
 
@@ -99,7 +103,7 @@ function PricedRates({ rows }) {
         aria-expanded={open}
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "none", border: "none", cursor: "pointer", font: "inherit", fontSize: 11.5, color: "#3f5f47", textAlign: "left" }}
       >
-        <span style={{ fontWeight: 700, transition: "transform 150ms ease", transform: open ? "rotate(90deg)" : "none" }}>▸</span>
+        <span style={{ fontWeight: 700, transition: "transform 150ms ease", transform: open ? "rotate(90deg)" : "none", display: "inline-flex" }}><IconChevronRight size={13} /></span>
         <span style={{ fontWeight: 700 }}>
           {changed.length} board rate{changed.length === 1 ? " has" : "s have"} changed since this design was drawn
         </span>
@@ -434,7 +438,7 @@ export default function StageQuoteModal({ projectId, onClose }) {
                       aria-expanded={warningsOpen}
                       style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", cursor: "pointer", font: "inherit", textAlign: "left" }}
                     >
-                      <span style={{ fontSize: 11.5, fontWeight: 700, color: "#8a5a12", transition: "transform 150ms ease", transform: warningsOpen ? "rotate(90deg)" : "none" }}>▸</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: "#8a5a12", transition: "transform 150ms ease", transform: warningsOpen ? "rotate(90deg)" : "none", display: "inline-flex" }}><IconChevronRight size={13} /></span>
                       <span style={{ fontSize: 11.5, fontWeight: 700, color: "#8a5a12" }}>
                         {warnings.length} thing{warnings.length === 1 ? "" : "s"} to check before committing
                       </span>

@@ -38,11 +38,12 @@ import {
   NEVER_SENT,
   STAGE_WORDS,
   UPDATE_AUTOMATIC_NOTE,
-  UPDATE_REPLY_LINE,
   sentenceFor,
   updateEmailBody,
+  updateEmailSubject,
 } from "../lib/pcd-update-wording.js";
 import { CUSTOMER_FACING_ACTIONS, UPDATE_SENT_ACTION } from "../lib/pcd-weekly-updates.js";
+import { customerUpdateHtml } from "../lib/pcd-email-templates.js";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const read = (p) => readFileSync(join(root, p), "utf8");
@@ -217,22 +218,34 @@ const SAMPLE = {
   ],
 };
 
-test("the email carries the reply line and says a machine wrote it", () => {
+test("the email opens plainly and says a machine wrote it, both at the top", () => {
   const body = updateEmailBody(SAMPLE);
-  assert.ok(body.includes(UPDATE_REPLY_LINE));
-  assert.ok(body.includes(UPDATE_AUTOMATIC_NOTE));
-  // The reply line first, so nobody reads a disclaimer to find out how to
-  // reach us.
-  assert.ok(body.indexOf(UPDATE_REPLY_LINE) < body.indexOf(UPDATE_AUTOMATIC_NOTE));
-  assert.match(UPDATE_AUTOMATIC_NOTE, /not a request for payment/);
+  const lines = body.split("\n");
+  assert.equal(lines[0], "Hi Juliet,");
+  assert.equal(lines[2], "We have made progress on your order this week. See details below.");
+  assert.equal(lines[4], UPDATE_AUTOMATIC_NOTE);
+  // The notice is said once, before the updates, rather than as two paragraphs
+  // of hedging underneath them.
+  assert.ok(body.indexOf(UPDATE_AUTOMATIC_NOTE) < body.indexOf("PCD-O-"));
+  assert.equal(body.split(UPDATE_AUTOMATIC_NOTE).length - 1, 1);
+  assert.match(UPDATE_AUTOMATIC_NOTE, /No reply is required unless/);
+  // The old wording is gone, all of it.
+  assert.ok(!/Here is where things are up to/.test(body));
+  assert.ok(!/just reply to this email/.test(body));
+  assert.ok(!/not a request for payment/.test(body));
+  assert.ok(!/We have had \d+ update/.test(body), "no count of updates in the opening");
 });
 
-test("the count in the intro is what is actually listed", () => {
-  // "4 updates" above three lines is the sort of thing a person notices once
-  // and never quite trusts again. Internal edits and the suppressed issue are
-  // both excluded here.
+test("it is signed off like a person wrote it", () => {
+  const lines = updateEmailBody(SAMPLE).split("\n");
+  assert.equal(lines[lines.length - 2], "Kind Regards,");
+  assert.equal(lines[lines.length - 1], "Perth Cabinet Doors");
+  assert.equal(lines[lines.length - 3], "", "a blank line above it, not run into the last update");
+});
+
+test("only what is actually listed appears under the heading", () => {
+  // Internal edits and the suppressed issue are both excluded.
   const body = updateEmailBody(SAMPLE);
-  assert.match(body, /We have had 3 updates/);
   const listed = body.split("\n").filter((line) => /^ {2}\d/.test(line));
   assert.equal(listed.length, 3);
 });
@@ -251,9 +264,87 @@ test("orders become headings so a customer with two jobs can tell them apart", (
       { number: "PCD-O-2026-800C52", name: "Robe", changes: [{ kind: "order_complete", at: "2026-08-22T00:00:00Z" }] },
     ],
   });
-  assert.match(body, /across your 2 orders/);
+  assert.match(body, /We have made progress on your orders this week/, "two jobs, so orders");
   assert.ok(body.includes("PCD-O-2026-DA223F - Pantry"));
   assert.ok(body.includes("PCD-O-2026-800C52 - Robe"));
+});
+
+test("the subject is the same every time and names us", () => {
+  assert.equal(updateEmailSubject(), "Order Update - Perth Cabinet Doors");
+});
+
+// ─── the completion date ────────────────────────────────────────────────────
+//
+// An ordered item with nothing behind it is the point at which a customer
+// starts wondering, so the line answers it. The moment an ETA is entered the
+// TBC stops, because the expected arrival sentence then says it properly and
+// the two must never appear together contradicting each other.
+
+test("an ordered item with no ETA says the completion date is still to come", () => {
+  const line = (etaKnown) =>
+    sentenceFor({ kind: "item_status", to: "Ordered", qty: 1, itemLabel: "Panel", on: "2026-09-13", etaKnown });
+  assert.equal(line(false), "1 x Panel ordered on 13 September 2026 - Item completion date TBC.");
+  assert.equal(line(true), "1 x Panel ordered on 13 September 2026");
+  // A change from before this existed carries no flag at all, and must not
+  // start telling every historic customer their dates are unknown.
+  assert.equal(
+    sentenceFor({ kind: "item_status", to: "Ordered", qty: 1, itemLabel: "Panel", on: "2026-09-13" }),
+    "1 x Panel ordered on 13 September 2026"
+  );
+  assert.equal(
+    sentenceFor({ kind: "item_ordered", to: "2026-09-13", qty: 4, itemLabel: "Door", etaKnown: false }),
+    "4 x Door ordered on 13 September 2026 - Item completion date TBC."
+  );
+});
+
+test("the ETA is read off the item today, and a mixed batch does not claim TBC", () => {
+  // Read as it stands now, not as it stood when the item was ordered: an ETA
+  // entered since is an answer, and TBC would be wrong the moment it is sent.
+  assert.match(WEEKLY, /select\("id, qty, title, product_type, supplier_eta"\)/);
+  assert.match(WEEKLY, /const etaKnown = !!item\?\.supplier_eta/);
+  // Ten doors rolled into one line: if a date is known for any of them, the
+  // line does not get to say the completion date is unknown.
+  assert.match(WEEKLY, /if \(change\.etaKnown\) seen\.etaKnown = true/);
+});
+
+test("Dan's email, end to end", () => {
+  // The exact message this wording was written from, so the shape stays put.
+  const body = updateEmailBody({
+    customerName: "Dan Whitfield",
+    orders: [{
+      number: "PCD-O-2026-65FDE7",
+      name: "Dishwasher Panel",
+      changes: [
+        { kind: "scheduled_start", to: "2026-09-11", at: "2026-09-11T01:00:00Z" },
+        { kind: "item_status", to: "Ordered", qty: 1, itemLabel: "Panel", on: "2026-09-13", at: "2026-09-13T01:00:00Z", etaKnown: false },
+      ],
+    }],
+  });
+  assert.equal(body, [
+    "Hi Dan,",
+    "",
+    "We have made progress on your order this week. See details below.",
+    "",
+    "This is an automated update from the Perth Cabinet Doors order management system. No reply is required unless you would like to clarify something about your order.",
+    "",
+    "PCD-O-2026-65FDE7 - Dishwasher Panel",
+    "  11 September 2026 - Your order is booked into our workshop to start on 11 September 2026.",
+    "  13 September 2026 - 1 x Panel ordered on 13 September 2026 - Item completion date TBC.",
+    "",
+    "Kind Regards,",
+    "Perth Cabinet Doors",
+  ].join("\n"));
+});
+
+test("the sent email names the order at the bottom, not a reason for writing", () => {
+  const html = customerUpdateHtml({
+    body: "Hi Dan,\n\nPCD-O-2026-65FDE7 - Dishwasher Panel\n  13 September 2026 - 1 x Panel ordered.\n\nKind Regards,\nPerth Cabinet Doors",
+  });
+  assert.ok(html.includes("Sent regarding order PCD-O-2026-65FDE7."));
+  assert.ok(!/you have work with us/.test(html), "the old footer line is gone");
+  // The sign off is one thing on two lines, so they sit together.
+  assert.ok(html.includes(">Kind Regards,</p>"));
+  assert.match(html, /margin:0 0 0px;[^"]*">Kind Regards,/);
 });
 
 // ─── reading the log ─────────────────────────────────────────────────────────

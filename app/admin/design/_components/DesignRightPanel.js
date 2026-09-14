@@ -2,10 +2,26 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import styles from "../design.module.css";
-import ColourField, { collectMatchOptions } from "./ColourField";
+import { IconArrowRight, IconChevronLeft } from "@tabler/icons-react";
+import ColourField, { collectMatchOptions, DesignColourContext } from "./ColourField";
 import AddItemModal from "./AddItemModal";
 import CutListModal from "./CutListModal";
 import { CabinetCutRows, itemDisplayLabel } from "./CutListView";
+// What is fitted inside a cabinet, and which kinds of hardware those are. The
+// quote reads the same two modules, so a rail is in one place on this screen
+// and the same place on the quote.
+import {
+  accessoryDefaultHeightMm,
+  accessoryLabel,
+  accessorySummary,
+  patchAccessory,
+  readAccessories,
+  refreshedAccessories,
+  sizeFromHardware,
+  withAccessory,
+  withoutAccessory,
+} from "../../../../lib/pcd-cabinet-accessories";
+import { ACCESSORY_TYPES, hardwareTypeLabel, isAccessoryType } from "../../../../lib/pcd-hardware-types";
 import ConfigSection from "../../../../components/ConfigSection";
 import ConfigWindow from "../../../../components/ConfigWindow";
 import { Toggle } from "../../../../components/ConfigControls";
@@ -18,7 +34,7 @@ import { carcassColumnsFromStyle, shelfColumnsFromStyle } from "../../../../lib/
 import { computeBackPanelRun } from "../../../../lib/pcd-backpanel-utils";
 import { computeBottomPanelRun } from "../../../../lib/pcd-bottompanel-utils";
 import { computeTopPanelRun } from "../../../../lib/pcd-toppanel-utils";
-import { fillerPanelGapMm, computeFillerPanelRun } from "../../../../lib/pcd-fillerpanel-utils";
+import { fillerPanelGapMm, computeFillerPanelRun, sideFillerGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { getAbsPos, itemDepthMm } from "./DesignCanvas";
 import { CABINET_MOUNT_MM, computeKickboardRun, hasKickboard, isCornerType } from "../../../../lib/pcd-kickboard-utils";
 import {
@@ -35,14 +51,22 @@ import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowG
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
 // Which board a panel actually resolves to, so the profile list on offer is the
 // one that board supports. Shared with the quote import.
-import { finishPanelBoard, carcassPanelBoard } from "../../../../lib/pcd-panel-board.js";
+import { finishPanelBoard, carcassPanelBoard, panelBoardMaterial } from "../../../../lib/pcd-panel-board.js";
+import BandedEdgesField from "./BandedEdgesField";
+import { HOLE_TYPES } from "../../../../lib/pcd-line-details";
 // One entry per panel a cabinet can carry, plus each panel's own reach.
-import { enabledPanels, panelDef, panelReach, panelFrontProfile, panelTakesFrontProfile, withPanelOption } from "../../../../lib/pcd-panel-options.js";
+import { enabledPanels, panelDef, panelOption, panelReach, panelFrontProfile, panelTakesFrontProfile, withPanelOption } from "../../../../lib/pcd-panel-options.js";
+
+// Only decorative board is edge banded. Thermolaminate is wrapped and compact
+// laminate is solid through, so neither is offered the question.
+const isTaped = (material) => String(material || "").trim().toLowerCase() === "decorative board";
 import { FRONT_PROFILE_PRESETS, normaliseFrontProfile } from "../../../../lib/pcd-front-profiles";
 import { applianceKindDefaults, applianceKindLabel } from "../../../../lib/pcd-appliance-utils";
 import {
   SHELF_RAIL_DEFAULTS,
   CLEAT_THICKNESS_MM,
+  cleatIsThin,
+  cleatThicknessMm,
   shelfRailConfig,
   shelfRailHeightMm,
   shelfTopMm,
@@ -572,7 +596,10 @@ function AddItemForm({ onAdd, onCancel, onBack, initialType, initialKind, allowe
             onClick={onBack}
             style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: "#2563eb", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
           >
-            ‹ Choose a different item
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <IconChevronLeft size={13} />
+              Choose a different item
+            </span>
           </button>
         )}
         {/* You already chose the item on the left, so this states what is
@@ -1150,7 +1177,7 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm, part = null })
 // left to the quote editor. `simplified` (used in the cabinet Colours & finishes
 // section) hides the profile selects so it reads as a clean public-style colour
 // row; the project-defaults modal leaves it off to keep profile selection.
-export function FrontStyleFields({ label, style, onChange, matchOptions = [], colourImages = null, simplified = false }) {
+export function FrontStyleFields({ label, style, onChange, matchOptions, colourImages, simplified = false }) {
   const mat = style.material || "";
   const thk = style.thickness_mm ? `${style.thickness_mm}mm` : "";
   // The material picker stores lowercase values (e.g. "decorative board")
@@ -1259,6 +1286,50 @@ function HardwareField({ type, label, value, onPick }) {
         {!knownValue && <option value={value}>{value}</option>}
       </select>
     </label>
+  );
+}
+
+// WHAT CAN BE FITTED INSIDE A CABINET, AS PICTURES.
+//
+// The hardware library, read once and kept, showing only the kinds that go in
+// a cabinet on their own: a hanging rail, a slide out bin, a light. Handles,
+// hinges, runners and trays belong to a door or a drawer and are asked where
+// those are asked, so they are not here (lib/pcd-hardware-types.js).
+//
+// A picture, because nobody tells two part numbers apart and everybody knows a
+// rail on sight. The price is shown as what it costs us, the same as the handle
+// and hinge pickers beside it: this screen is ours, not a customer's.
+let _accessoryCache = null;
+function useAccessoryCatalogue() {
+  const [rows, setRows] = useState(_accessoryCache || []);
+  const [status, setStatus] = useState(_accessoryCache ? "ready" : "loading");
+  useEffect(() => {
+    if (_accessoryCache) return undefined;
+    let alive = true;
+    fetch("/api/admin/hardware")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        if (!d?.ok) { setStatus("failed"); return; }
+        _accessoryCache = (d.hardware || []).filter((row) => row.is_active && isAccessoryType(row.type));
+        setRows(_accessoryCache);
+        setStatus("ready");
+      })
+      .catch(() => { if (alive) setStatus("failed"); });
+    return () => { alive = false; };
+  }, []);
+  return { rows, status };
+}
+
+function AccessoryTile({ row, onPick }) {
+  return (
+    <button type="button" className={styles.accessoryTile} onClick={() => onPick(row)}>
+      <span className={styles.accessoryTileShot}>
+        {row.image_url ? <img alt="" src={row.image_url} loading="lazy" /> : null}
+      </span>
+      <strong>{[row.brand, row.name].filter(Boolean).join(" ")}</strong>
+      <span>${Number(row.unit_cost_ex_gst || 0).toFixed(2)} each</span>
+    </button>
   );
 }
 
@@ -1779,9 +1850,29 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
 
   // Which heavy-config window is open (deep settings live in a 2-column window;
   // the sidebar keeps the everyday controls + on/off toggles). null = none.
-  const [openWin, setOpenWin] = useState(null); // "front" | "panels" | "cutouts"
+  const [openWin, setOpenWin] = useState(null); // "front" | "panels" | "cutouts" | "accessories"
   const [panelPart, setPanelPart] = useState(null);
   const [frontPart, setFrontPart] = useState(null);
+  // What is fitted inside this cabinet, and the library it is picked from.
+  const [accessoryPart, setAccessoryPart] = useState(null);
+  const accessoryCatalogue = useAccessoryCatalogue();
+  const accessories = readAccessories(draft);
+
+  // An accessory copies its kind, its name and its size off the library row
+  // when it is picked. Correct that row afterwards, which is what happens when
+  // a rack was filed under the wrong kind, and every cabinet already carrying
+  // it keeps the old answer and goes on being drawn as the wrong thing. Bring
+  // them back in line the first time the cabinet is opened with the library to
+  // hand, so nobody has to remove and re-add one to see the fix.
+  const healedRef = useRef(null);
+  useEffect(() => {
+    if (accessoryCatalogue.status !== "ready") return;
+    if (healedRef.current === item.id) return;
+    healedRef.current = item.id;
+    const next = refreshedAccessories(latestRef.current, accessoryCatalogue.rows);
+    if (next) setNow("accessories", next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, accessoryCatalogue.status, accessoryCatalogue.rows]);
 
   // ── The Doors & drawers window: the deep front-layout controls, broken into
   //    left-menu sub-parts so each shows on its own instead of one long list. ──
@@ -2260,14 +2351,24 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // Thickness is one board spec for both, so it stays on whichever side is open.
   const renderSideFillerSide = (side) => {
     const widthField = side === "left" ? "side_filler_left_width_mm" : "side_filler_right_width_mm";
+    // The gap beside the cabinet is measurable off the plan, so it is measured
+    // and put IN the field rather than left blank. A blank width drew nothing
+    // in plan, elevation or 3D, so switching a side filler on looked like it
+    // did nothing. Type over it and what you type wins.
+    const measured = sideFillerGapMm(draft, room, allItems, side);
     return (
       <>
         <label className={styles.fieldLabel}>Gap width mm
-          <input className={styles.fieldInput} type="number" min="1" value={draft[widthField] ?? ""} onChange={(e) => set(widthField, e.target.value)} />
+          <input className={styles.fieldInput} type="number" min="1" value={draft[widthField] ?? measured} onChange={(e) => set(widthField, e.target.value)} />
         </label>
         <label className={styles.fieldLabel}>Thickness mm
           <input className={styles.fieldInput} type="number" min="1" value={draft.side_filler_thickness_mm ?? 18} onChange={(e) => set("side_filler_thickness_mm", e.target.value)} />
         </label>
+        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+          {measured > 0
+            ? `Measured gap to the ${side === "left" ? "left" : "right"} of this cabinet: ${measured}mm. Clear the field to go back to it.`
+            : "Nothing is measurable beside this cabinet, so enter the gap width yourself."}
+        </p>
       </>
     );
   };
@@ -2387,6 +2488,14 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
         {sizes ? sizes() : null}
         {def.vertical && renderPanelReach(panelKey)}
         {renderPanelProfile(panelKey)}
+        {/* This panel's own edges, beside its reach and profile. Decorative
+            board only, decided from the board the panel is actually cut from. */}
+        {isTaped(panelBoardMaterial(draft, panelKey)) && (
+          <BandedEdgesField
+            value={panelOption(draft, panelKey).banded_edges}
+            onChange={(edges) => setNow("panel_options", withPanelOption(latestRef.current, panelKey, { banded_edges: edges }))}
+          />
+        )}
         {renderPanelVisual(panelKey)}
       </div>
     );
@@ -2554,6 +2663,17 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               {frontHasDrawers && (
                 <FrontStyleFields label="Drawers" style={drawerStyle} onChange={updDrawerStyle} matchOptions={matchOptions} colourImages={colourImages} simplified />
               )}
+              {/* WHICH EDGES OF THE FRONTS GET TAPE. Doors and drawer fronts on
+                  this cabinet share it; all four until changed. Decorative
+                  board only: the drawers follow the door board when they have
+                  none of their own. */}
+              {(frontHasDoors || frontHasDrawers) && (isTaped(doorStyle?.material) || isTaped(drawerStyle?.material)) && (
+                <BandedEdgesField
+                  label={frontHasDoors && frontHasDrawers ? "Door & drawer front edges" : frontHasDoors ? "Door edges" : "Drawer front edges"}
+                  value={draft.banded_edges}
+                  onChange={(edges) => setNow("banded_edges", edges)}
+                />
+              )}
               {/* Shelves are colourable whenever there ARE any — the cabinet's
                   own, or shelves sitting inside an open bay of a mixed front. */}
               {(Number(draft.shelf_qty) > 0 || bayShelfCount(draft) > 0) && (
@@ -2663,6 +2783,20 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               ))}
             </div>
             {draft.front_type === "mixed" && !isCorner && renderBaySidebarList()}
+            {/* WHICH HINGE BORING, for every door on this cabinet. Two machine
+                setups, and a door bored for one will not take the other hinge. */}
+            {(frontHasDoors || isCorner) && (
+              <label className={styles.fieldLabel}>Hinge hole type
+                <select
+                  className={styles.fieldSelect}
+                  value={draft.hole_type || ""}
+                  onChange={(e) => setNow("hole_type", e.target.value || null)}
+                >
+                  <option value="">Not recorded</option>
+                  {HOLE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </label>
+            )}
             {showFrontPanelMode && (
               <label className={styles.fieldLabel}>Front position at side panels
                 <select
@@ -2676,8 +2810,9 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               </label>
             )}
             {((draft.front_type && draft.front_type !== "none") || isCorner) && (
-              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10 }} onClick={() => { setFrontPart(frontParts[0]?.id || null); setOpenWin("front"); }}>
-                {draft.front_type === "mixed" && !isCorner ? "Edit bay layout →" : "Edit door / drawer layout →"}
+              <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10, gap: 5 }} onClick={() => { setFrontPart(frontParts[0]?.id || null); setOpenWin("front"); }}>
+                {draft.front_type === "mixed" && !isCorner ? "Edit bay layout" : "Edit door / drawer layout"}
+                <IconArrowRight size={13} />
               </button>
             )}
           </div>
@@ -2698,6 +2833,65 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
           </div>
         </ConfigSection>
         )}
+
+        {/* ACCESSORIES — what is fitted INSIDE the cabinet: a hanging rail, a
+            slide out bin, a light. Bought from the hardware library rather than
+            cut from board, so each one becomes its own line on the quote,
+            priced from the library the day it is staged. Its height is measured
+            up from the bottom of the carcass, the same datum shelves use. */}
+        <ConfigSection title="Accessories" summary={accessorySummary(draft)} {...section("accessories")}>
+          <div className={styles.fieldGroup}>
+            {accessories.length ? (
+              accessories.map((entry) => (
+                <div key={entry.id} className={styles.accessoryRow}>
+                  <div className={styles.accessoryRowHead}>
+                    <strong>{accessoryLabel(entry)}</strong>
+                    <button
+                      type="button"
+                      className={`${styles.btn} ${styles.btnSecondary}`}
+                      onClick={() => setNow("accessories", withoutAccessory(latestRef.current, entry.id))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className={styles.fieldRow}>
+                    <label className={styles.fieldLabel}>
+                      Qty
+                      <input
+                        className={styles.fieldInput}
+                        type="number"
+                        min="1"
+                        value={entry.qty}
+                        onChange={(e) => set("accessories", patchAccessory(latestRef.current, entry.id, { qty: e.target.value }))}
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Height mm
+                      <input
+                        className={styles.fieldInput}
+                        type="number"
+                        min="0"
+                        placeholder={String(accessoryDefaultHeightMm(entry.type, draft))}
+                        value={entry.height_mm ?? ""}
+                        onChange={(e) => set("accessories", patchAccessory(latestRef.current, entry.id, { height_mm: typedNumber(e.target.value) }))}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+                Nothing fitted inside this cabinet yet. Rails, bins and lights are priced from the Hardware library and come through on the quote as their own lines.
+              </p>
+            )}
+            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} onClick={() => setOpenWin("accessories")}>
+              Add accessory
+            </button>
+            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
+              Height is measured up from the bottom of the carcass, the same as a shelf. Leave it blank and it sits where that kind normally goes.
+            </p>
+          </div>
+        </ConfigSection>
 
         <ConfigSection title="Inside" summary={summary.carcass} {...section("inside")}>
             <div className={styles.fieldGroup}>
@@ -2723,7 +2917,16 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               )}
               <label className={styles.fieldLabel}>
                 Shelf qty
-                <input className={styles.fieldInput} type="number" min="0" value={draft.shelf_qty ?? 0} onChange={(e) => set("shelf_qty", e.target.value)} />
+                {/* A new count respaces the shelves. Positions saved for the old
+                    count were being kept, so two dragged shelves stayed two
+                    after the count went down to one. */}
+                <input
+                  className={styles.fieldInput}
+                  type="number"
+                  min="0"
+                  value={draft.shelf_qty ?? 0}
+                  onChange={(e) => setMulti({ shelf_qty: e.target.value, shelf_heights_mm: [] })}
+                />
               </label>
               {/* Shelf board finish lives in "Board colours & cost". */}
 
@@ -2843,8 +3046,9 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                   </label>
 
                   <SectionDivider label="Cutouts" />
-                  <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%" }} onClick={() => setOpenWin("cutouts")}>
-                    Edit sink / cooktop cutouts →{benchtopCutouts(draft).length ? ` (${benchtopCutouts(draft).length})` : ""}
+                  <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", gap: 5 }} onClick={() => setOpenWin("cutouts")}>
+                    Edit sink / cooktop cutouts{benchtopCutouts(draft).length ? ` (${benchtopCutouts(draft).length})` : ""}
+                    <IconArrowRight size={13} />
                   </button>
                 </>
               )}
@@ -2870,8 +3074,9 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               </div>
             ))}
             {!panelGroups.length && <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: 0 }}>No add-on panels apply to this cabinet type.</p>}
-            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10 }} disabled={!panelEntries.length} onClick={() => { setPanelPart(panelEntries[0]?.key || null); setOpenWin("panels"); }}>
-              Edit each panel →
+            <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10, gap: 5 }} disabled={!panelEntries.length} onClick={() => { setPanelPart(panelEntries[0]?.key || null); setOpenWin("panels"); }}>
+              Edit each panel
+              <IconArrowRight size={13} />
             </button>
           </div>
         </ConfigSection>
@@ -2917,6 +3122,64 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
           renderPart={(p) => renderPanelDetail(p.id)}
           onClose={() => setOpenWin(null)}
           footer={<p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", lineHeight: 1.4, margin: 0 }}>Switch panels on / off in the sidebar. Their colour is in Colours &amp; finishes.</p>}
+        />
+      )}
+
+      {/* The hardware library, by kind, as pictures. Picking one adds it to
+          this cabinet at the height that kind normally sits at, which is then
+          editable in the sidebar. */}
+      {openWin === "accessories" && (
+        <ConfigWindow
+          theme="light" fullWidth={fullWidth}
+          title="Add an accessory"
+          subtitle={itemDisplayLabel(draft)}
+          parts={ACCESSORY_TYPES.map((type) => ({
+            id: type.value,
+            label: type.label,
+            badge: String(accessoryCatalogue.rows.filter((row) => row.type === type.value).length || ""),
+          }))}
+          selectedId={accessoryPart || ACCESSORY_TYPES[0]?.value}
+          onSelect={setAccessoryPart}
+          renderPart={(p) => {
+            const rows = accessoryCatalogue.rows.filter((row) => row.type === p.id);
+            if (accessoryCatalogue.status === "loading") return <p className={styles.accessoryNote}>Loading the hardware library...</p>;
+            if (accessoryCatalogue.status === "failed") return <p className={styles.accessoryNote}>We could not read the hardware library just now.</p>;
+            if (!rows.length) {
+              return (
+                <p className={styles.accessoryNote}>
+                  Nothing in the library under {hardwareTypeLabel(p.id)} yet. Add it in Hardware and it will appear here.
+                </p>
+              );
+            }
+            return (
+              <div className={styles.accessoryTiles}>
+                {rows.map((row) => (
+                  <AccessoryTile
+                    key={row.id}
+                    row={row}
+                    onPick={(picked) => {
+                      setNow("accessories", withAccessory(latestRef.current, {
+                        hardware_id: picked.id,
+                        name: [picked.brand, picked.name].filter(Boolean).join(" "),
+                        type: picked.type,
+                        qty: 1,
+                        // The library row's own size, for the drawing: a shoe
+                        // rack is drawn the size the one we sell actually is.
+                        // The price is still read from the library at staging.
+                        size: sizeFromHardware(picked),
+                        // Null: it sits where that kind goes until somebody
+                        // says otherwise, the same as a shelf with no height.
+                        height_mm: null,
+                      }));
+                      setOpenWin(null);
+                    }}
+                  />
+                ))}
+              </div>
+            );
+          }}
+          onClose={() => setOpenWin(null)}
+          footer={<p style={{ fontSize: 10.5, color: "var(--dt-text-muted, #888780)", lineHeight: 1.4, margin: 0 }}>Priced from the Hardware library when the quote is staged, so it is always today&apos;s price.</p>}
         />
       )}
 
@@ -3228,20 +3491,28 @@ function ShelfRailForm({ item, allItems, room, onItemChange, openSection, toggle
             });
           }}
         />
+        {/* ANY BOARD, not just the ones stocked in 18mm. That restriction meant
+            a robe done in a 16mm colour could not have its cleats in that
+            colour at all, so they came out in whatever 18mm board was to hand.
+            The cleats are as thick as the board picked for them. */}
         <ColourField
           label="Cleats & front rail"
           value={cfg.cleat_style}
           matchHint="Matches the shelf by default"
           canReset
-          matchOptions={matchOptions.filter((o) => Number(o.style?.thickness_mm) === CLEAT_THICKNESS_MM)}
+          detail
           thicknessDefault={CLEAT_THICKNESS_MM}
-          onlyThicknessMm={CLEAT_THICKNESS_MM}
           colourImages={colourImages}
           onChange={(style) => setCfg({ cleat_style: style })}
         />
         <p style={{ fontSize: 11, color: "var(--dt-text-muted, #888780)", margin: "2px 0 0", lineHeight: 1.4 }}>
-          {`Cleats are always ${CLEAT_THICKNESS_MM}mm — they're the structural part, so only library colours stocked in ${CLEAT_THICKNESS_MM}mm are offered.`}
+          {`Cleats and the front rail are cut from whatever board is picked here, and are ${cleatThicknessMm(draft)}mm because that is how thick it is. Left alone they match the shelf and are cut at ${CLEAT_THICKNESS_MM}mm.`}
         </p>
+        {cleatIsThin(draft) && (
+          <p style={{ fontSize: 11, color: "var(--dt-warn, #b45309)", margin: "4px 0 0", lineHeight: 1.4 }}>
+            {`These cleats are ${cleatThicknessMm(draft)}mm. They are the structural part of the shelf, so ${CLEAT_THICKNESS_MM}mm is what we normally build in. Check the span before you commit to it: the guide above assumes the shelf, not the cleats.`}
+          </p>
+        )}
       </div>
       </ConfigSection>
 
@@ -3848,12 +4119,26 @@ function DoorPanelForm({ item, room, onItemChange }) {
             </>
           )}
 
+          {/* This piece's own taped edges, on decorative board. All four until
+              changed, the same control a cabinet's fronts and panels use. */}
+          {isTaped(draft.material) && (
+            <BandedEdgesField value={draft.banded_edges} onChange={(edges) => setNow("banded_edges", edges)} />
+          )}
+
           {item.item_type === "door" && (
             <>
               <label className={styles.fieldCheckLabel}>
                 <input type="checkbox" checked={Boolean(draft.hinge_holes)} onChange={(e) => setNow("hinge_holes", e.target.checked)} />
                 Hinge holes
               </label>
+              {draft.hinge_holes && (
+                <label className={styles.fieldLabel}>Hinge hole type
+                  <select className={styles.fieldSelect} value={draft.hole_type || ""} onChange={(e) => setNow("hole_type", e.target.value || null)}>
+                    <option value="">Not recorded</option>
+                    {HOLE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+              )}
               <label className={styles.fieldCheckLabel}>
                 <input type="checkbox" checked={Boolean(draft.hinge_supply)} onChange={(e) => setNow("hinge_supply", e.target.checked)} />
                 Supply hinges
@@ -4207,7 +4492,10 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
   if (item) {
     const isCabinet = CABINET_TYPES.includes(item.item_type);
     const hasCutList = isCabinet || item.item_type === "floating_shelf" || item.item_type === "shelf_rail";
+    // Every colour field below gets the project's used colours and the tile
+    // images from here, whichever form it is in. See DesignColourContext.
     return (
+      <DesignColourContext.Provider value={{ allItems, colourImages, current: item }}>
       <div className={panelClass}>
         {!fullWidth && (
           <div className={styles.rightPanelHeader}>
@@ -4280,6 +4568,7 @@ export default function DesignRightPanel({ item, allItems, room, materialDefault
           </CutListModal>
         )}
       </div>
+      </DesignColourContext.Provider>
     );
   }
 

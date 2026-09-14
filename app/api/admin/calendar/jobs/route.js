@@ -46,7 +46,9 @@ export async function GET(request) {
         .from("pcd_quotes")
         .select("id, quote_number, title, status, site_address, created_at, order_id")
         .eq("customer_id", customerId)
-        .not("status", "in", '("rejected","archived")')
+        // web_checkout is a web order still waiting on its payment: a cart,
+        // not a job anybody could book a visit against.
+        .not("status", "in", '("rejected","archived","web_checkout")')
         .order("created_at", { ascending: false }),
     ]);
     if (orders.error) throw orders.error;

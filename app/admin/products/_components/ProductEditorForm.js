@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { edgeImageSrc as sharedEdgeImageSrc } from "../../../../lib/pcd-profile-images";
 import { useRouter } from "next/navigation";
+import { IconArrowLeft } from "@tabler/icons-react";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { EDGE_PROFILES, profileNamesForSelection, profileTypesForSelection } from "../../../../lib/quote-form-data";
 import { buildColourFamilyFromLibraryRows, COLOUR_MATERIALS, inferThicknessFromMaterial } from "../../../../lib/pcd-colour-library";
@@ -1483,7 +1484,7 @@ export default function ProductEditorForm({
           variant="neutral"
           className="h-[44px] w-full max-w-[280px]"
         >
-          ← Go back
+          <span className="inline-flex items-center justify-center gap-[6px]"><IconArrowLeft size={16} />Go back</span>
         </Button>
       </div>
 

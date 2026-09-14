@@ -32,6 +32,7 @@ import {
   panelSideEdges,
   islandEffectiveDims,
 } from "../../../../lib/pcd-plan-geometry";
+import { sideFillerWidthMm } from "../../../../lib/pcd-fillerpanel-utils";
 
 // Re-exported because DesignRightPanel imports them from here. The definitions
 // moved to the lib; the import path stays put.
@@ -441,7 +442,7 @@ function benchtopPlanGeometry(item, rect, lay) {
   }
 }
 
-function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerDown, onPointerUp, colourFill, lineOnly, printMode }) {
+function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerDown, onPointerUp, colourFill, sideFillerWidths, lineOnly, printMode }) {
   const rect = cabinetSvgRect(item, lay);
   if (!rect) return null;
 
@@ -708,10 +709,17 @@ function CabinetShape({ item, lay, selected, dragging, isOverlapping, onPointerD
       {!isCorner && (item.side_filler_left || item.side_filler_right) && (() => {
         const { leftEdge, rightEdge } = panelSideEdges(item);
         const edges = [];
-        if (item.side_filler_left && Number(item.side_filler_left_width_mm) > 0)
-          edges.push({ edge: leftEdge,  key: "sfl", t: Number(item.side_filler_left_width_mm) * lay.scale });
-        if (item.side_filler_right && Number(item.side_filler_right_width_mm) > 0)
-          edges.push({ edge: rightEdge, key: "sfr", t: Number(item.side_filler_right_width_mm) * lay.scale });
+        // Width falls back to the MEASURED gap beside the cabinet, the way the
+        // filler above one falls back to the gap to the ceiling. Switching a side
+        // filler on used to leave the width blank, and a blank width drew nothing
+        // here, in the elevation or in 3D, so the toggle looked like it did
+        // nothing at all.
+        const lw = Number(sideFillerWidths?.left) || 0;
+        const rw = Number(sideFillerWidths?.right) || 0;
+        if (item.side_filler_left && lw > 0)
+          edges.push({ edge: leftEdge,  key: "sfl", t: lw * lay.scale });
+        if (item.side_filler_right && rw > 0)
+          edges.push({ edge: rightEdge, key: "sfr", t: rw * lay.scale });
         return edges.map(({ edge, key, t }) => {
           const s = outerEdgeStripRect(rect, edge, Math.max(t, 1.5));
           if (!s) return null;
@@ -1112,6 +1120,18 @@ export default function DesignCanvas({
     return id ? `url(#${id})` : null;
   };
 
+  // What each side filler is actually this wide, typed or measured. Worked out
+  // here because measuring needs the room and its other items, which the shape
+  // component does not have.
+  const sideFillerWidthsFor = (item) => (
+    (item.side_filler_left || item.side_filler_right)
+      ? {
+          left:  sideFillerWidthMm(item, room, displayItems, "left"),
+          right: sideFillerWidthMm(item, room, displayItems, "right"),
+        }
+      : null
+  );
+
   // Export ("print") theme: the on-screen plan is on a dark floor, but the PDF
   // is a white page, so the floor, grid and dimensions flip to ink-on-white.
   const pFloor       = printMode ? "#ffffff" : "#1e2940";
@@ -1142,6 +1162,9 @@ export default function DesignCanvas({
     <svg
       ref={svgRef}
       className={styles.canvasSvg}
+      // Named for the PDF export, the same as the elevation drawing: it asks
+      // for the drawing rather than for whichever svg happens to come first.
+      data-plan-drawing="true"
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       preserveAspectRatio="xMidYMid meet"
       onClick={(e) => {
@@ -1295,6 +1318,7 @@ export default function DesignCanvas({
             dragging={drag?.itemId === item.id}
             isOverlapping={Boolean(overlappingItemIds?.has(item.id))}
             colourFill={colourFillFor(item)}
+            sideFillerWidths={sideFillerWidthsFor(item)}
             lineOnly={lineOnly}
             printMode={printMode}
             onPointerDown={handleItemPointerDown}
@@ -1312,6 +1336,7 @@ export default function DesignCanvas({
             dragging={drag?.itemId === item.id}
             isOverlapping={Boolean(overlappingItemIds?.has(item.id))}
             colourFill={colourFillFor(item)}
+            sideFillerWidths={sideFillerWidthsFor(item)}
             lineOnly={lineOnly}
             printMode={printMode}
             onPointerDown={handleItemPointerDown}

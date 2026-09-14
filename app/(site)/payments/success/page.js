@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { retrieveCheckoutSession } from "../../../../lib/pcd-stripe";
-import { finaliseDepositAcceptance } from "../../../../lib/pcd-deposit-gate";
+import { retrieveCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
+import { GATE_FLOWS } from "../../../../lib/pcd-deposit-gate";
+import { completeGateSession } from "../../../../lib/pcd-gate-complete";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import styles from "../../quotes/quote-public.module.css";
 import {
@@ -42,9 +43,13 @@ export default async function PaymentSuccessPage({ searchParams }) {
       // quote conditionally and a second caller simply finds it done. Never
       // throws outwards: this page's job is to tell someone their payment
       // worked, and it must say so even if the bookkeeping behind it stumbles.
-      if (session?.metadata?.flow === "quote_deposit_gate") {
+      //
+      // Through completeGateSession, which runs finaliseDepositAcceptance and
+      // sends the emails if this page is the one that made the order. It used
+      // to finalise and send nothing, so an order made here told nobody.
+      if (GATE_FLOWS.has(session?.metadata?.flow)) {
         try {
-          await finaliseDepositAcceptance(createSupabaseAdminClient(), session);
+          await completeGateSession(createSupabaseAdminClient(), session, { baseUrl: siteUrl() });
         } catch (finaliseError) {
           console.error(
             `[payments/success] could not finalise ${sessionId}: ${finaliseError?.message || finaliseError}. ` +

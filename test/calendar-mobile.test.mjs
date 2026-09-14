@@ -20,6 +20,10 @@ import { readFileSync } from "node:fs";
 
 const CALENDAR = readFileSync(new URL("../app/admin/calendar/CalendarManager.tsx", import.meta.url), "utf8");
 const FINANCIALS = readFileSync(new URL("../app/admin/financials/FinancialsClient.tsx", import.meta.url), "utf8");
+const CASH = readFileSync(new URL("../app/admin/financials/CashReceivedPanel.tsx", import.meta.url), "utf8");
+// Both halves of the financials screen. These rules are about the screen, not
+// about which file a tab or a search box happens to live in.
+const FINANCIALS_ALL = FINANCIALS + CASH;
 
 // ── Nothing runs out of its box ─────────────────────────────────────────────
 
@@ -90,18 +94,33 @@ test("the period pills are tappable on a phone", () => {
   assert.match(FINANCIALS, /min-h-\[40px\] px-3 text-\[13px\] md:min-h-0 md:h-\[26px\]/, "40px on a phone, 26 on a desktop");
 });
 
-test("the ledger tabs are tappable on a phone", () => {
-  assert.equal(
-    (FINANCIALS.match(/min-h-\[40px\] px-3 text-\[13px\] md:min-h-0 md:py-\[5px\]/g) || []).length,
-    2,
-    "both tabs"
-  );
+test("every tab on the financials screen is tappable on a phone", () => {
+  // This was written as "there are two tabs and both are big enough", which
+  // fails the day a third is added even when that one is big enough too. The
+  // rule is the tap target, so say the rule: a tab is a button that shows which
+  // one is on, aria-pressed finds all of them, and every one has to clear 40px
+  // on a phone and go back to the compact size on a desktop.
+  //
+  // Cut on the closing tag rather than the first ">": these buttons hold arrow
+  // functions, and "() =>" ends a lazy match at the arrow, leaving a stub with
+  // none of the attributes in it.
+  const tabs = FINANCIALS_ALL
+    .split("<button")
+    .slice(1)
+    .map(piece => piece.slice(0, piece.indexOf("</button>") + 1 || 900))
+    .filter(piece => piece.includes("aria-pressed"));
+  assert.ok(tabs.length >= 4, `expected the pills, the ledger tabs and the view switch, found ${tabs.length}`);
+  for (const tab of tabs) {
+    const where = tab.replace(/\s+/g, " ").slice(0, 110);
+    assert.ok(tab.includes("min-h-[40px]"), `a tab is under the 40px tap target: ${where}`);
+    assert.ok(tab.includes("md:min-h-0"), `a tab stays phone-sized on a desktop: ${where}`);
+  }
 });
 
 test("no input on the financials page is small enough to make iOS zoom", () => {
   // Any font under 16px zooms the page on focus and does not zoom back out.
-  const inputs = FINANCIALS.match(/<input[\s\S]{0,400}?\/>/g) || [];
-  assert.ok(inputs.length >= 3, "the search box and the two custom range dates");
+  const inputs = FINANCIALS_ALL.match(/<input[\s\S]{0,400}?\/>/g) || [];
+  assert.ok(inputs.length >= 4, "the two search boxes and the two custom range dates");
   for (const input of inputs) {
     const className = /className="([^"]*)"/.exec(input)?.[1] || "";
     assert.match(className, /text-\[16px\]/, `an input still zooms on focus: ${className.slice(0, 60)}`);

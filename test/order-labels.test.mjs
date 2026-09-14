@@ -173,7 +173,7 @@ test("a line that is not drilled says so", () => {
 test("drilling nobody recorded is not printed as No", () => {
   // An item a variation added has no hinge field anywhere. Printing "No" would
   // be inventing an answer, and the piece would go out undrilled.
-  assert.deepEqual(drillingForItem({ quote_line_item_id: null }, new Map()), { drill: LABEL_UNKNOWN, hinges: "" });
+  assert.deepEqual(drillingForItem({ quote_line_item_id: null }, new Map()), { drill: LABEL_UNKNOWN, hinges: "", holeType: "" });
   assert.equal(labelsFor([door({ quote_line_item_id: null })], { quoteLines: [] })[0].drill, LABEL_UNKNOWN);
 });
 
@@ -652,4 +652,36 @@ test("H is against the height and W against the width, height on top", () => {
 
   // pdfY counts UP from the bottom, so a bigger pdfY is higher on the label.
   assert.ok(h.pdfY > w.pdfY, "height is the top box, width underneath");
+});
+
+// ── Which boring ────────────────────────────────────────────────────────────
+//
+// Blum Inserta and a bare 35mm cup are two machine setups, and a door bored for
+// the wrong one is remade. The count was on the label and the boring was not,
+// so whoever drilled had to go and find the sheet.
+
+test("a drilled piece says which boring on its label", () => {
+  const labels = labelsFor([door({ hinge_holes: true, hinge_qty: "2 hinges", hole_type: "Blum Inserta" })]);
+  assert.equal(labels[0].holeType, "INSERTA");
+  const values = drawnText(generateOrderLabelsPdf({ labels }).toString("latin1")).map((d) => d.value);
+  assert.ok(values.includes("TYPE") && values.includes("INSERTA"), values.join(" | "));
+});
+
+test("the boring falls back to the quote line on an order raised before it was carried", () => {
+  const labels = labelsFor([door()], { quoteLines: [{ id: "quote-1", hinge_holes: true, hinge_qty: "2 hinges", hole_type: "35mm cup only" }] });
+  assert.equal(labels[0].holeType, "35MM CUP");
+});
+
+test("a piece with no boring recorded keeps its old label", () => {
+  const labels = labelsFor([door()]);
+  assert.equal(labels[0].holeType, "");
+  const values = drawnText(generateOrderLabelsPdf({ labels }).toString("latin1")).map((d) => d.value);
+  assert.ok(!values.includes("TYPE"));
+});
+
+test("the extra row still fits the die cut stock", () => {
+  // A die cut label that runs out of room refuses to print rather than crop
+  // the drilling, so this throws if the TYPE row pushed it over.
+  const labels = labelsFor([door({ hinge_holes: true, hinge_qty: "4 hinges", hole_type: "Blum Inserta" })]);
+  assert.doesNotThrow(() => generateOrderLabelsPdf({ labels, stock: "62x90" }));
 });

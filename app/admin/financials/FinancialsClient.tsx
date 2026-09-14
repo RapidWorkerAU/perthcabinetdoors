@@ -17,6 +17,7 @@ import {
   marginPercent,
   money,
 } from '../../../lib/pcd-financials'
+import CashReceivedPanel from './CashReceivedPanel'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,11 @@ type Payment = {
   requested_at: string | null
   request_status: string
   created_at: string | null
+  settlement_method: string | null
+  settlement_reference: string | null
+  stripe_payment_intent_id: string | null
+  stripe_checkout_session_id: string | null
+  receipt_number: string | null
 }
 
 type Order = {
@@ -72,6 +78,9 @@ interface Props {
   orders: Order[]
   quotes: Quote[]
   splits: Split[]
+  // Archived orders, carried only so a banked payment on one can still have its
+  // GST worked out. They never reach the confirmed orders figure.
+  archivedOrders: { id: string; quote_id: string | null; total_inc_gst: number; gst_amount: number }[]
   orderQuoteIds: string[]
   today: string
 }
@@ -192,8 +201,13 @@ function RailRow({ label, value, sub, strong, onClick, active }: {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 export default function FinancialsClient({
-  loadFailed, payments, orders, quotes, splits, orderQuoteIds, today,
+  loadFailed, payments, orders, quotes, splits, archivedOrders, orderQuoteIds, today,
 }: Props) {
+  // WORK OR MONEY. Two ways of counting the same business, and they answer
+  // different questions, so they are two views rather than one table with
+  // columns nobody can reconcile. Work is everything this page already did and
+  // it is untouched. Money is what actually reached the account.
+  const [view, setView] = useState<'work' | 'cash'>('work')
   const [periodId, setPeriodId] = useState('this_fy')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
@@ -213,6 +227,30 @@ export default function FinancialsClient({
   const splitById = useMemo(() => new Map(splits.map(s => [s.id, s])), [splits])
   const linkedQuoteIds = useMemo(() => new Set(orderQuoteIds), [orderQuoteIds])
   const ordersById = useMemo(() => new Map(orders.map(o => [o.id, o])), [orders])
+
+  // Every order a GST rate can be read off, archived included, for the cash
+  // view only. Built as its own map so it cannot leak into anything above.
+  const cashOrderRates = useMemo(() => {
+    const map = new Map<string, { id: string; total_inc_gst: number; gst_amount: number }>()
+    for (const o of orders) map.set(o.id, { id: o.id, total_inc_gst: o.total_inc_gst, gst_amount: o.gst_amount })
+    for (const o of archivedOrders) map.set(o.id, { id: o.id, total_inc_gst: o.total_inc_gst, gst_amount: o.gst_amount })
+    return map
+  }, [orders, archivedOrders])
+
+  // PROFIT PER ORDER, for the cash view. It lives on the quote behind the order
+  // rather than on the order, so it is looked up through quote_id. An order with
+  // no split behind it is simply absent, and the panel counts it as unknown
+  // instead of as zero: a job we cannot cost is not a job with no profit.
+  const cashProfitByOrder = useMemo(() => {
+    const map = new Map<string, number>()
+    const add = (orderId: string, quoteId: string | null) => {
+      const split = quoteId ? splitById.get(quoteId) : null
+      if (split) map.set(orderId, split.markup_amount_ex_gst + split.labour_cost_ex_gst)
+    }
+    for (const o of orders) add(o.id, o.quote_id)
+    for (const o of archivedOrders) add(o.id, o.quote_id)
+    return map
+  }, [orders, archivedOrders, splitById])
 
   // Outstanding is a position, not a period: it is what is owed right now, so
   // the period filter deliberately does not touch it.
@@ -295,7 +333,31 @@ export default function FinancialsClient({
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
         <div>
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Financials</h1>
-          <p className="text-[12px] text-[#8b8a81] mt-[2px]">Every job, and what it is worth.</p>
+          <p className="text-[12px] text-[#8b8a81] mt-[2px]">
+            {view === 'work' ? 'Every job, and what it is worth.' : 'Every dollar that reached the account.'}
+          </p>
+          <div className="inline-flex rounded-[7px] border border-[#dbd8cc] overflow-hidden mt-2">
+            <button
+              type="button"
+              onClick={() => setView('work')}
+              aria-pressed={view === 'work'}
+              className={`min-h-[40px] px-3 text-[13px] md:min-h-0 md:py-[5px] md:text-[11.5px] font-medium transition-colors whitespace-nowrap ${
+                view === 'work' ? 'bg-[#1c2b1e] text-white' : 'bg-white text-[#5a5a52] hover:bg-[#faf9f5]'
+              }`}
+            >
+              Work won
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('cash')}
+              aria-pressed={view === 'cash'}
+              className={`min-h-[40px] px-3 text-[13px] md:min-h-0 md:py-[5px] md:text-[11.5px] font-medium border-l border-[#dbd8cc] transition-colors whitespace-nowrap ${
+                view === 'cash' ? 'bg-[#1c2b1e] text-white' : 'bg-white text-[#5a5a52] hover:bg-[#faf9f5]'
+              }`}
+            >
+              Money in
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           {PERIODS.map(p => (
@@ -332,6 +394,20 @@ export default function FinancialsClient({
         </div>
       )}
 
+      {view === 'cash' && (
+        <CashReceivedPanel
+          payments={payments}
+          orderRates={cashOrderRates}
+          profitByOrderId={cashProfitByOrder}
+          range={range}
+          periodLabel={periodLabel}
+          rangeLabel={rangeLabel}
+          confirmedTotal={sumAmounts(won)}
+        />
+      )}
+
+      {view === 'work' && (
+      <>
       {/* Rail and ledger. On a phone the rail stacks above the table, which is
           the right order to read them in anyway: the summary, then the jobs. */}
       <div className="grid grid-cols-1 lg:grid-cols-[236px_1fr] gap-4 items-start">
@@ -615,6 +691,8 @@ export default function FinancialsClient({
           )}
         </div>
       </div>
+      </>
+      )}
 
       {/* How the figures are worked out. Last, and quiet, because it is read
           once and then trusted, not scanned daily. */}
@@ -629,6 +707,7 @@ export default function FinancialsClient({
           <li><b className="text-[#1a1a18]">The margin</b> beside the profit total is that profit as a percentage of the ex GST value of the same rows.</li>
           <li><b className="text-[#1a1a18]">GST collected</b> is the GST inside payments actually banked, each one apportioned by its own order&apos;s GST. The accrual figure beside it is the GST invoiced on confirmed orders, whether or not it has been paid.</li>
           <li><b className="text-[#1a1a18]">Owed to us</b> is every unpaid payment on an order that is not cancelled, aged from the day it was requested. It ignores the period, because it is what is owed today.</li>
+          <li><b className="text-[#1a1a18]">Money in</b> is a different question and a different answer. It counts a payment on the day it was banked, whatever happened to the job afterwards, so a deposit that cleared and a job that was later cancelled both stay on it. Refunds are their own rows on the day they went back out. It will not match the work figures for the same period, and it is not meant to.</li>
           <li><b className="text-[#1a1a18]">The financial year</b> runs July to June.</li>
         </ul>
       </details>

@@ -1168,3 +1168,36 @@
     margin-bottom: 2px;
   }
 }
+
+/* WHICH EDGES GET TAPE, in the Edges popup. Four toggles in a row, dark green
+   when on, the same treatment the website's edge buttons use so the two read
+   as the same question. */
+.edgeToggles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.edgeToggle {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  border: 1px solid #dbd8cc !important;
+  border-radius: 6px !important;
+  background: #faf9f6 !important;
+  color: #1a1a18 !important;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.edgeToggle:hover {
+  background: #edf4eb !important;
+}
+
+.edgeToggleOn,
+.edgeToggleOn:hover {
+  border-color: #1c2b1e !important;
+  background: #1c2b1e !important;
+  color: #ffffff !important;
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { IconArrowRight, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react'
 import { useState } from 'react'
 import {
   IconMail,
@@ -87,11 +88,17 @@ function StatTile({ tile }: { tile: Tile }) {
       <div className="mt-[4px] text-[11px] text-[#8b8a81]">{tile.label}</div>
       {change !== null && change !== undefined ? (
         <div className={`mt-[5px] text-[10px] font-semibold ${changeTone}`}>
-          {change > 0 ? '▲ ' : change < 0 ? '▼ ' : ''}{Math.abs(change)}% on last period
+          <span className="inline-flex items-center gap-[3px]">
+            {change > 0 ? <IconTrendingUp size={12} /> : change < 0 ? <IconTrendingDown size={12} /> : null}
+            {Math.abs(change)}% on last period
+          </span>
         </div>
       ) : (
         <div className={`mt-[5px] text-[10px] font-medium ${tile.tone === 'danger' ? 'text-[#991b1b]' : 'text-[#6b9e61]'}`}>
-          {tile.sub || 'View →'}
+          <span className="inline-flex items-center gap-[3px]">
+            {tile.sub || 'View'}
+            <IconArrowRight size={12} />
+          </span>
         </div>
       )}
     </Link>
@@ -133,7 +140,7 @@ export default function DashboardClient({ stats, site, todayLabel, initialDetail
       label: 'Quote requests waiting',
       value: String(stats.quoteRequests),
       href: '/admin/quote-requests',
-      sub: 'View →',
+      sub: 'View',
       tone: stats.quoteRequests > 0 ? 'alert' : undefined,
     },
     {

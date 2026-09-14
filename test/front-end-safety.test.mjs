@@ -261,12 +261,23 @@ test("nothing waits on a step that part was never given", () => {
 test("every public form shows the notice next to its success message", () => {
   [
     ["app/(site)/contact/ContactFormClient.js", "the contact form"],
-    ["app/(site)/request-quote/RequestQuoteFormClient.js", "the quote request form"],
+    // The quote request is sent from /request-quote/send now.
+    ["app/(site)/request-quote/send/QuoteSendClient.js", "the quote request form"],
     ["app/(site)/launch/page.js", "the launch page enquiry"],
   ].forEach(([path, what]) => {
     assert.match(read(path), /result\.notice/, `${what} drops the notice on the floor`);
   });
   assert.match(read("app/(site)/design/PublicDesignClient.js"), /setNotice\(res\.notice \|\| ""\)/);
+
+  // The quote request's success message is a page of its own, so the notice has
+  // to survive the redirect to reach it. Carried in the query rather than in
+  // state, because state does not survive a navigation and a reload of the
+  // confirmation would otherwise silently drop it.
+  const send = read("app/(site)/request-quote/send/QuoteSendClient.js");
+  assert.match(send, /if \(result\.notice\) query\.set\("notice", result\.notice\)/);
+  const sent = read("app/(site)/request-quote/sent/QuoteSentClient.js");
+  assert.match(sent, /useSearchParams\(\)\.get\("notice"\)/);
+  assert.match(sent, /\{notice \? <p/, "and it is rendered rather than merely read");
 });
 
 // It is a success, not a failure: we have their message either way.

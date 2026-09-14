@@ -15,6 +15,17 @@
   box-sizing: border-box;
 }
 
+/* NOTHING WIDER THAN THE SCREEN. An image or a drawing given its natural size
+   is the usual way a page starts scrolling sideways on a phone, and one element
+   doing it moves the whole body. The elevations on /ikea-kaboodle already cap
+   themselves at 88px inside a 92px column, and the one photograph here sets its
+   own width, so this is a net rather than a fix: it catches the next one. */
+.page img,
+.page svg,
+.page video {
+  max-width: 100%;
+}
+
 .wrap {
   margin: 0 auto;
   max-width: 1100px;
@@ -76,11 +87,18 @@
   text-decoration: underline;
 }
 
-/* /kitchen-refresh and /bespoke carry their CTAs in the header, so the buttons
-   need a little more room from the copy above them than they had in the hero. */
-.pageHeader .actions {
-  margin-top: 22px;
-}
+/* NO BUTTONS LIVE IN THIS HEADER ANY MORE, on any of the four pages.
+ *
+ * It is a title block: the breadcrumb, what the page is, and at most three
+ * lines saying what that means. /kitchen-refresh and /bespoke used to carry
+ * two buttons each and /ikea-kaboodle three, which made the top of each page
+ * taller than its first real section and asked for a decision before the
+ * reader had been told anything.
+ *
+ * Every one of those pages now closes on the three ways to buy, which is one
+ * shared block, so the call to action is in one place per page instead of two.
+ * If a button ever comes back here, .pageHeader .actions { margin-top: 22px }
+ * is what it wants. */
 
 .pageHeader .note a {
   color: #4a7a42;
@@ -372,6 +390,36 @@
   transform: translateX(4px);
 }
 
+/* The shop shortcut on /start, as the page's last line rather than a panel.
+   A bordered strip here put two green containers one above the other, both
+   offering another way in, and the newer one carried a filled button against
+   the catch-all's arrow, so the afterthought was the louder of the two. */
+.shopLine {
+  border-top: 1px solid #dbd8cc;
+  color: #5a5a52;
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 28px 0 0;
+  padding-top: 22px;
+  text-align: center;
+}
+
+.shopLine strong {
+  color: #1a1a18;
+  font-weight: 700;
+}
+
+.shopLine a {
+  color: #1f6f4a;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.shopLine a:hover {
+  color: #185a3c;
+}
+
 /* ---------- catch-all strip ---------- */
 
 .catchAll {
@@ -621,29 +669,39 @@
   padding: 64px 0;
 }
 
-.materialGrid {
+/* THE COLUMN COUNT COMES FROM THE PAGE. Same reasoning as .process above.
+   This was .materialGrid at three columns, left over from a section that no
+   longer exists, and the four hinge cards sat three up with one stranded
+   underneath. Rather than swap one hard-coded number for another, the page
+   passes --cols from the length of HINGES, so adding a fifth card cannot
+   quietly recreate the orphan. */
+.hingeGrid {
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
   margin-top: 34px;
 }
 
-.materialGrid article {
+.hingeGrid article {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 4px;
-  padding: 24px 22px;
+  padding: 24px 18px;
 }
 
-.materialGrid h3 {
+/* Sized for the four column track, which leaves about 200px of text once the
+   card padding comes off it. At the old 22px a title dropped a single word onto
+   a line of its own; balance keeps the two lines even instead. */
+.hingeGrid h3 {
   color: #a8c5a0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 400;
   margin: 0;
+  text-wrap: balance;
 }
 
-.materialGrid p {
+.hingeGrid p {
   color: #9daf99;
   font-size: 13.5px;
   line-height: 1.65;
@@ -652,24 +710,44 @@
 
 /* ---------- numbered process ---------- */
 
+/* THE COLUMN COUNT COMES FROM THE PAGE, NOT FROM HERE.
+   /kitchen-refresh runs four steps and /bespoke runs six, and they share this
+   class, so no number written here is right for both: three columns gave
+   /bespoke a tidy three by two and left /kitchen-refresh with one step stranded
+   on a second row. Each page passes --cols from the length of its own list, via
+   evenColumns in lib/pcd-grid-columns.js, which only ever returns a count that
+   divides the list exactly. The 3 is the fallback for a caller that forgets.
+
+   The media queries below still set grid-template-columns outright, so they
+   keep winning at narrow widths whatever --cols says. */
 .process {
   counter-reset: step;
   display: grid;
   gap: 26px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
   list-style: none;
   margin: 34px 0 0;
   padding: 0;
 }
 
+/* THE LIGHT GROUND IS THE DEFAULT, THE DARK ONE IS THE VARIANT.
+ *
+ * These colours were written for the dark band, because that was the only
+ * place the numbered process was ever used. Put the same list on a white or
+ * cream section, as /ikea-kaboodle does, and it is cream text on cream: the
+ * headings disappear completely and the page looks half loaded.
+ *
+ * So the base rules are the readable ones and .dark .process overrides them.
+ * That way the failure mode of using this list somewhere new is legible text,
+ * not invisible text. */
 .process li {
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-top: 1px solid #dbd8cc;
   counter-increment: step;
   padding-top: 16px;
 }
 
 .process li::before {
-  color: #a8c5a0;
+  color: #4a7a42;
   content: counter(step, decimal-leading-zero);
   display: block;
   font-family: Georgia, "Times New Roman", serif;
@@ -678,7 +756,7 @@
 }
 
 .process strong {
-  color: #f0ede4;
+  color: #1a1a18;
   display: block;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 20px;
@@ -686,11 +764,27 @@
 }
 
 .process span {
-  color: #9daf99;
+  color: #5a5a52;
   display: block;
   font-size: 13.5px;
   line-height: 1.65;
   margin-top: 8px;
+}
+
+.dark .process li {
+  border-top-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark .process li::before {
+  color: #a8c5a0;
+}
+
+.dark .process strong {
+  color: #f0ede4;
+}
+
+.dark .process span {
+  color: #9daf99;
 }
 
 /* ---------- colour + profile showcases ---------- */
@@ -724,55 +818,15 @@
   color: #f0ede4;
 }
 
-.colourGrid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
-  margin-top: 20px;
-}
-
-.colourTile {
-  background: #ffffff;
-  border: 1px solid #dbd8cc;
-  border-radius: 3px;
-  overflow: hidden;
-  position: relative;
-}
-
-.colourSwatch {
-  display: block;
-  height: 72px;
-}
-
-.colourBadge {
-  background: rgba(26, 26, 24, 0.82);
-  border-radius: 2px;
-  color: #ffffff;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 3px 6px;
-  position: absolute;
-  right: 6px;
-  top: 6px;
-}
-
-.colourName {
-  display: block;
-  font-size: 12px;
-  line-height: 1.35;
-  padding: 9px 10px;
-}
-
-.colourFinish {
-  color: #8b8a81;
-  display: block;
-  font-size: 10px;
-  font-style: normal;
-  letter-spacing: 0.06em;
-  margin-top: 2px;
-  text-transform: uppercase;
-}
+/* THE OLD COLOUR TILE CARD IS GONE, and with it the .colourGrid that quietly
+   broke the square grid further down this file.
+   .colourGrid, .colourTile, .colourSwatch, .colourBadge, .colourName and
+   .colourFinish drew a named, badged swatch card that no page has rendered
+   since /finishes took that job. Nothing referenced any of them. The dead
+   .colourGrid still carried gap: 12px though, and when the square colour grid
+   on /bespoke and /kitchen-refresh was written under the same name it inherited
+   that gap and drew white lines between every tile. A dead rule is not inert if
+   its name is still spendable. */
 
 .profileGrid {
   display: grid;
@@ -924,6 +978,348 @@
   margin: 7px 0 0;
 }
 
+/* ---------- the standard sizes, drawn (/ikea-kaboodle) ----------
+ *
+ * The sizes used to live inside the configurator, so a crawler never saw one
+ * of them and a customer had to click through five questions to read a number.
+ * Then they were a four row table, which fixed that and read as a wall of
+ * figures. Now they are drawn: one row per system, every door to one scale,
+ * scrolling sideways rather than wrapping.
+ *
+ * SCROLLING RATHER THAN WRAPPING is the whole reason this shape was chosen.
+ * Metod has eighteen door sizes and Besta has two. Wrapped, that is five rows
+ * against one and the section's height lurches as you switch tabs. In one
+ * scrolling row both cost the same.
+ *
+ * NO JAVASCRIPT. The tabs are radio inputs and plain sibling selectors, and
+ * all four panels are in the markup whichever one is showing. A tab set that
+ * only renders the open panel would hide three quarters of the catalogue from
+ * anything reading the page, which is the configurator's mistake in miniature.
+ */
+
+.sizeTabs {
+  margin-top: 28px;
+}
+
+/* Off screen rather than display:none, so it stays focusable and the keyboard
+   can move through the group with the arrow keys the way a radio group should. */
+.sizeRadio {
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
+.sizeTabRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sizeTab {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 20px;
+  color: #1a1a18;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 18px;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  user-select: none;
+}
+
+.sizeTab:hover {
+  border-color: #6b9e61;
+}
+
+.sizeTab span {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.sizePanel {
+  display: none;
+}
+
+/* :global ON EVERY ID, AND IT IS LOAD BEARING.
+ *
+ * A CSS module scopes id selectors exactly the way it scopes classes, so
+ * `#pcd-size-metod` compiles to `#journey_pcd-size-metod__tsTMl` and never
+ * matches the plain id the markup carries. The rules are in the stylesheet,
+ * they just select nothing, so the tabs render and no panel ever shows. The
+ * class names beside them must stay local: those ARE hashed in the markup. */
+
+/* One pair of rules per system: light up its tab, show its panel. */
+:global(#pcd-size-metod):checked ~ .sizeTabRow label[for="pcd-size-metod"],
+:global(#pcd-size-pax):checked ~ .sizeTabRow label[for="pcd-size-pax"],
+:global(#pcd-size-besta):checked ~ .sizeTabRow label[for="pcd-size-besta"],
+:global(#pcd-size-kaboodle):checked ~ .sizeTabRow label[for="pcd-size-kaboodle"] {
+  background: #1c2b1e;
+  border-color: #1c2b1e;
+  color: #f0ede4;
+}
+
+:global(#pcd-size-metod):focus-visible ~ .sizeTabRow label[for="pcd-size-metod"],
+:global(#pcd-size-pax):focus-visible ~ .sizeTabRow label[for="pcd-size-pax"],
+:global(#pcd-size-besta):focus-visible ~ .sizeTabRow label[for="pcd-size-besta"],
+:global(#pcd-size-kaboodle):focus-visible ~ .sizeTabRow label[for="pcd-size-kaboodle"] {
+  outline: 2px solid #4a7a42;
+  outline-offset: 2px;
+}
+
+:global(#pcd-size-metod):checked ~ .sizePanel_metod,
+:global(#pcd-size-pax):checked ~ .sizePanel_pax,
+:global(#pcd-size-besta):checked ~ .sizePanel_besta,
+:global(#pcd-size-kaboodle):checked ~ .sizePanel_kaboodle {
+  display: block;
+}
+
+/* ── ONE CARD PER PIECE ──────────────────────────────────────────────────────
+ *
+ * WHAT THIS REPLACED. A single scrolling strip, grouped by piece type, with
+ * the groups stretched to a common height and their labels pushed to the top.
+ * Two things were wrong with it. The groups were labelled Doors, Drawer fronts
+ * and Panels, which repeated three of the eight piece names listed directly
+ * above it. And a group whose tallest piece is a 287mm drawer panel got about
+ * 130px of empty ground above it, because stretching to a common height is not
+ * the same as having content to fill it.
+ *
+ * Cards fix both. Every card is the same height whatever is in it, the piece
+ * name is said once, and the sizes that used to be 20px tall drawings are chips
+ * you can actually read. */
+
+.pieceCards {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 20px;
+}
+
+.pieceCard {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 5px;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  padding: 20px 22px;
+}
+
+/* The drawing sits on the floor of its box, so a kick and a tall panel share a
+   baseline rather than floating at different heights. */
+.pieceArt {
+  align-items: flex-end;
+  display: flex;
+  justify-content: center;
+  min-height: 104px;
+}
+
+.pieceArt svg {
+  display: block;
+}
+
+.pieceBody h3 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-weight: 400;
+  margin: 0 0 5px;
+}
+
+.pieceBody p {
+  color: #5a5a52;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0 0 12px;
+}
+
+.sizeChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.sizeChip {
+  background: #faf9f6;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: #3a3a34;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+/* "and 12 more" and "cut to your measurement" are notes, not sizes, so they
+   lose the border that makes the others look like values. */
+.sizeChipMore {
+  background: none;
+  border-color: transparent;
+  color: #8b8a81;
+  padding-left: 2px;
+}
+
+.sizeNote {
+  color: #5a5a52;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 14px 0 0;
+}
+
+.sizeNote strong {
+  color: #1a1a18;
+}
+
+@media (max-width: 680px) {
+  .pieceCards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+
+
+  .sizeTab {
+    font-size: 12.5px;
+    padding: 8px 14px;
+  }
+}
+
+/* ---------- the pieces we make, as a list rather than cards ----------
+ *
+ * THESE NAMES ARE THE PAGE'S BEST ASSET, so they stay as headings.
+ *
+ * Cabinet doors, drawer fronts, end and return panels, kicks, fillers,
+ * floating shelves, cover panels and custom-size fronts is the list that gets
+ * quoted back at us as the reason the page is recommended. An h3 carries more
+ * weight than the same words inside a paragraph, so shortening this page is
+ * not allowed to turn them into prose.
+ *
+ * What it is allowed to do is drop the furniture. This was eight bordered
+ * cards with padding; it is now two columns of ruled rows. Same eight names,
+ * same heading level, about a third of the height. */
+
+.pieces {
+  border-top: 1px solid #dbd8cc;
+  display: grid;
+  gap: 0 44px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 26px;
+}
+
+.pieces > div {
+  border-bottom: 1px solid #ebe8de;
+  padding: 13px 0;
+}
+
+.pieces h3 {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.pieces p {
+  color: #5a5a52;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 3px 0 0;
+}
+
+/* ---------- a wide run of real colours ----------
+   The same device the home page closes its materials section with, sized for a
+   1100px rail instead of the full window. Decorative: the sentence above it
+   carries the information. */
+
+.colourBand {
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  display: grid;
+  grid-template-columns: repeat(18, 1fr);
+  margin-top: 24px;
+  overflow: hidden;
+}
+
+.colourBand span {
+  aspect-ratio: 1;
+  background-position: center;
+  background-size: cover;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  .colourBand {
+    grid-template-columns: repeat(9, 1fr);
+  }
+}
+
+/* ---------- colours beside the words ---------- */
+
+/* THE COLOUR GRID SITS IN THE ROW, NOT UNDER IT.
+   On /bespoke and /kitchen-refresh the copy runs to two paragraphs at about
+   half the container width, so a full width strip underneath left a block of
+   empty cream to the right of the text and then a band with nothing beside it.
+   The same tiles as a square to the right of the paragraphs fill that gap and
+   make the section one object instead of two stacked ones.
+
+   /ikea-kaboodle keeps the full width strip: its colour section is one short
+   paragraph, so there is no column of empty space to fill and a square beside
+   two lines would be taller than the words next to it. */
+/* The eyebrow and the heading live in the left column, not above the row, so
+   the row starts where the section starts and the grid is level with the first
+   thing the reader sees. With them above it, the grid began at the first
+   paragraph and hung a heading-and-a-half below the top of the text. */
+.colourSplit {
+  align-items: start;
+  display: grid;
+  gap: 48px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+}
+
+/* The paragraphs already cap themselves at 68ch, which is wider than this
+   column, so the column width is what sets the measure here. */
+.colourSplitText > :first-child {
+  margin-top: 0;
+}
+
+/* FIVE ACROSS AND FIVE DOWN, EDGE TO EDGE. Twenty five tiles, each one square,
+   so the block itself is square at any width. The count and the column number
+   have to stay in step: change one and the last row strands tiles, which is the
+   fault the hinge grid had. The page asks for exactly 25 from spreadAcross.
+
+   gap: 0 is written out rather than left to the default. A dead .colourGrid
+   earlier in this file carried gap: 12px, and because this rule never said
+   otherwise the tiles drew with white lines between them. The dead rule is gone
+   now and this says what it means. */
+.colourGrid {
+  border: 1px solid #dbd8cc;
+  border-radius: 4px;
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(5, 1fr);
+  overflow: hidden;
+}
+
+.colourGrid span {
+  aspect-ratio: 1;
+  background-position: center;
+  background-size: cover;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  /* Stacked, with the grid under the words. It stays five across and simply
+     gets narrower: every column is a fraction and every tile is square, so at
+     a phone's 324px of content the block is 324px tall and cannot overflow
+     sideways. It is decoration with aria-hidden on it, so small tiles cost
+     nothing to read. */
+  .colourSplit {
+    gap: 28px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ---------- cross-sell box ---------- */
 
 .crossSell {
@@ -1012,6 +1408,16 @@
   text-align: center;
 }
 
+/* The closing band on a page that ends with the three ways to buy.
+   Same ground as .cta, because these pages have always finished on the dark
+   green and ending on cream makes a long page feel like it stopped rather than
+   closed. Not centred, though: .cta centres everything, and three cards of
+   left-aligned copy centred inside it read as a poster. */
+.closing {
+  background: #111b13;
+  padding: 72px 0;
+}
+
 .cta .lead {
   margin: 16px auto 28px;
 }
@@ -1062,7 +1468,7 @@
 
   .chooserGrid,
   .threeCol,
-  .materialGrid,
+  .hingeGrid,
   .process,
   .profileGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1072,6 +1478,13 @@
   .reassureGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .pieces {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+
+
 
   /* Copy above the visual, always in that order, a flipped row would put the
      picture before the words it belongs to once they stack. */
@@ -1098,7 +1511,7 @@
 
   .chooserGrid,
   .threeCol,
-  .materialGrid,
+  .hingeGrid,
   .process,
   .profileGrid,
   .roomGrid,

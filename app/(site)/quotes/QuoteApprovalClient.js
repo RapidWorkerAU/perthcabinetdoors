@@ -8,8 +8,10 @@ import {
   isHardwareLine,
   lineFrontProfile,
   lineDisplayName,
+  lineEdgeLines,
   lineSubLines,
 } from "../../../lib/pcd-quote-line-display";
+import { bandedEdgesText } from "../../../lib/pcd-line-details";
 import { hingeCustomerLines } from "../../../lib/pcd-hinges";
 import { useSearchParams } from "next/navigation";
 import { formatMoney, toNumber } from "../../../lib/pcd-quote-utils";
@@ -203,9 +205,16 @@ const CONFIG_COLUMNS = [
   {
     key: "edge",
     label: "Edge profile",
-    has: (line) => Boolean(String(line.edge_mould || "").trim()),
+    // The profile and which edges are banded. A Laminex board has no edge
+    // profile to pick and still has banded edges, so either one earns the column.
+    has: (line) => lineEdgeLines(line).length > 0,
     cell: (line, onPreview) => (
-      <PreviewName src={edgeOptionSrc(line.edge_mould)} label={line.edge_mould} onPreview={onPreview} />
+      <span className={styles.quoteItemDetailStack}>
+        {String(line.edge_mould || "").trim() ? (
+          <PreviewName src={edgeOptionSrc(line.edge_mould)} label={line.edge_mould} onPreview={onPreview} />
+        ) : null}
+        {bandedEdgesText(line.banded_edges) ? <span>{bandedEdgesText(line.banded_edges)}</span> : null}
+      </span>
     ),
   },
   {

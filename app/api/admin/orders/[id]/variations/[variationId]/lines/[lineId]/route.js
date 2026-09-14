@@ -12,6 +12,8 @@ import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } f
 import { getBusinessDefaults } from "../../../../../../../../../lib/pcd-business-defaults";
 import { normaliseHingeSide, readMiddles } from "../../../../../../../../../lib/pcd-hinges";
 import { createSupplierGuard } from "../../../../../../../../../lib/pcd-supplier-guard";
+import { LINE_ANSWER_KEYS, validatedLineAnswers } from "../../../../../../../../../lib/pcd-line-details";
+import { lineAnswers } from "../../../../../../../../../lib/pcd-order-from-quote";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -99,6 +101,9 @@ function originalItemSnapshot(sourceLine) {
     hinge_from_bottom_mm: sourceLine.hinge_from_bottom_mm ?? null,
     hinge_from_top_mm: sourceLine.hinge_from_top_mm ?? null,
     hinge_middles_mm: sourceLine.hinge_middles_mm || [],
+    // The kind of panel, the edges, the boring, the grain and who supplies
+    // it, so a variation that changes one of them shows a before and after.
+    ...lineAnswers(sourceLine),
     qty: sourceLine.qty ?? 1,
     line_total_ex_gst: sourceLine.line_total_ex_gst ?? 0,
   };
@@ -249,6 +254,15 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
   if (!Object.prototype.hasOwnProperty.call(updates, "markup_percent")) {
     updates.markup_percent = toNumber(before.markup_percent, businessDefaults.markup_percent);
   }
+  // THE ANSWERS BEYOND THE BOARD, re-checked against the line as it will be.
+  // Re-checked even when none of them was sent, because changing the material
+  // or unticking the drilling can make one that was valid a stale one.
+  const answersAsked = { ...before, ...updates };
+  for (const key of LINE_ANSWER_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) answersAsked[key] = payload[key];
+  }
+  Object.assign(updates, validatedLineAnswers(answersAsked));
+
   const next = { ...before, ...updates };
   if (next.action === "change" || next.action === "remove") {
     if (sourceLine) updates.original_item_snapshot = originalItemSnapshot(sourceLine);

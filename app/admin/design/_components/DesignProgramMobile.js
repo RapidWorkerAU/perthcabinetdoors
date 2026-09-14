@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import mobile from "../design.mobile.module.css";
+import { IconArrowRight, IconChevronDown, IconChevronLeft, IconChevronRight, IconChevronUp } from "@tabler/icons-react";
 import { formatMoney } from "@/lib/pcd-quote-utils";
 import { includedItemCost } from "./mobile/cabinetPricing";
 import useDesignProgram from "./useDesignProgram";
@@ -14,6 +15,7 @@ import RoomsModal from "./mobile/RoomsModal";
 import CabinetModal from "./mobile/CabinetModal";
 import RoomPriceModal from "./mobile/RoomPriceModal";
 import DesignPlanExportModal from "./DesignPlanExportModal";
+import MissingTileNotice from "./MissingTileNotice";
 
 // three.js is heavy and client-only (r3f), so it's split out of the initial
 // mobile bundle exactly as the desktop shell does — it loads only when the
@@ -247,7 +249,7 @@ export default function DesignProgramMobile({ projectId }) {
           >
             <span>{VIEW_LABELS[view]}</span>
             {fullscreen && <span className={mobile.viewMenuFsTag}>Fullscreen</span>}
-            <span className={mobile.viewMenuCaret}>▾</span>
+            <span className={mobile.viewMenuCaret} style={{ display: "inline-flex" }}><IconChevronDown size={13} /></span>
           </button>
           {viewMenuOpen && (
             <>
@@ -340,6 +342,8 @@ export default function DesignProgramMobile({ projectId }) {
         </div>
       )}
 
+      <MissingTileNotice inline show={showColours} colourImages={colourImages} items={roomItems} roomId={selectedRoom?.id} />
+
       {/* ---- Canvas ---- */}
       <div className={mobile.canvasWrap}>
         {!selectedRoom ? (
@@ -414,10 +418,10 @@ export default function DesignProgramMobile({ projectId }) {
           {view !== "3d" && (
             <div className={mobile.nudgeRow}>
               <span className={mobile.nudgeHint}>{view === "elevation" ? `Move / height ${NUDGE_MM}mm` : `Nudge ${NUDGE_MM}mm`}</span>
-              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("left")} aria-label="Left">◀</button>
-              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("up")} aria-label="Up">▲</button>
-              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("down")} aria-label="Down">▼</button>
-              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("right")} aria-label="Right">▶</button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("left")} aria-label="Left"><IconChevronLeft size={15} /></button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("up")} aria-label="Up"><IconChevronUp size={15} /></button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("down")} aria-label="Down"><IconChevronDown size={15} /></button>
+              <button type="button" className={mobile.nudgeBtn} onClick={() => nudge("right")} aria-label="Right"><IconChevronRight size={15} /></button>
             </div>
           )}
         </div>
@@ -430,7 +434,7 @@ export default function DesignProgramMobile({ projectId }) {
             <span className={mobile.priceStripLabel}>Room material cost (ex GST)</span><br />
             <span className={mobile.priceStripValue}>{formatMoney(roomTotal)}</span>
           </span>
-          <span className={mobile.priceStripCta}>View price →</span>
+          <span className={mobile.priceStripCta} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>View price<IconArrowRight size={13} /></span>
         </button>
       )}
 

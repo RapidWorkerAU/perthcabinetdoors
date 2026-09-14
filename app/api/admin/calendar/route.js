@@ -2,6 +2,7 @@ import { requireAdminApiContext } from "../../../../lib/admin-api";
 import {
   addDays,
   bookingRowFromInput,
+  bookingSaveMessage,
   isDay,
   perthToday,
   startOfWeek,
@@ -158,6 +159,6 @@ export async function POST(request) {
 
     return Response.json({ ok: true, event: fresh || data, sync, ask });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not save the booking." }, { status: 500 });
+    return Response.json({ ok: false, error: bookingSaveMessage(error) }, { status: 500 });
   }
 }

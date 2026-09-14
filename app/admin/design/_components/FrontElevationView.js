@@ -2,12 +2,18 @@
 
 import { useState, useRef, useEffect } from "react";
 import styles from "../design.module.css";
+import { IconArrowLeft } from "@tabler/icons-react";
 import { computeDrawerFrontHeights } from "../../../../lib/pcd-drawer-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm, bayTypeForRow, mixedBaySections, scaleDrawerHeightsMm, frontPanelMode, FRONT_PANEL_MODE_OVER } from "../../../../lib/pcd-door-utils";
-import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, bayTypeForRow, cabinetShelfHeightsMm, mixedBaySections, scaleDrawerHeightsMm, frontPanelMode, FRONT_PANEL_MODE_OVER } from "../../../../lib/pcd-door-utils";
+import { fillerPanelGapMm, sideFillerWidthMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { kickboardOffsetMm, kickboardHeightMm, kickboardIsInset, wallSpanMm, CABINET_MOUNT_MM, cabinetVerticalSpanMm, isCornerType, isCornerShaped } from "../../../../lib/pcd-kickboard-utils";
 import { builtInPlinthMm } from "../../../../lib/pcd-ikea-presets";
 import { shelfRailConfig } from "../../../../lib/pcd-shelf-rail-utils";
+import { MIN_GAP_MM, wallCallouts } from "../../../../lib/pcd-elevation-callouts";
+// What is fitted inside a cabinet, and the shape of it. The 3D view draws from
+// the same two modules, so the two views cannot disagree about a rail.
+import { accessoryHeightMm, patchAccessory, readAccessories } from "../../../../lib/pcd-cabinet-accessories";
+import { accessoryParts, partColour } from "../../../../lib/pcd-accessory-shapes";
 import { perpendicularCornerReturns } from "../../../../lib/pcd-plan-geometry";
 import { resolveColourSrc } from "../../../../lib/pcd-colour-images";
 import { computeBenchtopRun, benchtopThicknessMm, benchtopWaterfallElevationSides, benchtopRunWaterfallEnds } from "../../../../lib/pcd-benchtop-utils";
@@ -602,12 +608,15 @@ const WALL_AXIS = {
   right:  { widthKey: "depth_mm",  label: "Right Wall" },
 };
 
-export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, zoomControls = "reset", chrome = true, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false, selectOnPointerUp = false }) {
+export default function FrontElevationView({ wall: initialWall, room, items, onClose, onItemChange, onItemSelect, selectedId: controlledSelectedId, interactive = true, zoomable = false, zoomControls = "reset", chrome = true, colourImages, showColours = false, onToggleColours, lineOnly = false, printMode = false, selectOnPointerUp = false, callouts = false }) {
   const [currentWall, setCurrentWall] = useState(initialWall);
   const [selectedId, setSelectedId]   = useState(controlledSelectedId ?? null);
   const [drag, setDrag]               = useState(null);
   const [localPos, setLocalPos]       = useState({});
   const [localShelves, setLocalShelves] = useState({});
+  // A rail or a bin being dragged up or down, keyed `${itemId}:${accessoryId}`.
+  // Preview only, like the shelves above: the height is written on release.
+  const [localAccessories, setLocalAccessories] = useState({});
   const [snapGuides, setSnapGuides]   = useState(null); // { x?: mm, y?: mm }
   const [failedTileSrcs, setFailedTileSrcs] = useState(() => new Set());
   const markTileFailed = (src) => {
@@ -669,6 +678,13 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
   const VIEW_W = 1000, VIEW_H = 600;
   const MT = 56, MB = 44, ML = 64, MR = 28;
+  // WHERE THE CALLOUTS GO, and nowhere else. The ladder of heights takes the
+  // left margin, the names take the right, and the drawing in between is left
+  // alone: an approval drawing with writing across the cabinet is harder to
+  // read than one with none. Zero when callouts are off, so every other use of
+  // this elevation is untouched.
+  const CALLOUT_PAD_L = callouts ? 132 : 0;
+  const CALLOUT_PAD_R = callouts ? 300 : 0;
   const avW   = VIEW_W - ML - MR;
   const avH   = VIEW_H - MT - MB;
   const scale = Math.min(avW / wallWidthMm, avH / roomHeightMm);
@@ -793,11 +809,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   // schematic, cut-list PDF, and whatever gets persisted on import.
   function getShelfPositions(item) {
     if (localShelves[item.id]?.length) return localShelves[item.id];
-    if (item.shelf_heights_mm?.length) return item.shelf_heights_mm;
-    const qty = item.shelf_qty || 0;
-    if (!qty) return [];
-    const hMm = item.height_mm || 720;
-    return Array.from({ length: qty }, (_, i) => Math.round(((i + 1) * hMm) / (qty + 1)));
+    // The count decides how many; saved positions are used only while there
+    // are that many of them. See cabinetShelfHeightsMm.
+    return cabinetShelfHeightsMm(item);
   }
 
   // ---- Pointer handlers ----------------------------------------------------
@@ -878,6 +892,32 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       startPtY:   pt.y,
       startH:     heightMm,
       allShelves: getShelfPositions(item),
+    });
+  }
+
+  // What is fitted inside the cabinet, at the height it is fitted at: the one
+  // being dragged reads its in-flight height, everything else reads what is
+  // saved (or where that kind goes, when nobody has said).
+  function getAccessoryHeight(item, entry) {
+    const held = localAccessories[`${item.id}:${entry.id}`];
+    return held === undefined ? accessoryHeightMm(entry, item) : held;
+  }
+
+  // A rail or a bin, dragged up and down exactly like a shelf: the same datum,
+  // the same clamp, the same live badge, saved on release.
+  function handleAccessoryPointerDown(e, item, entry, heightMm) {
+    if (!interactive) return;
+    e.stopPropagation();
+    pressedRef.current = true;
+    const pt = svgPt(e);
+    setDrag({
+      type:      "accessory",
+      itemId:    item.id,
+      accessoryId: entry.id,
+      T:         item.carcass_thickness_mm || 16,
+      hMm:       item.height_mm || 720,
+      startPtY:  pt.y,
+      startH:    heightMm,
     });
   }
 
@@ -970,6 +1010,14 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       newShelves[drag.idx] = newH;
       setLocalShelves((prev) => ({ ...prev, [drag.itemId]: newShelves }));
 
+    } else if (drag.type === "accessory") {
+      const dyMm = (pt.y - drag.startPtY) / scale;
+      let newH = drag.startH - dyMm; // down the screen is lower in the cabinet
+      // Inside the box, a board's thickness clear of the floor and the top,
+      // the same clamp a shelf gets.
+      newH = Math.max(drag.T * 1.5, Math.min(drag.hMm - drag.T * 1.5, newH));
+      setLocalAccessories((prev) => ({ ...prev, [`${drag.itemId}:${drag.accessoryId}`]: Math.round(newH) }));
+
     } else if (drag.type === "bayShelf") {
       const dyMm = (pt.y - drag.startPtY) / scale;
       let newH = drag.startH - dyMm;
@@ -1012,6 +1060,14 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     } else if (drag.type === "shelf") {
       const shelves = localShelves[drag.itemId];
       if (shelves && onItemChange) onItemChange(drag.itemId, { shelf_heights_mm: shelves });
+
+    } else if (drag.type === "accessory") {
+      const height = localAccessories[`${drag.itemId}:${drag.accessoryId}`];
+      const item = wallItems.find((i) => i.id === drag.itemId);
+      // The whole list goes back, the way every other accessory edit writes it.
+      if (height !== undefined && item && onItemChange) {
+        onItemChange(drag.itemId, { accessories: patchAccessory(item, drag.accessoryId, { height_mm: height }) });
+      }
 
     } else if (drag.type === "bayShelf") {
       const shelves = localShelves[`${drag.itemId}:${drag.sectionIdx}`];
@@ -1092,6 +1148,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       registerSrc(resolveColourSrc(colourImages, item, "shelf"));
       registerSrc(resolveColourSrc(colourImages, item, "filler"));
       registerSrc(resolveColourSrc(colourImages, item, "kickboard"));
+      // Side fillers, which take the colour of the end they sit beside.
+      registerSrc(resolveColourSrc(colourImages, item, "endpanel_left"));
+      registerSrc(resolveColourSrc(colourImages, item, "endpanel_right"));
       registerSrc(resolveColourSrc(colourImages, item, "benchtop"));
     }
   }
@@ -1158,13 +1217,16 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
       {/* Rendered-view toggle — when the full toolbar is off (the unified
           top-bar layout), keep this one control as a floating button so the
-          true-to-life head-on render is still one tap away. */}
+          true-to-life head-on render is still one tap away.
+
+          Top LEFT. The zoom buttons own the top right corner, and this sat
+          directly on top of them. */}
       {!chrome && interactive && (
         <button
           type="button"
           onClick={() => setRendered((r) => !r)}
           title="Show this wall as a true-to-life rendered view, head-on"
-          style={{ position: "absolute", top: 10, right: 10, zIndex: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${rendered ? "#1f6f4a" : "rgba(0,0,0,0.15)"}`, background: rendered ? "#1f6f4a" : "rgba(255,255,255,0.95)", color: rendered ? "#fff" : "#26251f", cursor: "pointer", font: "inherit", fontSize: 12.5, fontWeight: 600, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
+          style={{ position: "absolute", top: 10, left: 10, zIndex: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${rendered ? "#1f6f4a" : "rgba(0,0,0,0.15)"}`, background: rendered ? "#1f6f4a" : "rgba(255,255,255,0.95)", color: rendered ? "#fff" : "#26251f", cursor: "pointer", font: "inherit", fontSize: 12.5, fontWeight: 600, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
         >
           {rendered ? "🎬 Rendered on" : "🎬 Rendered view"}
         </button>
@@ -1174,7 +1236,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       {chrome && (
       <div className={styles.elevationToolbar}>
         <button type="button" className={styles.elevationBackBtn} onClick={onClose}>
-          ← Floor Plan
+          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <IconArrowLeft size={14} />
+            Floor Plan
+          </span>
         </button>
         {onToggleColours && (
           <button
@@ -1308,7 +1373,13 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
         <PinchZoom enabled={zoomable} controls={zoomControls} maxScale={4}>
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          // NAMED, so the PDF export can ask for THE DRAWING rather than for
+          // the first svg it finds. It used to take the first, which is the
+          // 14px arrow on the "Floor Plan" button in the toolbar above: every
+          // elevation page in an exported plan came out as one giant pixelated
+          // arrow. Anything added to the toolbar could do it again.
+          data-elevation-drawing="true"
+          viewBox={`${-CALLOUT_PAD_L} 0 ${VIEW_W + CALLOUT_PAD_L + CALLOUT_PAD_R} ${VIEW_H}`}
           width="100%"
           height="100%"
           preserveAspectRatio="xMidYMid meet"
@@ -1861,6 +1932,76 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   );
                 })}
 
+                {/* WHAT IS FITTED INSIDE: rails, bins and lights.
+                    Drawn from one description of the shape (lib/pcd-accessory-
+                    shapes.js) that the 3D view reads as well, so the rail seen
+                    from the front and the rail seen in the room are the same
+                    rail. Dragged up and down like a shelf. */}
+                {readAccessories(item).map((entry) => {
+                  const heightMm = getAccessoryHeight(item, entry);
+                  const parts = accessoryParts({ ...entry, height_mm: heightMm }, item);
+                  if (!parts.length) return null;
+                  const isAccDragging = drag?.type === "accessory" && drag.itemId === item.id && drag.accessoryId === entry.id;
+                  const insideLeft = svgX + T;
+                  const ay = (svgY + svgH) - heightMm * scale;
+                  return (
+                    <g key={`acc-${entry.id}`}>
+                      {parts.map((part) => {
+                        const px = insideLeft + part.x0Mm * scale;
+                        const pw = Math.max((part.x1Mm - part.x0Mm) * scale, 0.6);
+                        const ph = Math.max(part.heightMm * scale, 1);
+                        const py = (svgY + svgH) - part.yMm * scale - ph / 2;
+                        const grab = isSelected ? (e) => handleAccessoryPointerDown(e, item, entry, heightMm) : undefined;
+                        // A kind nobody has drawn yet, shown as the space it
+                        // takes up: an outline, so it is plainly the room it
+                        // needs rather than a picture of the thing.
+                        if (part.shape === "box") {
+                          return (
+                            <rect
+                              key={part.id}
+                              x={px} y={py} width={pw} height={ph} rx={2}
+                              fill={partColour(part)} fillOpacity={isSelected ? 0.18 : 0.1}
+                              stroke={partColour(part)} strokeWidth={0.8} strokeOpacity={0.9}
+                              strokeDasharray="4 2"
+                              style={{ cursor: isSelected ? "ns-resize" : "default" }}
+                              onPointerDown={grab}
+                            />
+                          );
+                        }
+                        return (
+                          <rect
+                            key={part.id}
+                            x={px} y={py} width={pw} height={ph}
+                            rx={Math.min(ph / 2, 2)}
+                            // Metal against board, so it reads as hardware
+                            // rather than as another shelf.
+                            fill={partColour(part)}
+                            fillOpacity={isSelected ? 0.95 : 0.75}
+                            stroke="#7f858c" strokeWidth={0.3} strokeOpacity={0.6}
+                            style={{ cursor: isSelected ? "ns-resize" : "default" }}
+                            onPointerDown={grab}
+                          />
+                        );
+                      })}
+                      {/* Height label, the same one a shelf shows. */}
+                      {isSelected && svgW > 50 && (
+                        <g style={{ pointerEvents: "none" }}>
+                          <rect x={svgX + svgW + 3} y={ay - 7} width={38} height={13} fill="rgba(0,0,0,0.75)" rx={2} />
+                          <text x={svgX + svgW + 22} y={ay}
+                            textAnchor="middle" dominantBaseline="middle"
+                            fontSize={8} fill="#7dd3fc">
+                            {Math.round(heightMm)}mm
+                          </text>
+                          {isAccDragging && (
+                            <line x1={svgX + svgW / 2} y1={svgY + svgH} x2={svgX + svgW / 2} y2={ay}
+                              stroke={fill} strokeWidth={0.5} strokeDasharray="3 2" strokeOpacity={0.4} />
+                          )}
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+
                 {/* Corner cabinet door — a single bi-fold leaf per wall (the door zone
                     excludes the return zone above), rendered separately from the
                     regular multi-column door grid below since a corner cabinet's
@@ -2310,21 +2451,39 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     const { topMm, heightMm } = finishPanelVerticalSpanMm(item, roomHeightMm, panelKey);
                     return { y: svgY - Math.max(0, topMm - carcassTopMm) * scale, h: heightMm * scale };
                   };
-                  const lw = (Number(item.side_filler_left_width_mm) || 0) * scale;
-                  const rw = (Number(item.side_filler_right_width_mm) || 0) * scale;
+                  // Falls back to the MEASURED gap beside the cabinet when no width
+                  // has been typed, the way the filler above one falls back to the gap
+                  // to the ceiling. A blank width used to draw nothing at all, so
+                  // switching a side filler on looked like it did nothing.
+                  const lw = sideFillerWidthMm(item, room, items, "left") * scale;
+                  const rw = sideFillerWidthMm(item, room, items, "right") * scale;
                   return (
                     <>
                       {item.side_filler_left && lw > 0 && (() => {
                         const g = geomFor("side_filler_left");
-                        return <rect x={svgX - lw} y={g.y} width={lw} height={g.h}
-                          fill="rgba(245,158,11,0.4)" stroke="rgba(245,158,11,0.7)" strokeWidth={0.5}
-                          style={{ pointerEvents: "none" }} />;
+                        const tile = tileFillFor(item, "endpanel_left");
+                        return (
+                          <>
+                            <rect x={svgX - lw} y={g.y} width={lw} height={g.h}
+                              fill="rgba(245,158,11,0.4)" stroke="rgba(245,158,11,0.7)" strokeWidth={0.5}
+                              style={{ pointerEvents: "none" }} />
+                            {tile && <rect x={svgX - lw} y={g.y} width={lw} height={g.h}
+                              fill={tile} fillOpacity={0.9} style={{ pointerEvents: "none" }} />}
+                          </>
+                        );
                       })()}
                       {item.side_filler_right && rw > 0 && (() => {
                         const g = geomFor("side_filler_right");
-                        return <rect x={svgX + svgW} y={g.y} width={rw} height={g.h}
-                          fill="rgba(245,158,11,0.4)" stroke="rgba(245,158,11,0.7)" strokeWidth={0.5}
-                          style={{ pointerEvents: "none" }} />;
+                        const tile = tileFillFor(item, "endpanel_right");
+                        return (
+                          <>
+                            <rect x={svgX + svgW} y={g.y} width={rw} height={g.h}
+                              fill="rgba(245,158,11,0.4)" stroke="rgba(245,158,11,0.7)" strokeWidth={0.5}
+                              style={{ pointerEvents: "none" }} />
+                            {tile && <rect x={svgX + svgW} y={g.y} width={rw} height={g.h}
+                              fill={tile} fillOpacity={0.9} style={{ pointerEvents: "none" }} />}
+                          </>
+                        );
                       })()}
                     </>
                   );
@@ -2488,10 +2647,99 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
           {/* Room height dimension (left) */}
           <ElevDimLine x1={ML - 24} y1={oy} x2={ML - 24} y2={floor} label={roomHeightMm} horizontal={false} />
+
+          {/* WHAT IS INSIDE, AND HOW HIGH — the ladder in the left margin and
+              the names in the right. Drawn last so it is over the drawing in
+              paint order, and placed entirely outside it so it never actually
+              is. See lib/pcd-elevation-callouts.js. */}
+          {callouts && (
+            <CalloutLayer
+              items={wallItems} floor={floor} scale={scale}
+              left={-CALLOUT_PAD_L} right={VIEW_W} bottom={VIEW_H} drawLeft={ox} drawRight={ox + drawW}
+            />
+          )}
         </svg>
         </PinchZoom>
       </div>
       )}
     </div>
+  );
+}
+
+// ── THE CALLOUT LAYER ────────────────────────────────────────────────────────
+//
+// Heights and names beside an approval elevation, so a customer can see what is
+// in each cabinet and how high it sits without opening a door. Everything here
+// is drawn in the MARGINS: the ladder on the left, the names on the right, and
+// nothing at all over the cabinets, because writing across a drawing is harder
+// to read than no writing at all.
+//
+// What to say comes from lib/pcd-elevation-callouts.js. This only places it.
+function CalloutLayer({ items, floor, scale, left, right, bottom, drawLeft, drawRight }) {
+  const { ticks, notes } = wallCallouts(items || []);
+  if (!ticks.length && !notes.length) return null;
+
+  const Y = (mm) => floor - mm * scale;
+  const DIM = "#1f6f4a";
+  const INK = "#1a1a18";
+  const SOFT = "#6b6b62";
+  const HAIR = "#d8d8d0";
+
+  // ── the ladder ─────────────────────────────────────────────────────────
+  const chainX = left + 82;
+  const affX = left + 26;
+  const rungs = [];
+  ticks.forEach((t, i) => {
+    const y = Y(t.y);
+    rungs.push(
+      <line key={`ext-${i}`} x1={chainX + 6} y1={y} x2={drawLeft - 3} y2={y} stroke={HAIR} strokeWidth={0.7} />,
+      // A slash tick, the way a chain is marked on a real drawing.
+      <line key={`tk-${i}`} x1={chainX - 4} y1={y + 4} x2={chainX + 4} y2={y - 4} stroke={DIM} strokeWidth={1.1} />,
+      <text key={`aff-${i}`} x={affX} y={y + 4} textAnchor="middle" fontSize={11} fill={INK}>{Math.round(t.y)}</text>
+    );
+    if (t.clear >= MIN_GAP_MM && ticks[i + 1]) {
+      rungs.push(
+        <text key={`cl-${i}`} x={chainX - 7} y={(y + Y(ticks[i + 1].y)) / 2 + 4} textAnchor="end"
+          fontSize={11} fill={DIM}>{Math.round(t.clear)}</text>
+      );
+    }
+  });
+
+  // ── the names ──────────────────────────────────────────────────────────
+  //
+  // Pushed apart so no two collide, then lifted back inside the sheet if the
+  // pushing ran them off the bottom. The leader does the bending, never the
+  // text, so a name never wanders back over the cabinet it belongs to.
+  const rowGap = 25;
+  const ys = notes.map((n) => Y(n.y));
+  for (let i = 1; i < ys.length; i += 1) if (ys[i] - ys[i - 1] < rowGap) ys[i] = ys[i - 1] + rowGap;
+  const over = ys.length ? ys[ys.length - 1] - (bottom - 14) : 0;
+  if (over > 0) for (let i = 0; i < ys.length; i += 1) ys[i] -= over;
+
+  const colX = right + 34;
+  const elbow = right + 16;
+
+  return (
+    <g style={{ pointerEvents: "none" }} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace">
+      <text x={affX} y={Y(ticks[0]?.y || 0) - 12} textAnchor="middle" fontSize={8}
+        fill={SOFT} letterSpacing={1}>AFF</text>
+      {rungs}
+      {notes.map((n, i) => {
+        const ty = Y(n.y);
+        const ny = ys[i];
+        const label = n.count > 1 ? `${n.label} ×${n.count}` : n.label;
+        const detail = [n.detail, n.height ? `${n.height} high` : "", n.where].filter(Boolean).join("  ·  ");
+        return (
+          <g key={`note-${i}`}>
+            <circle cx={drawRight} cy={ty} r={1.9} fill={n.soft ? SOFT : DIM} />
+            <path d={`M ${drawRight} ${ty} L ${elbow} ${ty} L ${colX - 8} ${ny}`} fill="none"
+              stroke={n.soft ? HAIR : DIM} strokeWidth={n.soft ? 0.6 : 0.8} opacity={n.soft ? 1 : 0.75} />
+            <text x={colX} y={detail ? ny - 1 : ny + 3.5} fontSize={11} fill={n.soft ? SOFT : INK}
+              fontWeight={n.soft ? 400 : 500}>{label}</text>
+            {detail && <text x={colX} y={ny + 10} fontSize={9.5} fill={n.soft ? HAIR : DIM}>{detail}</text>}
+          </g>
+        );
+      })}
+    </g>
   );
 }

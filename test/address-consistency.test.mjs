@@ -190,11 +190,16 @@ test("the public quote page renders from the same definition", () => {
 });
 
 test("the request-quote form still asks for a suburb and nothing more", () => {
-  // Asking for a full address before there is a job is the wrong question.
-  const src = read("app/(site)/request-quote/RequestQuoteFormClient.js");
+  // Asking for a full address before there is a job is the wrong question. Who
+  // they are is /request-quote/send now; the builder asks about doors.
+  const src = read("app/(site)/request-quote/send/QuoteSendClient.js");
   assert.match(src, /Delivery suburb/);
   assert.ok(!/Street address/.test(src), "no street on the lead form");
   assert.ok(!/name="postcode"/.test(src), "no postcode on the lead form");
+  assert.match(src, /only need a delivery address once you accept the quote/i, "and it says why");
+
+  const builder = read("app/(site)/request-quote/RequestQuoteFormClient.js");
+  assert.ok(!/Delivery suburb/.test(builder), "a second contact form is a second place to type a different address");
 });
 
 test("converting a request puts the suburb in the suburb column", () => {

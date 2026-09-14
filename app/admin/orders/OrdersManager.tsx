@@ -8,6 +8,7 @@ import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
+import { orderStage } from '../../../lib/pcd-order-stage'
 
 // Archived is a tab you can go to, never a tab you land in. See the note on
 // ORDER_FILTER_STATUSES: what a list may be filtered BY is not what a dropdown
@@ -20,20 +21,42 @@ function formatDate(value?: string | null) {
 }
 
 interface LineItem {
-  sort_order?: number
+  sort_order?:        number
+  status?:            string | null
+  production_stage?:  string | null
+  fulfilment_method?: string | null
+  panel_planning?:    unknown
+}
+
+interface Payment {
+  payment_type?: string
+  amount?:       number
+  is_paid?:      boolean
+}
+
+interface Stage {
+  key:         string
+  label:       string
+  tone:        string
+  why:         string
+  overdue:     boolean
+  overdueDays: number
 }
 
 interface Order {
-  id:                    string
-  order_number?:         string
-  customer_name?:        string
-  name?:                 string
-  status?:               string
-  total_inc_gst?:        number
-  accepted_at?:          string | null
-  created_at?:           string
-  admin_viewed_at?:      string | null
-  pcd_order_line_items?: LineItem[]
+  id:                      string
+  order_number?:           string
+  customer_name?:          string
+  name?:                   string
+  status?:                 string
+  total_inc_gst?:          number
+  accepted_at?:            string | null
+  created_at?:             string
+  completed_at?:           string | null
+  admin_viewed_at?:        string | null
+  scheduled_start_date?:   string | null
+  target_completion_date?: string | null
+  pcd_order_line_items?:   LineItem[]
 }
 
 function sortedItems(order: Order) {
@@ -51,6 +74,56 @@ function getStatusPillClass(status: string) {
   return 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'
 }
 
+// THE STAGE PILL, TONE BY TONE. Five tones, and each one means something you
+// would act on differently, which is the only reason to have five:
+//   stop   nobody can work on it, or it has gone wrong
+//   wait   correct, and waiting on somebody who is not us
+//   next   our move, and nothing happens until we make it
+//   going  work is under way
+//   done   finished as far as this job is concerned
+// Deliberately not the same greens as the Status column beside it. Two pills on
+// one row in the same colour read as one fact said twice.
+function getStageTone(tone: string) {
+  if (tone === 'stop')  return 'bg-[#fef2f2] text-[#991b1b] border-[#fca5a5]'
+  if (tone === 'wait')  return 'bg-[#fffdf0] text-[#8a6d0b] border-[#e8d68f]'
+  if (tone === 'next')  return 'bg-[#eff6ff] text-[#1e40af] border-[#bfdbfe]'
+  if (tone === 'done')  return 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
+  return 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'
+}
+
+// Overdue rides beside the stage rather than replacing it, because "overdue" on
+// its own does not tell you what to do about it, and both facts are true at the
+// same time.
+function StagePill({ stage }: { stage: Stage }) {
+  const days = stage.overdueDays
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span
+        title={stage.why}
+        className={cn(
+          'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
+          getStageTone(stage.tone)
+        )}
+      >
+        {stage.label}
+      </span>
+      {/* NOTHING IN THIS CELL THAT IS NOT A PILL. The counts used to sit here
+          as loose grey text, which made the column read as two different kinds
+          of thing in one strip. The wording of the pill carries the stage, and
+          the exact number is in its tooltip where it does not compete with the
+          scan down the column. */}
+      {stage.overdue && (
+        <span
+          title={'Past its due date by ' + days + (days === 1 ? ' day.' : ' days.')}
+          className="inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border bg-[#fef2f2] text-[#991b1b] border-[#fca5a5]"
+        >
+          Overdue
+        </span>
+      )}
+    </span>
+  )
+}
+
 function isNewOrder(order: Order) {
   return Object.prototype.hasOwnProperty.call(order || {}, 'admin_viewed_at') && !order.admin_viewed_at
 }
@@ -62,6 +135,13 @@ export default function OrdersManager() {
   const [isLoading,    setIsLoading]    = useState(true)
   const [setupRequired, setSetupRequired] = useState(false)
   const [statusFilter, setStatusFilter] = useState('active')
+  // The two facts the orders table cannot prove on its own: whether a problem
+  // has been raised against a job, and whether a finished one has been paid
+  // for. `loaded` says whether each read actually worked, so a broken query
+  // shows a less specific stage rather than a confidently wrong one.
+  const [openIssues,     setOpenIssues]     = useState<Record<string, number>>({})
+  const [paymentsByOrder, setPaymentsByOrder] = useState<Record<string, Payment[]>>({})
+  const [loaded,         setLoaded]         = useState({ issues: false, payments: false })
 
   const statusCounts = useMemo(() => {
     return orders.reduce<Record<string, number>>(
@@ -86,6 +166,23 @@ export default function OrdersManager() {
 
   const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(visibleOrders, statusFilter)
 
+  // WORKED OUT HERE, NOT STORED ANYWHERE. Every stage comes from fields the
+  // order and its lines already carry, so nobody has to remember to move a job
+  // along and no stage can go stale. See lib/pcd-order-stage.js, which the work
+  // board's own rules agree with.
+  //
+  // Today is fixed per render rather than read inside the loop, so two rows in
+  // the same table cannot land on different sides of midnight. Perth's date,
+  // not London's, which is the same reason the board pins it.
+  const stageOf = useMemo(() => {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Perth' }).format(new Date())
+    return (order: Order): Stage => orderStage(order, order.pcd_order_line_items || [], {
+      openIssues: loaded.issues ? (openIssues[order.id] || 0) : 0,
+      payments:   loaded.payments ? (paymentsByOrder[order.id] || []) : null,
+      today,
+    }) as Stage
+  }, [openIssues, paymentsByOrder, loaded])
+
   async function loadOrders() {
     setIsLoading(true)
     try {
@@ -93,6 +190,9 @@ export default function OrdersManager() {
       const payload = await res.json()
       setSetupRequired(!!payload.setupRequired)
       setOrders(payload.orders || [])
+      setOpenIssues(payload.openIssues || {})
+      setPaymentsByOrder(payload.paymentsByOrder || {})
+      setLoaded(payload.loaded || { issues: false, payments: false })
       if (payload.error) toast({ title: payload.error, variant: 'error' })
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : 'Could not load orders.', variant: 'error' })
@@ -155,7 +255,12 @@ export default function OrdersManager() {
           <table className="w-full min-w-[900px] text-[13px]">
             <thead>
               <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                {['Order', 'Customer', 'Job', 'Items', 'Status', 'Total', 'Accepted'].map(col => (
+                {/* Where it's up to sits next to Status on purpose. Status is
+                    what kind of record this is; the stage is what is actually
+                    happening to it, and reading them together is how you tell
+                    an active job being planned from an active job in the
+                    workshop. */}
+                {['Order', 'Customer', 'Job', 'Items', 'Status', "Where it's up to", 'Total', 'Accepted'].map(col => (
                   <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
                     {col}
                   </th>
@@ -164,7 +269,7 @@ export default function OrdersManager() {
             </thead>
             <tbody>
               {!isLoading && !visibleOrders.length && (
-                <tr><td colSpan={7} className="py-12 text-center text-[13px] text-[#8b8a81]">No orders match this filter.</td></tr>
+                <tr><td colSpan={8} className="py-12 text-center text-[13px] text-[#8b8a81]">No orders match this filter.</td></tr>
               )}
               {pageItems.map(order => {
                 const items  = sortedItems(order)
@@ -198,6 +303,7 @@ export default function OrdersManager() {
                         {formatAdminLabel(status)}
                       </span>
                     </td>
+                    <td className="px-4 py-[11px]"><StagePill stage={stageOf(order)} /></td>
                     <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(order.total_inc_gst, 'AUD')}</td>
                     <td className="px-4 py-[11px] whitespace-nowrap">
                       {order.accepted_at
@@ -256,6 +362,13 @@ export default function OrdersManager() {
                       {formatAdminLabel(status)}
                     </span>
                   </dd>
+                </div>
+                {/* Full width on a phone: the stage is the longest label in the
+                    list and the one most worth reading, so it does not share a
+                    row with a dollar figure. */}
+                <div className="col-span-2">
+                  <dt className="text-[#8b8a81]">Where it&apos;s up to</dt>
+                  <dd className="mt-[2px]"><StagePill stage={stageOf(order)} /></dd>
                 </div>
                 <div><dt className="text-[#8b8a81]">Total</dt><dd className="text-[#1a1a18]">{formatMoney(order.total_inc_gst, 'AUD')}</dd></div>
                 <div><dt className="text-[#8b8a81]">Accepted</dt><dd className="text-[#1a1a18]">{formatDate(order.accepted_at || order.created_at)}</dd></div>

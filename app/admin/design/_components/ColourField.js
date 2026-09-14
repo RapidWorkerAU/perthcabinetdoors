@@ -6,16 +6,33 @@
 // the modal offers a "Match an existing finish" shortcut to copy any colour
 // already used elsewhere on the project.
 
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import ColourPickerModal from "../../../../components/ColourPickerModal";
+import { boardSummary } from "../../../../lib/pcd-colour-library";
 import { styleColourSrc } from "../../../../lib/pcd-colour-images";
 import styles from "../design.module.css";
+
+// WHAT EVERY COLOUR FIELD IN THE DESIGN TOOL NEEDS, PROVIDED ONCE.
+//
+// The "already used on this project" list and the tile images used to be handed
+// down to each field by hand, and two forms were never handed them: a panel or
+// a scribe opened a picker with no used colours button, and Material Defaults
+// showed a blank swatch. Provided here by the design tool itself, so a field
+// only has to be placed to get both. A field that is passed its own list (the
+// cleats, which only take one thickness) still uses that.
+export const DesignColourContext = createContext({ allItems: [], colourImages: null, current: null });
 
 // The clean subtitle the public tool shows: just the colour name, plus the
 // thickness (the one bit of extra detail the backend carries that the public
 // doesn't) — not the full material · finish · board chain.
-function styleSummary(style) {
+//
+// `detail` is for the screens that are ours, where the board is being checked
+// rather than chosen: who makes it, what colour, what finish, how thick. A
+// customer picking a colour does not need the brand and the finish spelt out
+// under every field, and somebody setting a whole job's defaults does.
+function styleSummary(style, detail) {
   if (!style) return null;
+  if (detail) return boardSummary(style) || null;
   const name = style.colour || style.material;
   if (!name) return null;
   return style.thickness_mm ? `${name} · ${style.thickness_mm}mm` : name;
@@ -29,21 +46,25 @@ export default function ColourField({
   label,
   value,
   onChange,
-  matchOptions = [],
+  matchOptions,    // omitted: every colour used on the project, from DesignColourContext
   matchHint,       // shown (muted) when nothing is set — e.g. "Matches carcass"
   canReset = false, // show a "Reset to match" action (for override fields)
   thicknessDefault = 16,
   hideCost = false, // for visual-only selections (e.g. the benchtop colour)
-  colourImages = null, // map for resolving the swatch image (optional)
+  colourImages,        // omitted: the tile images from DesignColourContext
   hex = null,          // a flat colour swatch fallback (e.g. benchtop flat colour)
   allowFlat = false,   // offer a "flat colour" option inside the picker modal
   onFlat = null,       // called with a hex when a flat colour is picked
   notice = null,       // when set, opening shows this message in the modal (no picker)
   onlyThicknessMm = null, // restrict to library colours stocked in this thickness
+  detail = false,      // spell the board out in full: ours to check, not theirs to pick
 }) {
   const [open, setOpen] = useState(false);
-  const summary = styleSummary(value) || (hex ? "Flat colour" : null);
-  const src = styleColourSrc(colourImages, value);
+  const shared = useContext(DesignColourContext);
+  const images = colourImages ?? shared.colourImages;
+  const options = matchOptions ?? collectMatchOptions(shared.allItems, shared.current);
+  const summary = styleSummary(value, detail) || (hex ? "Flat colour" : null);
+  const src = styleColourSrc(images, value);
 
   // A clean row — swatch · bold name · muted colour name · Change — matching
   // the public planner (no boxed card). Any extra config (door profile / edge
@@ -77,7 +98,7 @@ export default function ColourField({
           mode="admin"
           title={label}
           value={value}
-          matchOptions={matchOptions}
+          matchOptions={options}
           thicknessDefault={thicknessDefault}
           showCost={!hideCost}
           allowFlat={allowFlat}

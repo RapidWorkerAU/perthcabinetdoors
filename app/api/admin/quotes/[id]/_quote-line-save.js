@@ -1,10 +1,10 @@
 ﻿import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, edgingLinealMetres, edgingTotals, GST_RATE, inheritWhenZero, roundMoney } from "../../../../../lib/pcd-quote-utils";
-import { isEdgeProfileSelectionAvailable, profileTypesForSelection, profileNamesForSelection } from "../../../../../lib/quote-form-data";
+import { isEdgeProfileSelectionAvailable, savedProfileChecks } from "../../../../../lib/quote-form-data";
 import { createSupplierGuard } from "../../../../../lib/pcd-supplier-guard";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 import { normaliseHingeSide, readMiddles } from "../../../../../lib/pcd-hinges";
-import { EDGE_FINISHES, GRAIN_DIRECTIONS, SUPPLIED_BY, oneOf, panelUseFor } from "../../../../../lib/pcd-line-details";
+import { EDGE_FINISHES, GRAIN_DIRECTIONS, HOLE_TYPES, SUPPLIED_BY, bandedEdgeList, edgeFinishFromBanded, oneOf, panelUseFor } from "../../../../../lib/pcd-line-details";
 import { HARDWARE_TYPE_VALUES } from "../../../../../lib/pcd-hardware-types";
 import { isHardwareType } from "../../../../../lib/pcd-product-fields";
 
@@ -42,13 +42,35 @@ function dbNullableNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+/*
+ * WHO GETS TAPE.
+ *
+ * Decorative board and nothing else. A thermolaminate front is a vinyl skin
+ * pressed over the face and wrapped round the edges; a compact laminate panel
+ * is solid right through. Neither is taped, so an answer on either is an answer
+ * to a question we never asked and it is dropped rather than stored.
+ *
+ * Null, not an empty list. "Nobody was asked" and "none of the four" are
+ * different things and only one of them is an instruction to the bench.
+ */
+function bandedEdgesFor(line) {
+  if (String(line?.material || "").toLowerCase() !== "decorative board") return null;
+  if (!Array.isArray(line.banded_edges)) return null;
+  return bandedEdgeList(line.banded_edges);
+}
+
 export function quoteLineRow(line, quoteId, sortOrder) {
-  // Same idea as edge_mould below: profile_type/profile are material- and
-  // thickness-dependent option lists, so a stale value left over from a
-  // different material selection shouldn't be saved as if it were still a
-  // valid choice.
-  const profileTypeValid = !line.profile_type || profileTypesForSelection(line.material, line.thickness).includes(line.profile_type);
-  const profileValid = !line.profile || (profileTypeValid && profileNamesForSelection(line.profile_type, line.material, line.thickness).includes(line.profile));
+  // Same idea as edge_mould below: a profile left over from a different
+  // material shouldn't be saved as if it were still a valid choice. Only what
+  // is KNOWN to be wrong is refused, so a Laminex profile from the profile
+  // library survives. See savedProfileChecks.
+  const { typeOk: profileTypeValid, nameOk: profileValid } = savedProfileChecks({
+    profileType: line.profile_type,
+    profile: line.profile,
+    material: line.material,
+    thickness: line.thickness,
+    supplier: line.supplier_name,
+  });
 
   return {
     quote_id: quoteId,
@@ -119,7 +141,17 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     // screen can then show. See lib/pcd-line-details.js.
     panel_use: dbText(panelUseFor(line.product_type, line.panel_use)),
     grain_direction: dbText(oneOf(GRAIN_DIRECTIONS, line.grain_direction)),
-    edge_finish: dbText(oneOf(EDGE_FINISHES, line.edge_finish)),
+    // WHICH EDGES, exactly. Only a decorative board line is taped: a
+    // thermolaminate front is wrapped and a compact laminate panel is solid
+    // through, so neither is ever asked and neither carries an answer.
+    banded_edges: bandedEdgesFor(line),
+    // Derived when the exact answer is there, so the two can never disagree,
+    // and left as typed when it is not.
+    edge_finish: Array.isArray(line.banded_edges) && bandedEdgesFor(line)
+      ? dbText(edgeFinishFromBanded(line.banded_edges))
+      : dbText(oneOf(EDGE_FINISHES, line.edge_finish)),
+    // Which boring the hinge needs. Only on a line that is drilled.
+    hole_type: line.hinge_holes && HOLE_TYPES.includes(line.hole_type) ? line.hole_type : null,
     supplied_by: dbText(oneOf(SUPPLIED_BY, line.supplied_by)),
     // WHICH KIND OF HARDWARE. The catalogue row knows it and the line did not,
     // so the quote viewer could only ever say the bare word "Hardware" and the
@@ -146,6 +178,8 @@ const LATE_COLUMNS = [
   "panel_use",
   "grain_direction",
   "edge_finish",
+  "banded_edges",
+  "hole_type",
   "supplied_by",
   "hardware_type",
 ];
@@ -379,6 +413,47 @@ export async function loadQuoteLinesWithCabinets(supabase, quoteId) {
   }));
 }
 
+/**
+ * The money columns on a line that calculateQuoteLine OWNS.
+ *
+ * Every one of them is worked out from the line's inputs and the business
+ * defaults, so a recalculation that moves the header moves these too or the
+ * two stop agreeing. Nothing a person typed is in this list.
+ */
+const DERIVED_LINE_COLUMNS = [
+  "line_total_ex_gst",
+  "material_cost_ex_gst",
+  "markup_amount_ex_gst",
+  "unit_price_ex_gst",
+  "hinge_drilling_cost_ex_gst",
+  "hinge_supply_cost_ex_gst",
+  "hinge_drilling_qty",
+  "hinge_supply_qty",
+  "labour_hours",
+];
+
+/**
+ * Recalculate a quote, HEADER AND LINES TOGETHER.
+ *
+ * ── WHY THE LINES ARE WRITTEN TOO ────────────────────────────────────────────
+ *
+ * This used to compute the totals from the lines and save only the header. The
+ * calculation re-prices every line against the CURRENT business defaults on its
+ * way to a subtotal, so the moment a default changed, the header moved and the
+ * line rows did not. They then disagreed for ever, silently, and nothing read
+ * them side by side until a tax invoice tried to print.
+ *
+ * That is exactly what happened to PCD-O-2026-652917. It was quoted on 9 July
+ * with hinge drilling at $15 a hole and sent at $2,306.00. The drilling default
+ * later moved to $5. Marking the quote approved on 5 August recalculated the
+ * header to $2,106.00 and left nine line rows still priced at $15, so the
+ * order's own lines added up to $200 more than the order did, and the invoice
+ * refused to print. Correctly: a tax document whose lines do not sum to its
+ * total is not one to issue.
+ *
+ * So a line whose derived money moved is saved with the header, in the same
+ * call. The two cannot drift apart because they are no longer written apart.
+ */
 export async function recalculateQuoteTotals(supabase, quoteId, businessDefaults) {
   const [quote, businessDefaultsResult, lines] = await Promise.all([
     loadQuote(supabase, quoteId),
@@ -390,6 +465,27 @@ export async function recalculateQuoteTotals(supabase, quoteId, businessDefaults
     ...quote,
     business_defaults: businessDefaultsResult,
   });
+
+  // THE LINES FIRST. If one of these fails the header is not moved either, so a
+  // half-applied recalculation cannot leave the quote in the state this whole
+  // comment is about.
+  for (let index = 0; index < lines.length; index += 1) {
+    const stored = lines[index];
+    const calculated = totals.lines[index];
+    if (!stored?.id || !calculated) continue;
+
+    const patch = {};
+    for (const column of DERIVED_LINE_COLUMNS) {
+      const was = dbNumber(stored[column]);
+      const now = dbNumber(calculated[column]);
+      // A cent is the rounding of several figures, not a change worth a write.
+      if (Math.abs(was - now) > 0.005) patch[column] = now;
+    }
+    if (!Object.keys(patch).length) continue;
+
+    const { error } = await supabase.from("pcd_quote_line_items").update(patch).eq("id", stored.id);
+    if (error) throw error;
+  }
 
   const { data: savedQuote, error } = await supabase
     .from("pcd_quotes")

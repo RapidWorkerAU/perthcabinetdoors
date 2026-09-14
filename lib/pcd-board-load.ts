@@ -3,6 +3,7 @@ import { applyDismissals } from './pcd-board-dismissal'
 import { primaryIdIndex } from './pcd-customer-links'
 import { issueKindLabel } from './pcd-order-issues'
 import { outstandingOnOrder } from './pcd-board-money'
+import { orderPanels } from './pcd-order-stage'
 import { createSupabaseAdminClient } from './supabase/admin'
 
 // EVERYTHING WAITING ON US, READ ONCE.
@@ -41,22 +42,17 @@ type Supabase = ReturnType<typeof createSupabaseAdminClient>
 // list applies, or a job that is part supplier made can never be judged.
 const START_OF_LIST = new Set(['Not Started', 'Not Ordered'])
 
-function panelPlans(item: Json): Json[] {
-  const planning = item?.panel_planning
-  if (!planning || typeof planning !== 'object' || Array.isArray(planning)) return []
-  return Object.values(planning as Record<string, Json>).filter(
-    (value): value is Json => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-  )
-}
-
 // A panel's decisions come from its own plan first, then the line it sits on.
 // Both can be blank, which is the point: an undecided panel has to read as
 // undecided rather than falling back to a guess.
-function panelsOf(item: Json) {
-  const plans = panelPlans(item)
-  if (plans.length) return plans
-  return [{ fulfilment_method: item.fulfilment_method, status: item.status, production_stage: item.production_stage }]
-}
+//
+// THIS USED TO BE WRITTEN OUT HERE. It now comes from lib/pcd-order-stage.js,
+// which the orders list also reads panels through, because this is the rule
+// that has already given a wrong answer in production: a line's own `status`
+// column says "Not Ordered" long after the panels on it were ordered, since the
+// order page writes the real status into panel_planning. Two copies of that
+// rule is two chances to get it wrong again.
+const panelsOf = (item: Json): Json[] => orderPanels(item) as Json[]
 
 export async function loadBoard(supabase: Supabase) {
   // THE DATE HERE, NOT THE DATE IN LONDON.

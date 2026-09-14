@@ -24,6 +24,7 @@ import {
   lineSubLines,
 } from "../lib/pcd-quote-line-display.js";
 import { HARDWARE_TYPES, hardwareTypeLabel } from "../lib/pcd-hardware-types.js";
+import { hardwareLinePatch } from "../lib/pcd-hardware-line.js";
 import { quoteLineRow } from "../app/api/admin/quotes/[id]/_quote-line-save.js";
 
 const VIEWER = readFileSync(new URL("../app/(site)/quotes/QuoteApprovalClient.js", import.meta.url), "utf8");
@@ -147,7 +148,10 @@ test("a database without the column still saves the line", () => {
 });
 
 test("the editor records the kind when the item is picked, and clears it when it is not hardware", () => {
-  assert.match(EDITOR, /next\.hardware_type = item\.type \|\| "";/, "picking an item must record its kind");
+  // The fill lives in lib/pcd-hardware-line.js now, shared with the website
+  // request conversion, so the editor has to use it and it has to record the kind.
+  assert.match(EDITOR, /Object\.assign\(next, hardwareLinePatch\(item\)\)/, "picking an item must fill the line from the catalogue");
+  assert.equal(hardwareLinePatch({ id: "h1", type: "hinge", brand: "Blum", name: "Clip" }).hardware_type, "hinge");
   assert.match(EDITOR, /if \(patch\.product_type !== "Hardware"\) \{\s*\r?\n\s*next\.hardware_type = "";/);
 });
 

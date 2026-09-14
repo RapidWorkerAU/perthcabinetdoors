@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { IconArrowRight, IconEye, IconTrash } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { describeGaps, lineGaps } from '@/lib/pcd-quote-ready'
+import { hingeCustomerLines } from '@/lib/pcd-hinges'
+import { bandedEdgesText } from '@/lib/pcd-line-details'
 import { ActionMenu, ActionMenuItem } from '@/components/ui/ActionMenu'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -21,6 +23,9 @@ interface LineItem {
   id?:            string
   sort_order?:    number
   product_type?:  string
+  panel_use?:     string
+  banded_edges?:  string[]
+  hole_type?:     string
   product_name?:  string
   material?:      string
   thickness?:     string
@@ -198,7 +203,7 @@ function QuoteRequestPreviewModal({
             <table className="w-full text-[12px] min-w-[820px] border-collapse">
               <thead>
                 <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                  {['#', 'Type', 'Material', 'Thickness', 'W × H', 'Finish', 'Colour', 'Qty', 'Edge', 'Profile', 'Hinges'].map(col => (
+                  {['#', 'Type', 'Material', 'Thickness', 'H × W', 'Finish', 'Colour', 'Qty', 'Edge', 'Profile', 'Hinges'].map(col => (
                     <th key={col} className="px-2 py-[7px] text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] whitespace-nowrap">{col}</th>
                   ))}
                 </tr>
@@ -214,29 +219,51 @@ function QuoteRequestPreviewModal({
                   <React.Fragment key={line.id || i}>
                   <tr className={`hover:bg-[#f5f8f4] transition-colors ${line.notes ? '' : 'border-b border-[#edf4eb]'}`}>
                     <td className="px-2 py-[7px] text-[#8b8a81] text-[11px]">{i + 1}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap font-medium">{cleanValue(line.product_type || line.product_name)}</td>
+                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap font-medium">
+                      {cleanValue(line.panel_use || line.product_type || line.product_name)}
+                      {line.panel_use && (
+                        <span className="ml-1.5 text-[10px] font-normal text-[#8b8a81]">panel</span>
+                      )}
+                    </td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.material)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.thickness)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap font-mono text-[11px]">{sizeText(line)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.finish)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.colour)}</td>
                     <td className="px-2 py-[7px] text-[#1a1a18]">{line.qty || 1}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.edge_mould)}</td>
+                    <td className="px-2 py-[7px] text-[#1a1a18]">
+                      {cleanValue(line.edge_mould)}
+                      {/* WHICH EDGES ARE BANDED, in the same words the quote, the
+                          order and the customer's copy use. Anything less than
+                          all four is amber: it is the thing somebody has to
+                          notice before they cut. */}
+                      {bandedEdgesText(line.banded_edges) && (
+                        <span className={`block text-[10px] ${Array.isArray(line.banded_edges) && line.banded_edges.length < 4 ? 'text-[#8a6d0b]' : 'text-[#8b8a81]'}`}>
+                          {bandedEdgesText(line.banded_edges)}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap">
                       {[line.profile_type, line.profile].filter(Boolean).join(' / ') || '-'}
                     </td>
                     <td className="px-2 py-[7px]">
-                      <div className="flex flex-col gap-[2px] text-[11px]">
-                        <span className={line.hinge_holes ? 'text-[#2d5e28] font-medium' : 'text-[#8b8a81]'}>
-                          {line.hinge_holes ? '✓' : '✕'} Drill
-                        </span>
-                        <span className={line.hinge_supply ? 'text-[#2d5e28] font-medium' : 'text-[#8b8a81]'}>
-                          {line.hinge_supply ? '✓' : '✕'} Supply
-                        </span>
-                        {line.hinge_qty ? (
-                          <span className="text-[#8b8a81]">{line.hinge_qty} hinges</span>
-                        ) : null}
-                      </div>
+                      {/* THE DRILLING, in the words the customer's quote uses:
+                          how many, which side, which boring and where the cups
+                          go. Only a door is drilled, so anything else says so.
+                          This used to append "hinges" to a count that already
+                          said it ("2 hinges hinges"), and put the boring under
+                          the edge. Supply is gone: we drill, we do not supply. */}
+                      {line.product_type === 'Door' ? (
+                        <div className="flex flex-col gap-[2px] text-[11px]">
+                          {hingeCustomerLines(line).map((detail, index) => (
+                            <span key={detail} className={index === 0 && line.hinge_holes ? 'text-[#2d5e28] font-medium' : 'text-[#8b8a81]'}>
+                              {detail}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-[#8b8a81]">-</span>
+                      )}
                     </td>
                   </tr>
                   {/* The note becomes the line's description on the quote, and

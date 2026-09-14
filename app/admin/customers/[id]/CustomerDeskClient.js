@@ -14,6 +14,7 @@
 import PushDetailsModal from "../../_components/PushDetailsModal";
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
+import { IconArrowRight } from "@tabler/icons-react";
 import TermsEditor from "../../_components/TermsEditor";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
@@ -431,7 +432,7 @@ export default function CustomerDeskClient({ customerId, initial }) {
                 <div key={change.id} className="flex flex-wrap items-center gap-3 rounded-[7px] bg-white/70 px-3 py-2">
                   <span className="text-[12px] font-semibold text-[#8a7c52]">{customerFieldLabel(change.field)}</span>
                   <span className="text-[12.5px] text-[#9a978d] line-through">{change.current_value}</span>
-                  <span className="text-[12.5px] text-[#6b5209]">&rarr;</span>
+                  <IconArrowRight size={14} className="text-[#6b5209]" />
                   <span className="text-[12.5px] font-bold text-[#1a1a18]">{change.proposed_value}</span>
                   {change.source_label ? (
                     <span className="text-[11px] text-[#8a7c52]">from {change.source_label}</span>

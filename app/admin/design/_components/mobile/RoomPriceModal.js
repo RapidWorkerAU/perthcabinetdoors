@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import styles from "../../design.mobile.module.css";
+import { IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 import MobileModal from "./MobileModal";
 import { formatMoney } from "@/lib/pcd-quote-utils";
 import { itemPricing, categoryFor, PRICE_CATEGORIES } from "./cabinetPricing";
@@ -157,7 +158,7 @@ export default function RoomPriceModal({ items, roomItems = [], room = null, exc
                   {p.item.label || TYPE_LABELS[p.item.item_type] || p.item.item_type}
                   {cutCount > 0 && <span className={styles.priceScopeBadge}>{cutCount} excluded</span>}
                 </span>
-                <span className={styles.priceCabinetTotal}>{formatMoney(total)} {open ? "▲" : "▼"}</span>
+                <span className={styles.priceCabinetTotal} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{formatMoney(total)}{open ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}</span>
               </button>
               {open && (
                 <div className={styles.cutList}>

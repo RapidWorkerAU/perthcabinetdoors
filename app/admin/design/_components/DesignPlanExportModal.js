@@ -43,6 +43,9 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
   const singleRoom = roomList.length <= 1;
 
   const [mode, setMode] = useState("real");
+  // On by default: the whole point of an approval drawing is that the customer
+  // can see what they are approving.
+  const [callouts, setCallouts] = useState(true);
   const [step, setStep] = useState(singleRoom ? 2 : 1);
   const [selectedIds, setSelectedIds] = useState(() => roomList.map((r) => r.id));
   const [activeIdx, setActiveIdx] = useState(0);
@@ -144,12 +147,16 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
       for (const room of selectedRooms) {
         const roomItems = itemsByRoom.get(room.id) || [];
 
-        const planSvg = planRefs.current[room.id]?.querySelector("svg");
+        const planSvg = planRefs.current[room.id]?.querySelector("svg[data-plan-drawing]");
         const plan = planSvg ? await rasterizeSvg(planSvg, { scale: 2 }) : null;
 
         const elevations = [];
         for (const w of wallsWithCabinets(room.id)) {
-          const svg = elevRefs.current[`${room.id}:${w}`]?.querySelector("svg");
+          // THE DRAWING, BY NAME. "the first svg in there" was the 14px arrow
+          // on the toolbar's Floor Plan button, and every elevation page came
+          // out as one giant pixelated arrow.
+          const host = elevRefs.current[`${room.id}:${w}`];
+          const svg = host?.querySelector("svg[data-elevation-drawing]");
           if (!svg) continue;
           const image = await rasterizeSvg(svg, { scale: 2 });
           if (image) elevations.push({ wall: w, label: WALL_LABELS[w], image, widthMm: wallWidthMm(room, w) });
@@ -246,13 +253,28 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
           /* ── Step 2: per-room configuration ────────────────────────────── */
           <div style={{ padding: "16px 20px", overflowY: "auto" }}>
             <div style={sectionLabel}>Finish view (applies to every room)</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
               {COLOUR_MODES.map((m) => (
                 <button key={m.key} type="button" onClick={() => setMode(m.key)} style={{ ...chip, ...(mode === m.key ? chipActive : null) }} title={m.hint}>
                   {m.label}
                 </button>
               ))}
             </div>
+
+            {/* An approval drawing of closed doors says nothing about what the
+                customer is buying inside them. This puts the heights and the
+                names in the margins of every elevation. */}
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 9, marginBottom: 20, cursor: "pointer" }}>
+              <input type="checkbox" checked={callouts} onChange={(e) => setCallouts(e.target.checked)}
+                style={{ width: 15, height: 15, marginTop: 2, accentColor: "#1f6f4a", flexShrink: 0 }} />
+              <span>
+                <span style={{ fontSize: 13, color: "#e7e5e4", display: "block" }}>Heights and names on the elevations</span>
+                <span style={{ fontSize: 11.5, color: "#a8a29e" }}>
+                  Rails, shelves, pull-outs, drawer sizes and the clear opening between them, dimensioned in the
+                  margins so nothing is written over the drawing.
+                </span>
+              </span>
+            </label>
 
             {/* Room tabs — one live 3D view at a time; captures persist per room. */}
             {selectedRooms.length > 1 && (
@@ -396,6 +418,12 @@ export default function DesignPlanExportModal({ projectId, project, rooms, items
                       onItemChange={noop}
                       onItemSelect={noop}
                       interactive={false}
+                      // No toolbar on a page nobody clicks. It is not in the
+                      // capture anyway now that the drawing is asked for by
+                      // name, but rendering buttons onto an export stage only
+                      // gives the next mistake somewhere to hide.
+                      chrome={false}
+                      callouts={callouts}
                       colourImages={colourImages}
                       showColours={showColours}
                       lineOnly={lineOnly}

@@ -30,6 +30,7 @@ const door = (extra = {}) => ({
   hinge_holes: true,
   hinge_qty: "3 hinges",
   hinge_side: "Left",
+  hole_type: "Blum Inserta",
   hinge_from_bottom_mm: 100,
   hinge_from_top_mm: 100,
   ...extra,
@@ -150,7 +151,14 @@ test("the summary says how many, which side and where", () => {
   assert.deepEqual(lines, [
     "Hinge Holes Drilled: 3 quantity",
     "Hinged left",
-    "Hinge cups from bottom: 100, 1000, 1900mm",
+    // Which boring, with the drilling rather than in the notes: two machine
+    // setups, and a door bored for one will not take the other hinge.
+    "Hinge holes: Blum Inserta",
+    // Read back the way they are asked: bottom from the bottom, top from the
+    // top, the one between them from the bottom.
+    "Bottom hinge 100mm from bottom",
+    "2nd hinge 1000mm from bottom",
+    "Top hinge 100mm from top",
   ]);
 });
 
@@ -193,6 +201,16 @@ test("no handing on a drilled door is a problem, no measurements is not", () => 
   );
   assert.deepEqual(hingeProblems(door({ hinge_side: "" })), ["which side the hinges go"]);
   assert.deepEqual(hingeProblems(door({ hinge_qty: "" })), ["how many hinges per door"]);
+});
+
+// Two answers, Blum Inserta or a 35mm cup. There used to be a third, "your
+// standard", which told nobody anything; a door bored for one boring will not
+// take a hinge made for the other, so an unanswered one has to be asked for.
+test("a drilled door has to say which boring, an undrilled one is not asked", () => {
+  assert.deepEqual(hingeProblems(door({ hole_type: "" })), ["which kind of hinge hole"]);
+  // The form's own name for it reads the same.
+  assert.deepEqual(hingeProblems(door({ hole_type: undefined, holeType: "35mm cup only" })), []);
+  assert.deepEqual(hingeProblems({ hinge_holes: false, hole_type: "" }), []);
 });
 
 test("one end without the other is half a pattern", () => {

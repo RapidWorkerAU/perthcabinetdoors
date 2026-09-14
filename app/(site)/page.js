@@ -3,6 +3,74 @@ import PublicSiteNav from "./PublicSiteNav";
 import PublicButton from "@/components/public/PublicButton";
 import PublicFooter from "@/components/public/PublicFooter";
 import PublicSection from "@/components/public/PublicSection";
+import Link from "next/link";
+import { loadColourBand, spreadAcross } from "@/lib/pcd-colour-band";
+import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+
+// TWO WAYS TO ORDER, AND THE SITE KEEPS THEM APART FROM HERE ON.
+//
+// The fork, in plain words: buy a flat decorative board front outright, or put
+// anything at all on a quote list. Green for the one with a price, amber for
+// the one without, the same two colours as the Cart and My list buttons in the
+// bar above. See the "Two Paths, One Website" plan.
+//
+// IT SITS AFTER THE DIY SECTION, not directly under the hero. The hero already
+// leads with Get a Free Quote, so a fork a hundred pixels below it was the page
+// making the same offer twice in one screen. A section of reading in between is
+// what stops that.
+//
+// Each path shows its own basket, and those tiles are EXAMPLES and say so. See
+// .landing-ways in frontend.css for the rest of the reasoning.
+const ROUTES = [
+  {
+    tone: "buy",
+    tag: "Buy online",
+    title: "Standard doors and panels",
+    blurb:
+      "Polytec decorative board, 16mm and 18mm, cut to your sizes. Priced to the cent as you set it up, and paid for on the site.",
+    points: [
+      "See the price change as you size it",
+      "Pay on the site, made in about ten working days",
+      "Flat rate delivery anywhere in the Perth metro",
+    ],
+    href: "/products",
+    label: "Shop doors online",
+    basket: {
+      title: "Cart",
+      state: "Priced",
+      lines: [
+        ["2 x Flat door", "Coastal Oak Woodmatt, 717 x 450 mm", "$186.40", "linear-gradient(150deg,#cdb392,#a3835f)"],
+        ["1 x Flat panel", "Crisp White Legato, 2055 x 650 mm", "$142.10", "linear-gradient(150deg,#f4f2ec,#ddd8cd)"],
+        ["1 x Drawer front", "Notaio Walnut Woodmatt, 200 x 600 mm", "$44.30", "linear-gradient(150deg,#6b4c39,#43301f)"],
+      ],
+      foot: "Subtotal $372.80 inc GST. Delivery added at checkout.",
+    },
+  },
+  {
+    tone: "quote",
+    tag: "Get a quote",
+    title: "Everything else we make",
+    blurb:
+      "Thermolaminate, compact laminate, benchtops, whole kitchens. Anything with a profile pressed into it or a shape to it.",
+    points: [
+      "Build a list of what you need, no prices yet",
+      "Priced by hand, back to you within 1 to 3 business days",
+      "Nothing is charged until you accept the quote",
+    ],
+    href: "/request-quote",
+    label: "Start a quote request",
+    basket: {
+      title: "Quote list",
+      state: "To be quoted",
+      lines: [
+        ["6 x Door, shaker", "Classic White thermolaminate, 720 x 450 mm", null, "linear-gradient(150deg,#f6f4ef,#e3ded2)"],
+        ["1 x Benchtop", "Char Oak Ravine compact laminate", null, "linear-gradient(150deg,#4b3d33,#2c2421)"],
+        ["1 x New cabinet", "900 wide pantry, to suit the run", null, "linear-gradient(150deg,#a8a49c,#7d7a72)"],
+      ],
+      foot: "No prices anywhere. Worked out by hand and emailed to you.",
+    },
+  },
+];
 
 export const metadata = {
   title: "Perth Cabinet Doors | Custom Cabinet Doors, Panels & Drawer Fronts - Perth WA",
@@ -10,7 +78,13 @@ export const metadata = {
     "Perth's cabinet door specialists. Ready-made doors, panels and drawer fronts in Polytec, pre-drilled, hinged and shipped flat rate across Perth metro.",
 };
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  // 24 TILES SPREAD ACROSS THE WHOLE LIBRARY, not the first 24, which would be
+  // 24 shades of oak. See lib/pcd-colour-band.js.
+  const bandColours = spreadAcross(await loadColourBand(), 24);
+
   return (
     <main className="landing-page">
       <header className="landing-hero">
@@ -51,7 +125,8 @@ export default function HomePage() {
         <div><span />Bespoke cabinetry available</div>
       </section>
 
-      <section className="landing-section landing-split">
+      <section className="landing-ground-cream">
+        <div className="landing-section landing-split">
         <div>
           <p className="landing-label">For the DIY Renovator</p>
           <h2>
@@ -75,16 +150,88 @@ export default function HomePage() {
             contemporary finish, and front or side profiles for a more bespoke edge. Laminex and Formica
             options are also available on request.
           </p>
+          </div>
         </div>
       </section>
 
-      <section className="landing-dark-section" id="how-it-works">
-        <div className="landing-section landing-dark-inner">
+      {/* THE FORK. Dark green, full bleed, the same rail as everything else,
+          and far enough below the hero that the page is not making the same
+          offer twice in one screen. With the shop closed there is only one way
+          to order, so it is not a fork and does not pretend to be one. */}
+      {SHOP_ENABLED ? (
+        <section className="landing-ground-dark" aria-labelledby="two-ways">
+          <div className="landing-section landing-dark-inner">
+            <p className="landing-label">Two ways to order</p>
+            <h2 id="two-ways">
+              Buy it now, or <em>have it quoted</em>
+            </h2>
+            <p className="landing-lead">
+              Which one you are on comes down to a single question: is the front flat, in a Polytec decorative
+              board colour? If it is, the price is on the screen. If it is anything else, we work it out by
+              hand.
+            </p>
+            <div className="landing-ways">
+              {ROUTES.map((route) => (
+                <article className={`landing-way landing-way-${route.tone}`} key={route.tone}>
+                  <p className="landing-way-tag">{route.tag}</p>
+                  <h3>{route.title}</h3>
+                  <p>{route.blurb}</p>
+
+                  <div className={`landing-basket landing-basket-${route.tone}`}>
+                    <div className="landing-basket-head">
+                      <b>{route.basket.title}</b>
+                      <span>{route.basket.state}</span>
+                      <em>Example</em>
+                    </div>
+                    {route.basket.lines.map(([what, spec, amount, swatch]) => (
+                      <div className="landing-basket-row" key={what}>
+                        <i style={{ background: swatch }} aria-hidden="true" />
+                        <span>
+                          <b>{what}</b>
+                          <small>{spec}</small>
+                        </span>
+                        {amount ? (
+                          <span className="landing-basket-amount">{amount}</span>
+                        ) : (
+                          <span className="landing-basket-pending">Quote</span>
+                        )}
+                      </div>
+                    ))}
+                    <div className="landing-basket-foot">{route.basket.foot}</div>
+                  </div>
+
+                  <ul>
+                    {route.points.map((point) => (
+                      <li key={point}>{point}</li>
+                    ))}
+                  </ul>
+                  <Link className="landing-way-btn" href={route.href}>
+                    {route.label}
+                  </Link>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* MINT, NOT THE DARK GREEN IT USED TO BE. The band above is the fork, and
+          two dark bands touching read as one long dark stretch however different
+          the greens are. The four columns keep their structure; only the ink
+          flips. With the shop closed nothing dark sits above this, so it takes
+          the dark green back. */}
+      <section
+        className={SHOP_ENABLED ? "landing-ground-mint" : "landing-ground-dark"}
+        id="how-it-works"
+      >
+        {/* landing-dark-inner is what makes the heading cream, so it only goes
+            on when the ground is actually dark. */}
+        <div className={`landing-section${SHOP_ENABLED ? "" : " landing-dark-inner"}`}>
           <p className="landing-label">Simple Process</p>
           <h2>
             From Measurement to <em>Your Front Door</em> in Four Steps
           </h2>
-          <div className="landing-steps">
+          <div className={`landing-steps${SHOP_ENABLED ? " landing-steps-light" : ""}`}>
             <article>
               <p>Step 01</p>
               <h3>Measure Your Openings</h3>
@@ -158,11 +305,29 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="landing-section landing-style-section">
-        <p className="landing-label">Door Styles We Offer</p>
-        <h2>
-          From Classic Shaker to <em>Contemporary Slab</em>
-        </h2>
+      {/* THE COLOUR BAND. Full bleed, no container, straight after the sentence
+          about the size of the range. It is the biggest visual break on the
+          page and every tile in it is a real board out of the library. */}
+      {bandColours.length ? (
+        <section className="landing-ground-sand">
+          <div className="landing-colour-band" aria-hidden="true">
+            {bandColours.map((colour) => (
+              <span key={colour.name} style={{ backgroundImage: `url(${colour.imageUrl})` }} title={colour.name} />
+            ))}
+          </div>
+          <p className="landing-colour-note">
+            Over 270 colours across Polytec, Laminex and Formica &nbsp;&middot;&nbsp;{" "}
+            <Link href="/finishes">Browse the finishes</Link>
+          </p>
+        </section>
+      ) : null}
+
+      <section className="landing-ground-white">
+        <div className="landing-section landing-style-section">
+          <p className="landing-label">Door Styles We Offer</p>
+          <h2>
+            From Classic Shaker to <em>Contemporary Slab</em>
+          </h2>
         <div className="landing-style-grid">
           <article>
             <h3>Thermolaminate Shaker</h3>
@@ -192,10 +357,11 @@ export default function HomePage() {
               <img src="/images/kitchen-detail-landscape.jpg" alt="Detailed cabinet surface and edge profile" />
             </figure>
           </article>
+          </div>
         </div>
       </section>
 
-      <section className="landing-bespoke" id="bespoke">
+      <section className="landing-ground-mint" id="bespoke">
         <div className="landing-section">
           <p className="landing-label">Full-Service Cabinetry</p>
           <h2>
@@ -223,21 +389,22 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="landing-section">
-        <p className="landing-label">Why Perth Cabinet Doors</p>
-        <h2>
-          Competitive Cabinet Door Prices, <em>Backed by 20 Years of Expertise</em>
-        </h2>
-        <div className="landing-why-grid">
+      <section className="landing-ground-cream">
+        <div className="landing-section">
+          <p className="landing-label">Why Perth Cabinet Doors</p>
+          <h2>
+            Competitive Cabinet Door Prices, <em>Backed by 20 Years of Expertise</em>
+          </h2>
+          <div className="landing-why-grid">
           <article>
             <strong>20+</strong>
             <h3>Years of Trade Experience</h3>
             <p>Trade knowledge that means better advice, better construction and better results.</p>
           </article>
           <article>
-            <strong>100+</strong>
+            <strong>270+</strong>
             <h3>Colours &amp; Finishes</h3>
-            <p>Polytec colours across matte, gloss, textured and timber-look finishes.</p>
+            <p>Polytec, Laminex and Formica across matte, gloss, textured and timber-look finishes.</p>
           </article>
           <article>
             <strong>$</strong>
@@ -249,6 +416,7 @@ export default function HomePage() {
             <h3>Ready to Fit</h3>
             <p>Doors can be pre-drilled, packaged and delivered ready to install.</p>
           </article>
+          </div>
         </div>
       </section>
 

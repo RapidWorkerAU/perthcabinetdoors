@@ -118,7 +118,9 @@ const ALLOWED = new Set([
   // The preset ref, a cache key rather than a label. Its line moves when
   // anything is added above it in that file.
   "lib/pcd-ikea-presets.js:106",
-  "lib/pcd-door-utils.js:395",
+  // The door grouping key in computeDoorSizesForConfig. Moved from 395 when
+  // cabinetShelfHeightsMm was added above it.
+  "lib/pcd-door-utils.js:416",
 ]);
 
 test("no file builds a size string width first", () => {

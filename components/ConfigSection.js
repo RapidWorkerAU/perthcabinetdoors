@@ -5,6 +5,7 @@
 // section is open and passes `open` + `onToggle`, so opening one closes the rest.
 
 import { useTheme } from "./ConfigControls";
+import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 
 export default function ConfigSection({ title, summary, open, onToggle, children, theme = "light" }) {
   const t = useTheme(theme);
@@ -19,7 +20,7 @@ export default function ConfigSection({ title, summary, open, onToggle, children
         <span style={{ marginLeft: "auto", fontSize: 12, color: t.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 150 }}>
           {open ? "" : summary}
         </span>
-        <span style={{ color: t.soft, fontSize: 12, flexShrink: 0 }}>{open ? "▾" : "▸"}</span>
+        <span style={{ color: t.soft, display: "inline-flex", flexShrink: 0 }}>{open ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}</span>
       </button>
       {open && <div style={{ padding: "8px 12px 14px" }}>{children}</div>}
     </div>

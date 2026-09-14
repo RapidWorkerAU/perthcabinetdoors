@@ -1,9 +1,8 @@
 import Link from "next/link";
-import PublicArrowIcon from "@/components/public/PublicArrowIcon";
-import CabinetElevation from "@/components/public/CabinetElevation";
-import ColourStrip from "@/components/public/ColourStrip";
 import PublicFooter from "@/components/public/PublicFooter";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import PublicPaths from "@/components/public/PublicPaths";
+import { loadColourBand, spreadAcross } from "@/lib/pcd-colour-band";
+import { evenColumns } from "@/lib/pcd-grid-columns";
 import PublicSiteNav from "../PublicSiteNav";
 import styles from "../journey.module.css";
 
@@ -15,67 +14,6 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-// A short run of cabinets, drawn with the same elevation component the
-// configurator and the quote drawer use. Stands in for a planner screenshot
-// while being honest about what the tool actually draws.
-const PLANNER_RUN = [
-  {
-    width: 600,
-    height: 800,
-    arrangement: "rows",
-    pieces: [
-      { width: 600, height: 200, type: "Drawer front" },
-      { width: 600, height: 300, type: "Drawer front" },
-      { width: 600, height: 300, type: "Drawer front" },
-    ],
-  },
-  {
-    width: 900,
-    height: 800,
-    arrangement: "columns",
-    pieces: [
-      { width: 450, height: 800, type: "Door" },
-      { width: 450, height: 800, type: "Door" },
-    ],
-  },
-  {
-    width: 600,
-    height: 2000,
-    arrangement: "rows",
-    pieces: [
-      { width: 600, height: 1200, type: "Door" },
-      { width: 600, height: 800, type: "Door" },
-    ],
-  },
-];
-
-// Same colour source as /finishes and /kitchen-refresh, so the strip beside the
-// finishes link is real stock rather than decoration.
-async function loadColours() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase
-      .from("pcd_colour_library")
-      .select("name,finish_type,image_url,material_type,sort_order")
-      .eq("is_active", true)
-      .in("material_type", ["decorative board", "thermolaminate"])
-      .order("sort_order", { ascending: true });
-
-    if (error || !data?.length) return [];
-
-    const seen = new Set();
-    return data.reduce((rows, row) => {
-      if (!row.name || !row.finish_type || !row.image_url) return rows;
-      const key = `${row.finish_type}|${row.name}`;
-      if (seen.has(key)) return rows;
-      seen.add(key);
-      rows.push({ name: row.name, finish: row.finish_type, imageUrl: row.image_url });
-      return rows;
-    }, []);
-  } catch {
-    return [];
-  }
-}
 
 const ROOMS = [
   ["Kitchens", "Full kitchens including islands, pantries and appliance cabinetry."],
@@ -104,7 +42,10 @@ const PROCESS = [
 ];
 
 export default async function BespokePage() {
-  const colours = await loadColours();
+  // TWENTY FIVE, WHICH IS FIVE BY FIVE. The grid beside the copy is five
+  // columns of square tiles, so the count has to stay a multiple of five or the
+  // last row strands tiles. See lib/pcd-colour-band.js.
+  const colours = spreadAcross(await loadColourBand(), 25);
 
   return (
     <>
@@ -122,14 +63,10 @@ export default async function BespokePage() {
               build the whole thing - by cabinet makers with more than twenty years on the tools. Lay the
               room out yourself in our free 3D planner, or just tell us about it.
             </p>
-            <div className={styles.actions}>
-              <Link className={`${styles.button} ${styles.buttonPrimary}`} href="/design">
-                Plan Your Kitchen in 3D
-              </Link>
-              <Link className={`${styles.button} ${styles.buttonOutline}`} href="/request-quote">
-                Request a Quote
-              </Link>
-            </div>
+            {/* No buttons in the cream header. It is a title block, not a
+                hero, and this page closes on the two ways to get a price with
+                the planner beside them. The line below stays: it is a link to
+                another page rather than a call to action on this one. */}
             <p className={styles.note}>
               Not the whole room? <Link href="/kitchen-refresh">Look at a kitchen refresh instead</Link>.
             </p>
@@ -151,68 +88,37 @@ export default async function BespokePage() {
           </div>
         </section>
 
-        {/* The planner and the finishes library each used to be an outlined box
-            with one dark button, alongside a third for the refresh page. Three
-            identical containers doing unrelated jobs read as a stack of adverts,
-            and by the third nobody was reading them. Each now gets the treatment
-            it actually warrants: the planner is our differentiator so it gets a
-            feature with a visual, finishes sits beside real colour because that
-            is what sells it, and "not the whole room" is one line under the
-            header buttons - which is all it ever was. */}
-        <section className={styles.section}>
-          <div className={styles.wrap}>
-            <div className={styles.feature}>
-              <div>
-                <p className={styles.label}>Plan It Yourself</p>
-                <h2>See It Before You Commit</h2>
-                <p className={styles.lead}>
-                  Set your room size, put cabinets along the walls, try colours and look at the whole thing
-                  in 3D. It is free, there is no account, and it saves under its own link so you can come
-                  back to it. Send it through when you are happy and we will quote what you have drawn.
-                </p>
-                <div className={styles.actions}>
-                  <Link className={`${styles.button} ${styles.buttonPrimary}`} href="/design">
-                    Open the planner <PublicArrowIcon />
-                  </Link>
-                </div>
-              </div>
-              <div className={styles.featureVisual}>
-                <div className={styles.plannerMock} aria-hidden="true">
-                  {PLANNER_RUN.map((cabinet, index) => (
-                    <CabinetElevation
-                      key={index}
-                      cabinet={cabinet}
-                      pieces={cabinet.pieces}
-                      arrangement={cabinet.arrangement}
-                      className={styles.plannerCabinet}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
+        {/* THE PLANNER AND THE FINISHES, IN ONE SECTION.
+            Each used to be a feature row with its own filled button, which made
+            two calls to action in the middle of a page that closes on one. Both
+            are now links in a sentence, the colour band does the work the strip
+            did at full width, and the planner is offered again properly in the
+            closing block. */}
         <section className={`${styles.section} ${styles.sectionPanel}`}>
           <div className={styles.wrap}>
-            <div className={`${styles.feature} ${styles.featureFlip}`}>
-              <div>
-                <p className={styles.label}>Colours &amp; Finishes</p>
-                <h2>Over 270 Colours, and Every Profile We Cut</h2>
+            <div className={styles.colourSplit}>
+              <div className={styles.colourSplitText}>
+                <p className={styles.label}>Seeing It First</p>
+                <h2>Over 270 Colours, and the Room Drawn Before Anything Is Cut</h2>
                 <p className={styles.lead}>
-                  Polytec, Laminex and Formica across every finish range they make, plus every door profile
-                  and every edge detail. Filter by brand and finish, search by name, and see any of them
-                  larger before you decide.
+                  Set your room size in our <Link href="/design">free 3D planner</Link>, put cabinets along
+                  the walls, try colours and look at the whole thing in 3D. It is free, there is no account,
+                  and it saves under its own link so you can come back to it. Send it through when you are
+                  happy and we will quote what you have drawn.
                 </p>
-                <div className={styles.actions}>
-                  <Link className={`${styles.button} ${styles.buttonDark}`} href="/finishes">
-                    Browse finishes <PublicArrowIcon />
-                  </Link>
+                <p className={styles.lead}>
+                  Then choose from Polytec, Laminex and Formica across every finish range they make, plus
+                  every door profile and every edge detail. <Link href="/finishes">Browse the finishes</Link>{" "}
+                  to filter by brand, search by name and see any of them larger before you decide.
+                </p>
+              </div>
+              {colours.length ? (
+                <div className={styles.colourGrid} aria-hidden="true">
+                  {colours.map((colour) => (
+                    <span key={colour.name} style={{ backgroundImage: `url(${colour.imageUrl})` }} title={colour.name} />
+                  ))}
                 </div>
-              </div>
-              <div className={styles.featureVisual}>
-                <ColourStrip colours={colours} />
-              </div>
+              ) : null}
             </div>
           </div>
         </section>
@@ -221,7 +127,7 @@ export default async function BespokePage() {
           <div className={styles.wrap}>
             <p className={`${styles.label} ${styles.labelLight}`}>How It Runs</p>
             <h2>From First Conversation to Installed</h2>
-            <ol className={styles.process}>
+            <ol className={styles.process} style={{ "--cols": evenColumns(PROCESS.length) }}>
               {PROCESS.map(([title, detail]) => (
                 <li key={title}>
                   <strong>{title}</strong>
@@ -232,28 +138,28 @@ export default async function BespokePage() {
           </div>
         </section>
 
-        <section className={styles.cta}>
+        {/* TWO PATHS HERE, NOT THREE, AND THE MISSING ONE IS THE SHOP.
+            Somebody costing a whole kitchen is not the person buying a single
+            flat door, and a Buy now button on this page would read as though we
+            had misread the job. The block drops to two cards on its own when it
+            is only given two.
+
+            The planner and the $100 measure are in the lead rather than inside
+            a card, because the cards describe the three ways to buy from us and
+            those are the same three on every page. Anything true only of
+            bespoke is said here, where there is room to say it properly. */}
+        <section className={styles.closing}>
           <div className={styles.wrap}>
-            <h2>Tell Us About Your Project</h2>
-            <p className={`${styles.lead} ${styles.leadLight}`}>
-              Draw it in the planner, or send a room and a rough idea through the quote form - both reach us
-              the same way. If you want us on site to measure and work through the design, that is a $100
-              fee which comes off your order if you go ahead.
-            </p>
-            <div className={styles.actions}>
-              <Link className={`${styles.button} ${styles.buttonPrimary}`} href="/design">
-                Plan Your Kitchen in 3D
-              </Link>
-              <Link className={`${styles.button} ${styles.buttonOutlineLight}`} href="/request-quote">
-                Request a Quote
-              </Link>
-              <Link className={`${styles.button} ${styles.buttonOutlineLight}`} href="/contact">
-                Contact Us
-              </Link>
-            </div>
-            <p className={`${styles.note} ${styles.noteLight}`}>
-              20+ years cabinet making - Design, build and install - Supply-only available
-            </p>
+            <PublicPaths
+              onDark
+              heading="How do I get a price for bespoke cabinetry?"
+              lead="Every bespoke job is quoted by hand, because no two rooms are the same. Draw it in the free 3D planner or send the room through the quote form, and if you want us on site to measure and work through the design, that is a $100 fee which comes off your order if you go ahead."
+              paths={["quote", "ask"]}
+              note="20+ years cabinet making · Design, build and install · Supply-only available"
+            />
+            {/* A third planner link used to sit here, directly under a block
+                whose lead already offers the planner. Gone: the lead says it,
+                and the section above says it with the room drawn. */}
           </div>
         </section>
 

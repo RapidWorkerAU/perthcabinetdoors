@@ -18,6 +18,7 @@ import {
   panelDef,
 } from "../lib/pcd-panel-options.js";
 import { finishPanelVerticalSpanMm } from "../lib/pcd-finishpanel-utils.js";
+import { sideFillerGapMm, sideFillerWidthMm } from "../lib/pcd-fillerpanel-utils.js";
 
 const ROOM_H = 2400;
 
@@ -175,4 +176,25 @@ test("only panels with an upright face can be shaped", () => {
   assert.equal(panelTakesFrontProfile("top"), false);
   assert.equal(panelTakesFrontProfile("underside"), false);
   assert.equal(panelTakesFrontProfile("nonsense"), false);
+});
+
+// A side filler whose width was never typed used to draw nothing at all, in
+// plan, elevation and 3D alike: every view skips a zero-width filler. So you
+// switched the panel on, nothing appeared anywhere, and nothing said why. The
+// gap is measurable off the plan, so it is measured.
+test("a side filler with no width typed falls back to the measured gap", () => {
+  const room = { width_mm: 3000, depth_mm: 3000, height_mm: 2400 };
+  // A 600 base cabinet on the back wall at x=0, and a wall 3000 wide, so the
+  // gap to its right runs out to the next cabinet at x=900.
+  const cab   = { id: "a", room_id: "r", item_type: "base_cabinet", wall: "top", x_mm: 0,   width_mm: 600, depth_mm: 600, height_mm: 720, side_filler_right: true };
+  const other = { id: "b", room_id: "r", item_type: "base_cabinet", wall: "top", x_mm: 900, width_mm: 600, depth_mm: 600, height_mm: 720 };
+  const gap = sideFillerGapMm(cab, room, [cab, other], "right");
+  assert.equal(gap, 300);
+  // With nothing typed, that measured gap is what gets drawn and quoted.
+  assert.equal(sideFillerWidthMm(cab, room, [cab, other], "right"), 300);
+  // A typed width still wins over the measurement.
+  assert.equal(sideFillerWidthMm({ ...cab, side_filler_right_width_mm: 45 }, room, [cab, other], "right"), 45);
+  // A cabinet in ANOTHER room is not in the way, whatever its position.
+  const elsewhere = { ...other, id: "c", room_id: "other-room" };
+  assert.equal(sideFillerGapMm(cab, room, [cab, elsewhere], "right"), 2400);
 });

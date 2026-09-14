@@ -1,0 +1,238 @@
+/* THE THREE WAYS TO BUY, drawn the same way wherever they appear.
+   See PublicPaths.js for why the copy is not a prop. */
+
+.block {
+  margin: 0;
+}
+
+.heading {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 400;
+  line-height: 1.15;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+
+.heading em {
+  color: #4a7a42;
+  font-style: italic;
+}
+
+.lead {
+  color: #4a4a42;
+  font-size: 17px;
+  line-height: 1.7;
+  margin: 0 0 6px;
+  max-width: 68ch;
+}
+
+.cards {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 30px;
+}
+
+/* Two paths rather than three, on a page where the shop is not one of them.
+   Set from the count so a page can never ask for a layout it is not showing. */
+.cardsTwo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cardsOne {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 5px;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 22px;
+  text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.card:hover,
+.card:focus-visible {
+  border-color: #4a7a42;
+  box-shadow: 0 0 0 3px rgba(107, 158, 97, 0.12);
+}
+
+/* Which path this is, in the colour the whole site uses for it: the shop's
+   green, the quote list's amber, and plain ink for the one with no basket. */
+.kicker {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+.kickerShop {
+  color: #1f6f4a;
+}
+
+.kickerQuote {
+  color: #8a6d0b;
+}
+
+.kickerAsk {
+  color: #5a5a52;
+}
+
+.card strong {
+  color: #1a1a18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 21px;
+  font-weight: 400;
+}
+
+.card p {
+  color: #5a5a52;
+  flex: 1;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 9px 0 0;
+}
+
+.button {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  margin-top: 18px;
+  padding: 12px 20px;
+  width: fit-content;
+}
+
+.buttonShop {
+  background: #6b9e61;
+  color: #0d140e;
+}
+
+.card:hover .buttonShop {
+  background: #7ab070;
+}
+
+.buttonQuote {
+  background: #8a6d0b;
+  color: #ffffff;
+}
+
+.card:hover .buttonQuote {
+  background: #6f5709;
+}
+
+.buttonAsk {
+  border-color: #dbd8cc;
+  color: #1a1a18;
+}
+
+.card:hover .buttonAsk {
+  background: #f0ede4;
+}
+
+.note {
+  color: #8b8a81;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 20px 0 0;
+}
+
+.note a {
+  color: #4a7a42;
+}
+
+/* ── on a dark band ──────────────────────────────────────────────────────────
+   The three service pages all close on the dark green, so the block has to be
+   able to sit on it rather than force them to end on cream. The cards go
+   translucent rather than staying white, which is how every other card on a
+   dark band on this site is drawn: see .hingeGrid article in
+   journey.module.css. Three white panels on near black would read as a
+   different site. */
+.onDark .heading {
+  color: #f0ede4;
+}
+
+.onDark .heading em {
+  color: #a8c5a0;
+}
+
+.onDark .lead {
+  color: #9daf99;
+}
+
+.onDark .note {
+  color: #6f8a6b;
+}
+
+.onDark .note a {
+  color: #a8c5a0;
+}
+
+.onDark .card {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.onDark .card:hover,
+.onDark .card:focus-visible {
+  border-color: #a8c5a0;
+  box-shadow: 0 0 0 3px rgba(168, 197, 160, 0.12);
+}
+
+.onDark .card strong {
+  color: #f0ede4;
+}
+
+.onDark .card p {
+  color: #9daf99;
+}
+
+/* The shop's green and the quote list's amber both hold up on the dark ground,
+   so only the quiet third button changes: a light outline instead of a dark
+   one it would otherwise disappear into. */
+.onDark .kickerShop {
+  color: #a8c5a0;
+}
+
+.onDark .kickerQuote {
+  color: #e8d68f;
+}
+
+.onDark .kickerAsk {
+  color: #9daf99;
+}
+
+.onDark .buttonAsk {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #f0ede4;
+}
+
+.onDark .card:hover .buttonAsk {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 980px) {
+  .cards,
+  .cardsTwo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .cards,
+  .cardsTwo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

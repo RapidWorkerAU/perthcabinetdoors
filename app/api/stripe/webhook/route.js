@@ -4,7 +4,8 @@ import { sendPaymentReceivedSalesEmail } from "../../../../lib/pcd-payment-notif
 import { sendPaymentReceivedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { fromCents, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
 import { syncDepositFields } from "../../../../lib/pcd-order-deposit";
-import { finaliseDepositAcceptance, markCheckoutExpired } from "../../../../lib/pcd-deposit-gate";
+import { GATE_FLOWS, markCheckoutExpired } from "../../../../lib/pcd-deposit-gate";
+import { completeGateSession } from "../../../../lib/pcd-gate-complete";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -160,36 +161,14 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
 }
 
 /**
- * A deposit paid on a quote that has no order yet.
+ * A deposit paid on a quote that has no order yet, or a web order paid in full.
  *
  * Everything happens inside finaliseDepositAcceptance so that the webhook, the
- * thank you page and the sweep cannot disagree. See lib/pcd-deposit-gate.js.
+ * thank you page and the sweep cannot disagree, and the emails go with whoever
+ * did the work. See lib/pcd-deposit-gate.js and lib/pcd-gate-complete.js.
  */
 async function completeDepositGateSession(session, { baseUrl = "", request = null } = {}) {
-  const supabase = createSupabaseAdminClient();
-  const result = await finaliseDepositAcceptance(supabase, session, { request });
-  if (!result.ok || result.alreadyDone) return;
-
-  // Told the same way a deposit on an existing order is, so a customer's inbox
-  // does not depend on which flow their payment happened to take.
-  try {
-    const { data: order } = await supabase
-      .from("pcd_orders")
-      .select("*")
-      .eq("id", result.orderId)
-      .maybeSingle();
-    await sendPaymentReceivedSalesEmail({
-      payment: result.payment,
-      order,
-      quote: result.quote,
-      flow: "quote_deposit_gate",
-      adminOrderUrl: baseUrl && result.orderId ? `${baseUrl}/admin/orders/${result.orderId}` : "",
-    });
-    await sendPaymentReceivedToCustomer({ payment: result.payment, order, quote: result.quote });
-  } catch (emailError) {
-    // The money is in and the order exists. A refused email is a missing email.
-    console.error("Could not send deposit confirmation email.", emailError);
-  }
+  await completeGateSession(createSupabaseAdminClient(), session, { baseUrl, request });
 }
 
 export async function POST(request) {
@@ -198,7 +177,8 @@ export async function POST(request) {
     const event = verifyStripeWebhook(rawBody, request.headers.get("stripe-signature"));
     const session = event.data?.object || {};
     const baseUrl = siteUrl(request.url);
-    const isDepositGate = session?.metadata?.flow === "quote_deposit_gate";
+    // A deposit gate session, or a web order: both become an order here.
+    const isDepositGate = GATE_FLOWS.has(session?.metadata?.flow);
 
     if (event.type === "checkout.session.completed") {
       // The deposit gate sessions carry no order_id or payment_id, because

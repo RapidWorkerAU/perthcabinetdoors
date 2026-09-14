@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import TermsEditor from "../../_components/TermsEditor";
 import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-html";
-import { IconCheck, IconCopy, IconEdit, IconExternalLink, IconMessage, IconRuler, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
+import { IconArrowLeft, IconCheck, IconChevronRight, IconCopy, IconEdit, IconExternalLink, IconMessage, IconRuler, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
 import { checkSize } from "../../../../lib/pcd-size-limits";
@@ -13,6 +13,7 @@ import { hardwareTypeLabel } from "../../../../lib/pcd-hardware-types";
 import { createSupabaseBrowserClient } from "../../../../lib/supabase/client";
 import { COLOUR_SUPPLIERS, colourSelectionPatch, optionsFromColourFamily } from "../../../../lib/pcd-colour-library";
 import { asSelectionRows, useProfileLibrary } from "../../../../lib/use-profile-library";
+import { hardwareLinePatch, hardwareOptionLabel } from "../../../../lib/pcd-hardware-line";
 // What each kind of product is asked, shared with the customer's quote form so
 // the two cannot decide differently what a door needs. See lib/pcd-product-fields.js.
 import { fieldsForProductType, isCabinetType, isHardwareType } from "../../../../lib/pcd-product-fields";
@@ -35,6 +36,11 @@ import SiteMeasurePanel from "./SiteMeasurePanel";
 import { measuredQuoteLine } from "../../../../lib/pcd-site-measure";
 import { BOARD_ORDER_DEFAULTS } from "../../../../lib/pcd-board-order";
 import {
+  BANDED_EDGES,
+  GRAIN_DIRECTIONS,
+  HOLE_TYPES,
+  SUPPLIED_BY,
+  bandedEdgesText,
   itemTypeFromValue,
   itemTypeGroup,
   itemTypeLabel,
@@ -58,7 +64,7 @@ import {
 } from "../../../../lib/quote-form-data";
 // Handing and cup positions. Shared with the website form, the order and the
 // Excel sheet so none of them can answer differently about the same door.
-import { HINGE_SIDES, cupPositions, evenMiddles, hingeCount, readMiddles } from "../../../../lib/pcd-hinges";
+import { HINGE_SIDES, evenMiddles, hingeCount, hingePositionLines, readMiddles } from "../../../../lib/pcd-hinges";
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { Dropdown } from "@/components/ui/Dropdown";
@@ -134,6 +140,14 @@ const emptyLine = {
   hinge_middles_mm: [],
   // Which kind of hardware, on a hardware line. Blank on everything else.
   hardware_type: "",
+  // The answers beyond the board. Which edges get tape (null until somebody
+  // says, which is not the same as none), which hinge boring, the grain, and
+  // who is buying a hardware line. See lib/pcd-line-details.js.
+  banded_edges: null,
+  edge_finish: "",
+  hole_type: "",
+  grain_direction: "",
+  supplied_by: "",
   product_unit_cost_ex_gst: "",
   unit_cost_mode: "manual",
   unit_cost_source_id: null,
@@ -551,17 +565,30 @@ function hasHingeConfig(line) {
   return Boolean(line?.hinge_holes);
 }
 
+// WHO GETS TAPE. Decorative board and nothing else: thermolaminate is wrapped
+// and compact laminate is solid through. The same rule the saver enforces.
+function takesBanding(line) {
+  return String(line?.material || "").trim().toLowerCase() === "decorative board";
+}
+
+// A board line, as opposed to hardware, a benchtop or a cabinet: the lines
+// that have a grain to run one way or the other.
+function hasGrain(line) {
+  return Boolean(line?.material) && !["Hardware", "Benchtop", BASE_CABINET_TYPE].includes(line?.product_type);
+}
+
 function hingeConfigLines(line) {
   if (!hasHingeConfig(line)) return [];
-  const cups = cupPositions(line);
+  const positions = hingePositionLines(line);
   return [
     `Drilling: ${line.hinge_holes ? "Required" : "Not required"}`,
     ...(line.hinge_side ? [`Hinged ${String(line.hinge_side).toLowerCase()}`] : []),
+    ...(line.hole_type ? [line.hole_type] : []),
     `Qty: ${line.hinge_qty || "Per door"}`,
-    // Every cup from the bottom edge, which is the one datum the whole door
-    // shares. Said here as well as on the sheet so a wrong pattern is visible
+    // The positions the way they were asked: bottom from the bottom, top from
+    // the top. Said here as well as on the sheet so a wrong pattern is visible
     // on the quote rather than first noticed at the machine.
-    ...(cups ? [`Cups: ${cups.join(", ")}mm`] : ["Cups: standard positions"]),
+    ...(positions || ["Hinges: standard positions"]),
   ];
 }
 
@@ -1128,10 +1155,6 @@ const QUOTE_COL_MIN = 36
 // Drag handles appear between resizable columns only (indices 2-13); cols 0,1,15 are fixed utility cols
 const RESIZE_HANDLE_INDICES = new Set(Array.from({ length: QUOTE_COL_DEFAULTS.length - 3 }, (_, index) => index + 2))
 
-function hardwareOptionLabel(item) {
-  return [item.brand, item.name, item.sku ? `(${item.sku})` : ""].filter(Boolean).join(" ");
-}
-
 function hardwareOptionsFromRows(rows = []) {
   return rows
     .filter((item) => item?.is_active !== false)
@@ -1183,6 +1206,9 @@ export default function QuoteEditor({ quoteId }) {
   const [termsToAdd, setTermsToAdd] = useState([]);
   const [benchtopMaterialRows, setBenchtopMaterialRows] = useState([]);
   const [hingeModal, setHingeModal] = useState(null);
+  // Which edges get tape, and the edge profile beside it. Opened from the Edge
+  // profile cell the way the drilling opens from the hinge cell.
+  const [edgesModal, setEdgesModal] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [profileModal, setProfileModal] = useState(null);
   const [lineNoteModal, setLineNoteModal] = useState(null);
@@ -1531,8 +1557,9 @@ export default function QuoteEditor({ quoteId }) {
   );
 
   /**
-   * Look every board line up in the colour library again and apply the price it
-   * holds now.
+   * Look every priced line up in the option libraries again and apply the price
+   * each one holds now: boards from the Board Library, hardware from the
+   * Hardware Library, benchtops from the Benchtop Library.
    *
    * A rate used to be stamped on a line once, when somebody clicked a colour,
    * and never revisited. So a quote converted from a request had no rate at all,
@@ -1571,12 +1598,22 @@ export default function QuoteEditor({ quoteId }) {
       // matched to a library colour" was said about colours that were sitting
       // right there in the library, either made to order or with no cost
       // against them. People went looking for a missing colour and found one.
+            // WHICH library moved what. One number for three libraries reads as if
+      // the boards changed when it was the hardware that went up.
+      const by = payload.byLibrary || {};
+      const parts = [
+        by.board ? by.board + " board" : "",
+        by.hardware ? by.hardware + " hardware" : "",
+        by.benchtop ? by.benchtop + " benchtop" : "",
+      ].filter(Boolean);
+      const fromNote = parts.length ? " (" + parts.join(", ") + ")" : "";
+
       const mtoNote = payload.madeToOrderCount
         ? ` ${payload.madeToOrderCount} ${payload.madeToOrderCount === 1 ? "line is" : "lines are"} made to order, priced from the supplier's quote.`
         : "";
 
       if (!payload.changedCount && !payload.cabinetCount && !payload.unmatchedCount && !payload.madeToOrderCount) {
-        toast({ title: "Every line already matches the colour library." });
+        toast({ title: "Every line already matches the option libraries." });
       } else if (payload.unmatchedCount) {
         const reasons = [...new Set((payload.unmatched || []).map((line) => line.message))];
         toast({
@@ -1584,7 +1621,7 @@ export default function QuoteEditor({ quoteId }) {
           variant: "error",
         });
       } else {
-        toast({ title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced from the colour library.${cabinetNote}${mtoNote}` });
+        toast({ title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced from the option libraries${fromNote}.${cabinetNote}${mtoNote}` });
       }
     } catch (error) {
       toast({ title: error?.message || "Could not reprice this quote.", variant: "error" });
@@ -1846,6 +1883,7 @@ export default function QuoteEditor({ quoteId }) {
       hinge_holes: Boolean(line.hinge_holes),
       hinge_qty: line.hinge_qty || "",
       hinge_side: line.hinge_side || "",
+      hole_type: line.hole_type || "",
       hinge_from_bottom_mm: line.hinge_from_bottom_mm ?? "",
       hinge_from_top_mm: line.hinge_from_top_mm ?? "",
       hinge_middles_mm: readMiddles(line.hinge_middles_mm),
@@ -1870,6 +1908,7 @@ export default function QuoteEditor({ quoteId }) {
         // for a door with no holes in it.
         next.hinge_qty = "";
         next.hinge_side = "";
+        next.hole_type = "";
         next.hinge_from_bottom_mm = "";
         next.hinge_from_top_mm = "";
         next.hinge_middles_mm = [];
@@ -1893,6 +1932,7 @@ export default function QuoteEditor({ quoteId }) {
       hinge_holes: Boolean(hingeModal.hinge_holes),
       hinge_qty: hasRequirements ? hingeModal.hinge_qty : "",
       hinge_side: hasRequirements ? hingeModal.hinge_side : "",
+      hole_type: hasRequirements ? hingeModal.hole_type : "",
       hinge_from_bottom_mm: hasRequirements ? hingeModal.hinge_from_bottom_mm : "",
       hinge_from_top_mm: hasRequirements ? hingeModal.hinge_from_top_mm : "",
       // Whatever was typed, or the even spacing. Stored either way, so the
@@ -1906,6 +1946,42 @@ export default function QuoteEditor({ quoteId }) {
       updateSavedLine(hingeModal.lineIndex, (line) => ({ ...line, ...patch }));
     }
     setHingeModal(null);
+  }
+
+  function openEdgesModal(index) {
+    const line = index === editableLineIndex && editableLineDraft ? editableLineDraft : form.lines[index];
+    if (!line) return;
+    setEdgesModal({
+      lineIndex: index,
+      edge_mould: line.edge_mould || "",
+      // Nobody asked yet opens on all four, which is the standard and what the
+      // website starts on too, so saving always records a real answer.
+      banded_edges: Array.isArray(line.banded_edges) ? [...line.banded_edges] : [...BANDED_EDGES],
+    });
+  }
+
+  function toggleEdgesModalEdge(edge) {
+    setEdgesModal((current) => {
+      if (!current) return current;
+      const has = current.banded_edges.includes(edge);
+      return { ...current, banded_edges: has ? current.banded_edges.filter((e) => e !== edge) : [...current.banded_edges, edge] };
+    });
+  }
+
+  function saveEdgesModal() {
+    if (!edgesModal) return;
+    const line = edgesModal.lineIndex === editableLineIndex && editableLineDraft ? editableLineDraft : form.lines[edgesModal.lineIndex];
+    const patch = {
+      edge_mould: edgesModal.edge_mould,
+      // In the fixed order, whatever order they were clicked in.
+      banded_edges: takesBanding(line) ? BANDED_EDGES.filter((edge) => edgesModal.banded_edges.includes(edge)) : null,
+    };
+    if (edgesModal.lineIndex === editableLineIndex) {
+      setEditableLineDraft((current) => ({ ...(current || form.lines[edgesModal.lineIndex] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)), ...patch }));
+    } else {
+      updateSavedLine(edgesModal.lineIndex, (saved) => ({ ...saved, ...patch }));
+    }
+    setEdgesModal(null);
   }
 
   function openProfileModal(index) {
@@ -2058,32 +2134,9 @@ export default function QuoteEditor({ quoteId }) {
 
     if (Object.prototype.hasOwnProperty.call(patch, "hardware_catalogue_id")) {
       const item = hardwareRows.find((row) => row.id === patch.hardware_catalogue_id);
-      if (item) {
-        const label = hardwareOptionLabel(item);
-        next.product_type = "Hardware";
-        // WHICH KIND, carried onto the line rather than left in the catalogue.
-        // Without it the quote viewer can only say the bare word "Hardware",
-        // and the customer never sees whether it is a hinge or a handle.
-        next.hardware_type = item.type || "";
-        next.product_name = label;
-        next.description = item.description || label;
-        next.material = "";
-        next.supplier_name = "";
-        next.thickness = "";
-        next.finish = "";
-        next.colour = "";
-        next.edge_mould = "";
-        next.profile_type = "";
-        next.profile = "";
-        next.width_mm = item.width_mm || item.length_mm || "";
-        next.height_mm = item.height_mm || item.projection_mm || "";
-        next.product_unit_cost_ex_gst = Number(item.unit_cost_ex_gst || 0);
-        next.unit_cost_mode = "manual";
-        next.unit_cost_source_id = item.id;
-        next.unit_cost_source_label = label;
-        next.unit_cost_per_sqm_ex_gst = 0;
-        next.calculated_unit_cost_ex_gst = 0;
-      }
+      // The same fill a hardware line from a website request gets when it is
+      // converted. See lib/pcd-hardware-line.js.
+      if (item) Object.assign(next, hardwareLinePatch(item));
     }
 
     if (Object.prototype.hasOwnProperty.call(patch, "benchtop_material_id")) {
@@ -3135,9 +3188,9 @@ export default function QuoteEditor({ quoteId }) {
               className="h-[32px] px-3 bg-white border border-[#dbd8cc] text-[12px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors"
               onClick={repriceFromLibrary}
               disabled={isRepricing || isLocked}
-              title="Look every board line up in the colour library again and apply the current price"
+              title="Look every line up in the option libraries again — boards, hardware and benchtops — and apply the price each one holds now"
             >
-              {isRepricing ? 'Repricing...' : 'Reprice from colour library'}
+              {isRepricing ? 'Repricing...' : 'Reprice from option libraries'}
             </button>
             <button
               type="button"
@@ -3313,13 +3366,27 @@ export default function QuoteEditor({ quoteId }) {
                         {/* Material */}
                         <td className={td}>
                           {isEditable && isHardware ? (
-                            <QuoteImageCombobox
-                              placeholder="Hardware item"
-                              value={line.unit_cost_source_id || ""}
-                              displayValue={line.product_name || ""}
-                              options={hardwareOptions}
-                              onChange={option => updateProductLine(index, { hardware_catalogue_id: option.id || option.value })}
-                            />
+                            <>
+                              <QuoteImageCombobox
+                                placeholder="Hardware item"
+                                value={line.unit_cost_source_id || ""}
+                                displayValue={line.product_name || ""}
+                                options={hardwareOptions}
+                                onChange={option => updateProductLine(index, { hardware_catalogue_id: option.id || option.value })}
+                              />
+                              {/* WHO IS BUYING IT, under the item it is about. A
+                                  line the customer supplies is recorded but not
+                                  priced, and the customer is told so. */}
+                              <select
+                                aria-label={`Supplied by, line ${index + 1}`}
+                                className="mt-[3px] h-[20px] w-full rounded-[3px] border border-[#a8c5a0] bg-white px-[4px] text-[10px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
+                                value={line.supplied_by || ""}
+                                onChange={e => updateProductLine(index, { supplied_by: e.target.value })}
+                              >
+                                <option value="">Supplied by</option>
+                                {SUPPLIED_BY.map((who) => <option key={who}>{who}</option>)}
+                              </select>
+                            </>
                           ) : isEditable && isBenchtop ? (
                             <QuoteTileCombobox
                               placeholder="Select material"
@@ -3341,7 +3408,12 @@ export default function QuoteEditor({ quoteId }) {
                               onChange={option => updateProductLine(index, { material: option.name || option.label })}
                             />
                           ) : isHardware ? (
-                            <span className={v1}>{line.product_name || <span className="text-[#c5cdd8]">-</span>}</span>
+                            <span className={v1}>
+                              {line.product_name || <span className="text-[#c5cdd8]">-</span>}
+                              {line.supplied_by ? (
+                                <span className="mt-[2px] block text-[10px] text-[#8b8a81]">{line.supplied_by}</span>
+                              ) : null}
+                            </span>
                           ) : (
                             <span className={v1}>{line.material || <span className="text-[#c5cdd8]">-</span>}</span>
                           )}
@@ -3391,6 +3463,25 @@ export default function QuoteEditor({ quoteId }) {
                               {line.colour || <span className="text-[#c5cdd8]">-</span>}
                             </span>
                           )}
+
+                          {/* WHICH WAY THE GRAIN RUNS, under the colour it belongs
+                              to. Blank means nobody said; Standard means somebody
+                              did and chose the way we always run it. */}
+                          {hasGrain(line) && !cabinetOwnsBoard ? (
+                            isEditable ? (
+                              <select
+                                aria-label={`Grain direction, line ${index + 1}`}
+                                className="mt-[3px] h-[20px] w-full rounded-[3px] border border-[#a8c5a0] bg-white px-[4px] text-[10px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
+                                value={line.grain_direction || ""}
+                                onChange={e => updateProductLine(index, { grain_direction: e.target.value })}
+                              >
+                                <option value="">Grain</option>
+                                {GRAIN_DIRECTIONS.map((grain) => <option key={grain}>{grain}</option>)}
+                              </select>
+                            ) : line.grain_direction ? (
+                              <span className="mt-[2px] block text-[10px] text-[#8b8a81]">Grain: {line.grain_direction}</span>
+                            ) : null
+                          ) : null}
                         </td>
 
                         {/* Thickness */}
@@ -3552,8 +3643,23 @@ export default function QuoteEditor({ quoteId }) {
                               onChange={option => updateProductLine(index, { edge_mould: option.name || option.label })}
                             />
                           ) : (
-                            <span className={showEdges ? v1 : naText}>{showEdges ? line.edge_mould || <span className="text-[#c5cdd8]">-</span> : "N/A"}</span>
+                            <span className={showEdges || takesBanding(line) ? v1 : naText}>{showEdges ? line.edge_mould || <span className="text-[#c5cdd8]">-</span> : takesBanding(line) ? "" : "N/A"}</span>
                           )}
+
+                          {/* WHICH EDGES ARE BANDED, under the profile the way the
+                              drilling sits under the hinge count, so no column
+                              moves. Decorative board only, and on a Laminex board
+                              with no edge profiles to pick it is the whole cell. */}
+                          {takesBanding(line) ? (
+                            <button
+                              type="button"
+                              onClick={() => openEdgesModal(index)}
+                              title={bandedEdgesText(line.banded_edges) || "Set which edges are banded"}
+                              className="mt-[3px] block w-full truncate rounded-[3px] border border-[#a8c5a0] bg-white px-[5px] py-[2px] text-left text-[10px] text-[#2d5e28] hover:bg-[#edf4eb] transition-colors"
+                            >
+                              {bandedEdgesText(line.banded_edges) || (isEditable ? "Set banded edges" : "Edges not recorded")}
+                            </button>
+                          ) : null}
                         </td>
 
                         {/* Profile type */}
@@ -4023,7 +4129,7 @@ export default function QuoteEditor({ quoteId }) {
                 ))}
 
                 {/* ABS edging is worked out from the lines rather than typed:
-                    every decorative board piece contributes its perimeter, and
+                    every decorative board piece contributes its banded edges, and
                     that runs at the lineal metre rate in Business Defaults.
                     The box is still editable for a job the sum gets wrong, and
                     an empty box means "follow the lines" — which is why the
@@ -4462,9 +4568,9 @@ export default function QuoteEditor({ quoteId }) {
         {/* Desktop left sidebar nav */}
         <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 border-r border-[#edf4eb] bg-white">
           <div className="px-4 py-4 border-b border-[#edf4eb]">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">Quote</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">{form.source === "web_shop" ? "Web order quote" : "Quote"}</p>
             <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{form.quote_number || "Draft quote"}</p>
-            <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">{"<- Quotes"}</Link>
+            <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] flex items-center gap-[3px]"><IconArrowLeft size={13} />Quotes</Link>
           </div>
           {/* THE ORDER THESE ARE IN IS THE ORDER THE WORK HAPPENS IN.
               Build it, send it, close it, then the things you only ever look at,
@@ -4556,9 +4662,9 @@ export default function QuoteEditor({ quoteId }) {
           {activeSection === "" ? (
             <div className="flex flex-col">
               <div className="px-4 py-4 bg-white border-b border-[#edf4eb]">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[1px]">Quote</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[1px]">{form.source === "web_shop" ? "Web order quote" : "Quote"}</p>
                 <p className="text-[15px] font-semibold text-[#1a1a18]">{form.quote_number || "Draft quote"}</p>
-                <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">{"<- Quotes"}</Link>
+                <Link href="/admin/quotes" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] flex items-center gap-[3px]"><IconArrowLeft size={13} />Quotes</Link>
               </div>
               <div className="px-4 py-3 bg-white border-b border-[#edf4eb] flex flex-wrap gap-2">
                 {publicUrl && <a href={publicUrl} target="_blank" rel="noreferrer" className="h-[32px] px-3 border border-[#dbd8cc] rounded-[6px] text-[12px] font-medium text-[#1a1a18] flex items-center">View public</a>}
@@ -4574,7 +4680,7 @@ export default function QuoteEditor({ quoteId }) {
                   className="w-full flex items-center justify-between px-4 py-[14px] text-[14px] font-medium text-[#1a1a18] bg-white border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors"
                 >
                   {section.label}
-                  <span className="text-[#c5cdd8]">&gt;</span>
+                  <IconChevronRight size={16} className="text-[#c5cdd8]" />
                 </button>
               ))}
             </div>
@@ -4587,7 +4693,7 @@ export default function QuoteEditor({ quoteId }) {
                   className="w-[32px] h-[32px] flex items-center justify-center text-[#5a5a52] hover:text-[#1a1a18] transition-colors -ml-1"
                   aria-label={siteMeasureOpen ? "Back to quote items" : "Back to sections"}
                 >
-                  {"<-"}
+                  <IconArrowLeft size={18} />
                 </button>
                 <span className="text-[15px] font-semibold text-[#1a1a18]">
                   {siteMeasureOpen ? "Site measure" : sections.find((s) => s.key === activeSection)?.label}
@@ -4883,6 +4989,80 @@ export default function QuoteEditor({ quoteId }) {
           onImported={() => loadQuote()}
         />
       )}
+      {edgesModal && (() => {
+        const line = edgesModal.lineIndex === editableLineIndex && editableLineDraft ? editableLineDraft : form.lines[edgesModal.lineIndex];
+        const { showEdges, edgeOptions, supplier } = lineViewModel(line || {});
+        const banding = takesBanding(line);
+        return (
+        <Modal
+          open={true}
+          onClose={() => setEdgesModal(null)}
+          title="Edit Edges"
+          subtitle="Edge profile and which edges are banded"
+          size="md"
+          footer={
+            <>
+              <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setEdgesModal(null)}>
+                Cancel
+              </button>
+              <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={saveEdgesModal}>
+                Save edges
+              </button>
+            </>
+          }
+        >
+          <div className={quoteStyles.hingeConfigForm}>
+            {showEdges ? (
+              <label className={styles.fieldLabel}>
+                Edge profile
+                <QuoteImageCombobox
+                  className={quoteStyles.profileNameCombo}
+                  disabled={!supplier}
+                  placeholder={supplier ? "Edge profile" : "Pick a brand first"}
+                  value={edgesModal.edge_mould}
+                  options={edgeOptions}
+                  onChange={(option) => setEdgesModal((current) => (current ? { ...current, edge_mould: option.name || option.label } : current))}
+                />
+              </label>
+            ) : null}
+
+            {/* WHICH EDGES GET TAPE, one at a time, so the bench knows exactly
+                which to do. Decorative board only: a thermolaminate front is
+                wrapped and compact laminate is solid through. */}
+            {banding ? (
+              <div className={styles.fieldLabel}>
+                Banded edges
+                <div className={quoteStyles.edgeToggles}>
+                  {BANDED_EDGES.map((edge) => {
+                    const on = edgesModal.banded_edges.includes(edge);
+                    return (
+                      <button
+                        key={edge}
+                        type="button"
+                        aria-pressed={on}
+                        className={on ? `${quoteStyles.edgeToggle} ${quoteStyles.edgeToggleOn}` : quoteStyles.edgeToggle}
+                        onClick={() => toggleEdgesModalEdge(edge)}
+                      >
+                        {edge}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className={styles.tableMeta}>
+                  {bandedEdgesText(BANDED_EDGES.filter((edge) => edgesModal.banded_edges.includes(edge)))}
+                </span>
+              </div>
+            ) : (
+              <p className={styles.tableMeta}>
+                {line?.material
+                  ? `${line.material} is not edge banded, so there are no edges to choose.`
+                  : "Pick a material first."}
+              </p>
+            )}
+          </div>
+        </Modal>
+        );
+      })()}
       {hingeModal && (() => {
         // Shown only once there are two ends to space between, so a door with
         // three hinges and no measurements does not sprout empty boxes nobody
@@ -4959,6 +5139,23 @@ export default function QuoteEditor({ quoteId }) {
               >
                 <option value="">Not recorded</option>
                 {HINGE_SIDES.map((side) => <option key={side}>{side}</option>)}
+              </select>
+            </label>
+
+            {/* WHICH BORING. Blum Inserta or a bare 35mm cup: two machine
+                setups, and a door bored for one will not take the other hinge.
+                The customer picks it on the website; this is where it is
+                checked or corrected before it reaches the order. */}
+            <label className={styles.fieldLabel}>
+              Hole type
+              <select
+                className={styles.fieldInput}
+                value={hingeModal.hole_type}
+                onChange={(event) => updateHingeModal("hole_type", event.target.value)}
+                disabled={!hingeModal.hinge_holes}
+              >
+                <option value="">Not recorded</option>
+                {HOLE_TYPES.map((type) => <option key={type}>{type}</option>)}
               </select>
             </label>
 
@@ -5047,7 +5244,9 @@ export default function QuoteEditor({ quoteId }) {
                   onClick={() => { setEditableLineIndex(null); setEditableLineDraft(null) }}
                   aria-label="Go back"
                   className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0"
-                >{"<-"}</button>
+                >
+                  <IconArrowLeft size={18} />
+                </button>
                 <span className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
                   {cabinetOwnsBoard ? `Base cabinet ${idx + 1}` : `Edit line ${idx + 1}`}
                 </span>
@@ -5192,6 +5391,44 @@ export default function QuoteEditor({ quoteId }) {
                             options={edgeOptions}
                             onChange={option => updateLine(idx, 'edge_mould', option.name || option.label)}
                           />
+                        </div>
+                      )}
+                      {/* The same Edges window the desktop row opens. */}
+                      {takesBanding(line) && (
+                        <div className="col-span-2">
+                          <span className={mfl}>Banded edges</span>
+                          <button type="button" onClick={() => openEdgesModal(idx)}
+                            className="inline-flex items-center gap-2 text-[13px] font-medium text-[#2d5e28] border border-[#a8c5a0] rounded-[6px] px-3 h-[44px] bg-white hover:bg-[#edf4eb] transition-colors w-full justify-between"
+                          >
+                            <span>{bandedEdgesText(line.banded_edges) || 'Set banded edges'}</span>
+                            <span>open</span>
+                          </button>
+                        </div>
+                      )}
+                      {hasGrain(line) && (
+                        <div className="col-span-2">
+                          <span className={mfl}>Grain direction</span>
+                          <select
+                            className="w-full h-[44px] rounded-[6px] border border-[#a8c5a0] bg-white px-3 text-[14px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
+                            value={line.grain_direction || ""}
+                            onChange={e => updateProductLine(idx, { grain_direction: e.target.value })}
+                          >
+                            <option value="">Not recorded</option>
+                            {GRAIN_DIRECTIONS.map((grain) => <option key={grain}>{grain}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {isHardware && (
+                        <div className="col-span-2">
+                          <span className={mfl}>Supplied by</span>
+                          <select
+                            className="w-full h-[44px] rounded-[6px] border border-[#a8c5a0] bg-white px-3 text-[14px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
+                            value={line.supplied_by || ""}
+                            onChange={e => updateProductLine(idx, { supplied_by: e.target.value })}
+                          >
+                            <option value="">Not recorded</option>
+                            {SUPPLIED_BY.map((who) => <option key={who}>{who}</option>)}
+                          </select>
                         </div>
                       )}
                       {showProfiles && (

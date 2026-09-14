@@ -8,6 +8,13 @@ import { customerNoticeFor, reportSendFailures } from "../../../lib/pcd-notify";
 
 const lineSchema = z.object({
   productType: z.string().optional(),
+  // Which kind of panel, when the line is a Panel. Optional, because the design
+  // tool posts to this same endpoint and has never sent one.
+  panelUse: z.string().optional(),
+  // Which edges get tape, and which hinge boring. Both optional: the design
+  // tool posts here too and has never sent either.
+  bandedEdges: z.array(z.string()).optional(),
+  holeType: z.string().optional(),
   productName: z.string().optional(),
   material: z.string().optional(),
   thickness: z.string().optional(),
@@ -32,6 +39,22 @@ const lineSchema = z.object({
   hingeHoles: z.boolean().optional(),
   hingeSupply: z.boolean().optional(),
   hingeQty: z.string().optional(),
+  /* WHERE THE HINGES GO. quoteRequestLineRow has read all four of these since
+   * the columns were added, and the schema never declared them, so zod stripped
+   * them on the way in and every request line landed with hinge_side null and
+   * no cup positions however carefully somebody had measured.
+   *
+   * Numbers or the strings a form field actually produces, because an input
+   * gives you "110" and not 110. */
+  /* The brand of carcass this line is for. Asked once for the whole job on the
+   * request form, so the conversion falls back to the job level answer, but the
+   * design tool can send a different one per item and the column is there to
+   * hold it. Declared so the builder that reads it actually receives it. */
+  cabinetBrand: z.string().optional(),
+  hingeSide: z.string().optional(),
+  hingeFromBottomMm: z.union([z.number(), z.string()]).optional(),
+  hingeFromTopMm: z.union([z.number(), z.string()]).optional(),
+  hingeMiddlesMm: z.array(z.union([z.number(), z.string()])).optional(),
   notes: z.string().optional(),
 });
 

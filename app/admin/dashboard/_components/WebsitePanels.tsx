@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react'
 import DayBars, { type DayPoint } from './DayBars'
 import type { Detail } from './detail'
 
@@ -106,7 +107,10 @@ function Change({ value, invert = false }: { value: number | null; invert?: bool
   const tone = value === 0 ? 'text-[#8b8a81]' : good ? 'text-[#2d5e28]' : 'text-[#a32b21]'
   return (
     <span className={`text-[10.5px] font-semibold ${tone}`}>
-      {value > 0 ? '▲' : value < 0 ? '▼' : ''}{Math.abs(value)}%
+      <span className="inline-flex items-center gap-[2px]">
+        {value > 0 ? <IconTrendingUp size={11} /> : value < 0 ? <IconTrendingDown size={11} /> : null}
+        {Math.abs(value)}%
+      </span>
     </span>
   )
 }

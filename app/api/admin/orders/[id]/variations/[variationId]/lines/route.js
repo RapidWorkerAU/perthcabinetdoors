@@ -12,6 +12,8 @@ import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } f
 import { getBusinessDefaults } from "../../../../../../../../lib/pcd-business-defaults";
 import { normaliseHingeSide, readMiddles } from "../../../../../../../../lib/pcd-hinges";
 import { createSupplierGuard } from "../../../../../../../../lib/pcd-supplier-guard";
+import { LINE_ANSWER_KEYS, validatedLineAnswers } from "../../../../../../../../lib/pcd-line-details";
+import { lineAnswers } from "../../../../../../../../lib/pcd-order-from-quote";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -100,6 +102,9 @@ function originalItemSnapshot(sourceLine) {
     hinge_from_bottom_mm: sourceLine.hinge_from_bottom_mm ?? null,
     hinge_from_top_mm: sourceLine.hinge_from_top_mm ?? null,
     hinge_middles_mm: sourceLine.hinge_middles_mm || [],
+    // The kind of panel, the edges, the boring, the grain and who supplies
+    // it, so a variation that changes one of them shows a before and after.
+    ...lineAnswers(sourceLine),
     qty: sourceLine.qty ?? 1,
     line_total_ex_gst: sourceLine.line_total_ex_gst ?? 0,
   };
@@ -252,6 +257,16 @@ function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSI
     original_item_snapshot: action === "change" || action === "remove" ? originalItemSnapshot(sourceLine) : null,
     notes: cleanText(payload.notes),
   };
+
+  // THE ANSWERS BEYOND THE BOARD. What the form sent, falling back to the line
+  // being changed like every field above, so a variation that only moves a
+  // price does not wipe the banded edges off the door. Checked by the same
+  // rules as a quote line. See validatedLineAnswers.
+  const asked = { product_type: row.product_type, material: row.material, hinge_holes: row.hinge_holes };
+  for (const key of LINE_ANSWER_KEYS) {
+    asked[key] = Object.prototype.hasOwnProperty.call(payload, key) ? payload[key] : sourceLine?.[key];
+  }
+  Object.assign(row, validatedLineAnswers(asked));
 
   // A hand-typed unit cost wins over the board rate, same as a quote line.
   const manualUnitCost = payload.unit_cost_mode === "manual" ? toNumber(payload.product_unit_cost_ex_gst) : 0;

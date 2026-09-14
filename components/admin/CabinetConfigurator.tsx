@@ -1,7 +1,13 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
-import { COLOUR_MATERIALS, materialTypeForKey, materialLabelForType, optionsFromColourFamily } from "../../lib/pcd-colour-library"
+import {
+  COLOUR_MATERIALS,
+  materialTypeForKey,
+  materialLabelForType,
+  optionsFromColourFamily,
+  thicknessOptionsForMaterial,
+} from "../../lib/pcd-colour-library"
 // The admin's one searchable picker with a swatch per option. See the note
 // above colourEmptyMessage for why this file no longer has its own.
 import { QuoteImageCombobox } from "./QuoteComboboxes"
@@ -11,6 +17,7 @@ import { calculateCabinetTotals, normalizeCabinetConfig } from "../../lib/pcd-ca
 // separately, and only two of the three knew about a corner cabinet's second leg.
 import { cabinetDescription } from "../../lib/pcd-cabinet-from-design"
 import CabinetSchematic from "./CabinetSchematic"
+import { IconArrowLeft, IconChevronRight } from "@tabler/icons-react"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -200,12 +207,48 @@ function ToggleGroup({ value, options, onChange }: { value: number; options: num
   )
 }
 
-function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
+/**
+ * A caption above a control.
+ *
+ * THIS IS A div, AND IT MUST STAY ONE. It used to be a <label> wrapping its
+ * children, and that broke the carcass and shelf colour pickers completely.
+ *
+ * A <label> forwards every click inside it to its labeled control, which the
+ * HTML spec defines as the first LABELABLE descendant: button, input, meter,
+ * output, progress, select or textarea. The colour picker's trigger is a
+ * <div role="combobox">, which is not on that list. The "Lookup" button sitting
+ * beside it is. So clicking the colour field pressed Lookup instead: the
+ * dropdown never opened, and Lookup answered "Pick the carcass finish and
+ * colour first" about the field you were trying to use to pick one. The field
+ * could not be operated at all, by anybody, ever.
+ *
+ * The same trap was live on every thickness row, where ToggleGroup renders
+ * buttons: clicking the caption "Carcass thickness" silently pressed 16mm.
+ *
+ * Wrapping is the problem, not labels. Pass `htmlFor` with the id of a real
+ * native control and the caption becomes a proper <label> pointing AT it, which
+ * is the association that works without swallowing clicks meant for anything
+ * else in the row.
+ */
+function Field({
+  label,
+  children,
+  wide = false,
+  htmlFor,
+}: {
+  label: string
+  children: React.ReactNode
+  wide?: boolean
+  htmlFor?: string
+}) {
+  const caption = "text-[10px] font-medium text-[#5a5a52]"
   return (
-    <label className={`flex flex-col gap-[3px] ${wide ? "col-span-2" : ""}`}>
-      <span className="text-[10px] font-medium text-[#5a5a52]">{label}</span>
+    <div className={`flex flex-col gap-[3px] ${wide ? "col-span-2" : ""}`}>
+      {htmlFor
+        ? <label className={caption} htmlFor={htmlFor}>{label}</label>
+        : <span className={caption}>{label}</span>}
       {children}
-    </label>
+    </div>
   )
 }
 
@@ -545,16 +588,50 @@ export default function CabinetConfigurator({
     })
   }
 
+  // THE THICKNESSES A BOARD ACTUALLY COMES IN, not a hardcoded 16 and 18.
+  //
+  // THIS IS WHY THE COLOUR PICKER COULD COME UP EMPTY. The toggle offered 16
+  // and 18 whatever the board was, and the colour list is fetched for the
+  // material AND the thickness together. The library holds thermolaminate at
+  // 18mm and 21mm and compact laminate at 5mm, 13mm and 18mm, and there is not
+  // one row of either at 16mm, which is what a new cabinet starts on. So
+  // picking thermolaminate left the picker with nothing to offer and no way to
+  // reach the thickness that would have filled it, and the Lookup button then
+  // said "pick the finish and colour first" about a list that was empty.
+  //
+  // An unknown material falls back to 16 and 18 rather than to nothing, so a
+  // cabinet carrying some older spelling still has a usable toggle.
+  function thicknessesFor(material: unknown): number[] {
+    const offered = thicknessOptionsForMaterial(String(material || ""))
+      .map((label: string) => parseFloat(label))
+      .filter((n: number) => Number.isFinite(n) && n > 0)
+    return offered.length ? offered : [16, 18]
+  }
+
+  const carcassThicknesses = thicknessesFor(config.carcass_material)
+  const shelfThicknesses = thicknessesFor(config.shelf_material || config.carcass_material)
+
   function updateCarcassMaterialType(rawValue: string) {
     // Stored Title Case, the way a quote line spells a material, because this
     // is written straight back onto the line when the cabinet is saved. The
     // shelf keeps the design tool's lowercase spelling; materialDisplay copes
     // with both, and the library lookup normalises either.
     const value = rawValue ? materialLabelForType(rawValue) : ""
+    // The thickness moves with the board. Changing to thermolaminate while the
+    // toggle sat on 16 left the cabinet asking the library for a thickness that
+    // board is not made in, and the colour list came back empty. Only snapped
+    // when the thickness on the cabinet is not one this board comes in, so a
+    // board that offers the thickness already set keeps it.
+    const offered = thicknessesFor(value)
+    const nextThickness = offered.includes(numberValue(config.carcass_thickness_mm))
+      ? numberValue(config.carcass_thickness_mm)
+      : offered[0]
+
     setConfig(current => ({
       ...current,
       carcass_material:      value,
       back_panel_material:   value,
+      carcass_thickness_mm:  nextThickness,
       carcass_finish:        "",
       carcass_colour:        "",
       carcass_colour_id:     null,
@@ -563,7 +640,13 @@ export default function CabinetConfigurator({
       // The shelf follows the box unless it has been told not to. Left behind,
       // it would claim a colour from a material it is no longer made of.
       ...(sameShelfMaterial
-        ? { shelf_material: value, shelf_finish: "", shelf_colour: "", cost_per_sqm_shelf: 0 }
+        ? {
+            shelf_material: value,
+            shelf_thickness_mm: nextThickness,
+            shelf_finish: "",
+            shelf_colour: "",
+            cost_per_sqm_shelf: 0,
+          }
         : {}),
     }))
   }
@@ -590,9 +673,17 @@ export default function CabinetConfigurator({
   }
 
   function updateShelfMaterialType(value: string) {
+    // Same snap as the carcass: a shelf board asked for at a thickness it is
+    // not made in has no colours to offer.
+    const offered = thicknessesFor(value)
+    const nextThickness = offered.includes(numberValue(config.shelf_thickness_mm))
+      ? numberValue(config.shelf_thickness_mm)
+      : offered[0]
+
     setConfig(current => ({
       ...current,
       shelf_material:     value,
+      shelf_thickness_mm: nextThickness,
       shelf_finish:       "",
       shelf_colour:       "",
       cost_per_sqm_shelf: 0,
@@ -814,7 +905,7 @@ export default function CabinetConfigurator({
           </select>
         </Field>
         <Field label="Carcass thickness">
-          <ToggleGroup value={numberValue(config.carcass_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("carcass_thickness_mm", v)} />
+          <ToggleGroup value={numberValue(config.carcass_thickness_mm)} options={carcassThicknesses} onChange={v => updateConfig("carcass_thickness_mm", v)} />
         </Field>
         <Field label="Carcass finish and colour" wide>
           <div className="flex items-start gap-2">
@@ -838,7 +929,7 @@ export default function CabinetConfigurator({
             <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("carcass")}>Lookup</button>
           </div>
         </Field>
-        <Field label="Cost per sqm ex GST">
+        <Field label="Cost per sqm ex GST" htmlFor={carcassCostId}>
           <input id={carcassCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_carcass} onChange={e => updateConfig("cost_per_sqm_carcass", e.target.value)} />
         </Field>
         <Field label="Labour hours per cabinet">
@@ -862,7 +953,7 @@ export default function CabinetConfigurator({
           </select>
         </Field>
         <Field label="Shelf thickness">
-          <ToggleGroup value={numberValue(config.shelf_thickness_mm)} options={[16, 18]} onChange={v => updateConfig("shelf_thickness_mm", v)} />
+          <ToggleGroup value={numberValue(config.shelf_thickness_mm)} options={shelfThicknesses} onChange={v => updateConfig("shelf_thickness_mm", v)} />
         </Field>
         <Field label="Shelf finish and colour" wide>
           <div className="flex items-start gap-2">
@@ -885,7 +976,7 @@ export default function CabinetConfigurator({
             <button type="button" className={tw.smBtn} onClick={() => lookupMaterialCost("shelf")}>Lookup</button>
           </div>
         </Field>
-        <Field label="Shelf cost per sqm">
+        <Field label="Shelf cost per sqm" htmlFor={shelfCostId}>
           <input id={shelfCostId} className={tw.input} type="number" min="0" step="0.01" value={config.cost_per_sqm_shelf} onChange={e => updateConfig("cost_per_sqm_shelf", e.target.value)} />
         </Field>
       </>
@@ -1201,7 +1292,7 @@ export default function CabinetConfigurator({
           aria-label="Go back"
           className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0"
         >
-          ←
+          <IconArrowLeft size={18} />
         </button>
         <span className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
           Cabinet configurator
@@ -1451,7 +1542,7 @@ export default function CabinetConfigurator({
                   className="w-full flex items-center justify-between px-4 py-[14px] border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4] transition-colors"
                 >
                   <span className="text-[14px] font-medium text-[#1a1a18]">{tab.label}</span>
-                  <span className="text-[#c5cdd8] text-[16px]">&gt;</span>
+                  <IconChevronRight size={17} className="text-[#c5cdd8]" />
                 </button>
               ))}
             </div>
@@ -1484,7 +1575,7 @@ export default function CabinetConfigurator({
                 className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-[#9ba7b8] hover:bg-[#eef0f4] hover:text-[#3d4d5f] transition-colors flex-shrink-0"
                 aria-label="Back to sections"
               >
-                ←
+                <IconArrowLeft size={18} />
               </button>
               <span className="flex-1 text-center text-[15px] font-semibold text-[#1a1a18]">
                 {CONFIG_TABS.find(t => t.key === mobileSectionOpen)?.label}
@@ -1520,7 +1611,7 @@ export default function CabinetConfigurator({
                 onClick={() => setMobileSectionOpen(null)}
                 className="h-[44px] w-full bg-[#eef0f4] border border-[#dde1e9] rounded-[8px] text-[14px] font-medium text-[#3d4d5f] hover:bg-[#dde1e9] transition-colors"
               >
-                ← Back
+                <span className="inline-flex items-center justify-center gap-[6px]"><IconArrowLeft size={16} />Back</span>
               </button>
             </div>
           </div>

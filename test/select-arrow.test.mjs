@@ -19,10 +19,13 @@ import path from "node:path";
 const ROOT = path.join(import.meta.dirname, "..");
 const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
 
+// The configurator's own stylesheet was on this list. That configurator is gone:
+// /ikea-kaboodle is a page of published sizes now rather than six questions and
+// a 3D preview, so the file it used has been deleted. journey.module.css is what
+// dresses those pages instead, and it takes its place here.
 const CSS = [
   "app/(site)/contact/contact.module.css",
-  "app/(site)/products/products.module.css",
-  "app/(site)/ikea-kaboodle/configurator.module.css",
+  "app/(site)/journey.module.css",
   "app/(site)/finishes/finishes.module.css",
   "app/(site)/launch/launch.module.css",
   "app/(site)/frontend.css",
@@ -34,7 +37,10 @@ const JSX = [
   "app/(site)/request-quote/RequestQuoteFormClient.js",
   "app/(site)/finishes/FinishesBrowser.js",
   "app/(site)/launch/page.js",
-  "app/(site)/products/ProductsLibraryClient.js",
+  // The shop replaced the old product catalogue at /products.
+  "app/(site)/products/[slug]/ShopProductClient.js",
+  "app/(site)/cart/CartClient.js",
+  "app/(site)/checkout/CheckoutClient.js",
   "components/AddItemRail.js",
 ];
 

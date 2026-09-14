@@ -1,0 +1,171 @@
+/* The "you might be on the wrong page" strip. See PublicCrossLink.js. */
+
+.strip {
+  align-items: center;
+  background: #f8f4ef;
+  border: 1px solid #dbd8cc;
+  border-radius: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+  padding: 18px 22px;
+}
+
+/* The shop version wears the shop's green, so the two strips on the quote form
+   are not read as the same offer twice. */
+.stripShop {
+  background: #f2f7f1;
+  border-color: #c9dcc3;
+}
+
+/* INSIDE SOMETHING THAT IS ALREADY A BOX.
+   On /request-quote these two are grouped into one container at the foot of the
+   page, and a bordered strip inside a bordered panel is two boxes saying one
+   thing. The strip drops its own edges and ground there and becomes a column of
+   the panel, keeping only its type and its button. The green stays on the shop
+   button, which is where it was doing the work. */
+.stripBare,
+.stripBare.stripShop {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+/* A BARE STRIP IS A COLUMN, SO IT STACKS: question, answer, then the button at
+   the foot of it.
+   Beside the text is what the bordered strip does, and it only works across a
+   full page width. Dropped into a column of a two column panel it stranded the
+   button halfway up a narrow ragged paragraph, which is what made the block
+   look broken.
+   margin-top: auto pushes each button to the bottom of its own column, and the
+   grid stretches every column to the tallest, so two answers of different
+   lengths still land their buttons on one line. */
+.stripBare {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 0;
+  height: 100%;
+}
+
+.stripBare .body {
+  flex: 0 0 auto;
+  margin-bottom: 18px;
+}
+
+.stripBare .button {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+/* ── ON A DARK BAND ───────────────────────────────────────────────────────────
+   /request-quote closes on the site dark green, the same as every other page,
+   so the strip has to be able to sit on it. Every colour below is measured
+   against #1c2b1e rather than picked by eye:
+
+     heading and question  #f0ede4  12.69 : 1   AAA
+     answer                #9daf99   6.38 : 1   AA
+     outline button text   #f0ede4  12.69 : 1   AAA
+     shop button text      #0d140e on #6b9e61, 5.95 : 1   AA
+
+   Same four values PublicPaths uses on the same ground, so two blocks on one
+   dark band cannot read as two different sites. */
+.stripDark .body strong {
+  color: #f0ede4;
+}
+
+.stripDark .body p {
+  color: #9daf99;
+}
+
+/* The outline button goes translucent rather than staying white. A white button
+   on near black is the brightest thing on the band and would outrank the green
+   one beside it, which is the wrong way round: the shop is the one with prices
+   on it. */
+.stripDark .button {
+  background: none;
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #f0ede4;
+}
+
+.stripDark .button:hover,
+.stripDark .button:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #a8c5a0;
+}
+
+/* Two classes deep, to beat .stripShop .button above it whatever the order. */
+.stripDark.stripShop .button {
+  background: #6b9e61;
+  border-color: #6b9e61;
+  color: #0d140e;
+}
+
+.stripDark.stripShop .button:hover,
+.stripDark.stripShop .button:focus-visible {
+  background: #7ab070;
+  border-color: #7ab070;
+}
+
+.body {
+  flex: 1 1 320px;
+}
+
+.body strong {
+  color: #1a1a18;
+  display: block;
+  font-size: 14.5px;
+  line-height: 1.4;
+}
+
+.body p {
+  color: #5a5a52;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 4px 0 0;
+}
+
+.button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dbd8cc;
+  border-radius: 3px;
+  color: #1a1a18;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  padding: 12px 20px;
+  text-decoration: none;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.button:hover,
+.button:focus-visible {
+  background: #f0ede4;
+  border-color: #a8a495;
+}
+
+.stripShop .button {
+  background: #6b9e61;
+  border-color: #6b9e61;
+  color: #0d140e;
+}
+
+.stripShop .button:hover,
+.stripShop .button:focus-visible {
+  background: #7ab070;
+  border-color: #7ab070;
+}
+
+@media (max-width: 680px) {
+  .strip {
+    padding: 16px 18px;
+  }
+
+  .button {
+    width: 100%;
+  }
+}

@@ -115,7 +115,7 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     prefix: '$',
     suffix: '/lm',
     step:   '0.1',
-    hint:   'Per lineal metre, ex GST, including your uplift. Charged on the edges of every decorative board line on a quote.',
+    hint:   'Per lineal metre, ex GST, including your uplift. Charged on the banded edges of every decorative board line on a quote, all four when nobody said.',
   },
   // Everything below prefills the box of the same name on a NEW quote and stays
   // editable per job. Leave one at 0 and that quote box simply starts empty, so
@@ -127,6 +127,16 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     prefix: '$',
     step:   '1',
     hint:   'Ex GST. Starting value for the Consumables box on a new quote.',
+  },
+  // The web shop's only delivery option. A web order has nobody to type a
+  // delivery figure onto it, so this is what every one of them is charged.
+  {
+    group:  'Workshop fees',
+    key:    'web_delivery_metro_ex_gst',
+    label:  'Web shop delivery, Perth metro',
+    prefix: '$',
+    step:   '1',
+    hint:   'Ex GST. The flat delivery charge on every order bought on the website. Postcodes 6000 to 6199 only; anywhere else is asked to email for freight.',
   },
   {
     group:  'Workshop fees',

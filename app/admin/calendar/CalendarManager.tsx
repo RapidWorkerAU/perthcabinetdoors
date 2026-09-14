@@ -391,6 +391,7 @@ export default function CalendarManager() {
       customerId: null,
       customerName: '',
       orderId: null,
+      quoteId: null,
       siteAddress: '',
       notes: '',
       addToOutlook: true,
@@ -409,6 +410,7 @@ export default function CalendarManager() {
       customerId: booking.customerId,
       customerName: booking.customerName,
       orderId: booking.orderId,
+      quoteId: booking.quoteId,
       siteAddress: booking.siteAddress,
       notes: booking.notes,
       addToOutlook: booking.syncState !== 'skipped',
@@ -433,7 +435,9 @@ export default function CalendarManager() {
       minutes: defaultMinutesFor(kind),
       customerId: run.customerId,
       customerName: run.customerName,
+      // A production bar is always an order, so this one is never a quote.
       orderId: run.orderId,
+      quoteId: null,
       siteAddress: run.suburb,
       notes: '',
       addToOutlook: true,
@@ -1437,6 +1441,14 @@ function DetailBody({
           <Field
             label="About"
             value={<Link className="font-semibold text-[#2d5e28] underline" href={`/admin/orders/${booking.orderId}`}>Open the order</Link>}
+          />
+        )}
+        {/* A measure is booked against a quote, so a booking that says it is
+            about one has to get you there the same way an order does. */}
+        {!booking.orderId && booking.quoteId && (
+          <Field
+            label="About"
+            value={<Link className="font-semibold text-[#2d5e28] underline" href={`/admin/quotes/${booking.quoteId}`}>Open the quote</Link>}
           />
         )}
         {(booking.contactName || booking.contactMobile) && (

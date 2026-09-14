@@ -10,6 +10,7 @@ import {
   resolveColourSrc,
   colourKey,
   slotColourFields,
+  unresolvedColourSelections,
   cabinetHasDoors,
 } from "../lib/pcd-colour-images.js";
 
@@ -103,4 +104,44 @@ test("colours without a src are skipped, not mapped to undefined", () => {
     { material: "decorative board", groups: [{ label: "Matt", colours: [{ name: "NoImage" }] }] },
   ]);
   assert.equal(resolveColourSrc(map, { material: "decorative board", finish: "Matt", colour: "NoImage" }, "carcass"), "");
+});
+
+// A colour library row with no tile image is the quiet failure that makes the
+// whole "show colours" toggle look broken: nothing is painted and nothing says
+// why. This names the gap so the tool can say it out loud.
+test("colours the library has no tile for are reported, not swallowed", () => {
+  const map = buildColourImageMap([
+    { material: "decorative board", groups: [
+      { label: "Woodmatt", colours: [{ name: "Boston Oak", src: "/oak.jpg" }] },
+      // In the library, but with no picture uploaded against it.
+      { label: "Natural", colours: [{ name: "Daintree" }] },
+    ] },
+  ]);
+  const items = [
+    { material: "decorative board", finish: "Natural", colour: "Daintree",
+      front_type: "doors", door_style: { material: "decorative board", finish: "Natural", colour: "Daintree" } },
+    { material: "decorative board", finish: "Woodmatt", colour: "Boston Oak",
+      front_type: "doors", door_style: { material: "decorative board", finish: "Woodmatt", colour: "Boston Oak" } },
+  ];
+  const missing = unresolvedColourSelections(map, items);
+  assert.deepEqual(missing.map((c) => c.label), ["Daintree · Natural"]);
+  // A colour that HAS a tile never appears, and neither does an unset slot.
+  assert.equal(unresolvedColourSelections(map, [items[1]]).length, 0);
+  assert.equal(unresolvedColourSelections(map, [{}]).length, 0);
+  // No map at all is "not loaded yet", not "everything is missing".
+  assert.equal(unresolvedColourSelections(null, items).length, 0);
+});
+
+// A side filler is infill beside a cabinet end, so it follows THAT end's
+// colour. Both sides used to share one lookup, which ignored a per-end
+// override and painted the infill in the door colour instead.
+test("each side filler follows its own end panel colour", () => {
+  const item = {
+    material: "board", finish: "matt", colour: "White",
+    front_type: "doors", door_style: { material: "board", finish: "matt", colour: "Oak" },
+    end_left_style: { material: "board", finish: "matt", colour: "Charcoal" },
+  };
+  assert.equal(slotColourFields(item, "endpanel_left").colour, "Charcoal");
+  // The right end has no board of its own, so it still falls through to the doors.
+  assert.equal(slotColourFields(item, "endpanel_right").colour, "Oak");
 });

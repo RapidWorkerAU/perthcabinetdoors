@@ -44,6 +44,10 @@ import { panelFrontProfile } from "../../../../lib/pcd-panel-options";
 import { rangehoodParts } from "../../../../lib/pcd-appliance-utils";
 import { topPanelSideExtensionMm, topPanelThicknessMm } from "../../../../lib/pcd-toppanel-utils";
 import { shelfRailConfig, CLEAT_THICKNESS_MM } from "../../../../lib/pcd-shelf-rail-utils";
+// What is fitted inside a cabinet, and the shape of it. The elevation draws
+// from the same two modules, so the two views cannot disagree about a rail.
+import { accessoryShowsInRoom, readAccessories } from "../../../../lib/pcd-cabinet-accessories";
+import { accessoryParts, partColour, partIsMetal } from "../../../../lib/pcd-accessory-shapes";
 import {
   computeBenchtopRun,
   benchtopDepthMm,
@@ -54,8 +58,8 @@ import {
   benchtopWaterfallSides,
   benchtopRunWaterfallEnds,
 } from "../../../../lib/pcd-benchtop-utils";
-import { fillerPanelGapMm } from "../../../../lib/pcd-fillerpanel-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, openBaySections, bayShelfHeightsMm, frontPanelMode, frontPanelThicknessMm, FRONT_PANEL_MODE_INSET, FRONT_PANEL_MODE_OVER } from "../../../../lib/pcd-door-utils";
+import { fillerPanelGapMm, sideFillerWidthMm } from "../../../../lib/pcd-fillerpanel-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, openBaySections, bayShelfHeightsMm, cabinetShelfHeightsMm, frontPanelMode, frontPanelThicknessMm, FRONT_PANEL_MODE_INSET, FRONT_PANEL_MODE_OVER } from "../../../../lib/pcd-door-utils";
 
 const M = 1000; // mm → metres
 
@@ -118,8 +122,18 @@ function useMonoColor(fallback) {
 // useTexture is a hook and can't be called conditionally — the branch picks
 // which component (and therefore which hooks) to mount.
 function PanelMaterial({ src, ...props }) {
-  if (src) return <TexturedMaterial src={src} {...props} />;
-  return <meshStandardMaterial {...props} />;
+  if (!src) return <meshStandardMaterial {...props} />;
+  // Per PANEL, not per scene. One tile that will not load used to take the
+  // whole room back to flat colours through the outer boundary, so a single
+  // colour with a bad picture made the colour toggle look like it did nothing
+  // at all. Now only the panel wearing that colour loses its finish.
+  return (
+    <TextureErrorBoundary key={src} fallback={<meshStandardMaterial {...props} />}>
+      <Suspense fallback={<meshStandardMaterial {...props} />}>
+        <TexturedMaterial src={src} {...props} />
+      </Suspense>
+    </TextureErrorBoundary>
+  );
 }
 function TexturedMaterial({ src, ...props }) {
   const texture = useTexture(src);
@@ -133,11 +147,11 @@ function TexturedMaterial({ src, ...props }) {
   return <meshStandardMaterial {...props} color="#ffffff" map={texture} />;
 }
 
-// If a tile fails to load (a missing image, or one whose host doesn't send the
-// CORS headers WebGL textures require), useTexture rejects into Suspense.
-// Without a boundary that would blank the entire 3D view; instead we fall back
-// to the flat-colour scene. Keyed on the toggle by the caller so flipping
-// colours off — or on again — resets it and re-attempts.
+// If a tile fails to load, useTexture rejects into Suspense. Without a boundary
+// that would blank the 3D view, so one of these sits around each panel's
+// material (that panel falls back to its flat colour) and one more around the
+// whole scene as a backstop. Keyed by the caller so flipping colours off, or
+// on again, resets it and re-attempts.
 class TextureErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { failed: false }; }
   static getDerivedStateFromError() { return { failed: true }; }
@@ -1470,19 +1484,27 @@ function EndPanelMesh({ item, room, W, D }) {
 // (so run-to-floor / run-to-ceiling carry through), but the board's along-wall
 // dimension is the gap width, not a thin thickness. Rendered in the filler
 // amber so it reads as infill rather than a finished end.
-function SideFillerMesh({ item, room, W, D }) {
-  const src = usePanelSrc(item, "endpanel");
+function SideFillerMesh({ item, room, items, W, D }) {
+  // Each side reads its OWN end-panel colour. Both sides used to take the
+  // shared "endpanel" colour, which quietly ignored an end that had been given
+  // a colour of its own and painted the infill beside it in the door colour
+  // instead. Both still fall through to the finishing panel and then the doors,
+  // so a cabinet with no per-end override looks exactly as it did.
+  const srcLeft  = usePanelSrc(item, "endpanel_left");
+  const srcRight = usePanelSrc(item, "endpanel_right");
   const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   if (item.item_type === "obstruction" || (!item.side_filler_left && !item.side_filler_right)) return null;
   const { leftEdge, rightEdge } = panelSideEdges(item);
   const spanFor = (panelKey) => finishPanelVerticalSpanMm(item, room?.height_mm, panelKey);
   const rect = cabinetLegs(item, W, D)[0]?.rect;
   if (!rect) return null;
-  const lw = Number(item.side_filler_left_width_mm) || 0;
-  const rw = Number(item.side_filler_right_width_mm) || 0;
+  // Falls back to the MEASURED gap beside the cabinet when no width has been
+  // typed, matching the plan and the elevation.
+  const lw = sideFillerWidthMm(item, room, items, "left");
+  const rw = sideFillerWidthMm(item, room, items, "right");
   const boards = [];
-  if (item.side_filler_left && lw > 0)  boards.push({ key: "side_filler_left", edge: leftEdge, rect: edgeBoardRect(rect, leftEdge, lw) });
-  if (item.side_filler_right && rw > 0) boards.push({ key: "side_filler_right", edge: rightEdge, rect: edgeBoardRect(rect, rightEdge, rw) });
+  if (item.side_filler_left && lw > 0)  boards.push({ key: "side_filler_left", edge: leftEdge, rect: edgeBoardRect(rect, leftEdge, lw), src: srcLeft });
+  if (item.side_filler_right && rw > 0) boards.push({ key: "side_filler_right", edge: rightEdge, rect: edgeBoardRect(rect, rightEdge, rw), src: srcRight });
   return (
     <>
       {boards.filter((b) => b && b.rect).map((b, i) => {
@@ -1492,12 +1514,12 @@ function SideFillerMesh({ item, room, W, D }) {
           <group key={i}>
             <mesh position={box.position}>
               <boxGeometry args={box.size} />
-              <PanelMaterial src={src} color={color} roughness={0.55} />
+              <PanelMaterial src={b.src} color={color} roughness={0.55} />
             </mesh>
             <PanelFaceProfile
               rect={b.rect} bottomMm={bottomMm} topMm={topMm}
               faceWall={OPPOSITE_WALL[b.edge]}
-              profile={panelFrontProfile(item, b.key)} src={src}
+              profile={panelFrontProfile(item, b.key)} src={b.src}
             />
           </group>
         );
@@ -2186,14 +2208,10 @@ function SelectionHighlight({ item, W, D }) {
 // Shelves inside an OPEN cabinet (no door front) — horizontal boards at their
 // configured heights, so an open shelving unit reads correctly. On a doored
 // cabinet the shelves are hidden behind the front, so they're not drawn.
+// The shared rule, so the count decides how many are drawn. See
+// cabinetShelfHeightsMm in lib/pcd-door-utils.js.
 function shelfHeightsMm(item) {
-  const qty = Number(item.shelf_qty) || 0;
-  if (!qty) return [];
-  if (Array.isArray(item.shelf_heights_mm) && item.shelf_heights_mm.length) {
-    return item.shelf_heights_mm.map((h) => Number(h) || 0);
-  }
-  const H = Number(item.height_mm) || 720;
-  return Array.from({ length: qty }, (_, i) => Math.round(((i + 1) * H) / (qty + 1)));
+  return cabinetShelfHeightsMm(item);
 }
 
 function ShelfMesh({ item, W, D }) {
@@ -2229,6 +2247,105 @@ function ShelfMesh({ item, W, D }) {
           <PanelMaterial src={src} color={color} roughness={0.75} />
         </mesh>
       ))}
+    </>
+  );
+}
+
+// WHAT IS FITTED INSIDE THE CABINET, IN THE ROOM.
+//
+// The same shape the elevation draws (lib/pcd-accessory-shapes.js), turned from
+// the cabinet's own millimetres into the room: x across the inside, y up from
+// the bottom of the carcass, z back from the front edge.
+//
+// An oval hanging rail is a cylinder flattened the vertical way, which is what
+// an oval rail is, with a cup at each end where it screws to the side panel.
+// Chrome, so it reads as hardware rather than as another board.
+//
+// Only where a shelf would show: behind a closed door there is nothing to see,
+// and drawing it there would put a rail through the back of the fronts.
+function AccessoryMesh({ item, W, D }) {
+  // Behind a closed front nothing is drawn, the rule shelves follow. A mixed
+  // front is judged bay by bay, so a rail in the open half of a cabinet that is
+  // drawers below shows, and one down in the drawer bank does not.
+  const list = readAccessories(item).filter((entry) => accessoryShowsInRoom(entry, item));
+  if (!list.length) return null;
+  const legs = cabinetLegs(item, W, D);
+  const leg = legs[0];
+  if (!leg) return null;
+
+  const carc = Number(item.carcass_thickness_mm) || 16;
+  const inner = openInnerRect(leg.rect, leg.wall, carc, backBoardMm(item));
+  const [bottomMm] = cabinetVerticalSpanMm(item);
+  // Which way the inside runs, and where its front edge is. A cabinet on a left
+  // or right wall runs its width along the room's depth, so the tube turns with
+  // it rather than always lying east to west.
+  const alongX = leg.wall !== "left" && leg.wall !== "right";
+  const widthMm = alongX ? inner.w : inner.h;
+  const frontAt = alongX
+    ? (leg.wall === "top" ? inner.y + inner.h : inner.y)
+    : (leg.wall === "left" ? inner.x + inner.w : inner.x);
+  const frontSign = alongX ? (leg.wall === "top" ? -1 : 1) : (leg.wall === "left" ? -1 : 1);
+
+  const pieces = [];
+  for (const entry of list) {
+    for (const part of accessoryParts(entry, item)) {
+      const along = inner[alongX ? "x" : "y"] + (part.x0Mm + part.x1Mm) / 2;
+      const depthAt = frontAt + frontSign * part.zMm;
+      const position = [
+        (alongX ? along : depthAt) / M,
+        (bottomMm + part.yMm) / M,
+        (alongX ? depthAt : along) / M,
+      ];
+      const lengthM = Math.max(part.x1Mm - part.x0Mm, 1) / M;
+      pieces.push({ key: `${entry.id}-${part.id}`, part, position, lengthM, alongX, widthMm });
+    }
+  }
+
+  return (
+    <>
+      {pieces.map(({ key, part, position, lengthM, alongX: onX }) => {
+        const colour = partColour(part);
+        const metal = partIsMetal(part);
+        if (part.shape === "tube") {
+          const radius = part.depthMm / 2 / M;
+          // Flattened the vertical way: a cylinder scaled on the one local axis
+          // that becomes world Y once it is laid on its side.
+          const flat = part.heightMm / part.depthMm;
+          return (
+            <mesh
+              key={key}
+              position={position}
+              rotation={onX ? [0, 0, Math.PI / 2] : [Math.PI / 2, 0, 0]}
+              scale={onX ? [flat, 1, 1] : [1, 1, flat]}
+            >
+              <cylinderGeometry args={[radius, radius, lengthM, 20]} />
+              <meshStandardMaterial color={colour} metalness={0.75} roughness={0.25} />
+            </mesh>
+          );
+        }
+        const size = onX
+          ? [lengthM, part.heightMm / M, part.depthMm / M]
+          : [part.depthMm / M, part.heightMm / M, lengthM];
+
+        // A kind nobody has drawn yet: the space it takes up, see through, so
+        // it reads as room set aside rather than as a solid block.
+        if (part.shape === "box") {
+          return (
+            <mesh key={key} position={position}>
+              <boxGeometry args={size} />
+              <meshStandardMaterial color={colour} roughness={0.5} metalness={0.3} transparent opacity={0.35} />
+            </mesh>
+          );
+        }
+        return (
+          <mesh key={key} position={position}>
+            <boxGeometry args={size} />
+            {metal
+              ? <meshStandardMaterial color={colour} metalness={0.7} roughness={0.3} />
+              : <meshStandardMaterial color={colour} roughness={0.95} />}
+          </mesh>
+        );
+      })}
     </>
   );
 }
@@ -2577,12 +2694,13 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
                   <KickboardMesh item={item} W={W} D={D} />
                   <FillerMesh item={item} room={room} items={placed} W={W} D={D} />
                   <EndPanelMesh item={item} room={room} W={W} D={D} />
-                  <SideFillerMesh item={item} room={room} W={W} D={D} />
+                  <SideFillerMesh item={item} room={room} items={placed} W={W} D={D} />
                   <UndersidePanelMesh item={item} W={W} D={D} />
                   <TopPanelMesh item={item} W={W} D={D} />
                   <BackPanelMesh item={item} room={room} items={placed} W={W} D={D} />
                   <BenchtopMesh item={item} items={placed} W={W} D={D} />
                   <ShelfMesh item={item} W={W} D={D} />
+                  <AccessoryMesh item={item} W={W} D={D} />
                   <FrontDetail item={item} W={W} D={D} />
                   <DiagonalDoorMesh item={item} W={W} D={D} />
                 </>

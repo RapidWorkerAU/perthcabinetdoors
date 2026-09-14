@@ -1,154 +1,18 @@
 import Link from "next/link";
-import PublicArrowIcon from "@/components/public/PublicArrowIcon";
-import CabinetElevation from "@/components/public/CabinetElevation";
-import ColourStrip from "@/components/public/ColourStrip";
 import PublicFooter from "@/components/public/PublicFooter";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import PublicPaths from "@/components/public/PublicPaths";
+import { loadColourBand, spreadAcross } from "@/lib/pcd-colour-band";
+import { evenColumns } from "@/lib/pcd-grid-columns";
 import PublicSiteNav from "../PublicSiteNav";
 import styles from "../journey.module.css";
 
 export const metadata = {
   title: "Kitchen Refresh | Keep the Cabinets, Change the Fronts | Perth Cabinet Doors",
   description:
-    "Reface your existing kitchen with new doors, drawer fronts and panels in Polytec, Laminex and Formica. Over 100 colours, made to measure in Perth, with new cabinets added where you need them.",
+    "Reface your existing kitchen with new doors, drawer fronts and panels in Polytec, Laminex and Formica. Over 270 colours, made to measure in Perth, with new cabinets added where you need them.",
 };
 
 export const dynamic = "force-dynamic";
-
-// Shown when the colour library is unreachable, so the page never renders an
-// empty colour section. Mirrors the shape of a pcd_colour_library row.
-// The same short run /bespoke draws beside its planner feature, so the two
-// pages show the tool the same way.
-const PLANNER_RUN = [
-  {
-    width: 600,
-    height: 800,
-    arrangement: "rows",
-    pieces: [
-      { width: 600, height: 200, type: "Drawer front" },
-      { width: 600, height: 300, type: "Drawer front" },
-      { width: 600, height: 300, type: "Drawer front" },
-    ],
-  },
-  {
-    width: 900,
-    height: 800,
-    arrangement: "columns",
-    pieces: [
-      { width: 450, height: 800, type: "Door" },
-      { width: 450, height: 800, type: "Door" },
-    ],
-  },
-  {
-    width: 600,
-    height: 2000,
-    arrangement: "rows",
-    pieces: [
-      { width: 600, height: 1200, type: "Door" },
-      { width: 600, height: 800, type: "Door" },
-    ],
-  },
-];
-
-const FALLBACK_COLOURS = [
-  { name: "Coastal Oak", finish: "Woodmatt", thickness: "18mm", swatch: "#c9ab86" },
-  { name: "Notaio Walnut", finish: "Woodmatt", thickness: "18mm", swatch: "#6b4c39" },
-  { name: "Blonde Oak", finish: "Woodmatt", thickness: "18mm", swatch: "#d8c4a0" },
-  { name: "Prime Oak", finish: "Woodmatt", thickness: "16mm", swatch: "#cdb392" },
-  { name: "Blackened Oak", finish: "Woodmatt", thickness: "18mm", swatch: "#3b332c" },
-  { name: "Char Oak", finish: "Ravine", thickness: "18mm", swatch: "#4b3d33" },
-  { name: "Artisan Oak", finish: "Ravine", thickness: "18mm", swatch: "#b1926e" },
-  { name: "Elemental Grey", finish: "Ravine", thickness: "18mm", swatch: "#a8a49c" },
-  { name: "Blossom White", finish: "Ravine", thickness: "16mm", swatch: "#f2eee6" },
-  { name: "Black Wenge", finish: "Ravine", thickness: "18mm", swatch: "#2c2421" },
-  { name: "Crisp White", finish: "Legato", thickness: "18mm", swatch: "#f6f4ef" },
-  { name: "Bone White", finish: "Legato", thickness: "18mm", swatch: "#e9e3d6" },
-  { name: "Papyrus", finish: "Legato", thickness: "18mm", swatch: "#ded5c4" },
-  { name: "Grey Cement", finish: "Legato", thickness: "16mm", swatch: "#a09d97" },
-  { name: "New Ultra White", finish: "Gloss", thickness: "18mm", swatch: "#fbfaf7" },
-  { name: "Black", finish: "Gloss", thickness: "18mm", swatch: "#181715" },
-  { name: "Cinder", finish: "Gloss", thickness: "18mm", swatch: "#6f6d68" },
-];
-
-const FINISH_ORDER = ["Woodmatt", "Ravine", "Legato", "Gloss", "Venette", "Smooth", "Matt", "Texture"];
-
-// A colour can carry four thicknesses across the three materials, and a badge
-// reading "13mm / 18mm / 21mm / 5mm" is both wrong-order and too wide for the
-// tile. Sort numerically and print the unit once: "5/13/18/21mm".
-function formatThicknessBadge(thicknesses) {
-  const sorted = [...new Set(thicknesses)]
-    .map((value) => ({ value, mm: parseFloat(value) }))
-    .filter((entry) => Number.isFinite(entry.mm))
-    .sort((a, b) => a.mm - b.mm);
-
-  if (!sorted.length) return "";
-  return `${sorted.map((entry) => entry.mm).join("/")}mm`;
-}
-
-async function loadColours() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase
-      .from("pcd_colour_library")
-      .select("name,finish_type,thickness,image_url,material_type,sort_order")
-      .eq("is_active", true)
-      // Doors, drawer fronts and panels only - compact laminate at 5mm and 13mm
-      // is benchtop and splashback stock, and listing it here would put "5mm" on
-      // a tile a customer is reading as a cabinet door.
-      .in("material_type", ["decorative board", "thermolaminate"])
-      .order("sort_order", { ascending: true });
-
-    if (error || !data?.length) return FALLBACK_COLOURS;
-
-    // One tile per colour name per finish - the library carries a row per
-    // thickness, and a customer does not want to see Char Oak listed twice.
-    const byKey = new Map();
-    data.forEach((row) => {
-      if (!row.name || !row.finish_type) return;
-      const key = `${row.finish_type}::${row.name}`;
-      const existing = byKey.get(key);
-      if (existing) {
-        if (row.thickness && !existing.thicknesses.includes(row.thickness)) {
-          existing.thicknesses.push(row.thickness);
-        }
-        if (!existing.imageUrl && row.image_url) existing.imageUrl = row.image_url;
-        return;
-      }
-      byKey.set(key, {
-        name: row.name,
-        finish: row.finish_type,
-        thicknesses: row.thickness ? [row.thickness] : [],
-        imageUrl: row.image_url || null,
-        swatch: "#dbd8cc",
-      });
-    });
-
-    const grouped = new Map();
-    byKey.forEach((colour) => {
-      const list = grouped.get(colour.finish) || [];
-      list.push(colour);
-      grouped.set(colour.finish, list);
-    });
-
-    const finishes = [...grouped.keys()].sort((a, b) => {
-      const ai = FINISH_ORDER.indexOf(a);
-      const bi = FINISH_ORDER.indexOf(b);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
-
-    return finishes.flatMap((finish) =>
-      grouped.get(finish).map((colour) => ({
-        name: colour.name,
-        finish: colour.finish,
-        thickness: formatThicknessBadge(colour.thicknesses),
-        imageUrl: colour.imageUrl,
-        swatch: colour.swatch,
-      }))
-    );
-  } catch {
-    return FALLBACK_COLOURS;
-  }
-}
 
 const SCOPE = [
   {
@@ -189,30 +53,28 @@ const SCOPE = [
   },
 ];
 
+// FOUR STEPS, NOT SIX.
+//
+// Measuring and the firm quote were two steps describing one exchange, and
+// delivery and installation were two endings to the same step. Nothing was
+// dropped: the $100 measure, the itemised price, the flat rate delivery and the
+// one day install are all still here, in four steps instead of six.
 const PROCESS = [
   [
     "Tell us about your kitchen",
     "Photos and rough dimensions are enough to start. We will tell you straight away whether a refresh is the right call for your cabinets.",
   ],
   [
-    "Measuring",
-    "Send us your own measurements and there is nothing to pay. If you would rather we came out and measured, and gave you design input while we are there, that is a $100 fee - deducted from your order if you go ahead.",
+    "Measure and quote",
+    "Send us your own measurements and there is nothing to pay. If you would rather we came out, measured properly and gave you design input while we are there, that is a $100 fee, deducted from your order if you go ahead. Either way you get one itemised price covering fronts, panels, hardware and any new cabinets.",
   ],
   [
     "Choose colour and profile",
-    "Over 100 colours across the three brands, plus the door profile and edge detail, so you can see exactly what you are choosing before anything is cut.",
+    "Over 270 colours across the three brands, plus the door profile and edge detail, so you can see exactly what you are choosing before anything is cut.",
   ],
   [
-    "Firm quote",
-    "One itemised price covering fronts, panels, hardware and any new cabinets. No surprises later.",
-  ],
-  [
-    "We build",
-    "Cut, wrapped and pre-drilled in our Perth workshop. Your kitchen stays in use the whole time.",
-  ],
-  [
-    "Delivery or install",
-    "Flat-rate delivery across Perth metro, or our team fits it. Most refreshes are installed in a day.",
+    "We build, then deliver or fit",
+    "Cut, wrapped and pre-drilled in our Perth workshop, and your kitchen stays in use the whole time. Flat-rate delivery across Perth metro, or our team fits it, usually in a day.",
   ],
 ];
 
@@ -240,7 +102,11 @@ const FAQ = [
 ];
 
 export default async function KitchenRefreshPage() {
-  const colours = await loadColours();
+  // TWENTY FIVE, WHICH IS FIVE BY FIVE. The grid beside the copy is five
+  // columns of square tiles, so the count has to be a multiple of five or the
+  // last row strands tiles. Spread across the whole library rather than taken
+  // from the front of it, which is all one finish. See lib/pcd-colour-band.js.
+  const colours = spreadAcross(await loadColourBand(), 25);
 
   return (
     <>
@@ -253,19 +119,13 @@ export default async function KitchenRefreshPage() {
               refresh
             </div>
             <h1>Keep the Cabinets. Change Everything You See.</h1>
+            {/* No buttons in the cream header. It is a title block, not a
+                hero, and this page closes on the three ways to buy. */}
             <p>
               A refresh replaces the doors, drawer fronts and panels on the cabinets you already own. It
               costs a fraction of a new kitchen, it is done in days rather than weeks, and your kitchen
               stays usable while we build.
             </p>
-            <div className={styles.actions}>
-              <Link className={`${styles.button} ${styles.buttonPrimary}`} href="/request-quote">
-                Request a Quote
-              </Link>
-              <Link className={`${styles.button} ${styles.buttonOutline}`} href="#process">
-                See the Process
-              </Link>
-            </div>
           </div>
         </header>
 
@@ -294,82 +154,47 @@ export default async function KitchenRefreshPage() {
           </div>
         </section>
 
-        {/* Materials used to be a dark band and colours a full-width block, which
-            put two dark bands within one section of each other and made this
-            page read as heavier than /bespoke. Both are feature rows now, in the
-            same rhythm as that page: copy one side, a visual the other, split by
-            a white band. Same devices, same order, so the two read as siblings. */}
-        <section className={styles.section}>
+        {/* TWO FEATURE ROWS BECAME ONE SECTION.
+            Materials carried a colour strip and a dark button; the planner
+            carried an elevation mock and a filled button. Both existed largely
+            to hold a button, and this page closes on the three ways to buy. The
+            colour band does the work the strip did at full width, and both
+            links are links in a sentence. */}
+        <section className={`${styles.section} ${styles.sectionPanel}`}>
           <div className={styles.wrap}>
-            <div className={styles.feature}>
-              <div>
+            <div className={styles.colourSplit}>
+              <div className={styles.colourSplitText}>
                 <p className={styles.label}>Materials &amp; Colours</p>
                 <h2>Polytec, Laminex and Formica</h2>
                 <p className={styles.lead}>
-                  Three of Australia&apos;s major decorative surface ranges, all supplied and made to
-                  measure in our own workshop. Over 270 colours across every finish range they make, plus
-                  every door profile and edge detail - all available as a door, a drawer front or a panel,
-                  so a whole kitchen matches.
+                  Three of Australia&apos;s major decorative surface ranges, all supplied and made to measure
+                  in our own workshop. Over 270 colours across every finish range they make, plus every door
+                  profile and edge detail, all available as a door, a drawer front or a panel so a whole
+                  kitchen matches. <Link href="/finishes">Browse the finishes</Link>, and ask about samples
+                  when you enquire.
                 </p>
-                <div className={styles.actions}>
-                  <Link className={`${styles.button} ${styles.buttonDark}`} href="/finishes">
-                    Browse finishes <PublicArrowIcon />
-                  </Link>
-                </div>
-                <p className={styles.note}>
-                  Ask us about samples when you enquire and we will sort out the best way to get the colours
-                  in front of you.
-                </p>
-              </div>
-              <div className={styles.featureVisual}>
-                <ColourStrip colours={colours} />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className={`${styles.section} ${styles.sectionPanel}`}>
-          <div className={styles.wrap}>
-            <div className={`${styles.feature} ${styles.featureFlip}`}>
-              <div>
-                <p className={styles.label}>Changing the Layout</p>
-                {/* Deliberately not "See It Before You Commit" - that is the
-                    heading on /bespoke's planner feature, and two pages sharing
-                    an h2 word for word helps neither reader nor search. */}
-                <h2>Draw the New Layout First</h2>
                 <p className={styles.lead}>
-                  A pantry where the old fridge sat, drawers instead of a cupboard, a wider run to suit a
-                  new appliance. Draw the new layout in our free 3D planner and send it through - we quote
-                  the new cabinets alongside the fronts as one job, finished in the same colour.
+                  Changing the layout at the same time? A pantry where the old fridge sat, drawers instead of
+                  a cupboard, a wider run to suit a new appliance. Draw it in our{" "}
+                  <Link href="/design">free 3D planner</Link> and send it through, and we quote the new
+                  cabinets alongside the fronts as one job, finished in the same colour.
                 </p>
-                <div className={styles.actions}>
-                  <Link className={`${styles.button} ${styles.buttonPrimary}`} href="/design">
-                    Open the planner <PublicArrowIcon />
-                  </Link>
-                </div>
               </div>
-              <div className={styles.featureVisual}>
-                <div className={styles.plannerMock} aria-hidden="true">
-                  {PLANNER_RUN.map((cabinet, index) => (
-                    <CabinetElevation
-                      key={index}
-                      cabinet={cabinet}
-                      pieces={cabinet.pieces}
-                      arrangement={cabinet.arrangement}
-                      className={styles.plannerCabinet}
-                    />
+              {colours.length ? (
+                <div className={styles.colourGrid} aria-hidden="true">
+                  {colours.map((colour) => (
+                    <span key={colour.name} style={{ backgroundImage: `url(${colour.imageUrl})` }} title={colour.name} />
                   ))}
                 </div>
-              </div>
+              ) : null}
             </div>
           </div>
         </section>
-
         <section className={styles.dark} id="process">
           <div className={styles.wrap}>
             <p className={`${styles.label} ${styles.labelLight}`}>The Process</p>
-            <h2>Six Steps, Start to Finish</h2>
-            <ol className={styles.process}>
+            <h2>Four Steps, Start to Finish</h2>
+            <ol className={styles.process} style={{ "--cols": evenColumns(PROCESS.length) }}>
               {PROCESS.map(([title, detail]) => (
                 <li key={title}>
                   <strong>{title}</strong>
@@ -396,28 +221,27 @@ export default async function KitchenRefreshPage() {
           </div>
         </section>
 
-        <section className={styles.cta}>
+        {/* THE THREE WAYS, QUOTE FIRST.
+            Same block as /ikea-kaboodle, same wording, different order. A
+            refresh is nearly always hand priced, because it involves a finish
+            or a new cabinet that has to be worked out, so leading with the shop
+            would point most of this page's readers at the wrong door. On the
+            IKEA page the shop leads, because somebody replacing six plain Metod
+            doors genuinely can buy them in five minutes.
+
+            This replaced a two button close that offered a quote and the
+            contact page and never mentioned that part of this can be bought
+            outright. "Send us a photo of your kitchen" was the best line on it
+            and now lives inside the third card. */}
+        <section className={styles.closing}>
           <div className={styles.wrap}>
-            {/* "Changing the layout" is now its own feature section further up
-                with the planner beside it, so this closes on the simpler path
-                instead of repeating that heading two screens later. */}
-            <h2>Send Us a Photo of Your Kitchen</h2>
-            <p className={`${styles.lead} ${styles.leadLight}`}>
-              That is genuinely all we need to start. Send a photo and we can provide feedback on what can
-              be salvaged or what your options are.
-            </p>
-            <div className={styles.actions}>
-              <Link className={`${styles.button} ${styles.buttonPrimary}`} href="/request-quote">
-                Request a Quote
-              </Link>
-              <Link className={`${styles.button} ${styles.buttonOutlineLight}`} href="/contact">
-                Contact Us
-              </Link>
-            </div>
-            <p className={`${styles.note} ${styles.noteLight}`}>
-              No minimum order - Quotes are free - On-site measure and design input $100, deducted from your
-              order
-            </p>
+            <PublicPaths
+              onDark
+              heading="How do I get a price for a kitchen refresh?"
+              lead="There are three ways, depending on how much you already know. Most refreshes are quoted by hand, because they involve a finish or a new cabinet that has to be priced properly."
+              paths={["quote", "shop", "ask"]}
+              note="No minimum order · Quotes are free · On-site measure and design input $100, deducted from your order"
+            />
           </div>
         </section>
 

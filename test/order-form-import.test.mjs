@@ -298,7 +298,9 @@ test("something that is not an order form is refused, not half read", async () =
 test("a file that is not a spreadsheet says so", async () => {
   const read = await readOrderForm(Buffer.from("this is a text file"));
   assert.equal(read.ok, false);
-  assert.match(read.error, /could not be opened/);
+  // And says what it is instead, rather than only that it failed. See the
+  // diagnosis tests at the end of this file.
+  assert.match(read.error, /not an Excel workbook/);
 });
 
 // ── the carcasses ───────────────────────────────────────────────────────────
@@ -624,4 +626,177 @@ test("a database without the newest columns still gets the customer", () => {
 test("a disagreeing customer is reported rather than overwritten", () => {
   assert.match(ROUTE, /conflicts\.push/);
   assert.match(ROUTE, /the form says/);
+});
+
+// ── WHY A FILE WOULD NOT OPEN ───────────────────────────────────────────────
+//
+// 13 September 2026. An upload failed with "That file could not be opened as a
+// spreadsheet." and nothing else: the parser's own message was thrown away, so
+// there was nothing to act on and nothing in the log either. Every realistic
+// cause is somebody one Save As away from success, so each one says which.
+
+test("a file that is not a workbook is named for what it is", async () => {
+  const { readOrderForm, fileKind } = await import("../lib/pcd-order-form-import.js");
+
+  const empty = await readOrderForm(Buffer.alloc(0));
+  assert.equal(empty.ok, false);
+  assert.match(empty.error, /empty/i);
+  assert.equal(fileKind(Buffer.alloc(0)), "empty");
+
+  // A .csv or a saved web page with the wrong extension on it.
+  const csv = await readOrderForm(Buffer.from("Room,Qty\nKitchen,2\n"));
+  assert.equal(csv.ok, false);
+  assert.match(csv.error, /not an Excel workbook/i);
+  assert.equal(fileKind(Buffer.from("Room,Qty")), "other");
+
+  // The OLE2 container: a real .xls, or an .xlsx with a password on it.
+  const xls = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0]);
+  const old = await readOrderForm(xls);
+  assert.equal(old.ok, false);
+  assert.match(old.error, /old \.xls workbook, or an Excel file with a password/i);
+  assert.equal(fileKind(xls), "xls");
+
+  // None of them says "could not be opened", which is the message that told
+  // nobody anything.
+  [empty, csv, old].forEach((r) => assert.ok(!/could not be opened as a spreadsheet/.test(r.error)));
+});
+
+test("a zip that is not our workbook says which kind of zip it is", async () => {
+  const JSZip = (await import("jszip")).default;
+  const { readOrderForm, workbookOpenProblem } = await import("../lib/pcd-order-form-import.js");
+  const { buildOrderFormWorkbook } = await import("../lib/pcd-order-form-workbook.js");
+
+  const good = Buffer.from(await (await buildOrderFormWorkbook({ colours: COLOURS, hardware: HARDWARE })).xlsx.writeBuffer());
+  assert.equal(await workbookOpenProblem(good), null, "the real form has no problem to report");
+
+  // STRICT OPEN XML sits directly under "Excel Workbook" in Excel's Save As
+  // list, keeps the .xlsx extension, and no reader outside Excel supports it.
+  const zip = await JSZip.loadAsync(good);
+  const xml = await zip.file("xl/workbook.xml").async("string");
+  zip.file("xl/workbook.xml", xml.replace(
+    "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    "http://purl.oclc.org/ooxml/spreadsheetml/main"
+  ));
+  const strict = await readOrderForm(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  assert.equal(strict.ok, false);
+  assert.match(strict.error, /Strict Open XML/);
+  assert.match(strict.error, /Excel Workbook \(\.xlsx\)/, "and says exactly which one to pick instead");
+
+  // An OpenDocument spreadsheet is a zip too.
+  const ods = new JSZip();
+  ods.file("content.xml", "<x/>");
+  const odsResult = await readOrderForm(await ods.generateAsync({ type: "nodebuffer" }));
+  assert.equal(odsResult.ok, false);
+  assert.match(odsResult.error, /OpenDocument/);
+
+  // A download that stopped half way. Excel offers to repair these.
+  const truncated = await readOrderForm(good.subarray(0, Math.floor(good.length / 2)));
+  assert.equal(truncated.ok, false);
+  assert.match(truncated.error, /damaged/i);
+});
+
+test("the parser's own reason survives for anything rarer", async () => {
+  const source = readFileSync(new URL("../lib/pcd-order-form-import.js", import.meta.url), "utf8");
+  // Reported to the person AND written to the log, because the person will
+  // paste the message and the log is what says which file it was.
+  assert.match(source, /Excel reported: \$\{detail\}/);
+  assert.match(source, /console\.error\(`\[order-form-import\] xlsx\.load failed/);
+  assert.ok(!/\} catch \{\s*return \{ ok: false, error: "That file could not be opened as a spreadsheet\."/.test(source),
+    "the reason is no longer swallowed");
+});
+
+// ── A WORKBOOK WRITTEN WITH NAMESPACE PREFIXES ──────────────────────────────
+//
+// 13 September 2026, from a real failed upload. XML lets a document bind its
+// namespace to a prefix instead of making it the default, and the two are the
+// same document:
+//
+//   <workbook xmlns="…/spreadsheetml/2006/main">        what Excel writes
+//   <x:workbook xmlns:x="…/spreadsheetml/2006/main">    equally valid
+//
+// LibreOffice Calc and several online editors write the second. Excel opens
+// them without a murmur. ExcelJS matches element names literally, so it parsed
+// one to nothing and threw "Cannot read properties of undefined (reading
+// 'sheets')", which sounds like a corrupt file and is not.
+//
+// The customer filled the form in correctly. The tool they opened it in is not
+// their fault, so the file is put back into the spelling our reader understands
+// rather than refused.
+
+async function prefixEveryPart(buffer) {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buffer);
+  for (const name of Object.keys(zip.files)) {
+    if (!/\.(xml|rels)$/i.test(name) || zip.files[name].dir) continue;
+    const xml = await zip.file(name).async("string");
+    if (!xml.includes("spreadsheetml/2006/main")) continue;
+    zip.file(name, xml
+      .replace(/xmlns="http:\/\/schemas\.openxmlformats\.org\/spreadsheetml\/2006\/main"/g,
+        'xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"')
+      .replace(/<(\/?)([a-zA-Z][\w]*)(\s|>|\/>)/g, (m, slash, tag, tail) => `<${slash}x:${tag}${tail}`));
+  }
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+test("a prefixed workbook reads exactly like an Excel one", async () => {
+  const { buildOrderFormWorkbook } = await import("../lib/pcd-order-form-workbook.js");
+  const { readOrderForm, findHeaderRow, headingIndex, tabForSheet } = await import("../lib/pcd-order-form-import.js");
+
+  const workbook = await buildOrderFormWorkbook({ colours: COLOURS, hardware: HARDWARE });
+  for (const sheet of workbook.worksheets) {
+    if (tabForSheet(sheet) !== "fronts") continue;
+    const headerRow = findHeaderRow(sheet, "fronts");
+    const at = headingIndex(sheet, headerRow);
+    const row = sheet.getRow(headerRow + 1);
+    for (const [head, value] of Object.entries({
+      "Room or area": "Kitchen", Type: "Door", "Height mm": 700, "Width mm": 550, Qty: 3,
+    })) {
+      const column = at.get(head);
+      if (column) row.getCell(column).value = value;
+    }
+    row.commit();
+  }
+  const excelSpelling = Buffer.from(await workbook.xlsx.writeBuffer());
+  const prefixed = await prefixEveryPart(excelSpelling);
+
+  const plain = await readOrderForm(excelSpelling);
+  const other = await readOrderForm(prefixed);
+
+  assert.notEqual(plain.ok, false, "the control opens");
+  assert.notEqual(other.ok, false, `a prefixed workbook opens: ${other.error || ""}`);
+  // Not merely "it opened": the same tabs and the same row, read the same way.
+  assert.deepEqual(other.tabs.map((t) => t.id), plain.tabs.map((t) => t.id));
+  assert.equal(other.lines.length, plain.lines.length);
+  assert.deepEqual(other.lines[0], plain.lines[0]);
+});
+
+test("the prefix comes off the elements and never off an attribute", async () => {
+  const { prefixesFor, unprefixXml } = await import("../lib/pcd-xlsx-normalise.js");
+
+  const xml =
+    '<?xml version="1.0"?><x:workbook xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"' +
+    ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<x:sheets><x:sheet name="Fronts" sheetId="1" r:id="rId1"/></x:sheets></x:workbook>';
+
+  // Only the prefix on the ELEMENTS. r: belongs on attributes and is prefixed
+  // in every workbook Excel writes, ours included.
+  assert.deepEqual(prefixesFor(xml), ["x"]);
+  const out = unprefixXml(xml);
+  assert.match(out, /<workbook /);
+  assert.match(out, /<sheets><sheet /);
+  assert.match(out, /<\/workbook>/);
+  // r:id IS LOAD BEARING. It is a different namespace and it is what points the
+  // workbook at its own worksheets; strip it and the file opens to no rows.
+  assert.match(out, /r:id="rId1"/);
+  // And the namespace is still declared, as the default now.
+  assert.match(out, /xmlns="http:\/\/schemas\.openxmlformats\.org\/spreadsheetml\/2006\/main"/);
+});
+
+test("a file that does not need it is not rebuilt", async () => {
+  const { buildOrderFormWorkbook } = await import("../lib/pcd-order-form-workbook.js");
+  const { needsUnprefixing, unprefixWorkbook } = await import("../lib/pcd-xlsx-normalise.js");
+  const good = Buffer.from(await (await buildOrderFormWorkbook({ colours: COLOURS, hardware: HARDWARE })).xlsx.writeBuffer());
+
+  assert.equal(await needsUnprefixing(good), false);
+  assert.equal(await unprefixWorkbook(good), null, "handed back untouched, not repacked");
 });

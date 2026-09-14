@@ -49,11 +49,24 @@ test("the payments query may embed its order, because that pair is one-way", () 
 });
 
 test("the cost split is fetched as its own query and joined by id", () => {
-  assert.match(PAGE, /from\('pcd_quotes'\)\.select\('id, markup_amount_ex_gst, labour_cost_ex_gst'\)\.in\('id', orderQuoteIds\)/);
+  assert.match(PAGE, /from\('pcd_quotes'\)\.select\('id, markup_amount_ex_gst, labour_cost_ex_gst'\)\.in\('id', splitQuoteIds\)/);
 });
 
 test("that query is skipped rather than run with an empty id list", () => {
-  assert.match(PAGE, /orderQuoteIds\.length[\s\S]{0,200}: \{ data: \[\], error: null \}/);
+  assert.match(PAGE, /splitQuoteIds\.length[\s\S]{0,200}: \{ data: \[\], error: null \}/);
+});
+
+test("the split lookup covers archived orders, but the pipeline still does not", () => {
+  // Money in counts a payment banked on a job that was later archived, so the
+  // profit inside that money needs the archived job's cost split too. The list
+  // the PIPELINE reads is a different one and stays exactly as it was, or an
+  // archived job's quote would start counting as still open.
+  assert.match(PAGE, /const splitQuoteIds = Array\.from\([\s\S]{0,220}archivedOrders\.map\(order => order\.quote_id\)/);
+  assert.match(PAGE, /orderQuoteIds=\{orderQuoteIds\}/, "the pipeline list is passed through untouched");
+  assert.ok(
+    !/orderQuoteIds = Array\.from\([\s\S]{0,200}archived/.test(PAGE),
+    "archived quote ids must not leak into the pipeline list"
+  );
 });
 
 // ── a failed query must never read as a total ───────────────────────────────

@@ -1,12 +1,12 @@
 ﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { addressColumns, addressFromRecord } from "../../../../lib/pcd-contact-details";
 import AddressFields from "../../../../components/admin/AddressFields";
 import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNote";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { IconMessage } from "@tabler/icons-react";
+import { IconArrowLeft, IconChevronRight, IconMessage, IconSettings } from "@tabler/icons-react";
 import {
   formatItemSpecs,
   formatMoney,
@@ -34,7 +34,8 @@ import { groupProductionRows } from "../../../../lib/pcd-production-groups";
 import { lineNotes, lineNotesText } from "../../../../lib/pcd-line-notes";
 import { useLists } from "../../../../lib/use-lists";
 // Every cup from the bottom edge, worked out the one way. See lib/pcd-hinges.js.
-import { cupPositions, hingeSummaryLines } from "../../../../lib/pcd-hinges";
+import { hingePositionLines, hingeSummaryLines, holeTypeOf } from "../../../../lib/pcd-hinges";
+import { bandedEdgesText, panelUseFor } from "../../../../lib/pcd-line-details";
 import { taxInvoiceReadiness } from "../../../../lib/pcd-tax-invoice";
 import TaxInvoiceModal from "./TaxInvoiceModal";
 import { supplierFromColour, supplierLookupKey } from "../../../../lib/pcd-line-supplier";
@@ -67,6 +68,18 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { IconAlertCircleFilled } from "@tabler/icons-react";
 import { SUPPLIER, isDecided, isMadeHere, isSupplierMade } from "../../../../lib/pcd-order-planning";
+import {
+  bulkChanges,
+  bulkFieldsFor,
+  bulkSummary,
+  mergePlanning,
+  queueChange,
+  queuePatch,
+  reconcilePlanning,
+  requeue,
+  scopeKeys,
+  takeInflight,
+} from "../../../../lib/pcd-plan-queue";
 import {
   durationDays,
   fallsOnWeekend,
@@ -249,7 +262,12 @@ function panelPlanFor(item, panelKey) {
 // A mark, not a sentence: the row already says what the panel is, so this only
 // has to answer whether something is wrong with it.
 function panelIssueMark(rowIssues) {
-  if (!rowIssues.length) return <span className="text-[#dbd8cc]">·</span>;
+  // NOTHING, not a placeholder dot. This used to sit in a column of its own
+  // where a dash kept the column from looking broken. It now sits in the row's
+  // one actions cell beside the note button and the menu, and a dot in there is
+  // a thing to look at that means nothing. An issue mark appears when there is
+  // an issue, and the space is quiet when there is not.
+  if (!rowIssues.length) return null;
   const blocking = rowIssues.some((issue) => issue.blocks === "order");
   return (
     <span
@@ -394,6 +412,15 @@ function buildOrderCutListRows(items) {
   return buildOrderPlanningRows(items).filter(isPanelMadeInHouse);
 }
 
+// An order's line items live under pcd_order_line_items, and nowhere is that
+// spelt out except here and in sortedItems. Reading order.items instead returns
+// undefined, which is not an error, it is an empty list, and an empty list read
+// as "this item has no planning on it" is how a save came to wipe the planning
+// it was meant to be adding to. Named once so there is nothing to mistype.
+function findOrderItem(order, itemId) {
+  return (order?.pcd_order_line_items || []).find((item) => item.id === itemId) || null;
+}
+
 function setOrderItem(order, itemId, nextItem) {
   return {
     ...order,
@@ -474,6 +501,34 @@ export default function OrderDetail({ orderId }) {
   // found rather than repeating itself.
   const [archiveOutstanding, setArchiveOutstanding] = useState("");
   const [savingItemId, setSavingItemId] = useState("");
+
+  /* ── PLANNING SAVES: QUEUED, NEVER BLOCKING ──────────────────────────────
+   *
+   * The three planning tables used to disable every field on an item until its
+   * PATCH came back. On a thirty line order that is thirty round trips, each
+   * one taking the row away from the person filling it in.
+   *
+   * Now an edit lands in local state at once and joins a queue. One item is
+   * only ever in flight once, which is what stops two rows of the same item
+   * fighting over the one panel_planning blob, and a response is applied UNDER
+   * anything typed since it went out, which is what stops a field reverting
+   * while somebody is still in it. lib/pcd-plan-queue.js owns both rules.
+   *
+   * Refs rather than state on purpose: these are read and written inside async
+   * work that must see the latest value, not the one from its own render. */
+  // The order as it is NOW. A flush runs long after the render that started it
+   // and must build its payload from the current item, not from a snapshot taken
+   // when somebody touched a field.
+  const orderRef = useRef(null);
+  const planQueueRef = useRef({});
+  const planInflightRef = useRef({});
+  const planTimersRef = useRef({});
+  const [planSaving, setPlanSaving] = useState({});
+  const [planUnsaved, setPlanUnsaved] = useState(0);
+  const [planFailed, setPlanFailed] = useState(0);
+  // Which planning table's bulk modal is open, "" for none.
+  const [bulkOpen, setBulkOpen] = useState("");
+  const [bulkDraft, setBulkDraft] = useState({});
   const [savingPaymentId, setSavingPaymentId] = useState("");
   const [editingPaymentId, setEditingPaymentId] = useState("");
   const [isGeneratingCutListPdf, setIsGeneratingCutListPdf] = useState(false);
@@ -494,6 +549,32 @@ export default function OrderDetail({ orderId }) {
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
       setActiveSection("");
     }
+  }, []);
+
+  // Keep the ref level with state, so a flush that started three keystrokes ago
+  // still builds its payload from the item as it stands.
+  useEffect(() => { orderRef.current = order; }, [order]);
+
+  // A NAVIGATION IN THE MIDDLE OF TYPING MUST NOT LOSE THE TYPING. The queue
+  // waits a moment before sending, so leaving the page inside that moment would
+  // drop the last edit. Both cover it: the browser warns before a real unload,
+  // and the timers are flushed rather than cleared when the screen goes.
+  useEffect(() => {
+    function warn(event) {
+      if (!Object.keys(planQueueRef.current).length && !Object.keys(planInflightRef.current).length) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", warn);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      for (const [itemId, timer] of Object.entries(planTimersRef.current)) {
+        clearTimeout(timer);
+        delete planTimersRef.current[itemId];
+        flushPlanItem(itemId);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const items = useMemo(() => sortedItems(order), [order]);
@@ -615,6 +696,11 @@ export default function OrderDetail({ orderId }) {
     grid2: "grid grid-cols-2 gap-3",
     fieldLabel: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
     fieldInput: "h-[34px] w-full border border-[#dbd8cc] rounded-[6px] px-3 text-[13px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61]",
+    /* A value that is shown, not asked for. Same height and rhythm as a field
+       so it sits in the grid, on the page's own ground rather than white, and
+       with no focus ring: a box that looks like an input and rejects typing is
+       worse than one that never invited it. */
+    fieldStatic: "flex h-[34px] w-full items-center rounded-[6px] border border-[#edf4eb] bg-[#f5f8f4] px-3 text-[13px] text-[#1a1a18]",
     primaryBtn: "h-[34px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors",
     secondaryBtn: "h-[34px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
     smBtn: "inline-flex h-[26px] items-center justify-center px-3 text-[11px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
@@ -1263,29 +1349,125 @@ export default function OrderDetail({ orderId }) {
     }
   }
 
-  async function updatePanelPlan(row, changes) {
-    const item = row.item;
-    const currentPlanning = panelPlanning(item);
-    const currentPanel = currentPlanning[row.panelKey] || {};
-    const nextPanel = {
-      ...currentPanel,
-      ...changes,
-    };
-    if (isThermolaminatedItem(item)) {
-      nextPanel.fulfilment_method = "supplier_ready_made";
+  /* How many edits are waiting or failed, for the one status line that tells
+   * somebody whether it is safe to close the tab. Recounted from the refs
+   * rather than tracked alongside them, so it cannot drift out of step. */
+  function refreshPlanCounts() {
+    let waiting = 0;
+    for (const panels of Object.values(planQueueRef.current)) waiting += Object.keys(panels || {}).length;
+    for (const panels of Object.values(planInflightRef.current)) waiting += Object.keys(panels || {}).length;
+    setPlanUnsaved(waiting);
+  }
+
+  /**
+   * Send one item's queued changes.
+   *
+   * The whole panel_planning blob goes, because that is what the endpoint
+   * takes, but it is built from what the item holds RIGHT NOW merged with the
+   * queue, never from a snapshot captured when the field was touched.
+   */
+  async function flushPlanItem(itemId) {
+    if (!orderRef.current) return;
+    if (planInflightRef.current[itemId]) return; // it will go again when this lands
+    const taken = takeInflight(planQueueRef.current, itemId);
+    if (!taken.inflight) return;
+    planQueueRef.current = taken.pending;
+    planInflightRef.current[itemId] = taken.inflight;
+    setPlanSaving((current) => ({ ...current, [itemId]: true }));
+    refreshPlanCounts();
+
+    const item = findOrderItem(orderRef.current, itemId);
+
+    // NEVER SEND A BLOB BUILT FROM AN ITEM WE COULD NOT FIND. panel_planning is
+    // replaced wholesale by the endpoint, so a merge onto an empty object would
+    // not add a field, it would delete every other field and every other panel
+    // on that item. Put the changes back and say so instead.
+    if (!item) {
+      planQueueRef.current = requeue(planQueueRef.current, itemId, taken.inflight);
+      delete planInflightRef.current[itemId];
+      setPlanSaving((current) => {
+        const next = { ...current };
+        delete next[itemId];
+        return next;
+      });
+      setPlanFailed((n) => n + 1);
+      refreshPlanCounts();
+      toast({ title: "That line is no longer on this order, so it was not saved.", variant: "error" });
+      return;
     }
-    const nextPlanning = {
-      ...currentPlanning,
-      [row.panelKey]: nextPanel,
-    };
-    await updateItem(item, { panel_planning: nextPlanning });
+
+    const merged = mergePlanning(panelPlanning(item), taken.inflight);
+
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ panel_planning: merged }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not save that line.");
+
+      // The server's answer is the base; anything queued since is newer and
+      // goes back on top of it. Only this item is touched, so an edit on a
+      // different line cannot be rolled back by this one.
+      const stillQueued = planQueueRef.current[itemId] || null;
+      const settled = reconcilePlanning(payload.item?.panel_planning || {}, stillQueued);
+      setOrder((current) => (current ? setOrderItem(current, itemId, { ...payload.item, panel_planning: settled }) : current));
+      setPlanFailed(0);
+    } catch (error) {
+      // Put it back rather than dropping it. The field keeps what was typed and
+      // the status line says it has not saved, which is the honest state.
+      planQueueRef.current = requeue(planQueueRef.current, itemId, planInflightRef.current[itemId]);
+      setPlanFailed((n) => n + 1);
+      toast({ title: error?.message || "Could not save that line.", variant: "error" });
+    } finally {
+      delete planInflightRef.current[itemId];
+      setPlanSaving((current) => {
+        const next = { ...current };
+        delete next[itemId];
+        return next;
+      });
+      refreshPlanCounts();
+      if (planQueueRef.current[itemId]) schedulePlanFlush(itemId, 400);
+    }
+  }
+
+  /* Typing is not thirty requests. A short wait lets a whole date or a
+   * reference finish before anything goes, and a dropdown goes almost at once
+   * because there is nothing more to type. */
+  function schedulePlanFlush(itemId, waitMs = 700) {
+    if (planTimersRef.current[itemId]) clearTimeout(planTimersRef.current[itemId]);
+    planTimersRef.current[itemId] = setTimeout(() => {
+      delete planTimersRef.current[itemId];
+      flushPlanItem(itemId);
+    }, waitMs);
+  }
+
+  /** An edit: on the screen immediately, in the queue, gone soon after. */
+  function updatePanelPlan(row, changes, { immediate = true } = {}) {
+    const item = row.item;
+    const patch = isThermolaminatedItem(item)
+      ? { ...changes, fulfilment_method: "supplier_ready_made" }
+      : changes;
+    updatePanelPlanLocal(row, patch);
+    planQueueRef.current = queueChange(planQueueRef.current, item.id, row.panelKey, patch);
+    refreshPlanCounts();
+    schedulePlanFlush(item.id, immediate ? 250 : 700);
+  }
+
+  /** A keystroke. Same queue, just a longer wait before it goes. */
+  function typePanelPlan(row, changes) {
+    updatePanelPlan(row, changes, { immediate: false });
   }
 
   function updatePanelPlanLocal(row, changes) {
-    const item = row.item;
+    // Read the planning off the order AS IT IS, not off the copy of the item
+    // this row was drawn from. Two edits in quick succession share a render, so
+    // the second one built from that stale copy would undo the first on screen.
+    const itemId = row.item.id;
     setOrder((current) => {
       if (!current) return current;
-      const currentPlanning = panelPlanning(item);
+      const currentPlanning = panelPlanning(findOrderItem(current, itemId) || {});
       const nextPlanning = {
         ...currentPlanning,
         [row.panelKey]: {
@@ -1293,7 +1475,7 @@ export default function OrderDetail({ orderId }) {
           ...changes,
         },
       };
-      return setOrderItem(current, item.id, { panel_planning: nextPlanning });
+      return setOrderItem(current, itemId, { panel_planning: nextPlanning });
     });
   }
 
@@ -1350,7 +1532,6 @@ export default function OrderDetail({ orderId }) {
     // leave this button looking empty.
     const notes = lineNotes(row.item, row.plan);
     const hasNotes = notes.length > 0;
-    const disabled = savingItemId === row.item.id;
     return (
       <button
         type="button"
@@ -1360,7 +1541,6 @@ export default function OrderDetail({ orderId }) {
             : "border-[#dbd8cc] bg-white text-[#8b8a81] hover:bg-[#f5f8f4] hover:text-[#1a1a18]"
         } ${className}`}
         onClick={() => openPanelNotes(row)}
-        disabled={disabled}
         title={hasNotes ? notes.map(note => `${note.label}: ${note.text}`).join("\n") : "No notes attached"}
         aria-label={hasNotes ? `View ${notes.length} note${notes.length === 1 ? "" : "s"} for ${row.piece}` : `Add notes for ${row.piece}`}
       >
@@ -1453,6 +1633,34 @@ export default function OrderDetail({ orderId }) {
                   onBlur={e => saveOrder({ target_completion_date: e.target.value })}
                 />
               </label>
+
+              {/* TWO FACTS, NOT TWO FIELDS.
+                  Both of these are set once by something that is not this
+                  screen, and neither is a decision anybody makes here, so they
+                  are drawn as read-only rather than as inputs that refuse to
+                  save. The order PATCH route does not accept either column, so
+                  this is what the API already enforces, shown honestly.
+
+                  Order raised is deliberately NOT the scheduled start. One is
+                  when the customer said yes and the job became real; the other
+                  is when we plan to touch it, and they can be months apart. */}
+              <div className={tw.fieldLabel}>
+                Order raised
+                <span className={tw.fieldStatic} title="When the quote was accepted and this order was created. Set once and never changed.">
+                  {order.accepted_at
+                    ? formatDateTime(order.accepted_at)
+                    : <span className="text-[#8b8a81] italic">Not accepted yet</span>}
+                </span>
+                {!order.accepted_at && (
+                  <span className={tw.muted}>Stamped when the deposit is paid.</span>
+                )}
+              </div>
+              <div className={tw.fieldLabel}>
+                Order value (inc GST)
+                <span className={`${tw.fieldStatic} ${tw.mono}`} title="The accepted quote total, plus any approved variations. Changed by varying the order, not by typing here.">
+                  {formatMoney(order.total_inc_gst, order.currency || "AUD")}
+                </span>
+              </div>
             </div>
             <ScheduleOutcome order={order} />
           </div>
@@ -1528,6 +1736,13 @@ export default function OrderDetail({ orderId }) {
                       <td className={tw.td}>{index + 1}</td>
                       <td className={tw.td}>
                         {lineValue(quoteLineTitle(line))}
+                        {/* What kind of panel it is. A Scribe and a Kickboard
+                            both quote as Panel, and they are made differently. */}
+                        {panelUseFor(line.product_type, line.panel_use) ? (
+                          <span className="block text-[11px] font-semibold text-[#2d5e28] mt-[2px]">
+                            {panelUseFor(line.product_type, line.panel_use)}
+                          </span>
+                        ) : null}
                         {/* Whose carcass it goes on. Under the type rather than
                             in a column of its own: this table is already wide,
                             and it belongs with what the thing IS. */}
@@ -1538,7 +1753,14 @@ export default function OrderDetail({ orderId }) {
                       <td className={tw.td}>{[lineValue(line.material), lineValue(line.colour)].filter(v => v !== "-").join(" — ") || "—"}</td>
                       <td className={tw.td + " whitespace-nowrap"}>{lineValue(quoteLineSize(line))}</td>
                       <td className={tw.td}>{line.qty || 1}</td>
-                      <td className={tw.td}>{lineValue(line.edge_mould)}</td>
+                      <td className={tw.td}>
+                        {lineValue(line.edge_mould)}
+                        {/* Which edges get tape, asked one at a time on the
+                            website and now shown where the edge is. */}
+                        {bandedEdgesText(line.banded_edges) ? (
+                          <span className="block text-[11px] text-[#8b8a81] mt-[2px]">{bandedEdgesText(line.banded_edges)}</span>
+                        ) : null}
+                      </td>
                       {/* HANDING AND CUPS, in the two columns that already exist
                           rather than in two more. Which side is the one that
                           costs a remake, so it sits next to whether we drill at
@@ -1550,13 +1772,20 @@ export default function OrderDetail({ orderId }) {
                             {line.hinge_side}
                           </span>
                         ) : null}
+                        {/* Which boring. Blum Inserta and a bare 35mm cup are two
+                            machine setups, and the wrong one is a remade door. */}
+                        {hingesApplicable && line.hinge_holes && holeTypeOf(line) ? (
+                          <span className="block text-[11px] text-[#8b8a81] mt-[2px] whitespace-nowrap">
+                            {holeTypeOf(line)}
+                          </span>
+                        ) : null}
                       </td>
                       <td className={tw.td}>
                         {hingesApplicable && line.hinge_holes ? lineValue(line.hinge_qty) : "N/A"}
                         {hingesApplicable && line.hinge_holes ? (
                           <span className="block text-[11px] text-[#8b8a81] mt-[2px] whitespace-nowrap">
-                            {(cupPositions(line) || []).length
-                              ? `${cupPositions(line).join(", ")}mm`
+                            {hingePositionLines(line)
+                              ? hingePositionLines(line).join(", ")
                               : "standard"}
                           </span>
                         ) : null}
@@ -1598,8 +1827,283 @@ export default function OrderDetail({ orderId }) {
     );
   }
 
+  /* ── ONE ANSWER, THIRTY LINES ────────────────────────────────────────────
+   *
+   * The real complaint is not that a save is slow, it is that thirty lines on
+   * one order usually carry the same answer and it had to be given thirty
+   * times. Every one of them made to order; every one of them ordered on the
+   * Monday.
+   *
+   * It lives behind a button rather than in a panel above the table. Six fields
+   * nobody is using most of the time is a lot of screen to push a thirty row
+   * table down the page for, and the table is the thing people came to read.
+   *
+   * Scope rather than a tick box on every row: the table you are looking at is
+   * already filtered to supplier made or made to order, so "all lines" means
+   * what it says. "Only the blanks" is the one people want the second time,
+   * when twenty eight were dated last week and two arrived since, and stamping
+   * all thirty again would write over work somebody did by hand. */
+
+  /*
+   * A ROW HAS TO CARRY THE TWO THINGS THAT SAY IT CANNOT BE CHANGED.
+   *
+   * buildOrderPlanningRows does not know about either, because both are
+   * questions about the item rather than the panel: a thermolaminated front is
+   * pressed by the supplier and can never be made here, and a made to order
+   * line with no board needed has nowhere to put a board supplier or a board
+   * date. Both were being counted as editable, so "apply to 30 lines" was
+   * promising more than it could do.
+   */
+  function bulkRowsFor(sectionKey, rows) {
+    return (rows || []).map((row) => ({
+      ...row,
+      section: sectionKey,
+      fulfilmentLocked: isThermolaminatedItem(row.item),
+    }));
+  }
+
+  /* The compact strip above each planning table. A button and the one line that
+   * says whether it is safe to close the tab, and nothing else. */
+  function planStrip(sectionKey, rows) {
+    if (!bulkFieldsFor(sectionKey).length) return null;
+    return (
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setBulkOpen(sectionKey)}
+          className="inline-flex h-[30px] items-center gap-[6px] whitespace-nowrap rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[12px] font-medium text-[#1a1a18] transition-colors hover:bg-[#f5f8f4]"
+        >
+          <IconSettings size={13} />
+          Set on many lines
+          <span className="text-[11px] font-normal text-[#8b8a81]">{rows.length}</span>
+        </button>
+        {planSaveStatus()}
+      </div>
+    );
+  }
+
+  /* The rows the open modal is working on, resolved at render rather than
+   * stashed in state, so a line edited while the modal is open is the line the
+   * modal is counting. */
+  function bulkRowsForOpenSection() {
+    if (bulkOpen === "items") return bulkRowsFor("items", planningRows);
+    if (bulkOpen === "supplierMade") return bulkRowsFor("supplierMade", supplierMadeRows);
+    if (bulkOpen === "madeInHouse") return bulkRowsFor("madeInHouse", madeInHouseRows);
+    return [];
+  }
+
+  function bulkSkipReason(sectionKey, changes) {
+    const fields = Object.keys(changes || {});
+    if (sectionKey === "items") return "they are pressed by the supplier and cannot be made here";
+    if (fields.some((f) => f.startsWith("supplier_"))) return "they do not need a board ordered";
+    return "the field does not apply to them";
+  }
+
+  function planBulkModal() {
+    if (!bulkOpen) return null;
+    const sectionKey = bulkOpen;
+    const rows = bulkRowsForOpenSection();
+    const fields = bulkFieldsFor(sectionKey);
+    const draft = bulkDraft[sectionKey] || {};
+    const scope = draft.__scope || "all";
+
+    const answers = {};
+    for (const f of fields) {
+      if (draft[f.field] !== undefined && draft[f.field] !== null) answers[f.field] = draft[f.field];
+    }
+    const keys = scopeKeys(rows, scope, answers);
+    const preview = bulkChanges(rows, keys, answers);
+    const anyAnswer = Object.keys(answers).length > 0;
+
+    const setDraft = (field, value) =>
+      setBulkDraft((current) => ({ ...current, [sectionKey]: { ...(current[sectionKey] || {}), [field]: value } }));
+
+    function apply() {
+      if (!anyAnswer || !preview.applied) return;
+      planQueueRef.current = queuePatch(planQueueRef.current, preview.patch);
+      // On the screen at once, the same as a single edit. The queue then sends
+      // one request per ITEM rather than one per line, which is what stops a
+      // bulk apply becoming the race the lock used to hide.
+      setOrder((current) => {
+        if (!current) return current;
+        let next = current;
+        for (const [itemId, panels] of Object.entries(preview.patch)) {
+          const item = findOrderItem(next, itemId);
+          next = setOrderItem(next, itemId, {
+            panel_planning: mergePlanning(panelPlanning(item || {}), panels),
+          });
+        }
+        return next;
+      });
+      refreshPlanCounts();
+      for (const itemId of Object.keys(preview.patch)) schedulePlanFlush(itemId, 200);
+      setBulkDraft((current) => ({ ...current, [sectionKey]: {} }));
+      setBulkOpen("");
+      toast({ title: bulkSummary(preview), variant: "success" });
+    }
+
+    const optionsFor = (field) => {
+      if (field === "fulfilment_method") {
+        return [["", "Not decided yet"], ["in_house", "Made in house"], ["supplier_ready_made", "Supplier ready made"]];
+      }
+      if (field === "status") return ORDER_LINE_STATUSES.map((s) => [s, titleCaseStatus(s)]);
+      if (field === "production_stage") return ORDER_PRODUCTION_STAGES.map((s) => [s, s]);
+      if (field === "board_required") return [["yes", "Yes"], ["no", "No"]];
+      return [];
+    };
+
+    const inputClass = "h-[38px] w-full rounded-[6px] border border-[#dbd8cc] bg-white px-2 text-[13px] font-normal text-[#1a1a18]";
+    const labelClass = "text-[10px] font-semibold uppercase tracking-[0.05em] text-[#8b8a81]";
+    // In scope but unable to take the answer: thermolaminate on Item Planning,
+    // or a board field on a line that needs no board.
+    const lockedOut = preview.skipped;
+
+    return (
+      <Modal
+        open={true}
+        onClose={() => setBulkOpen("")}
+        title="Set on many lines"
+        subtitle={`${rows.length} line${rows.length === 1 ? "" : "s"} on this table`}
+        size="lg"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setBulkOpen("")}
+              className="h-[36px] rounded-[6px] border border-[#dbd8cc] bg-white px-4 text-[13px] font-medium text-[#1a1a18] transition-colors hover:bg-[#f5f8f4]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={apply}
+              disabled={!anyAnswer || !preview.applied}
+              className="h-[36px] whitespace-nowrap rounded-[6px] bg-[#1c2b1e] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#2d3f2f] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {anyAnswer ? `Apply to ${preview.applied} line${preview.applied === 1 ? "" : "s"}` : "Apply"}
+            </button>
+          </>
+        }
+      >
+        <p className="mb-3 text-[12px] leading-[1.55] text-[#5a5a52]">
+          Fill in only what you want to change. Anything left on <b>Leave alone</b> stays exactly as it is on every line.
+        </p>
+
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(2, minmax(0,1fr))" }}>
+          {fields.map((f) => {
+            const value = draft[f.field];
+            const selectValue =
+              f.field === "board_required"
+                ? (value === true ? "yes" : value === false ? "no" : "")
+                : (value === undefined || value === null ? "" : String(value));
+            return (
+              <label key={f.field} className="flex min-w-0 flex-col gap-1">
+                <span className={labelClass}>{f.label}</span>
+                {f.kind === "select" ? (
+                  <select
+                    className={inputClass}
+                    value={selectValue}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") return setDraft(f.field, undefined);
+                      setDraft(f.field, f.field === "board_required" ? raw === "yes" : raw);
+                    }}
+                  >
+                    <option value="">Leave alone</option>
+                    {optionsFor(f.field)
+                      .filter(([v]) => v !== "" || f.field !== "fulfilment_method")
+                      .map(([v, l]) => <option key={String(v) || "blank"} value={String(v)}>{l}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type={f.kind === "date" ? "date" : "text"}
+                    className={inputClass}
+                    placeholder="Leave alone"
+                    value={value === undefined || value === null ? "" : value}
+                    onChange={(e) => setDraft(f.field, e.target.value === "" ? undefined : e.target.value)}
+                  />
+                )}
+              </label>
+            );
+          })}
+        </div>
+
+        <label className="mt-3 flex flex-col gap-1">
+          <span className={labelClass}>Which lines</span>
+          <select
+            className={inputClass}
+            value={scope}
+            onChange={(e) => setDraft("__scope", e.target.value)}
+          >
+            <option value="all">All lines in this table</option>
+            <option value="blank">Only the ones still blank</option>
+          </select>
+        </label>
+
+        {/* WHAT IT IS ABOUT TO DO, before it does it. A bulk apply is not read
+            back line by line, so the count and what it leaves out have to be on
+            the screen next to the button. */}
+        <div className="mt-4 rounded-[6px] border border-[#dbd8cc] bg-[#faf9f5] px-3 py-[10px]">
+          {!anyAnswer ? (
+            <p className="text-[12px] text-[#8b8a81]">Nothing filled in yet, so nothing will change.</p>
+          ) : (
+            <>
+              <p className="text-[12px] font-semibold text-[#1a1a18]">
+                {preview.applied} of {rows.length} line{rows.length === 1 ? "" : "s"} will change
+                <span className="font-normal text-[#8b8a81]">
+                  {preview.itemCount ? ` · ${preview.itemCount} item${preview.itemCount === 1 ? "" : "s"} saved` : ""}
+                </span>
+              </p>
+              {scope === "blank" && keys.length < rows.length && (
+                <p className="mt-[3px] text-[11px] leading-[1.5] text-[#5a5a52]">
+                  {rows.length - keys.length} already {rows.length - keys.length === 1 ? "has" : "have"} an answer and
+                  will be left alone.
+                </p>
+              )}
+              {lockedOut > 0 && (
+                <p className="mt-[3px] text-[11px] leading-[1.5] text-[#8a6d0b]">
+                  {lockedOut} cannot take this because {bulkSkipReason(sectionKey, answers)}.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
+    );
+  }
+
+  /* Was it saved? One line, in the same place on every planning table. With the
+   * lock gone this is the only thing telling somebody it is safe to close the
+   * tab, so it is never hidden and it never says "saved" while work is queued. */
+  function planSaveStatus() {
+    if (planUnsaved > 0) {
+      return (
+        <span className="inline-flex items-center gap-[6px] whitespace-nowrap text-[11px] font-medium text-[#8a6d0b]">
+          <span className="h-[6px] w-[6px] rounded-full bg-[#dcbf55]" />
+          Saving {planUnsaved} change{planUnsaved === 1 ? "" : "s"}
+        </span>
+      );
+    }
+    if (planFailed > 0) {
+      return (
+        <span className="inline-flex items-center gap-[6px] whitespace-nowrap text-[11px] font-medium text-[#b42318]">
+          <span className="h-[6px] w-[6px] rounded-full bg-[#b42318]" />
+          Some changes did not save
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-[6px] whitespace-nowrap text-[11px] text-[#8b8a81]">
+        <span className="h-[6px] w-[6px] rounded-full bg-[#a8c5a0]" />
+        All changes saved
+      </span>
+    );
+  }
+
   function renderItems() {
     return (
+      <>
+      {planStrip("items", planningRows)}
       <div className={tw.card}>
         <div className="hidden md:block">
           <div className={tw.tableWrap}>
@@ -1631,7 +2135,7 @@ export default function OrderDetail({ orderId }) {
                           className={tw.inlineSelect}
                           style={{minWidth: "160px"}}
                           value={row.plan.fulfilment_method}
-                          disabled={savingItemId === item.id || thermolaminated}
+                          disabled={thermolaminated}
                           onChange={e => updatePanelPlan(row, { fulfilment_method: e.target.value })}
                         >
                           <option value="">Not decided yet</option>
@@ -1670,7 +2174,7 @@ export default function OrderDetail({ orderId }) {
                   <select
                     className={tw.inlineSelect}
                     value={row.plan.fulfilment_method}
-                    disabled={savingItemId === item.id || thermolaminated}
+                    disabled={thermolaminated}
                     onChange={e => updatePanelPlan(row, { fulfilment_method: e.target.value })}
                   >
                     <option value="">Not decided yet</option>
@@ -1686,18 +2190,21 @@ export default function OrderDetail({ orderId }) {
           )}
         </div>
       </div>
+      </>
     );
   }
 
   function renderSupplierMade() {
     return (
+      <>
+      {planStrip("supplierMade", supplierMadeRows)}
       <div className={tw.card}>
         <div className="hidden md:block">
           <div className={tw.tableWrap}>
             <table className={tw.table}>
               <thead>
                 <tr>
-                  {["Item","Order status","Supplier","Ref","Ordered","ETA","Notes","Issues",""].map(h => (
+                  {["Item","Order status","Supplier","Ref","Ordered","ETA","Actions"].map(h => (
                     <th key={h || "actions"} className={tw.th}>{h}</th>
                   ))}
                 </tr>
@@ -1714,7 +2221,7 @@ export default function OrderDetail({ orderId }) {
                         className={tw.inlineSelect}
                         style={{minWidth: "120px"}}
                         value={row.plan.status}
-                        disabled={savingItemId === row.item.id}
+                       
                         onChange={e => updatePanelPlan(row, { status: e.target.value })}
                       >
                         {ORDER_LINE_STATUSES.map(s => <option key={s} value={s}>{titleCaseStatus(s)}</option>)}
@@ -1725,8 +2232,8 @@ export default function OrderDetail({ orderId }) {
                         className={tw.inlineInput}
                         style={{minWidth: "100px"}}
                         value={row.plan.supplier_name || defaultSupplierForItem(row.item)}
-                        disabled={savingItemId === row.item.id}
-                        onChange={e => updatePanelPlanLocal(row, { supplier_name: e.target.value })}
+                       
+                        onChange={e => typePanelPlan(row, { supplier_name: e.target.value })}
                         onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })}
                       />
                     </td>
@@ -1735,8 +2242,8 @@ export default function OrderDetail({ orderId }) {
                         className={tw.inlineInput}
                         style={{minWidth: "100px"}}
                         value={row.plan.supplier_order_ref || ""}
-                        disabled={savingItemId === row.item.id}
-                        onChange={e => updatePanelPlanLocal(row, { supplier_order_ref: e.target.value })}
+                       
+                        onChange={e => typePanelPlan(row, { supplier_order_ref: e.target.value })}
                         onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })}
                       />
                     </td>
@@ -1746,8 +2253,8 @@ export default function OrderDetail({ orderId }) {
                         type="date"
                         style={{minWidth: "130px"}}
                         value={row.plan.supplier_ordered_at || ""}
-                        disabled={savingItemId === row.item.id}
-                        onChange={e => updatePanelPlanLocal(row, { supplier_ordered_at: e.target.value })}
+                       
+                        onChange={e => typePanelPlan(row, { supplier_ordered_at: e.target.value })}
                         onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })}
                       />
                     </td>
@@ -1757,28 +2264,26 @@ export default function OrderDetail({ orderId }) {
                         type="date"
                         style={{minWidth: "130px"}}
                         value={row.plan.supplier_eta || ""}
-                        disabled={savingItemId === row.item.id}
-                        onChange={e => updatePanelPlanLocal(row, { supplier_eta: e.target.value })}
+                       
+                        onChange={e => typePanelPlan(row, { supplier_eta: e.target.value })}
                         onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })}
                       />
                     </td>
-                    <td className={tw.td}>
-                      {panelNotesButton(row)}
-                    </td>
-                    <td className={tw.td + " text-center"}>
-                      {panelIssueMark(issuesForPanel(issues, row.item.id, row.panelKey))}
-                    </td>
-                    <td className={tw.tdLast + " text-right"}>
-                      <ActionMenu label="Panel actions" size="xs">
-                        <ActionMenuItem variant="danger" onClick={() => openIssueFor(row)}>
-                          Report an issue
-                        </ActionMenuItem>
-                      </ActionMenu>
+                    <td className={tw.tdLast}>
+                      <div className="flex items-center gap-2">
+                        {panelNotesButton(row)}
+                        {panelIssueMark(issuesForPanel(issues, row.item.id, row.panelKey))}
+                        <ActionMenu label="Panel actions" size="xs">
+                          <ActionMenuItem variant="danger" onClick={() => openIssueFor(row)}>
+                            Report an issue
+                          </ActionMenuItem>
+                        </ActionMenu>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {!supplierMadeRows.length && (
-                  <tr><td colSpan={9} className="py-8 text-center text-[12px] text-[#8b8a81]">No supplier-made items yet.</td></tr>
+                  <tr><td colSpan={7} className="py-8 text-center text-[12px] text-[#8b8a81]">No supplier-made items yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -1794,25 +2299,25 @@ export default function OrderDetail({ orderId }) {
               <div className="flex flex-col gap-2">
                 <label className={tw.fieldLabel}>
                   Order status
-                  <select className={tw.inlineSelect} value={row.plan.status} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlan(row, { status: e.target.value })}>
+                  <select className={tw.inlineSelect} value={row.plan.status} onChange={e => updatePanelPlan(row, { status: e.target.value })}>
                     {ORDER_LINE_STATUSES.map(s => <option key={s} value={s}>{titleCaseStatus(s)}</option>)}
                   </select>
                 </label>
                 <label className={tw.fieldLabel}>
                   Supplier
-                  <input className={tw.inlineInput} value={row.plan.supplier_name || defaultSupplierForItem(row.item)} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlanLocal(row, { supplier_name: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })} />
+                  <input className={tw.inlineInput} value={row.plan.supplier_name || defaultSupplierForItem(row.item)} onChange={e => typePanelPlan(row, { supplier_name: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })} />
                 </label>
                 <label className={tw.fieldLabel}>
                   Ref
-                  <input className={tw.inlineInput} value={row.plan.supplier_order_ref || ""} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlanLocal(row, { supplier_order_ref: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })} />
+                  <input className={tw.inlineInput} value={row.plan.supplier_order_ref || ""} onChange={e => typePanelPlan(row, { supplier_order_ref: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })} />
                 </label>
                 <label className={tw.fieldLabel}>
                   Ordered date
-                  <input className={tw.inlineInput} type="date" value={row.plan.supplier_ordered_at || ""} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlanLocal(row, { supplier_ordered_at: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })} />
+                  <input className={tw.inlineInput} type="date" value={row.plan.supplier_ordered_at || ""} onChange={e => typePanelPlan(row, { supplier_ordered_at: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })} />
                 </label>
                 <label className={tw.fieldLabel}>
                   ETA
-                  <input className={tw.inlineInput} type="date" value={row.plan.supplier_eta || ""} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlanLocal(row, { supplier_eta: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })} />
+                  <input className={tw.inlineInput} type="date" value={row.plan.supplier_eta || ""} onChange={e => typePanelPlan(row, { supplier_eta: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })} />
                 </label>
               </div>
               <div className="pt-3 mt-3 border-t border-[#edf4eb]">
@@ -1825,18 +2330,21 @@ export default function OrderDetail({ orderId }) {
           )}
         </div>
       </div>
+      </>
     );
   }
 
   function renderMadeInHouse() {
     return (
+      <>
+      {planStrip("madeInHouse", madeInHouseRows)}
       <div className={tw.card}>
         <div className="hidden md:block">
           <div className={tw.tableWrap}>
             <table className={tw.table}>
               <thead>
                 <tr>
-                  {["Item","Board required","Supplier","Ref","Ordered","ETA","Production stage","Notes","Issues",""].map(h => (
+                  {["Item","Board required","Supplier","Ref","Ordered","ETA","Production stage","Actions"].map(h => (
                     <th key={h || "actions"} className={tw.th}>{h}</th>
                   ))}
                 </tr>
@@ -1855,7 +2363,7 @@ export default function OrderDetail({ orderId }) {
                           className={tw.inlineSelect}
                           style={{minWidth: "70px"}}
                           value={boardRequired ? "yes" : "no"}
-                          disabled={savingItemId === row.item.id}
+                         
                           onChange={e => updatePanelPlan(row, { board_required: e.target.value === "yes" })}
                         >
                           <option value="yes">Yes</option>
@@ -1867,8 +2375,8 @@ export default function OrderDetail({ orderId }) {
                           className={tw.inlineInput}
                           style={{minWidth: "90px"}}
                           value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""}
-                          disabled={savingItemId === row.item.id || !boardRequired}
-                          onChange={e => updatePanelPlanLocal(row, { supplier_name: e.target.value })}
+                          disabled={!boardRequired}
+                          onChange={e => typePanelPlan(row, { supplier_name: e.target.value })}
                           onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })}
                         />
                       </td>
@@ -1877,8 +2385,8 @@ export default function OrderDetail({ orderId }) {
                           className={tw.inlineInput}
                           style={{minWidth: "90px"}}
                           value={boardRequired ? row.plan.supplier_order_ref || "" : ""}
-                          disabled={savingItemId === row.item.id || !boardRequired}
-                          onChange={e => updatePanelPlanLocal(row, { supplier_order_ref: e.target.value })}
+                          disabled={!boardRequired}
+                          onChange={e => typePanelPlan(row, { supplier_order_ref: e.target.value })}
                           onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })}
                         />
                       </td>
@@ -1888,8 +2396,8 @@ export default function OrderDetail({ orderId }) {
                           type="date"
                           style={{minWidth: "130px"}}
                           value={boardRequired ? row.plan.supplier_ordered_at || "" : ""}
-                          disabled={savingItemId === row.item.id || !boardRequired}
-                          onChange={e => updatePanelPlanLocal(row, { supplier_ordered_at: e.target.value })}
+                          disabled={!boardRequired}
+                          onChange={e => typePanelPlan(row, { supplier_ordered_at: e.target.value })}
                           onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })}
                         />
                       </td>
@@ -1899,8 +2407,8 @@ export default function OrderDetail({ orderId }) {
                           type="date"
                           style={{minWidth: "130px"}}
                           value={boardRequired ? row.plan.supplier_eta || "" : ""}
-                          disabled={savingItemId === row.item.id || !boardRequired}
-                          onChange={e => updatePanelPlanLocal(row, { supplier_eta: e.target.value })}
+                          disabled={!boardRequired}
+                          onChange={e => typePanelPlan(row, { supplier_eta: e.target.value })}
                           onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })}
                         />
                       </td>
@@ -1909,30 +2417,28 @@ export default function OrderDetail({ orderId }) {
                           className={tw.inlineSelect}
                           style={{minWidth: "140px"}}
                           value={row.plan.production_stage}
-                          disabled={savingItemId === row.item.id}
+                         
                           onChange={e => updatePanelPlan(row, { production_stage: e.target.value })}
                         >
                           {ORDER_PRODUCTION_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
                         </select>
                       </td>
-                      <td className={tw.td}>
-                        {panelNotesButton(row)}
-                      </td>
-                      <td className={tw.td + " text-center"}>
-                        {panelIssueMark(issuesForPanel(issues, row.item.id, row.panelKey))}
-                      </td>
-                      <td className={tw.tdLast + " text-right"}>
-                        <ActionMenu label="Panel actions" size="xs">
-                          <ActionMenuItem variant="danger" onClick={() => openIssueFor(row)}>
-                            Report an issue
-                          </ActionMenuItem>
-                        </ActionMenu>
+                      <td className={tw.tdLast}>
+                        <div className="flex items-center gap-2">
+                          {panelNotesButton(row)}
+                          {panelIssueMark(issuesForPanel(issues, row.item.id, row.panelKey))}
+                          <ActionMenu label="Panel actions" size="xs">
+                            <ActionMenuItem variant="danger" onClick={() => openIssueFor(row)}>
+                              Report an issue
+                            </ActionMenuItem>
+                          </ActionMenu>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
                 {!madeInHouseRows.length && (
-                  <tr><td colSpan={10} className="py-8 text-center text-[12px] text-[#8b8a81]">No made-in-house items yet.</td></tr>
+                  <tr><td colSpan={8} className="py-8 text-center text-[12px] text-[#8b8a81]">No made-in-house items yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -1950,30 +2456,30 @@ export default function OrderDetail({ orderId }) {
                 <div className="flex flex-col gap-2">
                   <label className={tw.fieldLabel}>
                     Board required
-                    <select className={tw.inlineSelect} value={boardRequired ? "yes" : "no"} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlan(row, { board_required: e.target.value === "yes" })}>
+                    <select className={tw.inlineSelect} value={boardRequired ? "yes" : "no"} onChange={e => updatePanelPlan(row, { board_required: e.target.value === "yes" })}>
                       <option value="yes">Yes</option>
                       <option value="no">No</option>
                     </select>
                   </label>
                   <label className={tw.fieldLabel}>
                     Supplier
-                    <input className={tw.inlineInput} value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={e => updatePanelPlanLocal(row, { supplier_name: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })} />
+                    <input className={tw.inlineInput} value={boardRequired ? row.plan.supplier_name || defaultSupplierForItem(row.item) : ""} disabled={!boardRequired} onChange={e => typePanelPlan(row, { supplier_name: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_name: e.target.value })} />
                   </label>
                   <label className={tw.fieldLabel}>
                     Ref
-                    <input className={tw.inlineInput} value={boardRequired ? row.plan.supplier_order_ref || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={e => updatePanelPlanLocal(row, { supplier_order_ref: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })} />
+                    <input className={tw.inlineInput} value={boardRequired ? row.plan.supplier_order_ref || "" : ""} disabled={!boardRequired} onChange={e => typePanelPlan(row, { supplier_order_ref: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_order_ref: e.target.value })} />
                   </label>
                   <label className={tw.fieldLabel}>
                     Ordered date
-                    <input className={tw.inlineInput} type="date" value={boardRequired ? row.plan.supplier_ordered_at || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={e => updatePanelPlanLocal(row, { supplier_ordered_at: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })} />
+                    <input className={tw.inlineInput} type="date" value={boardRequired ? row.plan.supplier_ordered_at || "" : ""} disabled={!boardRequired} onChange={e => typePanelPlan(row, { supplier_ordered_at: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_ordered_at: e.target.value })} />
                   </label>
                   <label className={tw.fieldLabel}>
                     ETA
-                    <input className={tw.inlineInput} type="date" value={boardRequired ? row.plan.supplier_eta || "" : ""} disabled={savingItemId === row.item.id || !boardRequired} onChange={e => updatePanelPlanLocal(row, { supplier_eta: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })} />
+                    <input className={tw.inlineInput} type="date" value={boardRequired ? row.plan.supplier_eta || "" : ""} disabled={!boardRequired} onChange={e => typePanelPlan(row, { supplier_eta: e.target.value })} onBlur={e => updatePanelPlan(row, { supplier_eta: e.target.value })} />
                   </label>
                   <label className={tw.fieldLabel}>
                     Production stage
-                    <select className={tw.inlineSelect} value={row.plan.production_stage} disabled={savingItemId === row.item.id} onChange={e => updatePanelPlan(row, { production_stage: e.target.value })}>
+                    <select className={tw.inlineSelect} value={row.plan.production_stage} onChange={e => updatePanelPlan(row, { production_stage: e.target.value })}>
                       {ORDER_PRODUCTION_STAGES.map(stage => <option key={stage} value={stage}>{stage}</option>)}
                     </select>
                   </label>
@@ -1989,6 +2495,7 @@ export default function OrderDetail({ orderId }) {
           )}
         </div>
       </div>
+      </>
     );
   }
 
@@ -2300,7 +2807,7 @@ export default function OrderDetail({ orderId }) {
             <table className={tw.table}>
               <thead>
                 <tr>
-                  {["Panel","What is wrong","Was at","To fix","Blocks","Rework","Raised","Status",""].map(h => (
+                  {["Panel","What is wrong","Was at","To fix","Blocks","Rework","Raised","Status","Actions"].map(h => (
                     <th key={h || "actions"} className={tw.th}>{h}</th>
                   ))}
                 </tr>
@@ -3276,7 +3783,7 @@ export default function OrderDetail({ orderId }) {
             <button type="button" className="h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors" onClick={() => setPanelNotesModal(null)}>
               Cancel
             </button>
-            <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" disabled={savingItemId === row.item.id} onClick={async () => { await updatePanelPlan(row, { notes: panelNotesModal.notes }); setPanelNotesModal(null); }}>
+            <button type="button" className="h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors" onClick={async () => { await updatePanelPlan(row, { notes: panelNotesModal.notes }); setPanelNotesModal(null); }}>
               Save notes
             </button>
           </>
@@ -3586,9 +4093,9 @@ export default function OrderDetail({ orderId }) {
         {/* Desktop left sidebar nav */}
         <aside className="hidden md:flex flex-col w-[220px] h-full min-h-0 flex-shrink-0 border-r border-[#edf4eb] bg-white">
           <div className="px-4 py-4 border-b border-[#edf4eb]">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">Order</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[2px]">{order.source === "web_shop" ? "Web order, paid online" : "Order"}</p>
             <p className="text-[15px] font-semibold text-[#1a1a18] truncate">{order.order_number || "Order"}</p>
-            <Link href="/admin/orders" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Orders</Link>
+            <Link href="/admin/orders" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] flex items-center gap-[3px]"><IconArrowLeft size={13} />Orders</Link>
           </div>
 
           {/* THE ACTIONS ON THE WHOLE ORDER, in the same place the quote builder
@@ -3675,9 +4182,9 @@ export default function OrderDetail({ orderId }) {
           {activeSection === "" ? (
             <div className="flex flex-col">
               <div className="px-4 py-4 bg-white border-b border-[#edf4eb]">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[1px]">Order</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8a81] mb-[1px]">{order.source === "web_shop" ? "Web order, paid online" : "Order"}</p>
                 <p className="text-[15px] font-semibold text-[#1a1a18]">{order.order_number || "Order"}</p>
-                <Link href="/admin/orders" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] block">← Orders</Link>
+                <Link href="/admin/orders" className="text-[12px] text-[#6b9e61] hover:underline mt-[2px] flex items-center gap-[3px]"><IconArrowLeft size={13} />Orders</Link>
               </div>
 
               {/* The same order actions as the sidebar. Archiving was reachable
@@ -3719,7 +4226,7 @@ export default function OrderDetail({ orderId }) {
                   className="w-full flex items-center justify-between px-4 py-[14px] text-[14px] font-medium text-[#1a1a18] bg-white border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors"
                 >
                   {section.label}
-                  <span className="text-[#c5cdd8]">›</span>
+                  <IconChevronRight size={16} className="text-[#c5cdd8]" />
                 </button>
               ))}
             </div>
@@ -3732,7 +4239,7 @@ export default function OrderDetail({ orderId }) {
                   className="w-[32px] h-[32px] flex items-center justify-center text-[#5a5a52] hover:text-[#1a1a18] transition-colors -ml-1"
                   aria-label="Back to sections"
                 >
-                  ←
+                  <IconArrowLeft size={18} />
                 </button>
                 <span className="text-[15px] font-semibold text-[#1a1a18]">
                   {sections.find((s) => s.key === activeSection)?.label}
@@ -3792,6 +4299,7 @@ export default function OrderDetail({ orderId }) {
       />
       {renderPanelNotesModal()}
       {issueModal}
+      {planBulkModal()}
       {resolveModal}
 
       {/* Archiving takes an order off the board, out of the financials and out

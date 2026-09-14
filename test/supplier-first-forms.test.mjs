@@ -235,13 +235,20 @@ test("an ordinary unmatched value still shows", () => {
 // With the brand ahead of it, the thickness list is that brand's thicknesses and
 // the wrong turn is not there to take.
 
-test("the public form asks the brand before the thickness", () => {
-  const brand = PUBLIC_FORM.indexOf("<SupplierSelect");
-  const material = PUBLIC_FORM.indexOf("<label>Material<Required /></label>");
-  const thickness = PUBLIC_FORM.indexOf("<label>Thickness<Required /></label>");
-  assert.ok(material > -1 && brand > -1 && thickness > -1);
-  assert.ok(brand > material, "the brand belongs to a material, so the material comes first");
-  assert.ok(brand < thickness, "but everything the brand decides comes after it, thickness included");
+// The public form no longer holds this order itself. It renders whatever
+// stepsForLine hands it, in that order, so the order is asserted where it now
+// lives and the page is checked for still asking all three.
+test("the public form asks the brand before the thickness", async () => {
+  const { stepsForLine } = await import("../lib/pcd-quote-steps.js");
+  const order = stepsForLine({ productType: "Door", material: "Decorative Board" }).map((s) => s.key);
+  const at = (key) => order.indexOf(key);
+  assert.ok(at("material") > -1 && at("supplier") > -1 && at("thickness") > -1);
+  assert.ok(at("supplier") > at("material"), "the brand belongs to a material, so the material comes first");
+  assert.ok(at("supplier") < at("thickness"), "but everything the brand decides comes after it, thickness included");
+  ["material", "supplier", "thickness"].forEach((key) => {
+    assert.ok(PUBLIC_FORM.includes(`key === "${key}"`), `the page draws no ${key} step`);
+  });
+  assert.match(PUBLIC_FORM, /<SupplierSelect/);
 });
 
 test("the thickness list is the chosen brand's", () => {
@@ -252,7 +259,18 @@ test("the thickness list is the chosen brand's", () => {
 // A field that is empty for a reason nobody can see is the failure this whole
 // change is about.
 test("the thickness says which step is still missing", () => {
-  assert.match(PUBLIC_FORM, /!editingItem\.material \? "Select material first" : !supplier \? "Choose a brand first" : "Thickness"/);
+  // The thicknesses are a row of tabs now rather than a dropdown, so an
+  // unanswerable step is a sentence in its place rather than a placeholder
+  // inside an empty control. Same rule: never an empty box with no reason.
+  assert.match(
+    PUBLIC_FORM,
+    /\{!editingItem\.material \? "Choose a material first" : "Choose a brand first"\}/
+  );
+  assert.match(
+    PUBLIC_FORM,
+    /if \(!editingItem\.material \|\| !supplier \|\| !thicknessOptions\.length\)/,
+    "and an empty list counts as unanswerable, not as no thicknesses"
+  );
 });
 
 // Changing brand can strand a thickness the new one does not make, and the

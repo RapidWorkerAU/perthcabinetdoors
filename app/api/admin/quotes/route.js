@@ -94,9 +94,14 @@ export async function GET() {
   if (context.error) return context.error;
 
   try {
+    // A web order still waiting on its payment is a cart, not a quote anybody
+    // is working on. It becomes an approved quote with an order the moment it
+    // is paid, and is archived quietly if it never is, so until then it stays
+    // off this list altogether. See lib/pcd-deposit-gate.js.
     const { data, error } = await context.supabase
       .from("pcd_quotes")
       .select("*, pcd_quote_line_items(*), pcd_quote_attachments(*), pcd_customers(site_address)")
+      .neq("status", "web_checkout")
       .order("created_at", { ascending: false });
 
     if (error) throw error;

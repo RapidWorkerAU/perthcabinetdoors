@@ -1,5 +1,5 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
-import { bookingRowFromInput } from "../../../../../lib/pcd-calendar";
+import { bookingRowFromInput, bookingSaveMessage } from "../../../../../lib/pcd-calendar";
 import { pushBooking } from "../../../../../lib/pcd-calendar-sync";
 import { logBookingActivity } from "../../../../../lib/pcd-booking-activity";
 import { askOnSave } from "../../../../../lib/pcd-booking-confirmation-sweep";
@@ -33,6 +33,14 @@ export async function PATCH(request, { params }) {
     // What the form sends back is the whole booking, not a patch of fields, so
     // it goes through the same validation as a new one. Anything not sent falls
     // back to what is already stored rather than being wiped.
+    //
+    // NOT SENT AND SENT EMPTY ARE DIFFERENT THINGS on the links below. The form
+    // sends an empty job when somebody moves a booking from an order to a
+    // quote, or takes the customer off it, and `??` read that as "nothing sent"
+    // and put the old link straight back, so those changes could not be made at
+    // all. `sent(...)` keeps an empty answer as the answer it is.
+    const sent = (value, stored) => (value === undefined ? stored : value || null);
+
     const { row, error: invalid } = bookingRowFromInput({
       kind: payload.kind ?? existing.kind,
       title: payload.title ?? existing.title,
@@ -40,11 +48,11 @@ export async function PATCH(request, { params }) {
       startMinutes: payload.startMinutes,
       minutes: payload.minutes,
       allDay: payload.allDay ?? existing.all_day,
-      customerId: payload.customerId ?? existing.customer_id,
+      customerId: sent(payload.customerId, existing.customer_id),
       customerName: payload.customerName ?? existing.customer_name,
-      orderId: payload.orderId ?? existing.order_id,
-      quoteId: payload.quoteId ?? existing.quote_id,
-      quoteRequestId: payload.quoteRequestId ?? existing.quote_request_id,
+      orderId: sent(payload.orderId, existing.order_id),
+      quoteId: sent(payload.quoteId, existing.quote_id),
+      quoteRequestId: sent(payload.quoteRequestId, existing.quote_request_id),
       siteAddress: payload.siteAddress ?? existing.site_address,
       notes: payload.notes ?? existing.notes,
       status: payload.status ?? existing.status,
@@ -91,7 +99,7 @@ export async function PATCH(request, { params }) {
 
     return Response.json({ ok: true, event: fresh || data, sync, ask });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not update the booking." }, { status: 500 });
+    return Response.json({ ok: false, error: bookingSaveMessage(error) }, { status: 500 });
   }
 }
 

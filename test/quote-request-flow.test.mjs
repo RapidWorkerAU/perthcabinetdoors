@@ -15,13 +15,15 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import { matchBoardCost } from "../lib/pcd-board-cost.js";
 import { convertedQuoteLine, unpricedSummary, withHingeSupplyNote } from "../lib/pcd-quote-request-convert.js";
 import { cabinetSpecFromDesignItem } from "../lib/pcd-cabinet-from-design.js";
-import { insertQuoteRequest } from "../lib/pcd-quote-request.js";
+import { insertQuoteRequest, quoteRequestLineRow } from "../lib/pcd-quote-request.js";
 import { describeGaps, lineGaps, lineIsReady, missingFields, unreadyLines } from "../lib/pcd-quote-ready.js";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS } from "../lib/pcd-quote-utils.js";
+import { BANDED_EDGES, EDGE_FINISHES, HOLE_TYPES, PANEL_USES, edgeFinishFromBanded } from "../lib/pcd-line-details.js";
 import { quoteLineRow } from "../app/api/admin/quotes/[id]/_quote-line-save.js";
 
 // A small stand-in for the colour library. Two suppliers stock a colour with
@@ -535,4 +537,319 @@ test("a colour we hold no price for is still a complete request", () => {
   assert.equal(entry.match.ok, false, "expected this board to have no price in the test library");
   assert.equal(entry.match.reason, "unpriced");
   assert.equal(entry.line.unit_cost_mode, "manual", "a line waiting to be costed should be left manual, ready to type into");
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WHICH KIND OF PANEL, ALL THE WAY THROUGH
+
+   A quote line has carried panel_use for a while: it is what makes the items
+   table show a Filler as a Filler instead of six kinds of thing all reading
+   "Panel". The request a line is converted FROM never had the column and the
+   conversion never set one, so nothing a customer sent could say which kind it
+   was. Every panel off the website arrived as a plain Panel and somebody had to
+   work it out from the notes before it could be cut.
+
+   Three links in the chain, and it only works if all three hold.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+test("the request line stores which kind of panel it is", () => {
+  const row = quoteRequestLineRow(
+    { productType: "Panel", panelUse: "Scribe", material: "Decorative Board", thickness: "18mm", height: 2100, width: 40, qty: 2 },
+    0,
+    { quoteRequestId: "r1" }
+  );
+  assert.equal(row.product_type, "Panel");
+  assert.equal(row.panel_use, "Scribe");
+});
+
+test("a line that is not a panel carries no panel use", () => {
+  // Null rather than an empty string, so a door cannot be read as a panel of an
+  // unnamed kind.
+  const row = quoteRequestLineRow({ productType: "Door", material: "Decorative Board" }, 0, {});
+  assert.equal(row.panel_use, null);
+});
+
+test("the conversion carries it onto the quote line", () => {
+  // THE LINK THAT WAS MISSING. Everything above it worked and this dropped it.
+  const entry = convertedQuoteLine(
+    { product_type: "Panel", panel_use: "Kickboard", material: "Decorative Board", thickness: "18mm", qty: 3 },
+    { resolveBoard: () => null, quoteRequest: {}, businessDefaults: DEFAULT_BUSINESS_DEFAULTS }
+  );
+  assert.equal(entry.line.product_type, "Panel");
+  assert.equal(entry.line.panel_use, "Kickboard");
+});
+
+test("a conversion with no panel use sets null, never a guess", () => {
+  const entry = convertedQuoteLine(
+    { product_type: "Door", material: "Decorative Board", thickness: "18mm", qty: 1 },
+    { resolveBoard: () => null, quoteRequest: {}, businessDefaults: DEFAULT_BUSINESS_DEFAULTS }
+  );
+  assert.equal(entry.line.panel_use, null);
+});
+
+test("the quote line saver keeps it, so it reaches the workshop", () => {
+  // The last link. quoteLineRow is what actually writes the row.
+  const row = quoteLineRow(
+    { product_type: "Panel", panel_use: "Filler", material: "Decorative Board", thickness: "18mm", qty: 1 },
+    "quote-1",
+    0
+  );
+  assert.equal(row.panel_use, "Filler");
+});
+
+test("every panel use the settings list offers can travel", () => {
+  // A use added in Settings, Lists has to reach the bench without a migration,
+  // which is why the column has no check constraint on it.
+  for (const use of PANEL_USES){
+    const row = quoteRequestLineRow({ productType: "Panel", panelUse: use }, 0, {});
+    assert.equal(row.panel_use, use, `${use} did not survive the request line`);
+    const entry = convertedQuoteLine(
+      { product_type: "Panel", panel_use: use, material: "Decorative Board", thickness: "18mm", qty: 1 },
+      { resolveBoard: () => null, quoteRequest: {}, businessDefaults: DEFAULT_BUSINESS_DEFAULTS }
+    );
+    assert.equal(entry.line.panel_use, use, `${use} did not survive the conversion`);
+  }
+});
+
+test("a site that has not run the migration still takes the request", () => {
+  // The column is new, so the insert has to survive a schema that has not got
+  // it yet. Losing the lead because a migration is outstanding would be a much
+  // worse fault than losing the kind of panel.
+  const source = readFileSync(new URL("../lib/pcd-quote-request.js", import.meta.url), "utf8");
+  assert.match(source, /function isMissingPanelUseSchemaError/);
+  assert.match(source, /withoutPanelUseColumn/);
+  assert.ok(
+    source.indexOf("isMissingPanelUseSchemaError(linesError)") < source.indexOf("isMissingCabinetSpecSchemaError(linesError)"),
+    "the newest column has to be tried first or its retry never runs"
+  );
+  assert.match(source, /202609082000_pcd_quote_request_panel_use\.sql/, "the log should name the migration to run");
+});
+
+test("the admin shows the kind before anybody converts it", () => {
+  const admin = readFileSync(new URL("../app/admin/quote-requests/QuoteRequestsManager.tsx", import.meta.url), "utf8");
+  assert.match(admin, /panel_use\?:\s+string/, "the line type never learned about it");
+  assert.match(admin, /line\.panel_use \|\| line\.product_type/, "the table still shows every panel as Panel");
+});
+
+test("the endpoint accepts it, and does not demand it", () => {
+  // The design tool posts to this same route and has never sent one.
+  const route = readFileSync(new URL("../app/api/quote-requests/route.js", import.meta.url), "utf8");
+  assert.match(route, /panelUse: z\.string\(\)\.optional\(\)/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WHICH EDGES ARE TAPED, AND WHICH BORING THE HINGE NEEDS
+
+   edge_finish has been there a while and holds one of three phrases, the middle
+   one being "Leave one edge raw, see notes". Which edge went in the notes. The
+   website can ask exactly, one edge at a time, so banded_edges holds the exact
+   answer and edge_finish is DERIVED from it. That is the important part: every
+   screen, PDF and order form still reading edge_finish keeps working and keeps
+   getting a true answer, without anybody editing them.
+
+   hole_type is new outright. A bare 35mm cup and a Blum Inserta boring are two
+   machine setups, and a door bored for one will not take a hinge made for the
+   other. It used to be a sentence in the notes or a phone call.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+test("the exact answer is stored, cleaned and in order", () => {
+  const row = quoteRequestLineRow(
+    { productType: "Door", material: "Decorative Board", bandedEdges: ["RIGHT", "top", "nonsense"] },
+    0,
+    {}
+  );
+  assert.deepEqual(row.banded_edges, ["Top", "Right"], "cleaned to our words, in our order");
+});
+
+test("nobody asked is null, not an empty list", () => {
+  // "Not asked" and "none of the four" are different, and only one of them is
+  // an instruction to the bench.
+  const row = quoteRequestLineRow({ productType: "Door", material: "Decorative Board" }, 0, {});
+  assert.equal(row.banded_edges, null);
+});
+
+test("the old three phrase answer is worked out from the exact one", () => {
+  assert.equal(edgeFinishFromBanded(["Top", "Bottom", "Left", "Right"]), "All four edges");
+  assert.equal(edgeFinishFromBanded(["Top", "Bottom", "Left"]), "Leave one edge raw, see notes");
+  assert.equal(edgeFinishFromBanded([]), "Leave one edge raw, see notes");
+  // Not asked stays not asked. It must never become a phrase.
+  assert.equal(edgeFinishFromBanded(null), "");
+  assert.equal(edgeFinishFromBanded(undefined), "");
+});
+
+test("every phrase it produces is one the old field already allowed", () => {
+  // Or a screen reading edge_finish would get a word it cannot show.
+  for (const edges of [["Top"], ["Top", "Bottom"], ["Top", "Bottom", "Left"], BANDED_EDGES]) {
+    assert.ok(EDGE_FINISHES.includes(edgeFinishFromBanded(edges)), edges.join("/") + " produced an unknown phrase");
+  }
+});
+
+test("the conversion carries the exact answer and keeps the old one true", () => {
+  const entry = convertedQuoteLine(
+    { product_type: "Panel", material: "Decorative Board", thickness: "18mm", qty: 1, banded_edges: ["Top", "Left"] },
+    { resolveBoard: () => null, quoteRequest: {}, businessDefaults: DEFAULT_BUSINESS_DEFAULTS }
+  );
+  assert.deepEqual(entry.line.banded_edges, ["Top", "Left"]);
+  assert.equal(entry.line.edge_finish, "Leave one edge raw, see notes");
+});
+
+test("a request that never said anything leaves edge_finish alone", () => {
+  const entry = convertedQuoteLine(
+    { product_type: "Panel", material: "Decorative Board", thickness: "18mm", qty: 1, edge_finish: "Not sure" },
+    { resolveBoard: () => null, quoteRequest: {}, businessDefaults: DEFAULT_BUSINESS_DEFAULTS }
+  );
+  assert.equal(entry.line.banded_edges, null);
+  assert.equal(entry.line.edge_finish, "Not sure");
+});
+
+test("only decorative board is taped", () => {
+  // A thermolaminate front is a vinyl skin wrapped round the edges and a
+  // compact laminate panel is solid through. An answer on either is an answer
+  // to a question we never asked.
+  for (const material of ["Thermolaminate", "Compact Laminate"]) {
+    const row = quoteLineRow(
+      { product_type: "Door", material, thickness: "18mm", qty: 1, banded_edges: ["Top", "Left"] },
+      "quote-1",
+      0
+    );
+    assert.equal(row.banded_edges, null, material + " came back taped");
+  }
+  const board = quoteLineRow(
+    { product_type: "Door", material: "Decorative Board", thickness: "18mm", qty: 1, banded_edges: ["Top", "Left"] },
+    "quote-1",
+    0
+  );
+  assert.deepEqual(board.banded_edges, ["Top", "Left"]);
+});
+
+test("the two edge fields can never disagree on a saved line", () => {
+  // The whole reason edge_finish is derived rather than carried.
+  const row = quoteLineRow(
+    { product_type: "Door", material: "Decorative Board", thickness: "18mm", qty: 1,
+      banded_edges: ["Top", "Bottom", "Left", "Right"], edge_finish: "Not sure" },
+    "quote-1",
+    0
+  );
+  assert.deepEqual(row.banded_edges, ["Top", "Bottom", "Left", "Right"]);
+  assert.equal(row.edge_finish, "All four edges", "the exact answer has to win");
+});
+
+test("a hole type is only kept on a line that is drilled", () => {
+  const drilled = quoteLineRow(
+    { product_type: "Door", material: "Decorative Board", thickness: "18mm", qty: 1, hinge_holes: true, hole_type: "Blum Inserta" },
+    "quote-1",
+    0
+  );
+  assert.equal(drilled.hole_type, "Blum Inserta");
+
+  const notDrilled = quoteLineRow(
+    { product_type: "Panel", material: "Decorative Board", thickness: "18mm", qty: 1, hinge_holes: false, hole_type: "Blum Inserta" },
+    "quote-1",
+    0
+  );
+  assert.equal(notDrilled.hole_type, null, "a panel that is not bored cannot want a boring type");
+});
+
+test("a hole type we do not machine is refused", () => {
+  const row = quoteLineRow(
+    { product_type: "Door", material: "Decorative Board", thickness: "18mm", qty: 1, hinge_holes: true, hole_type: "40mm European" },
+    "quote-1",
+    0
+  );
+  assert.equal(row.hole_type, null);
+  for (const type of HOLE_TYPES) {
+    const ok = quoteLineRow(
+      { product_type: "Door", material: "Decorative Board", thickness: "18mm", qty: 1, hinge_holes: true, hole_type: type },
+      "quote-1",
+      0
+    );
+    assert.equal(ok.hole_type, type, type + " should be allowed");
+  }
+});
+
+test("the request stores a hole type, and refuses one we do not machine", () => {
+  assert.equal(quoteRequestLineRow({ holeType: "Blum Inserta" }, 0, {}).hole_type, "Blum Inserta");
+  assert.equal(quoteRequestLineRow({ holeType: "40mm European" }, 0, {}).hole_type, null);
+  assert.equal(quoteRequestLineRow({}, 0, {}).hole_type, null);
+});
+
+test("a site that has not run the migration still takes the request", () => {
+  const source = readFileSync(new URL("../lib/pcd-quote-request.js", import.meta.url), "utf8");
+  assert.match(source, /function isMissingEdgeOrHoleSchemaError/);
+  assert.match(source, /withoutEdgeAndHoleColumns/);
+  assert.match(source, /202609082100_pcd_banded_edges_and_hole_type\.sql/, "the log should name the migration to run");
+});
+
+test("both are on the quote line's late column list", () => {
+  // That list is what lets a save retry when a column is not there yet. A new
+  // column missing from it takes the whole line down instead of one field.
+  const saver = readFileSync(new URL("../app/api/admin/quotes/[id]/_quote-line-save.js", import.meta.url), "utf8");
+  const list = saver.slice(saver.indexOf('"supplier_name",'), saver.indexOf("];", saver.indexOf('"supplier_name",')));
+  for (const column of ["banded_edges", "hole_type"]) {
+    assert.ok(list.includes(`"${column}"`), column + " is not on the late column list");
+  }
+});
+
+test("the endpoint accepts both, and demands neither", () => {
+  const route = readFileSync(new URL("../app/api/quote-requests/route.js", import.meta.url), "utf8");
+  assert.match(route, /bandedEdges: z\.array\(z\.string\(\)\)\.optional\(\)/);
+  assert.match(route, /holeType: z\.string\(\)\.optional\(\)/);
+});
+
+test("the admin says when fewer than four edges are taped", () => {
+  const admin = readFileSync(new URL("../app/admin/quote-requests/QuoteRequestsManager.tsx", import.meta.url), "utf8");
+  assert.match(admin, /banded_edges\?:\s+string\[\]/);
+  assert.match(admin, /hole_type\?:\s+string/);
+  // Four of four is our standard and needs no comment. Fewer is the thing
+  // somebody has to notice, so only that is called out.
+  assert.match(admin, /line\.banded_edges\.length < 4/);
+});
+
+/*
+ * THE FIELDS THE ENDPOINT USED TO THROW AWAY.
+ *
+ * quoteRequestLineRow has read hingeSide and the three cup measurements since
+ * the columns were added. The zod line schema never declared them, and a plain
+ * z.object() strips what it does not declare, so they arrived undefined and
+ * every request line landed with hinge_side null and no cup positions however
+ * carefully somebody had measured. The columns were there, the reader was
+ * there, and the boundary between them dropped it.
+ */
+test("every field the row builder reads is one the endpoint accepts", () => {
+  const route = readFileSync(new URL("../app/api/quote-requests/route.js", import.meta.url), "utf8");
+  const schema = route.slice(route.indexOf("const lineSchema"), route.indexOf("const quoteRequestSchema"));
+  const builder = readFileSync(new URL("../lib/pcd-quote-request.js", import.meta.url), "utf8");
+  const body = builder.slice(builder.indexOf("export function quoteRequestLineRow"), builder.indexOf("export function quoteRequestLineRow") + 3000);
+
+  // Everything the builder pulls off the incoming line, as line.<name>.
+  const wanted = new Set([...body.matchAll(/\bline\.([a-zA-Z][a-zA-Z0-9]*)/g)].map((m) => m[1]));
+  const dropped = [...wanted].filter((name) => !schema.includes(`${name}:`));
+  assert.deepEqual(dropped, [], "the endpoint strips these before the builder ever sees them");
+});
+
+test("the hinge measurements survive the round trip", () => {
+  const row = quoteRequestLineRow(
+    {
+      productType: "Door", material: "Decorative Board", thickness: "18mm",
+      hingeHoles: true, hingeSide: "Left",
+      hingeFromBottomMm: 110, hingeFromTopMm: 110, hingeMiddlesMm: [770, 1430],
+    },
+    0,
+    {}
+  );
+  assert.equal(row.hinge_side, "Left");
+  assert.equal(row.hinge_from_bottom_mm, 110);
+  assert.equal(row.hinge_from_top_mm, 110);
+  assert.deepEqual(row.hinge_middles_mm, [770, 1430]);
+});
+
+test("a line that is not drilled carries no cup positions", () => {
+  const row = quoteRequestLineRow(
+    { productType: "Panel", hingeHoles: false, hingeSide: "Left", hingeFromBottomMm: 110, hingeMiddlesMm: [770] },
+    0,
+    {}
+  );
+  assert.equal(row.hinge_side, null);
+  assert.equal(row.hinge_from_bottom_mm, null);
+  assert.deepEqual(row.hinge_middles_mm, []);
 });

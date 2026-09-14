@@ -1,37 +1,56 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { edgeImageSrc as sharedEdgeImageSrc } from "../../../lib/pcd-profile-images";
+import {
+  edgeImageSrc as sharedEdgeImageSrc,
+  profileImageSrc as sharedProfileImageSrc,
+} from "../../../lib/pcd-profile-images";
 import { asSelectionRows, useProfileLibrary } from "@/lib/use-profile-library";
-import { fieldsForProductType, productTypeChoices } from "@/lib/pcd-product-fields";
+import { fieldsForProductType } from "@/lib/pcd-product-fields";
+import { asksFor, quoteItemTypes, stepsForLine } from "@/lib/pcd-quote-steps";
+import DoorDrawing from "@/components/public/DoorDrawing";
 import { materialsForProductType } from "@/lib/pcd-materials";
+import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+// THE ONE CONFIGURATOR. The questions the shop's product pages ask are these
+// same components, so a colour, a size, an edge or a hinge is asked the same
+// way whichever path somebody is on. See app/(site)/_builder.
+import Tabs from "../_builder/Tabs";
+import ColourTiles from "../_builder/ColourTiles";
+import SizeFields from "../_builder/SizeFields";
+import BandedEdgesField from "../_builder/BandedEdgesField";
+import HingeFields from "../_builder/HingeFields";
+import QtyStepper from "../_builder/QtyStepper";
+import { cupsForDrawing } from "../_builder/builder-utils";
 import SupplierSelect from "./SupplierSelect";
 import {
   edgesForSupplier,
   profileCategoriesForSupplier,
   profilesForSupplier,
   supplierOffersEdges,
-  suppliersForMaterial,
 } from "@/lib/pcd-supplier-selection";
 import { clearList as clearQuoteList, entriesToQuoteLines, readQuoteList } from "@/lib/pcd-quote-list";
+import { readQuoteDraft, writeQuoteLines } from "@/lib/pcd-quote-draft";
+// What goes to the endpoint lives in one module, because /request-quote/send
+// is what actually sends it now. Two answers to "what do we send" would mean
+// the one that got fixed was not the one that ran. The drawing reads the same
+// module's hingeMiddlesFor (through cupsForDrawing), so it shows the cups in
+// the same places we are going to bore them.
+import { hasLineValue } from "@/lib/pcd-quote-request-payload";
 import { describeGaps, lineGaps, missingFields } from "@/lib/pcd-quote-ready";
 import { checkSize, sizeLimitFor, sizeLimitRange, sizeProblems } from "@/lib/pcd-size-limits";
 // Handing and cup positions. Shared so the form, the quote editor, the order
 // and the Excel sheet cannot come to different answers about the same door.
-import { HINGE_SIDES, evenMiddles, hingeCount, hingeProblems } from "@/lib/pcd-hinges";
+import { hingeCount, hingeProblems } from "@/lib/pcd-hinges";
 import styles from "../contact/contact.module.css";
 import {
-  CABINET_BRANDS,
   cabinetBrandOptions,
   edgeProfilesForMaterial,
   isEdgeProfileSelectionAvailable,
   MATERIAL_OPTIONS,
   MATERIALS_BY_TYPE,
-  PRODUCT_TYPES,
   isProfileSelectionAvailable,
   materialKey,
-  profileNamesForSelection,
-  profileTypesForSelection,
   thicknessOptionsForMaterial,
 } from "../../../lib/quote-form-data";
 
@@ -43,10 +62,34 @@ function Required() {
   return <abbr title="Needed before we can price this line" style={{ color: "#b42318", textDecoration: "none", marginLeft: 3 }}>*</abbr>;
 }
 
+// WHICH BLOCKS CARRY THE MARK.
+//
+// Each question is now a numbered block with its title where the field label
+// used to be, so the mark moved to the title with it. These are the same fields
+// lib/pcd-quote-ready.js will stop a line for; the rest are genuinely optional
+// and marking them would be asking for work nobody has to do.
+//
+// Size covers a height AND a width, so one mark on the block stands for both.
+const REQUIRED_STEPS = new Set(["hardwareType", "material", "supplier", "thickness", "colour", "size"]);
+
+// Every number box on this page is in the shared components under
+// app/(site)/_builder, and every one of them ignores the scroll wheel there.
+// See ignoreWheel in builder-utils.js for the 75mm hinge it was written for.
+
 function emptyItem(id) {
   return {
     id,
     type: "",
+    // WHICH KIND OF PANEL. A scribe is a Panel that says it is a scribe, and
+    // the quote line has held this for a while. The form never asked, so every
+    // panel arrived on the bench as a plain Panel.
+    panelUse: "",
+    // WHICH EDGES GET TAPE. Null, not [], because nobody asked yet is not the
+    // same as none of the four and only one of them is an instruction.
+    bandedEdges: null,
+    // A bare 35mm cup or a Blum Inserta boring. Two machine setups, and a door
+    // bored for one will not take the other hinge.
+    holeType: "",
     material: "",
     thickness: "",
     width: "",
@@ -89,73 +132,6 @@ function emptyItem(id) {
   };
 }
 
-function value(formData, key) {
-  return String(formData.get(key) || "").trim();
-}
-
-/**
- * The middle cups for a line: whatever was typed, or evenly spaced.
- *
- * Even spacing is what the workshop does anyway, so a customer who has given
- * us the two ends has already told us where the rest go. Asking again would be
- * asking them to do our arithmetic.
- */
-function hingeMiddlesFor(item) {
-  if (item.hingeMiddlesTouched && item.hingeMiddlesMm.length) {
-    return item.hingeMiddlesMm.map((mm) => Number(mm) || 0).filter((mm) => mm > 0);
-  }
-  return evenMiddles({
-    height: item.height,
-    count: hingeCount(item.hingeQty),
-    fromBottom: item.hingeFromBottomMm,
-    fromTop: item.hingeFromTopMm,
-  });
-}
-
-function numberOrUndefined(raw) {
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function hasLineValue(item) {
-  return Boolean(item.type || item.material || item.thickness || item.width || item.height || item.colour || item.edgeMould || item.profile);
-}
-
-function sizeText(item) {
-  if (!item.width && !item.height) return "";
-  return `${item.height || "-"} x ${item.width || "-"}`;
-}
-
-function materialText(item) {
-  // A hardware line has no board, and its name is its entire spec. This column
-  // is "what is this line for", which for a door is the board and for a handle
-  // is the handle. Showing "-" made the one line whose spec is its name the
-  // only line that did not show it.
-  if (item.hardwareName) return item.hardwareName;
-  return [item.material, item.thickness].filter(Boolean).join(" / ");
-}
-
-function colourText(item) {
-  return [item.finish, item.colour].filter(Boolean).join(" - ");
-}
-
-// The range beside a size label. Quiet, because it is a note about the box
-// rather than a warning about what is in it.
-const sizeRangeStyle = {
-  marginLeft: 8,
-  fontSize: 11.5,
-  fontWeight: 400,
-  color: "#7a766c",
-  letterSpacing: 0,
-  textTransform: "none",
-};
-
-function colourOptionMetaLabel(finish, option, supplier) {
-  // The brand is only worth repeating on a row that predates the brand step and
-  // has none set on the line yet. Otherwise it is the same word on every row.
-  return [finish || "", supplier ? "" : option?.supplier || ""].filter(Boolean).join(" - ");
-}
-
 /**
  * The thicknesses on offer, for this material and this brand.
  *
@@ -187,10 +163,6 @@ function materialOptionsForSelection(productType, availability) {
   return options.filter((material) => (availability[materialKey(material)] || []).length > 0);
 }
 
-function itemTitle(item) {
-  return [item.type || "Product", materialText(item), sizeText(item)].filter(Boolean).join(" - ");
-}
-
 function assetSlug(value) {
   return String(value || "")
     .trim()
@@ -200,8 +172,14 @@ function assetSlug(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+// Where a profile photo lives. Asked of lib/pcd-profile-images.js for the same
+// reason the edge photo below it is: this page had its own copy, and the copy
+// did not know the files moved under profiles/polytec/ when the Laminex range
+// arrived and needed a folder of its own. So every profile photo on this page
+// was a broken tile, and the one under the drawing was a broken tile with the
+// word "Hamilton profile" sitting in it.
 function profileImageSrc(profileType, profileName) {
-  return profileType && profileName ? `/images/profiles/${assetSlug(profileType)}/${assetSlug(profileName)}.jpg` : "";
+  return sharedProfileImageSrc(profileType, profileName) || "";
 }
 
 // Where an edge photo lives. Asked of lib/pcd-profile-images.js rather than
@@ -295,6 +273,8 @@ function ImageSelect({ disabled = false, placeholder, value, options, onChange }
  * a tidier control.
  */
 function ProductTypeChooser({ types, current, onChoose }) {
+  // "Panel :: Scribe" is one answer that sets two fields. The card knows the
+  // whole value; the caller splits it.
   return (
     <div className={styles.typeChooser}>
       {types.map((entry) => {
@@ -452,34 +432,36 @@ function hardwareLabel(row) {
   return [row.brand, row.name].filter(Boolean).join(" ");
 }
 
-function ColourControls({ item, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(item.colour || "");
-  const [menuStyle, setMenuStyle] = useState({});
+/**
+ * The colour, as finish tabs then colour tiles, from this material, thickness
+ * and brand. The same picker the shop's product pages use (ColourTiles), fed
+ * from the colour library rather than from a list of its own.
+ *
+ * It was a finish dropdown and a search box, which made the quote form look
+ * like a different website from the shop the moment somebody reached colour.
+ */
+function ColourControls({ item, onChange, invalid = false }) {
   const [colourFamily, setColourFamily] = useState(null);
-  const wrapRef = useRef(null);
   const supplier = String(item.supplierName || "").trim();
   const sameBrand = (value) => String(value || "").trim().toLowerCase() === supplier.toLowerCase();
   // Only this brand's colours, and only the finishes that still have one. A
-  // finish with nothing left under it would open onto an empty list, which
+  // finish with nothing left under it would open onto an empty grid, which
   // reads as broken rather than as a filter doing its job.
-  const finishGroups = (colourFamily?.groups || [])
-    .map((group) => ({ ...group, colours: (group.colours || []).filter((colour) => !supplier || sameBrand(colour.supplier)) }))
+  const groups = (colourFamily?.groups || [])
+    .map((group) => ({
+      label: group.label,
+      colours: (group.colours || [])
+        .filter((colour) => !supplier || sameBrand(colour.supplier))
+        .map((colour) => ({ ...colour, key: colour.id || `${group.label}-${colour.name}` })),
+    }))
     .filter((group) => group.colours.length);
   // null while it has not been asked for or is still coming back; an object with
   // no groups once we know there is genuinely nothing in this thickness.
-  const nothingStocked = Boolean(item.material && item.thickness && colourFamily && !finishGroups.length);
-  const selectedFinish = finishGroups.find((group) => group.label === item.finish) || null;
-  const options = selectedFinish?.colours || [];
-  const cleanedQuery = query.trim().toLowerCase();
-  const visibleOptions =
-    cleanedQuery.length >= 3
-      ? options.filter((option) => option.name.toLowerCase().includes(cleanedQuery))
-      : options;
-
-  useEffect(() => {
-    setQuery(item.colour || "");
-  }, [item.colour, item.material, item.thickness]);
+  const nothingStocked = Boolean(item.material && item.thickness && colourFamily && !groups.length);
+  const chosenKey =
+    groups
+      .find((group) => group.label === item.finish)
+      ?.colours.find((colour) => (item.colourLibraryId ? colour.id === item.colourLibraryId : colour.name === item.colour))?.key || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -507,165 +489,55 @@ function ColourControls({ item, onChange }) {
     };
   }, [item.material, item.thickness]);
 
-  useEffect(() => {
-    if (!open || !wrapRef.current) return;
-
-    function positionMenu() {
-      const rect = wrapRef.current.getBoundingClientRect();
-      setMenuStyle({
-        left: `${rect.left}px`,
-        top: `${rect.bottom + 4}px`,
-        width: `${Math.max(rect.width, 320)}px`,
-      });
-    }
-
-    positionMenu();
-    window.addEventListener("resize", positionMenu);
-    window.addEventListener("scroll", positionMenu, true);
-
-    return () => {
-      window.removeEventListener("resize", positionMenu);
-      window.removeEventListener("scroll", positionMenu, true);
-    };
-  }, [open]);
-
-  function choose(option) {
-    setQuery(option.name);
-    onChange({
-      colour: option.name,
-      finish: item.finish,
-      colourSrc: option.src,
-      // Keep the identity of the board, not just its name. This is what lets
-      // the quote be priced without anyone re-picking the colour by hand.
-      colourLibraryId: option.id || "",
-      // The list is already this brand's colours only, so this agrees with
-      // what is on the line. Kept from the option for a row that predates the
-      // brand step and has none recorded yet.
-      supplierName: supplier || option.supplier || "",
-    });
-    setOpen(false);
-  }
-
-  function chooseFinish(finish) {
-    setQuery("");
-    setOpen(false);
-    // The brand is NOT cleared here. It was, back when the brand was read off
-    // whichever colour got picked, so changing the finish invalidated it. Now
-    // the brand is chosen first and narrows this list, and clearing it from
-    // here wiped the answer two fields up and locked the colour box again.
-    onChange({ finish, colour: "", colourSrc: "", colourLibraryId: "" });
-  }
-
-  // Typing filters the list; it does not choose anything. Leaving typed text in
-  // the box after that made the row read as if a colour had been chosen when
-  // none had, so an abandoned search snaps back to whatever is actually set.
-  function handleBlur() {
-    window.setTimeout(() => {
-      setOpen(false);
-      setQuery(item.colour || "");
-    }, 120);
+  if (!item.material || !item.thickness) return <span className={styles.notApplicable}>Select a thickness first</span>;
+  if (!colourFamily) return <span className={styles.notApplicable}>Loading the colours...</span>;
+  if (nothingStocked) {
+    return (
+      <p className={styles.fieldError} style={{ margin: 0 }}>
+        {supplier
+          ? `${supplier} has no ${String(item.material).toLowerCase()} colours in ${item.thickness}. Try another thickness, or another brand.`
+          : `We do not stock a colour in ${item.material} ${item.thickness}. Please choose another thickness.`}
+      </p>
+    );
   }
 
   return (
-    <>
-      <div className={styles.inlineField}>
-        <select className="pcdSelect"
-          disabled={!item.material || !item.thickness || !finishGroups.length}
-          value={item.finish}
-          onChange={(event) => chooseFinish(event.target.value)}
-        >
-          <option value="">
-            {!item.material || !item.thickness
-              ? "Select thickness first"
-              : nothingStocked
-                ? (supplier ? `None from ${supplier}` : "None in this thickness")
-                : "Finish"}
-          </option>
-          {finishGroups.map((group) => (
-            <option key={group.label} value={group.label}>
-              {group.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      {nothingStocked ? (
-        <p className={styles.fieldError} style={{ gridColumn: "1 / -1", margin: 0 }}>
-          {supplier
-            ? `${supplier} has no ${String(item.material).toLowerCase()} colours in ${item.thickness}. Try another thickness, or another brand.`
-            : `We do not stock a colour in ${item.material} ${item.thickness}. Please choose another thickness.`}
-        </p>
-      ) : null}
-      <div className={`${styles.inlineField} ${styles.colourCombo}`} ref={wrapRef}>
-        <input
-          disabled={!item.material || !item.thickness || !item.finish}
-          placeholder={item.finish ? "Colour" : "Select finish first"}
-          type="text"
-          value={query}
-          onBlur={handleBlur}
-          onChange={(event) => {
-            const nextQuery = event.target.value;
-            setQuery(nextQuery);
-            setOpen(true);
-          }}
-          onFocus={() => item.material && item.thickness && item.finish && setOpen(true)}
-        />
-        <button
-          aria-label="Open colour options"
-          className={styles.colourComboButton}
-          disabled={!item.material || !item.thickness || !item.finish}
-          type="button"
-          onMouseDown={(event) => {
-            event.preventDefault();
-            if (item.material && item.thickness && item.finish) setOpen((current) => !current);
-          }}
-        />
-        {open && item.material && item.thickness && item.finish ? (
-          <div className={styles.colourMenu} style={menuStyle}>
-            {visibleOptions.length ? (
-              visibleOptions.map((option) => (
-                <button className={styles.colourOption} key={option.id || `${item.finish}-${option.name}-${option.src}`} type="button" onMouseDown={() => choose(option)}>
-                  {option.src ? <img alt="" src={option.src} /> : <span className={styles.colourOptionNoImage} aria-hidden="true" />}
-                  <span>
-                    <strong>{option.name}</strong>
-                    <small>{colourOptionMetaLabel(item.finish, option, supplier)}</small>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <div className={styles.colourEmpty}>No colour match</div>
-            )}
-          </div>
-        ) : null}
-      </div>
-    </>
+    <ColourTiles
+      groups={groups}
+      finish={item.finish}
+      colourKey={chosenKey}
+      invalid={invalid}
+      // The brand is NOT cleared on a change of finish. It is chosen first and
+      // it is what narrowed this list; clearing it here would wipe an answer
+      // two questions up and empty the grid.
+      onFinish={(finish) => onChange({ finish, colour: "", colourSrc: "", colourLibraryId: "" })}
+      onColour={(option, group) =>
+        onChange({
+          colour: option.name,
+          finish: group.label,
+          colourSrc: option.src,
+          // Keep the identity of the board, not just its name. This is what
+          // lets the quote be priced without anyone re-picking the colour.
+          colourLibraryId: option.id || "",
+          supplierName: supplier || option.supplier || "",
+        })
+      }
+    />
   );
 }
 
 export default function RequestQuoteFormClient() {
-  const [items, setItems] = useState([]);
-  const [editingId, setEditingId] = useState(null);
-  // Step one asks what they are ordering, because the answer decides every
-  // question after it. A saved line opens straight on step two: the type is
-  // already answered, and making somebody re-answer it to change a size would
-  // be a step for nothing.
-  const [pickingTypeState, setPickingType] = useState(false);
+  const [items, setItems] = useState(() => [emptyItem("item-1")]);
+  const [editingId, setEditingId] = useState("item-1");
   // What each row is still missing, keyed by row id. Set when someone tries to
   // save a half-filled row or send the form, and cleared as they fix it.
   const [lineErrors, setLineErrors] = useState({});
-  // A SIZE WE CANNOT MAKE IS A DIFFERENT PROBLEM FROM A MISSING ONE.
-  // lineErrors answers "what has not been filled in". This answers "what has
-  // been filled in that we cannot press", which is why it is kept apart: a line
-  // can be complete and still be unmakeable. See lib/pcd-size-limits.js.
-  const [sizeErrors, setSizeErrors] = useState({});
-  const [nextId, setNextId] = useState(1);
-  const [status, setStatus] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [nextId, setNextId] = useState(2);
   const [colourAvailability, setColourAvailability] = useState(null);
   // Which brands stock which material, from the same request. The brand a
   // customer picks decides every option below it, so it has to know which
   // brands actually stock the material they chose.
   const [supplierColourRows, setSupplierColourRows] = useState([]);
-  const [errors, setErrors] = useState({});
   const [importedCount, setImportedCount] = useState(0);
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState("");
@@ -677,7 +549,6 @@ export default function RequestQuoteFormClient() {
 
   const savedCount = items.filter((item) => item.saved).length;
   const editingItem = items.find((item) => item.id === editingId) || null;
-  const visibleItems = items.filter((item) => item.saved || hasLineValue(item));
 
   // Anything built in the IKEA & Kaboodle configurator, or added as a custom
   // item from the drawer, arrives here as ordinary saved line items - same
@@ -712,9 +583,30 @@ export default function RequestQuoteFormClient() {
       clearQuoteList();
     }
 
+    // WHAT THEY HAD LAST TIME, before anything is imported on top of it.
+    //
+    // The list, the review and the send pages are separate routes, so coming
+    // back here to change a size is a fresh mount of this component with an
+    // empty items array. Without this, walking to the list and pressing edit
+    // would show them an empty builder and their line gone.
+    //
+    // Before the import, because an imported cabinet is NEW and belongs after
+    // what is already on the list.
+    const params = new URLSearchParams(window.location.search);
+    const kept = readQuoteDraft().lines;
+    if (kept.length) {
+      setItems(kept.map((line) => ({ ...emptyItem(line.id), ...line, saved: true })));
+      setNextId(kept.length + 1);
+      // ?edit=ID is the Edit link on the list page. Without it the builder
+      // opens on a blank row and somebody who pressed Edit on one particular
+      // door has to find that door again, on a page that no longer lists it.
+      const editing = params.get("edit");
+      setEditingId(kept.some((line) => line.id === editing) ? editing : null);
+    }
+
     // ?list=CODE means they saved the list on another device and followed the
     // link. That wins over whatever this browser happens to be holding.
-    const code = new URLSearchParams(window.location.search).get("list");
+    const code = params.get("list");
     if (code) {
       setRestoring(true);
       fetch(`/api/quote-list/${encodeURIComponent(code)}`, { cache: "no-store" })
@@ -835,7 +727,6 @@ export default function RequestQuoteFormClient() {
     setItems((current) => [...current, emptyItem(id)]);
     setNextId((current) => current + 1);
     setEditingId(id);
-    setPickingType(true);
   }
 
   /**
@@ -846,16 +737,21 @@ export default function RequestQuoteFormClient() {
    * has no board at all, so keeping a colour on it would send a spec we cannot
    * act on. Only what the new type can still use survives.
    */
-  function chooseType(id, type) {
+  function chooseType(id, value) {
+    // "Panel :: Scribe" is ONE answer that sets TWO fields, the same way the
+    // admin picker does it. Neither can be left stale: a door that used to be a
+    // scribe must not still say scribe.
+    const [type, panelUse = ""] = String(value).split(" :: ");
     setItems((current) =>
       current.map((row) => {
         if (row.id !== id) return row;
-        if (row.type === type) return row;
+        if (row.type === type && row.panelUse === panelUse) return row;
         const next = fieldsForProductType(type);
         const keepsBoard = next.board && materialsForProductType(type).includes(row.material);
         return {
           ...row,
           type,
+          panelUse,
           // A material the new type cannot be made from goes, and the colour,
           // brand and thickness go with it: they were all chosen under it.
           material: keepsBoard ? row.material : "",
@@ -872,6 +768,10 @@ export default function RequestQuoteFormClient() {
           profile: next.profile ? row.profile : "",
           preDrill: next.hinges ? row.preDrill : false,
           hingeQty: next.hinges ? row.hingeQty : "",
+          holeType: next.hinges ? row.holeType : "",
+          // Only a taped board is asked which edges, and only a type with edges
+          // at all. Null rather than [], so "not asked" stays distinguishable.
+          bandedEdges: next.edge && keepsBoard ? row.bandedEdges : null,
           hardwareId: next.hardware ? row.hardwareId : "",
           hardwareName: next.hardware ? row.hardwareName : "",
         };
@@ -883,7 +783,6 @@ export default function RequestQuoteFormClient() {
       delete rest[id];
       return rest;
     });
-    setPickingType(false);
   }
 
   function deleteItem(id) {
@@ -899,6 +798,44 @@ export default function RequestQuoteFormClient() {
   // so a row missing any of those is one we would have to email back about
   // before we could quote it. The rule is lib/pcd-quote-ready.js, the same one
   // the API applies, so the form cannot send something the API will reject.
+  useEffect(() => {
+    if (restoring) return;
+    if (items.some((row) => !row.saved)) return;
+    addItem();
+    // addItem is stable enough for this: it only reads editingId, which is null
+    // whenever this fires.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, restoring]);
+
+  // ── HANDING THE LIST TO THE OTHER TWO PAGES ────────────────────────────────
+  //
+  // The list and the send page are separate routes reading lib/pcd-quote-draft,
+  // so every saved line has to reach it. Only the saved ones: the half typed
+  // row somebody is in the middle of is not on their list yet, and showing it
+  // there as an item would be counting a question as an answer.
+  //
+  // THE TRAP THIS AVOIDS. On the first commit this component holds one blank
+  // starter row, and the effect that restores the stored list has not run yet.
+  // An unguarded mirror would fire in that gap and write an empty list over the
+  // one on disk, so somebody who walked to the list page and pressed back would
+  // find their request gone.
+  //
+  // The guard is the array itself rather than a flag, because a flag depends on
+  // which effect happens to be declared first. The first run records the array
+  // it was mounted with and writes nothing. Every run after that has a
+  // different array, whether the restore put it there or the customer did, and
+  // that is exactly when there is something worth keeping.
+  const mountedItemsRef = useRef(null);
+  useEffect(() => {
+    if (mountedItemsRef.current === null) {
+      mountedItemsRef.current = items;
+      return;
+    }
+    if (items === mountedItemsRef.current) return;
+    if (restoring) return;
+    writeQuoteLines(items.filter((row) => row.saved).map(({ saved, ...line }) => line));
+  }, [items, restoring]);
+
   function saveItem(id) {
     const item = items.find((candidate) => candidate.id === id);
     const gaps = lineGaps(item);
@@ -906,16 +843,14 @@ export default function RequestQuoteFormClient() {
       setLineErrors((current) => ({ ...current, [id]: gaps }));
       return;
     }
-    const outOfRange = sizeProblems(item);
-    if (outOfRange.length) {
-      setSizeErrors((current) => ({ ...current, [id]: outOfRange }));
-      return;
-    }
-    setSizeErrors((current) => {
-      const next = { ...current };
-      delete next[id];
-      return next;
-    });
+    // A SIZE WE CANNOT MAKE IS A DIFFERENT PROBLEM FROM A MISSING ONE: a line
+    // can be complete and still be unmakeable. See lib/pcd-size-limits.js.
+    //
+    // No message is set here because one is already on screen. The sentence
+    // above this button shows the size problem from the moment it is typed, so
+    // storing a second copy to render somewhere else only risks the two of them
+    // disagreeing.
+    if (sizeProblems(item).length) return;
     setLineErrors((current) => {
       const next = { ...current };
       delete next[id];
@@ -923,12 +858,10 @@ export default function RequestQuoteFormClient() {
     });
     setItems((current) => current.map((row) => (row.id === id ? { ...row, saved: true } : row)));
     setEditingId(null);
-    setPickingType(false);
   }
 
   function cancelEdit(id) {
     const item = items.find((candidate) => candidate.id === id);
-    setPickingType(false);
     if (item && !item.saved && items.length > 1) {
       deleteItem(id);
     } else {
@@ -936,302 +869,39 @@ export default function RequestQuoteFormClient() {
     }
   }
 
-  function editItem(id) {
-    if (editingId) {
-      setStatus({ type: "error", message: "Please save or cancel the current line item before editing another." });
-      return;
-    }
-    setStatus(null);
-    setEditingId(id);
-    // Straight to step two. The type is answered, and the way back to it is
-    // the link at the top of the panel.
-    setPickingType(false);
-  }
-
-  async function submitQuote(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    setStatus(null);
-
-    const formData = new FormData(form);
-    const firstName = value(formData, "firstName");
-    const lastName = value(formData, "lastName");
-    const name = [firstName, lastName].filter(Boolean).join(" ");
-    const notes = value(formData, "notes");
-    const cabinetBrand = value(formData, "cabinetBrand");
-    const quoteRows = items.filter(hasLineValue);
-
-    const nextErrors = {};
-    if (!firstName) nextErrors.firstName = "Please enter your first name.";
-    if (!value(formData, "email")) nextErrors.email = "Please enter your email address.";
-    if (!value(formData, "phone")) nextErrors.phone = "Please enter your phone number.";
-
-    if (Object.keys(nextErrors).length) {
-      setErrors(nextErrors);
-      return;
-    }
-
-    // Rows that came across from the configurator or the list drawer arrive
-    // already saved, so they never passed through saveItem's check.
-    const incomplete = quoteRows.map((item) => ({ item, gaps: lineGaps(item) })).filter((entry) => entry.gaps.length);
-    if (incomplete.length) {
-      setLineErrors(Object.fromEntries(incomplete.map((entry) => [entry.item.id, entry.gaps])));
-      setErrors({});
-      setStatus({
-        type: "error",
-        message: incomplete.length === 1
-          ? `One line is missing ${describeGaps(incomplete[0].gaps)}. Please complete it so we can price it.`
-          : `${incomplete.length} lines are missing details we need to price them. Open each one and finish it.`,
-      });
-      return;
-    }
-
-    // Rows from the configurator and the list drawer never passed through
-    // saveItem, so the size is checked again here rather than trusted.
-    const unmakeable = quoteRows
-      .map((item) => ({ item, problems: sizeProblems(item) }))
-      .filter((entry) => entry.problems.length);
-    if (unmakeable.length) {
-      setSizeErrors(Object.fromEntries(unmakeable.map((entry) => [entry.item.id, entry.problems])));
-      setErrors({});
-      setStatus({
-        type: "error",
-        message:
-          unmakeable.length === 1
-            ? unmakeable[0].problems[0]
-            : `${unmakeable.length} lines are a size we cannot make. Open each one and change it.`,
-      });
-      return;
-    }
-
-    setErrors({});
-    setSubmitting(true);
-
-    // Every field goes across as its own field. The finish used to be glued onto
-    // the front of the colour here ("Matt - Classic White"), which is what put
-    // the finish in the colour column all the way through to the quote editor —
-    // where the colour picker then could not match it back to a library row, so
-    // the line arrived unpriced and unselectable. The finish already has its own
-    // key one line up; it never needed repeating inside the colour.
-    //
-    // colourLibraryId and supplier come from the row the customer actually
-    // clicked, so the back end can price the line exactly rather than matching
-    // on a name that two suppliers might share.
-    const lines = quoteRows.map((item) => ({
-      productType: item.type,
-      // The hardware name, so the line reads as what they picked rather than
-      // the word "Hardware", which is what it said before and what somebody
-      // then had to email and ask about.
-      productName: item.hardwareName || item.type || "Cabinetry item",
-      hardwareCatalogueId: item.hardwareId || undefined,
-      material: item.material,
-      thickness: item.thickness,
-      finish: item.finish,
-      colour: item.colour,
-      colourLibraryId: item.colourLibraryId || undefined,
-      supplierName: item.supplierName || undefined,
-      profileType: item.profileType,
-      profile: item.profile,
-      edgeMould: item.edgeMould,
-      width: numberOrUndefined(item.width),
-      height: numberOrUndefined(item.height),
-      qty: numberOrUndefined(item.qty) || 1,
-      hingeHoles: item.type === "Door" && item.preDrill,
-      // Supplying hinges is deliberately not asked. We drill for them and do not
-      // supply them, and a quote line cannot carry it either: hinge_supply is
-      // forced to false and its cost to zero on every write path. Asking a
-      // customer for something no part of the system can act on only sets an
-      // expectation nobody meant to set.
-      hingeQty: item.type === "Door" && item.preDrill ? item.hingeQty : "",
-      // Only sent when the line is actually drilled. An untick that left a
-      // measurement behind would put one on a workshop sheet for a door that
-      // has no holes in it.
-      hingeSide: item.type === "Door" && item.preDrill ? item.hingeSide : "",
-      hingeFromBottomMm: item.type === "Door" && item.preDrill ? item.hingeFromBottomMm : "",
-      hingeFromTopMm: item.type === "Door" && item.preDrill ? item.hingeFromTopMm : "",
-      hingeMiddlesMm: item.type === "Door" && item.preDrill ? hingeMiddlesFor(item) : [],
-      cabinetBrand: item.cabinetBrand || "",
-      notes: item.note || "",
-    }));
-
-    const payload = {
-      source: "request_quote",
-      customerName: name,
-      customerEmail: value(formData, "email"),
-      customerPhone: value(formData, "phone"),
-      deliverySuburb: value(formData, "suburb"),
-      cabinetBrand,
-      notes,
-      lines,
-    };
-
-    try {
-      const response = await fetch("/api/quote-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error || "Could not send quote request.");
-
-      form.reset();
-      setItems([]);
-      setEditingId(null);
-      setNextId(1);
-      setStatus({
-        type: "success",
-        message: [
-          "Thanks. Your quote request has been sent and we will come back to you within 1-3 business days.",
-          result.notice,
-        ]
-          .filter(Boolean)
-          .join(" "),
-      });
-    } catch (error) {
-      setStatus({ type: "error", message: error.message || "Could not send quote request." });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
-    <form className={styles.quoteFormTable} onSubmit={submitQuote}>
-      <div className={styles.quoteTopStrip}>
-        <div className={styles.quoteCard}>
-          <span className={styles.sectionLabel}>Your details</span>
-          <div className={styles.quoteFieldGrid}>
-            <div className={styles.field}>
-              <label htmlFor="firstName">First name</label>
-              <input id="firstName" name="firstName" type="text" placeholder="Sarah" className={errors.firstName ? styles.fieldInputError : ""} />
-              {errors.firstName ? <span className={styles.fieldError}>{errors.firstName}</span> : null}
-            </div>
-            <div className={styles.field}><label htmlFor="lastName">Last name</label><input id="lastName" name="lastName" type="text" placeholder="Jones" /></div>
-          </div>
-          <div className={styles.quoteFieldGrid}>
-            <div className={styles.field}>
-              <label htmlFor="phone">Phone</label>
-              <input id="phone" name="phone" type="tel" placeholder="0400 000 000" className={errors.phone ? styles.fieldInputError : ""} />
-              {errors.phone ? <span className={styles.fieldError}>{errors.phone}</span> : null}
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="email">Email</label>
-              <input id="email" name="email" type="email" placeholder="sarah@email.com" className={errors.email ? styles.fieldInputError : ""} />
-              {errors.email ? <span className={styles.fieldError}>{errors.email}</span> : null}
-            </div>
-          </div>
-          <div className={styles.quoteFieldGrid}>
-            <div className={styles.field}><label htmlFor="suburb">Delivery suburb</label><input id="suburb" name="suburb" type="text" placeholder="e.g. Subiaco" /></div>
-            <div className={styles.field}>
-              <label htmlFor="cabinetBrand">Cabinet brand</label>
-              <select className="pcdSelect" id="cabinetBrand" name="cabinetBrand" defaultValue="">
-                <option value="" disabled>Select if relevant</option>
-                {CABINET_BRANDS.map((brand) => <option key={brand}>{brand}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
+    <div className={styles.quoteFormTable}>
+      {/* WHAT HAPPENED, AND WHERE THEIR LIST IS.
+          Adding a line leaves somebody on the same page looking at a blank
+          form, which reads as though nothing happened. This says it did.
 
-        <div className={styles.quoteCard}>
-          <span className={styles.sectionLabel}>Contact us directly</span>
-          <div className={styles.quoteInfoRow}><span>Phone</span><strong><a href="tel:0437750990">0437 750 990</a></strong><small>Best for urgent enquiries</small></div>
-          <div className={styles.quoteInfoRow}><span>Email</span><strong><a href="mailto:sales@perthcabinetdoors.com.au">sales@perthcabinetdoors.com.au</a></strong></div>
-          <div className={styles.quoteInfoRow}><span>Response time</span><strong>Within 1-3 business days</strong></div>
-        </div>
-
-        <div className={styles.quoteCardDark}>
-          <span className={styles.sectionLabel}>What happens next</span>
-          {[
-            "We review your request within 1-3 business days.",
-            "We confirm all dimensions and specs before anything is made.",
-            "You receive a clear itemised quote with no hidden costs.",
-            "Once approved we confirm your lead time and keep you updated.",
-          ].map((text) => (
-            <div className={styles.promiseItem} key={text}><span className={styles.promiseDot}></span><span>{text}</span></div>
-          ))}
-        </div>
-      </div>
-
-      <span className={styles.sectionLabel}>Products</span>
-      {restoring ? <p className={styles.importedNote}>Loading your saved list…</p> : null}
+          It used to be a table of everything on the request, sitting under the
+          builder. That was the old page showing through: the list is a page of
+          its own now, and two of them means the one somebody edits is not
+          necessarily the one they are looking at. */}
+      {restoring ? <p className={styles.importedNote}>Loading your saved list...</p> : null}
       {restoreError ? <p className={styles.importedError}>{restoreError}</p> : null}
       {importedCount ? (
         <p className={styles.importedNote}>
-          {importedCount} {importedCount === 1 ? "line has" : "lines have"} come across from your list. Edit
-          or remove any of them below, and add anything else you need.
+          {importedCount} {importedCount === 1 ? "line has" : "lines have"} come across from your list.
+          They are on your quote list with everything else.
         </p>
       ) : null}
-      <div className={styles.productTableWrap}>
-        <div className={styles.productTableBar}>
-          <span>Line items - {savedCount} added</span>
-          <button className={styles.productAddBtn} disabled={Boolean(editingId)} type="button" onClick={addItem}>Add product</button>
-        </div>
-        <div className={styles.productSummaryTable}>
-          <div className={styles.productSummaryHead}>
-            <div>Item</div><div>Material</div><div>Size</div><div>Finish / colour</div><div>Qty</div><div>Actions</div>
+      {savedCount ? (
+        <div className={styles.builderStrip}>
+          <div>
+            <strong>
+              {savedCount} {savedCount === 1 ? "item is" : "items are"} on your list
+            </strong>
+            <span>Keep adding below, or go and send it. Nothing is priced or charged yet.</span>
           </div>
-          {visibleItems.length ? visibleItems.map((item, index) => (
-            <div className={styles.productSummaryRow} key={item.id}>
-              <div>
-                <span className={styles.productRowNum}>{index + 1}</span>
-                <strong>{item.type || "Product"}</strong>
-                {lineErrors[item.id] ? (
-                  <span className={styles.fieldError} style={{ display: "block" }}>Needs {describeGaps(lineErrors[item.id])}</span>
-                ) : null}
-                {sizeErrors[item.id] ? (
-                  <span className={styles.fieldError} style={{ display: "block" }}>{sizeErrors[item.id][0]}</span>
-                ) : null}
-              </div>
-              <div>{materialText(item) || "-"}</div>
-              <div>{sizeText(item) || "-"}</div>
-              <div className={styles.colourRead}>{item.colourSrc ? <img alt="" src={item.colourSrc} /> : null}<span>{colourText(item) || "-"}</span></div>
-              <div>{item.qty || "1"}</div>
-              <div className={styles.productActions}>
-                <button className={styles.editRowBtn} type="button" onClick={() => editItem(item.id)}>Edit</button>
-                <button className={styles.deleteRowBtn} type="button" onClick={() => deleteItem(item.id)}>x</button>
-              </div>
-            </div>
-          )) : (
-            <div className={styles.productEmptyState}>
-              <strong>No products added yet.</strong>
-              <span>Add each door, drawer front, panel, or table top you would like quoted.</span>
-            </div>
-          )}
+          <Link className={styles.builderStripBtn} href="/request-quote/list">
+            See my list
+          </Link>
         </div>
-
-        <div className={styles.productCardList}>
-          {visibleItems.length ? visibleItems.map((item, index) => (
-            <div className={styles.productLineCard} key={item.id}>
-              <div className={styles.productLineCardHead}>
-                <span className={styles.productRowNum}>{index + 1}</span>
-                <div>
-                  <strong>{itemTitle(item)}</strong>
-                  <small>Qty {item.qty || "1"}</small>
-                </div>
-              </div>
-              <div className={styles.productLineCardMeta}>
-                <span>Finish</span><strong>{item.finish || "-"}</strong>
-                <span>Colour</span><strong>{item.colour || "-"}</strong>
-                <span>Edge</span><strong>{item.edgeMould || "-"}</strong>
-                <span>Hinge holes</span><strong>{item.type === "Door" ? (item.preDrill ? item.hingeQty || "Drilled" : "No") : "N/A"}</strong>
-              </div>
-              <div className={styles.productActions}>
-                <button className={styles.editRowBtn} type="button" onClick={() => editItem(item.id)}>Edit</button>
-                <button className={styles.deleteRowBtn} type="button" onClick={() => deleteItem(item.id)}>Remove</button>
-              </div>
-            </div>
-          )) : (
-            <div className={styles.productEmptyState}>
-              <strong>No products added yet.</strong>
-              <span>Tap Add product to add your first line item.</span>
-            </div>
-          )}
-        </div>
-      </div>
+      ) : null}
 
       {editingItem ? (() => {
-        // A line with no type yet has nothing to show on step two, so step one
-        // stands whether or not the back link was used.
-        const pickingType = pickingTypeState || !editingItem.type;
         const materialOptions = materialOptionsForSelection(editingItem.type, colourAvailability);
         // Supplier first. Until one is chosen there is nothing to offer, because
         // an unfiltered list is exactly how a Laminex colour ended up next to a
@@ -1279,424 +949,463 @@ export default function RequestQuoteFormClient() {
           .map((row) => ({ name: row.name, image: row.image_url || "" }));
         const showProfiles =
           Boolean(supplier) && editingItem.material === "Thermolaminate" && profileTypes.length > 0;
-        const hingesApplicable = editingItem.type === "Door";
-        // The cups between the two ends. Shown only once there are two ends to
-        // space between, so a door with three hinges and no measurements does
-        // not sprout a row of empty boxes nobody has to fill in.
-        const middleCupsReady =
-          Number(editingItem.height) > 0 &&
-          Number(editingItem.hingeFromBottomMm) > 0 &&
-          Number(editingItem.hingeFromTopMm) > 0;
-        const evenly = evenMiddles({
-          height: editingItem.height,
-          count: hingeCount(editingItem.hingeQty),
-          fromBottom: editingItem.hingeFromBottomMm,
-          fromTop: editingItem.hingeFromTopMm,
-        });
-        const middleCount = Math.max(0, hingeCount(editingItem.hingeQty) - 2);
-        const middleCups = Array.from({ length: middleCount }, (unused, index) =>
-          editingItem.hingeMiddlesTouched
-            ? editingItem.hingeMiddlesMm[index] ?? ""
-            : evenly[index] ?? ""
-        );
+
+        // ── THE QUESTIONS, AND WHO DECIDES THEM ──────────────────────────────
+        //
+        // stepsForLine decides which questions this line is asked and in what
+        // order. This page decides only how each one looks. Two of them are
+        // dropped here on top of that, and only for a reason the rules cannot
+        // see: whether the brand they picked has anything to offer. Laminex
+        // makes no edges at all, and until a brand is chosen there are no
+        // profiles to list. A step with an empty dropdown under it is a
+        // question somebody tries to answer and cannot.
+        const steps = editingItem.type
+          ? stepsForLine({
+              productType: editingItem.type,
+              panelUse: editingItem.panelUse,
+              material: editingItem.material,
+              thickness: editingItem.thickness,
+            }).filter((step) => {
+              if (step.key === "frontProfile") return showProfiles;
+              if (step.key === "edgeMould") return showEdges;
+              return true;
+            })
+          : [{ key: "itemType", label: "What is it" }];
+
+        const limit = sizeLimitFor(editingItem.material, editingItem.supplierName);
+        const range = sizeLimitRange(limit);
+        const outOfRange = checkSize(editingItem);
+
+        function stepBody(key) {
+          if (key === "itemType") {
+            return (
+              <ProductTypeChooser
+                types={quoteItemTypes()}
+                current={editingItem.panelUse ? `Panel :: ${editingItem.panelUse}` : editingItem.type}
+                onChoose={(value) => chooseType(editingItem.id, value)}
+              />
+            );
+          }
+
+          if (key === "cabinetBrand") {
+            return (
+              <div className={styles.field}>
+                <select
+                  className="pcdSelect"
+                  value={editingItem.cabinetBrand}
+                  onChange={(event) => updateItem(editingItem.id, { cabinetBrand: event.target.value })}
+                >
+                  <option value="">Not applicable</option>
+                  {cabinetBrandOptions(editingItem.cabinetBrand).map((brand) => (
+                    <option key={brand}>{brand}</option>
+                  ))}
+                </select>
+                <p className={styles.fieldHint}>
+                  Only if it is going on a cabinet you have already bought. Skip it otherwise.
+                </p>
+              </div>
+            );
+          }
+
+          if (key === "hardwareType") {
+            return (
+              <div className={styles.field}>
+                <label>Which hardware?<Required /></label>
+                <HardwarePicker
+                  item={editingItem}
+                  invalid={flagged.has("hardware")}
+                  onChange={(patch) => updateItem(editingItem.id, patch)}
+                />
+              </div>
+            );
+          }
+
+          if (key === "material") {
+            return (
+              <>
+                <Tabs
+                  options={materialOptions}
+                  value={editingItem.material}
+                  cols={materialOptions.length > 3 ? 3 : materialOptions.length}
+                  invalid={flagged.has("material")}
+                  onChoose={(value) => updateItem(editingItem.id, { material: value })}
+                />
+                {/* A rule worth saying out loud, because it is the one somebody
+                    is most likely to be surprised by. */}
+                {editingItem.type === "Table top" ? (
+                  <p className={styles.fieldHint}>
+                    No thermolaminate on a work surface. It is a vinyl skin pressed over a routed face,
+                    made for a door, and it will not take the heat or the moisture.
+                  </p>
+                ) : null}
+                {/* THE CROSSOVER, SAID AND NEVER MERGED. A flat decorative board
+                    front can be bought outright with a live price, which is
+                    quicker than waiting for us. Said here, where somebody has
+                    just picked the one material the shop sells, and linked
+                    across rather than added to this list. */}
+                {SHOP_ENABLED &&
+                editingItem.material === "Decorative Board" &&
+                ["Door", "Drawer front", "Panel"].includes(editingItem.type) ? (
+                  <div className={styles.shopNudge}>
+                    <strong>You can buy this one now</strong>
+                    <p>
+                      Polytec decorative board doors, drawer fronts and panels are on our shop with a live
+                      price on them. Quicker than waiting for us to come back to you.
+                    </p>
+                    <Link className={styles.shopNudgeBtn} href="/products">
+                      Take me to the shop
+                    </Link>
+                  </div>
+                ) : null}
+              </>
+            );
+          }
+
+          if (key === "supplier") {
+            return (
+              <div className={styles.field}>
+                <SupplierSelect
+                  item={editingItem}
+                  profileRows={profileRows}
+                  colourRows={supplierColourRows}
+                  className={flag("supplierName", "pcdSelect")}
+                  onChange={(patch) => updateItem(editingItem.id, patch)}
+                />
+              </div>
+            );
+          }
+
+          if (key === "thickness") {
+            // A field that is empty for a reason nobody can see is the failure
+            // this whole chain is about, so the reason is the answer.
+            if (!editingItem.material || !supplier || !thicknessOptions.length) {
+              return (
+                <p className={styles.notApplicable}>
+                  {!editingItem.material ? "Choose a material first" : "Choose a brand first"}
+                </p>
+              );
+            }
+            return (
+              <Tabs
+                options={thicknessOptions}
+                value={editingItem.thickness}
+                cols={Math.min(4, thicknessOptions.length)}
+                invalid={flagged.has("thickness")}
+                onChoose={(value) => updateItem(editingItem.id, { thickness: value })}
+              />
+            );
+          }
+
+          if (key === "colour") {
+            return (
+              <div className={`${styles.field} ${styles.productModalColourField}`}>
+                {supplier ? (
+                  <ColourControls
+                    item={editingItem}
+                    invalid={flagged.has("colour")}
+                    onChange={(patch) => updateItem(editingItem.id, patch)}
+                  />
+                ) : (
+                  <span className={styles.notApplicable}>Choose a brand first</span>
+                )}
+              </div>
+            );
+          }
+
+          if (key === "frontProfile") {
+            return (
+              <div className={styles.stepStack}>
+                <div className={styles.stepWide}>
+                  <span className={styles.fieldLabel}>Profile family</span>
+                  <Tabs
+                    options={profileTypes}
+                    value={editingItem.profileType}
+                    cols={Math.min(4, profileTypes.length)}
+                    onChoose={(value) => updateItem(editingItem.id, { profileType: value, profile: "" })}
+                  />
+                </div>
+                <div className={styles.stepWide}>
+                  <span className={styles.fieldLabel}>
+                    {editingItem.profileType ? `${editingItem.profileType} profiles` : "Profile"}
+                  </span>
+                  {editingItem.profileType ? (
+                    <ImageSelect
+                      value={editingItem.profile}
+                      placeholder="Select a profile"
+                      options={profileNames.map((profile) => ({
+                        value: profile.name,
+                        label: profile.name,
+                        image: profile.image || profileImageSrc(editingItem.profileType, profile.name),
+                      }))}
+                      onChange={(value) => updateItem(editingItem.id, { profile: value })}
+                    />
+                  ) : <span className={styles.notApplicable}>Pick a profile type first</span>}
+                </div>
+              </div>
+            );
+          }
+
+          if (key === "edgeMould") {
+            return (
+              <div className={styles.field}>
+                <ImageSelect
+                  value={editingItem.edgeMould}
+                  placeholder="Select an edge"
+                  options={edgeOptions.map((edge) => ({
+                    value: edge.name,
+                    label: edge.name,
+                    image: edge.image || edgeImageSrc(edge.name),
+                  }))}
+                  onChange={(value) => updateItem(editingItem.id, { edgeMould: value })}
+                />
+              </div>
+            );
+          }
+
+          if (key === "size") {
+            // WHAT WE CAN PRESS, SAID BEFORE IT IS TYPED. A board we have not
+            // set limits for shows no range rather than a made up one. See
+            // lib/pcd-size-limits.js.
+            return (
+              <SizeFields
+                item={editingItem}
+                limit={limit}
+                range={range}
+                errors={outOfRange}
+                invalid={{ height: flagged.has("height"), width: flagged.has("width") }}
+                required={<Required />}
+                onChange={(patch) => updateItem(editingItem.id, patch)}
+              />
+            );
+          }
+
+          if (key === "bandedEdges") {
+            return (
+              <BandedEdgesField
+                value={editingItem.bandedEdges}
+                onChange={(bandedEdges) => updateItem(editingItem.id, { bandedEdges })}
+              />
+            );
+          }
+
+          if (key === "hinges") {
+            return <HingeFields item={editingItem} onChange={(patch) => updateItem(editingItem.id, patch)} />;
+          }
+
+          if (key === "qty") {
+            return (
+              <QtyStepper
+                value={editingItem.qty}
+                hint="All the same size, colour and drilling. Add a different door as a second item."
+                onChange={(qty) => updateItem(editingItem.id, { qty })}
+              />
+            );
+          }
+
+          if (key === "notes") {
+            // PER LINE, not per request. The request already has a notes box at
+            // the bottom, and a remark about ONE door was going in it with
+            // nothing to say which door it meant. The field it writes to has
+            // been carried to the endpoint all along; there was simply nowhere
+            // on this page to type it.
+            return (
+              <div className={styles.field}>
+                <textarea
+                  rows={2}
+                  value={editingItem.note}
+                  placeholder="Anything about this item in particular"
+                  onChange={(event) => updateItem(editingItem.id, { note: event.target.value })}
+                />
+              </div>
+            );
+          }
+
+          return null;
+        }
+
+        // ── WHAT THEY HAVE SPECIFIED SO FAR ──────────────────────────────────
+        //
+        // Only what has been answered. A row reading "Colour: not chosen yet" is
+        // a gap dressed up as a fact, and the sentence under the button is the
+        // place that says what is still missing.
+        const specRows = [
+          ["Item", editingItem.panelUse ? `Panel, ${String(editingItem.panelUse).toLowerCase()}` : fields.label],
+          fields.hardware ? ["Hardware", editingItem.hardwareName] : null,
+          fields.board && editingItem.material ? ["Material", `${editingItem.thickness} ${editingItem.material}`.trim()] : null,
+          fields.board ? ["Brand", editingItem.supplierName] : null,
+          fields.board ? ["Colour", editingItem.colour] : null,
+          editingItem.profile ? ["Front profile", [editingItem.profileType, editingItem.profile].filter(Boolean).join(", ")] : null,
+          editingItem.edgeMould ? ["Edge profile", editingItem.edgeMould] : null,
+          // Height before width, the same way round as the form above it.
+          fields.size && editingItem.height && editingItem.width
+            ? ["Size", `${editingItem.height} x ${editingItem.width} mm`]
+            : null,
+          asksFor({ productType: editingItem.type, material: editingItem.material }, "bandedEdges")
+            ? [
+                "Banded edges",
+                Array.isArray(editingItem.bandedEdges)
+                  ? editingItem.bandedEdges.length
+                    ? editingItem.bandedEdges.join(", ")
+                    : "None, all four raw"
+                  : "All four",
+              ]
+            : null,
+          fields.hinges && editingItem.preDrill
+            ? ["Hinges", [editingItem.hingeQty, editingItem.hingeSide ? `hinged ${String(editingItem.hingeSide).toLowerCase()}` : ""].filter(Boolean).join(", ") || "Drilled"]
+            : null,
+          Number(editingItem.qty) > 1 ? ["Quantity", String(editingItem.qty)] : null,
+          editingItem.cabinetBrand ? ["Going on", editingItem.cabinetBrand] : null,
+        ].filter((row) => row && row[1]);
+
+        // ── WHETHER IT CAN BE SENT ───────────────────────────────────────────
+        //
+        // Shown from the moment the line is opened and updated as it is filled
+        // in, so pressing the button is never the first anyone hears of a
+        // missing field.
+        const readiness = (() => {
+          const unmakeable = sizeProblems(editingItem);
+          if (unmakeable.length) return unmakeable[0];
+          const gaps = lineGaps(editingItem);
+          const drilling = hingeProblems({
+            hinge_holes: editingItem.type === "Door" && editingItem.preDrill,
+            hinge_qty: editingItem.hingeQty,
+            hinge_side: editingItem.hingeSide,
+            hole_type: editingItem.holeType,
+            hinge_from_bottom_mm: editingItem.hingeFromBottomMm,
+            hinge_from_top_mm: editingItem.hingeFromTopMm,
+            height_mm: editingItem.height,
+          });
+          if (!gaps.length && drilling.length) {
+            return `We can price this line. Before we make it we will need ${describeGaps(drilling.map((message) => ({ message })))}.`;
+          }
+          if (!gaps.length) return "This line has everything we need to price it.";
+          return `Still needs ${describeGaps(gaps)} before we can price it.`;
+        })();
 
         return (
-          <div className={styles.productModalOverlay} role="dialog" aria-modal="true" aria-labelledby="product-line-modal-title" onMouseDown={() => cancelEdit(editingItem.id)}>
-            <div className={styles.productModal} onMouseDown={(event) => event.stopPropagation()}>
-              <div className={styles.productModalHeader}>
-                <div>
-                  <span className={styles.sectionLabel}>
-                    {pickingType ? "Step 1 of 2" : `Step 2 of 2 - ${fields.label}`}
-                  </span>
-                  <h2 id="product-line-modal-title">
-                    {pickingType
-                      ? "What would you like?"
-                      : `${editingItem.saved ? "Edit" : "Add"} ${String(fields.label).toLowerCase()}`}
-                  </h2>
-                </div>
-                <button className={styles.productModalClose} type="button" aria-label="Close product editor" onClick={() => cancelEdit(editingItem.id)}>x</button>
-              </div>
-
-              {pickingType ? (
-                <ProductTypeChooser
-                  types={productTypeChoices(PRODUCT_TYPES)}
-                  current={editingItem.type}
-                  onChoose={(type) => chooseType(editingItem.id, type)}
+          <div className={styles.builder}>
+            {/* THE DRAWING, sticky, so it stays beside the questions while the
+                right hand column scrolls. Nothing to draw for hardware: it is
+                picked off a shelf rather than cut to a size. */}
+            <div className={styles.builderStage}>
+              {fields.size ? (
+                <DoorDrawing
+                  styles={styles}
+                  id={`line-${editingItem.id}`}
+                  heightMm={editingItem.height}
+                  widthMm={editingItem.width}
+                  material={editingItem.material}
+                  colourTile={editingItem.colourSrc}
+                  colourName={editingItem.colour}
+                  profile={editingItem.profile}
+                  bandedEdges={editingItem.bandedEdges}
+                  hingeHoles={fields.hinges && editingItem.preDrill}
+                  hingeCount={hingeCount(editingItem.hingeQty)}
+                  cupsMm={cupsForDrawing(editingItem)}
+                  hingeSide={editingItem.hingeSide}
+                  holeType={editingItem.holeType}
+                  profileImage={profileImageSrc(editingItem.profileType, editingItem.profile)}
                 />
               ) : (
-                <>
-                  {/* A way back, because the type decides everything below it and
-                      picking the wrong one otherwise means starting the line again. */}
-                  <button type="button" className={styles.typeBackLink} onClick={() => setPickingType(true)}>
-                    Not a {String(fields.label).toLowerCase()}? Choose something else
-                  </button>
+                <div className={styles.builderNoDraw}>
+                  <strong>Nothing to draw</strong>
+                  <p>Hardware is picked off our range rather than cut to a size, so there is no piece to show you.</p>
+                </div>
+              )}
+            </div>
 
-                  <div className={styles.productModalGrid}>
-                    {/* HARDWARE IS A BOUGHT ITEM. No board, no size, no finish.
-                        Asking it those anyway, and greying them out, is what left
-                        this unfinishable: the material list was empty because
-                        hardware has no material, and there was nothing else to
-                        fill in. */}
-                    {/* WHOSE CABINET. First, because it is the thing a customer
-                        already knows before they know anything else, and because
-                        it decides nothing below it so it is safe to answer or
-                        skip. Defaults to whatever they told us for the job. */}
-                    <div className={styles.productModalWide}>
-                      <label>Which cabinet is this for?</label>
-                      <select
-                        className="pcdSelect"
-                        value={editingItem.cabinetBrand}
-                        onChange={(event) => updateItem(editingItem.id, { cabinetBrand: event.target.value })}
-                      >
-                        <option value="">Not applicable</option>
-                        {cabinetBrandOptions(editingItem.cabinetBrand).map((brand) => (
-                          <option key={brand}>{brand}</option>
-                        ))}
-                      </select>
+            <div className={styles.builderPanel}>
+              <div className={styles.builderHead}>
+                <span className={styles.sectionLabel}>
+                  {editingItem.saved ? "Editing an item" : `Item ${items.filter((row) => row.saved).length + 1}`}
+                </span>
+                <h2 id="product-line-modal-title">Tell us what you need</h2>
+                <p className={styles.builderLede}>
+                  One item at a time. Add as many as you like and we price the lot together.
+                </p>
+              </div>
+
+              {/* ONE NUMBERED BLOCK PER QUESTION, IN THE ORDER THE RULES ASK IT.
+                  The order and the membership are stepsForLine's, not this
+                  page's: it is the same function the admin side narrows with,
+                  so a compact laminate panel loses its edge step here for the
+                  same reason and at the same moment it loses it there.
+
+                  This page used to hold its own copy of the sequence, laid out
+                  as one grid of every field with the ones that did not apply
+                  turned off. That is how a thermolaminate front came to be
+                  asked which of its edges to band, and it is why the questions
+                  are no longer written down twice. */}
+              <div className={styles.builderCard}>
+                {steps.map((step, index) => (
+                  <section
+                    key={step.key}
+                    className={index ? styles.stepRuled : undefined}
+                  >
+                    <div className={styles.stepHead}>
+                      <span className={styles.stepNum}>{index + 1}</span>
+                      <h3>{step.label}{REQUIRED_STEPS.has(step.key) ? <Required /> : null}</h3>
                     </div>
+                    {stepBody(step.key)}
+                  </section>
+                ))}
+              </div>
 
-                    {fields.hardware ? (
-                      <div className={styles.productModalWide}>
-                        <label>Which hardware?<Required /></label>
-                        <HardwarePicker
-                          item={editingItem}
-                          invalid={flagged.has("hardware")}
-                          onChange={(patch) => updateItem(editingItem.id, patch)}
-                        />
+              {/* WHAT THEY HAVE SPECIFIED, AND WHERE THE PRICE WOULD BE.
+                  The shop's product page puts a running total in this spot. So
+                  does this, in the same card, in the same place, and the answer
+                  is a sentence rather than a number. Leaving the block out
+                  entirely would be quieter and worse: somebody who has used the
+                  shop looks here for the money, and finding nothing reads as a
+                  page that has not finished loading. */}
+              {editingItem.type ? (
+                <div className={styles.specCard}>
+                  <div className={styles.specRows}>
+                    <span className={styles.sectionLabel}>This item</span>
+                    {specRows.map((row) => (
+                      <div className={styles.specRow} key={row[0]}>
+                        <span>{row[0]}</span>
+                        <span>{row[1]}</span>
                       </div>
-                    ) : null}
-
-                    {fields.board ? (
-                      <>
-                        <div className={styles.field}>
-                          <label>Material<Required /></label>
-                          <select className={flag("material", "pcdSelect")} value={editingItem.material} onChange={(event) => updateItem(editingItem.id, { material: event.target.value })}>
-                            <option value="" disabled>Material</option>
-                            {materialOptions.map((material) => <option key={material}>{material}</option>)}
-                          </select>
-                        </div>
-                        <div className={styles.field}>
-                          <label>Brand<Required /></label>
-                          <SupplierSelect
-                            item={editingItem}
-                            profileRows={profileRows}
-                            colourRows={supplierColourRows}
-                            className={flag("supplierName", "pcdSelect")}
-                            onChange={(patch) => updateItem(editingItem.id, patch)}
-                          />
-                        </div>
-                        <div className={styles.field}>
-                          <label>Thickness<Required /></label>
-                          <select className={flag("thickness", "pcdSelect")} disabled={!editingItem.material || !supplier} value={editingItem.thickness} onChange={(event) => updateItem(editingItem.id, { thickness: event.target.value })}>
-                            <option value="" disabled>
-                              {!editingItem.material ? "Select material first" : !supplier ? "Choose a brand first" : "Thickness"}
-                            </option>
-                            {thicknessOptions.map((thickness) => <option key={thickness}>{thickness}</option>)}
-                          </select>
-                        </div>
-                      </>
-                    ) : null}
-
-                    <div className={styles.field}>
-                      <label>Quantity</label>
-                      <input min="1" type="number" value={editingItem.qty} onChange={(event) => updateItem(editingItem.id, { qty: event.target.value })} />
-                    </div>
-
-                    {fields.size ? (() => {
-                      // WHAT WE CAN PRESS, SAID BEFORE IT IS TYPED.
-                      // The range sits beside the label so somebody sees it on
-                      // the way in, and the message under the box only appears
-                      // once a size is actually outside it. A board we have not
-                      // set limits for shows neither, rather than a made up
-                      // range. See lib/pcd-size-limits.js.
-                      const limit = sizeLimitFor(editingItem.material, editingItem.supplierName);
-                      const range = sizeLimitRange(limit);
-                      const outOfRange = checkSize(editingItem);
-                      return (
-                        <>
-                          {/* Height before width, the same way round as every other
-                              screen and every cut list we print. */}
-                          <div className={styles.field}>
-                            <label>
-                              Height (mm)
-                              <Required />
-                              {range ? <span style={sizeRangeStyle}>{range.height}</span> : null}
-                            </label>
-                            <input
-                              className={`${flag("height", "")}${outOfRange.height ? ` ${styles.fieldInputError}` : ""}`}
-                              min={limit ? limit.minHeightMm : 1}
-                              max={limit ? limit.maxHeightMm : undefined}
-                              placeholder="700"
-                              type="number"
-                              value={editingItem.height}
-                              onChange={(event) => updateItem(editingItem.id, { height: event.target.value })}
-                            />
-                            {outOfRange.height ? <span className={styles.fieldError}>{outOfRange.height}</span> : null}
-                          </div>
-                          <div className={styles.field}>
-                            <label>
-                              Width (mm)
-                              <Required />
-                              {range ? <span style={sizeRangeStyle}>{range.width}</span> : null}
-                            </label>
-                            <input
-                              className={`${flag("width", "")}${outOfRange.width ? ` ${styles.fieldInputError}` : ""}`}
-                              min={limit ? limit.minWidthMm : 1}
-                              max={limit ? limit.maxWidthMm : undefined}
-                              placeholder="400"
-                              type="number"
-                              value={editingItem.width}
-                              onChange={(event) => updateItem(editingItem.id, { width: event.target.value })}
-                            />
-                            {outOfRange.width ? <span className={styles.fieldError}>{outOfRange.width}</span> : null}
-                          </div>
-                        </>
-                      );
-                    })() : null}
-
-                    {fields.board ? (
-                      <div className={`${styles.field} ${styles.productModalColourField}`}>
-                        <label>Finish / colour<Required /></label>
-                        {supplier ? (
-                          <ColourControls item={editingItem} onChange={(patch) => updateItem(editingItem.id, patch)} />
-                        ) : (
-                          <span className={styles.notApplicable}>Choose a brand first</span>
-                        )}
-                      </div>
-                    ) : null}
-
-                    {/* Edges belong to the RANGE, not the board, and Laminex makes
-                        none. A brand that does not do them gets no field rather
-                        than an empty one: an empty dropdown reads as "we could not
-                        load it", where nothing at all reads as the truth. */}
-                    {fields.edge && showEdges ? (
-                      <div className={styles.field}>
-                        <label>Edge profile</label>
-                        <ImageSelect
-                          value={editingItem.edgeMould}
-                          placeholder="Select an edge"
-                          options={edgeOptions.map((edge) => ({
-                            value: edge.name,
-                            label: edge.name,
-                            image: edge.image || edgeImageSrc(edge.name),
-                          }))}
-                          onChange={(value) => updateItem(editingItem.id, { edgeMould: value })}
-                        />
-                      </div>
-                    ) : null}
-
-                    {fields.profile && showProfiles ? (
-                      <>
-                        <div className={styles.field}>
-                          <label>Profile type</label>
-                          <select className="pcdSelect" value={editingItem.profileType} onChange={(event) => updateItem(editingItem.id, { profileType: event.target.value, profile: "" })}>
-                            <option value="">Select a profile type</option>
-                            {profileTypes.map((type) => <option key={type}>{type}</option>)}
-                          </select>
-                        </div>
-                        <div className={styles.field}>
-                          <label>Profile name</label>
-                          {editingItem.profileType ? (
-                            <ImageSelect
-                              value={editingItem.profile}
-                              placeholder="Select a profile"
-                              options={profileNames.map((profile) => ({
-                                value: profile.name,
-                                label: profile.name,
-                                image: profile.image || profileImageSrc(editingItem.profileType, profile.name),
-                              }))}
-                              onChange={(value) => updateItem(editingItem.id, { profile: value })}
-                            />
-                          ) : <span className={styles.notApplicable}>Pick a profile type first</span>}
-                        </div>
-                      </>
-                    ) : null}
-
-                    {fields.hinges ? (
-                      <>
-                        <div className={styles.productModalChecks}>
-                          <label className={styles.inlineCheck}>
-                            <input checked={editingItem.preDrill} type="checkbox" onChange={(event) => updateItem(editingItem.id, { preDrill: event.target.checked, hingeQty: event.target.checked ? editingItem.hingeQty : "" })} />
-                            {" "}Drill hinge holes
-                          </label>
-                        </div>
-                        {editingItem.preDrill ? (
-                          <>
-                            <div className={styles.field}>
-                              <label>Hinge quantity</label>
-                              <select
-                                className="pcdSelect"
-                                value={editingItem.hingeQty}
-                                onChange={(event) =>
-                                  updateItem(editingItem.id, {
-                                    hingeQty: event.target.value,
-                                    // A different number of cups means the ones
-                                    // in between move. Anything typed for the
-                                    // old count is not an answer for the new one.
-                                    hingeMiddlesMm: [],
-                                    hingeMiddlesTouched: false,
-                                  })
-                                }
-                              >
-                                <option value="">Per door</option>
-                                <option>2 hinges</option>
-                                <option>3 hinges</option>
-                                <option>4 hinges</option>
-                              </select>
-                            </div>
-
-                            {/* HANDING. Left or right, and nothing else: a pair
-                                is two doors drilled as mirror images, so it is
-                                two lines. Said under the field, because getting
-                                it wrong is what turns a pair into two identical
-                                doors and nobody finds out until they are made. */}
-                            <div className={styles.field}>
-                              <label>Hinge side</label>
-                              <select
-                                className="pcdSelect"
-                                value={editingItem.hingeSide}
-                                onChange={(event) => updateItem(editingItem.id, { hingeSide: event.target.value })}
-                              >
-                                <option value="" disabled>Which side</option>
-                                {HINGE_SIDES.map((side) => <option key={side}>{side}</option>)}
-                              </select>
-                              <small className={styles.fieldNote}>
-                                Ordering a matched pair? Add it as two lines, one hinged left and one hinged right.
-                              </small>
-                            </div>
-
-                            {/* THE POSITIONS. Both blank is the normal answer and
-                                means we set them, so neither is required and the
-                                placeholder says so rather than looking unfinished. */}
-                            <div className={styles.field}>
-                              <label>Bottom hinge (mm from bottom)</label>
-                              <input
-                                type="number"
-                                min="1"
-                                placeholder="Leave blank for our standard"
-                                value={editingItem.hingeFromBottomMm}
-                                onChange={(event) => updateItem(editingItem.id, { hingeFromBottomMm: event.target.value, hingeMiddlesTouched: false })}
-                              />
-                            </div>
-                            <div className={styles.field}>
-                              <label>Top hinge (mm from top)</label>
-                              <input
-                                type="number"
-                                min="1"
-                                placeholder="Leave blank for our standard"
-                                value={editingItem.hingeFromTopMm}
-                                onChange={(event) => updateItem(editingItem.id, { hingeFromTopMm: event.target.value, hingeMiddlesTouched: false })}
-                              />
-                            </div>
-
-                            {middleCups.map((mm, index) => (
-                              <div className={styles.field} key={"middle-" + index}>
-                                <label>{index === 0 ? "2nd" : "3rd"} hinge (mm from bottom)</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={mm}
-                                  disabled={!middleCupsReady}
-                                  placeholder={middleCupsReady ? "" : "Fill in the two above first"}
-                                  onChange={(event) => {
-                                    const next = middleCups.slice();
-                                    next[index] = event.target.value;
-                                    updateItem(editingItem.id, { hingeMiddlesMm: next, hingeMiddlesTouched: true });
-                                  }}
-                                />
-                              </div>
-                            ))}
-
-                            {middleCups.length ? (
-                              <p className={styles.productModalWide} style={{ margin: 0, fontSize: 12, color: "#7a766c" }}>
-                                {!middleCupsReady
-                                  ? "Give us the bottom and the top and we will space the rest evenly."
-                                  : editingItem.hingeMiddlesTouched
-                                    ? "Set by hand, so these will not move when the others do."
-                                    : "Spaced evenly between the bottom and the top. Type over one to set it yourself."}
-                              </p>
-                            ) : null}
-                          </>
-                        ) : null}
-                      </>
-                    ) : null}
+                    ))}
                   </div>
 
-                  {(() => {
-                    // Shown from the moment the row is opened and updated as it is
-                    // filled in, so pressing Save is never the first anyone hears
-                    // of a missing field. Turns green when the line is complete.
-                    const gaps = lineGaps(editingItem);
-                    const unmakeable = sizeProblems(editingItem);
-                    if (unmakeable.length) {
-                      return (
-                        <p className={styles.fieldError} style={{ padding: "0 18px", margin: 0, fontSize: 12.5 }}>
-                          {unmakeable[0]}
-                        </p>
-                      );
-                    }
-                    const drilling = hingeProblems({
-                      hinge_holes: editingItem.type === "Door" && editingItem.preDrill,
-                      hinge_qty: editingItem.hingeQty,
-                      hinge_side: editingItem.hingeSide,
-                      hinge_from_bottom_mm: editingItem.hingeFromBottomMm,
-                      hinge_from_top_mm: editingItem.hingeFromTopMm,
-                      height_mm: editingItem.height,
-                    });
-                    if (!gaps.length && drilling.length) {
-                      return (
-                        <p style={{ padding: "0 18px", margin: 0, fontSize: 12.5, color: "#7a766c" }}>
-                          We can price this line. Before we make it we will need {describeGaps(drilling.map((message) => ({ message })))}.
-                        </p>
-                      );
-                    }
-                    if (!gaps.length) {
-                      return (
-                        <p style={{ padding: "0 18px", margin: 0, fontSize: 12.5, color: "#2d5e28" }}>
-                          This line has everything we need to price it.
-                        </p>
-                      );
-                    }
-                    return (
-                      <p
-                        className={lineErrors[editingItem.id] ? styles.fieldError : undefined}
-                        style={{ padding: "0 18px", margin: 0, fontSize: 12.5, color: lineErrors[editingItem.id] ? undefined : "#7a766c" }}
-                      >
-                        Still needs {describeGaps(gaps)} before we can price it.
-                      </p>
-                    );
-                  })()}
-                </>
-              )}
+                  <div className={styles.specPrice}>
+                    <div className={styles.specPriceHead}>
+                      <span>Total inc GST</span>
+                      <strong>Priced by hand</strong>
+                    </div>
+                    <p>
+                      Nothing on a quote request carries a price. We work them out together and
+                      email you, usually the same day.
+                    </p>
 
-              <div className={styles.productModalFooter}>
-                <button className={styles.cancelRowBtn} type="button" onClick={() => cancelEdit(editingItem.id)}>Cancel</button>
-                <button className={styles.saveRowBtn} type="button" onClick={() => saveItem(editingItem.id)}>Save product</button>
-              </div>
+                    {/* The one sentence that says whether this line can be sent,
+                        kept against the button rather than floating above it,
+                        because it is the answer to why the button is worded the
+                        way it is. */}
+                    {readiness ? <p className={styles.specReady}>{readiness}</p> : null}
+
+                    <div className={styles.builderFooter}>
+                      {editingItem.saved ? (
+                        <button className={styles.cancelRowBtn} type="button" onClick={() => cancelEdit(editingItem.id)}>
+                          Cancel
+                        </button>
+                      ) : null}
+                      <button className={styles.saveRowBtn} type="button" onClick={() => saveItem(editingItem.id)}>
+                        {editingItem.saved ? "Save changes" : "Add to my list"}
+                      </button>
+                    </div>
+                    <p className={styles.specFoot}>Nothing is charged until you accept the quote</p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         );
       })() : null}
 
-      <div className={styles.quoteBottomStrip}>
-        <div className={styles.quoteCard}>
-          <span className={styles.sectionLabel}>Additional notes</span>
-          <div className={styles.field}>
-            <label htmlFor="notes">Anything else we should know?</label>
-            <textarea id="notes" name="notes" placeholder="e.g. timing requirements, special requirements, or anything else that helps us give you an accurate quote" />
-          </div>
-        </div>
-        <div className={styles.tipCard}>
-          <span className={styles.sectionLabel}>Measuring tips</span>
-          <p>Measure width then height in millimetres. For replacement doors, measure the door itself, not the opening.</p>
-          <p>For drawer fronts, measure the existing front: width and height of each drawer.</p>
-          <p>Not sure on overlay? Give us the opening size and we will advise.</p>
-        </div>
-      </div>
 
-      <button className={styles.submitBtn} disabled={submitting} type="submit">{submitting ? "Sending..." : "Send Quote Request"}</button>
-      <p className={styles.submitNote}>We will come back within 1-3 business days. For urgent enquiries call <a href="tel:0437750990">0437 750 990</a>.</p>
-      {status ? <p className={`${styles.formStatus} ${status.type === "error" ? styles.formStatusError : ""}`}>{status.message}</p> : null}
-    </form>
+    </div>
   );
 }

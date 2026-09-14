@@ -5,7 +5,8 @@ import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { addressColumns } from "../../../../lib/pcd-contact-details";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { createBoardCostResolver } from "../../../../lib/pcd-board-cost";
-import { convertedQuoteLine, madeToOrderSummary, unpricedSummary } from "../../../../lib/pcd-quote-request-convert";
+import { convertedQuoteLine, madeToOrderSummary, projectNameFromRequest, unpricedSummary } from "../../../../lib/pcd-quote-request-convert";
+import { createHardwareResolver } from "../../../../lib/pcd-hardware-line";
 import { calculateQuoteLine, quoteCostDefaults } from "../../../../lib/pcd-quote-utils";
 import { defaultQuoteTermsFor } from "../../../../lib/pcd-quote-terms";
 import {
@@ -88,7 +89,11 @@ export async function POST(request) {
         // street address, and the street and postcode are then asked for once
         // in the quote editor rather than guessed at here.
         ...addressColumns({ suburb: quoteRequest.delivery_suburb }),
-        project_name: quoteRequest.cabinet_brand,
+        // Who and where, e.g. "Jane Smith, Subiaco", which is how a job is
+        // looked for in the orders list. The order takes its name from this.
+        // It used to be the cabinet brand, so orders from the website were
+        // called "IKEA Metod"; the brand still travels on every line.
+        project_name: projectNameFromRequest(quoteRequest),
         currency: businessDefaults.currency,
         gst_rate: businessDefaults.gst_rate,
         worker_hourly_rate: businessDefaults.worker_hourly_rate,
@@ -131,8 +136,14 @@ export async function POST(request) {
       // One read of the colour library for the whole conversion, not one per
       // line.
       const resolveBoard = await createBoardCostResolver(context.supabase);
+      // The hardware catalogue, once, so a hinge the customer picked arrives
+      // priced the same way as picking it in the quote editor. A catalogue that
+      // cannot be read leaves those lines unpriced and says so, rather than
+      // stopping the conversion.
+      const { data: hardwareRows } = await context.supabase.from("pcd_hardware").select("*");
+      const resolveHardware = createHardwareResolver(hardwareRows || []);
       const entries = requestLines.map((line) =>
-        convertedQuoteLine(line, { resolveBoard, quoteRequest, businessDefaults })
+        convertedQuoteLine(line, { resolveBoard, resolveHardware, quoteRequest, businessDefaults })
       );
       unpriced = unpricedSummary(entries);
       madeToOrder = madeToOrderSummary(entries);

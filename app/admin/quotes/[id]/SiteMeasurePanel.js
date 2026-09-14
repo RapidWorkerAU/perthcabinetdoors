@@ -34,6 +34,7 @@
 // they stack in the same order, which is also the phone layout.
 
 import React, { useMemo, useState } from "react";
+import { IconArrowLeft } from "@tabler/icons-react";
 import {
   SITE_MEASURE_TYPES,
   measureIsComplete,
@@ -178,7 +179,7 @@ export default function SiteMeasurePanel({ lines = [], onClose, onAdd }) {
             aria-label="Back to quote items"
             className="w-[32px] h-[32px] -ml-1 mt-[1px] flex-shrink-0 rounded-[6px] flex items-center justify-center text-[#5a5a52] hover:bg-white hover:text-[#1a1a18] transition-colors"
           >
-            {"<-"}
+            <IconArrowLeft size={18} />
           </button>
           <div className="min-w-0">
             <h2 className="text-[16px] font-semibold text-[#1a1a18] leading-tight">Site measure</h2>
@@ -308,13 +309,16 @@ export default function SiteMeasurePanel({ lines = [], onClose, onAdd }) {
 
                   {draft.standard ? null : (
                     <div className="flex flex-col gap-2">
-                      <span className={LABEL}>Cups, up from the bottom edge</span>
+                      {/* Measured the way every other screen asks: the bottom
+                          cup from the bottom edge, the top cup from the top
+                          edge, and any between them from the bottom. */}
+                      <span className={LABEL}>Hinge positions, mm to the centre of the cup</span>
                       {Array.from({ length: draft.hinge_count }, (_, index) => {
                         const name =
-                          index === 0 ? "Bottom" : index === draft.hinge_count - 1 ? "Top" : `Cup ${index + 1}`;
+                          index === 0 ? "Bottom, from bottom" : index === draft.hinge_count - 1 ? "Top, from top" : `${["2nd", "3rd", "4th", "5th"][index - 1] || `${index + 1}th`}, from bottom`;
                         return (
                           <label key={index} className="flex items-center gap-3">
-                            <span className="w-[70px] flex-shrink-0 text-[12px] text-[#5a5a52]">{name}</span>
+                            <span className="w-[130px] flex-shrink-0 text-[12px] text-[#5a5a52]">{name}</span>
                             <input
                               inputMode="numeric"
                               placeholder="0"

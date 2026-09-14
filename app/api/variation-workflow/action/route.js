@@ -1,4 +1,4 @@
-import { createCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
+import { createCheckoutSession, returnOrigin } from "../../../../lib/pcd-stripe";
 import { applyAcceptedVariation } from "../../../../lib/pcd-order-variations";
 import { sendVariationApprovedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { formatMoney, toNumber } from "../../../../lib/pcd-quote-utils";
@@ -111,7 +111,8 @@ export async function POST(request) {
         .single();
       if (paymentError) throw paymentError;
 
-      const baseUrl = siteUrl(request.url);
+      // Back to the site they were on. See returnOrigin.
+      const baseUrl = returnOrigin(request);
       const session = await createCheckoutSession({
         amount: topup,
         currency: variation.currency || "AUD",

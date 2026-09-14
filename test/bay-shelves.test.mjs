@@ -8,7 +8,8 @@
 // list and the quote rather than only the drawing.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mixedBaySections, openBaySections, bayShelfHeightsMm, bayShelfCount } from "../lib/pcd-door-utils.js";
+import { mixedBaySections, openBaySections, bayShelfHeightsMm, bayShelfCount, cabinetShelfHeightsMm } from "../lib/pcd-door-utils.js";
+import { readFileSync } from "node:fs";
 import { computeCutList } from "../lib/pcd-cut-list.js";
 
 const cab = (sections, over = {}) => ({
@@ -123,4 +124,31 @@ test("a cabinet with no sections at all is safe", () => {
   assert.deepEqual(mixedBaySections({ item_type: "tall_cabinet", height_mm: 2100 }), []);
   assert.equal(bayShelfCount({}), 0);
   assert.deepEqual(bayShelfHeightsMm({}), []);
+});
+
+// ── A cabinet's own shelves ─────────────────────────────────────────────────
+//
+// A tall cabinet with two shelves dragged into place, then set to one, went on
+// drawing two: the views drew every saved position whatever the count said.
+// Now the count decides, the same rule a bay's shelves already followed.
+
+test("the shelf count decides how many shelves are drawn", () => {
+  const tall = { height_mm: 2100, shelf_qty: 1, shelf_heights_mm: [700, 1400] };
+  assert.equal(cabinetShelfHeightsMm(tall).length, 1, "two saved positions, one shelf asked for");
+  assert.deepEqual(cabinetShelfHeightsMm(tall), [1050], "and it is respaced evenly");
+  assert.deepEqual(cabinetShelfHeightsMm({ ...tall, shelf_qty: 0 }), []);
+});
+
+test("saved positions still win while there are as many as the count", () => {
+  // A shelf dragged to a chosen height stays there.
+  assert.deepEqual(cabinetShelfHeightsMm({ height_mm: 2100, shelf_qty: 2, shelf_heights_mm: [500, 1600] }), [500, 1600]);
+});
+
+test("both views and the count field use the one rule", () => {
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  assert.match(read("../app/admin/design/_components/Design3DView.js"), /cabinetShelfHeightsMm\(item\)/);
+  assert.match(read("../app/admin/design/_components/FrontElevationView.js"), /cabinetShelfHeightsMm\(item\)/);
+  // Changing the count clears the positions saved for the old one.
+  assert.match(read("../app/admin/design/_components/DesignRightPanel.js"), /shelf_qty: e\.target\.value, shelf_heights_mm: \[\]/);
+  assert.match(read("../app/(site)/design/PublicDesignClient.js"), /shelf_qty: n, shelf_heights_mm: \[\]/);
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { IconArrowLeft } from "@tabler/icons-react";
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import styles from "../design.module.css";
@@ -10,6 +11,7 @@ import DesignLeftPanel from "./DesignLeftPanel";
 import DesignRightPanel from "./DesignRightPanel";
 import ImportModal from "./ImportModal";
 import MaterialDefaultsModal from "./MaterialDefaultsModal";
+import { DesignColourContext } from "./ColourField";
 import DesignPlanExportModal from "./DesignPlanExportModal";
 import FrontElevationView from "./FrontElevationView";
 import StageQuoteModal from "./StageQuoteModal";
@@ -19,6 +21,7 @@ import useDesignProgram from "./useDesignProgram";
 import ShareDesignModal from "./ShareDesignModal";
 import PinchZoom from "./PinchZoom";
 import PcdLoader from "../../../../components/public/PcdLoader";
+import MissingTileNotice from "./MissingTileNotice";
 
 // three.js is heavy and only needed once the 3D view is opened, so it's split
 // out of the initial bundle and never server-rendered (r3f is client-only).
@@ -131,7 +134,7 @@ export default function DesignProgram({ projectId }) {
         elevWall={elevWall} onElevWall={onElevWall}
         showColours={showColours} onToggleColours={toggleColours}
         left={<>
-          <Link href="/admin/design" style={{ color: "rgba(255,255,255,0.55)", textDecoration: "none", fontSize: 12, whiteSpace: "nowrap" }}>← All projects</Link>
+          <Link href="/admin/design" style={{ color: "rgba(255,255,255,0.55)", textDecoration: "none", fontSize: 12, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}><IconArrowLeft size={13} />All projects</Link>
           <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 13 }}>·</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{project?.name || "Design Tool"}</span>
           {/* Room switcher — moved off the left rail so the rail is a clean
@@ -202,6 +205,7 @@ export default function DesignProgram({ projectId }) {
             <button type="button" onClick={dismissSaveError}>Dismiss</button>
           </div>
         )}
+        <MissingTileNotice show={showColours} colourImages={colourImages} items={roomItems} roomId={selectedRoomId} />
         {show3D && selectedRoom ? (
           <Design3DView
             room={selectedRoom}
@@ -309,7 +313,11 @@ export default function DesignProgram({ projectId }) {
         />
       )}
 
+      {/* The swatches and the used colours button, the same as every other
+          colour field: every colour used anywhere on the project, across all
+          rooms, because the defaults are for the whole project. */}
       {materialDefaultsOpen && (
+        <DesignColourContext.Provider value={{ allItems: items, colourImages, current: null }}>
         <MaterialDefaultsModal
           projectId={projectId}
           initialDefaults={project?.material_defaults}
@@ -317,6 +325,7 @@ export default function DesignProgram({ projectId }) {
           onSaved={(materialDefaults) => setProject((p) => ({ ...p, material_defaults: materialDefaults }))}
           onItemsChanged={loadAll}
         />
+        </DesignColourContext.Provider>
       )}
 
       {shareOpen && project?.id && (

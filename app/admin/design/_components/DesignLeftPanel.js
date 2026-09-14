@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import styles from "../design.module.css";
+import { IconArrowLeft, IconChevronRight } from "@tabler/icons-react";
 import { itemDisplayLabel } from "./CutListView";
 import { CATALOG, CATEGORIES, Mockup } from "./AddItemModal";
 import AddItemRail from "../../../../components/AddItemRail";
@@ -316,7 +317,7 @@ export default function DesignLeftPanel({
                     onClick={() => toggleGroup(g.type)}
                     style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "8px 16px 4px", margin: 0, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgba(255,255,255,0.4)", textAlign: "left" }}
                   >
-                    <span style={{ display: "inline-block", transition: "transform 150ms ease", transform: open ? "rotate(90deg)" : "rotate(0deg)", color: "rgba(255,255,255,0.35)" }}>›</span>
+                    <span style={{ display: "inline-block", transition: "transform 150ms ease", transform: open ? "rotate(90deg)" : "rotate(0deg)", color: "rgba(255,255,255,0.35)" }}><IconChevronRight size={12} /></span>
                     <span style={{ flex: 1 }}>{g.label}</span>
                     <span style={{ color: "rgba(255,255,255,0.25)" }}>{g.items.length}</span>
                   </button>
@@ -411,7 +412,10 @@ function AddCatalogue({ roomName, pickedType, onPickType, onCancel }) {
       </div>
       <div className={styles.addFreestandingRow}>
         <button type="button" className={styles.addFreestandingBtn} onClick={onCancel}>
-          ← Back to items
+          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <IconArrowLeft size={14} />
+            Back to items
+          </span>
         </button>
       </div>
     </div>

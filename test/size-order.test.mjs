@@ -28,7 +28,7 @@ const withoutComments = (source) =>
     .join("\n");
 
 test("no heading anywhere still says width before height", () => {
-  ["lib/pcd-email-templates.js", "lib/pcd-design-plan-pdf.js", "lib/pcd-cabinet-pdf.js", "lib/pcd-order-item-label.js"].forEach(
+  ["lib/pcd-email-templates.js", "lib/pcd-line-summary.js", "lib/pcd-design-plan-pdf.js", "lib/pcd-cabinet-pdf.js", "lib/pcd-order-item-label.js"].forEach(
     (path) => {
       const source = withoutComments(read(path));
       assert.doesNotMatch(source, /W x H/i, `${path} still labels a size width-first`);
@@ -37,8 +37,10 @@ test("no heading anywhere still says width before height", () => {
 });
 
 test("the quote request email heads its size column the way it fills it", () => {
-  const source = read("lib/pcd-email-templates.js");
-  assert.match(source, />H x W<\/th>/, "the heading");
+  // The heading is on the email; the cell under it is written by the shared
+  // describer, which the customer desk reads as well. They still have to agree.
+  assert.match(read("lib/pcd-email-templates.js"), />H x W<\/th>/, "the heading");
+  const source = read("lib/pcd-line-summary.js");
   assert.match(
     source,
     /return `\$\{height \|\| "-"\} x \$\{width \|\| "-"\} mm`/,
@@ -64,18 +66,28 @@ test("every other size formatter leads with the height", () => {
     "the cut list"
   );
 
-  const form = read("app/(site)/request-quote/RequestQuoteFormClient.js");
-  assert.match(form, /return `\$\{item\.height \|\| "-"\} x \$\{item\.width \|\| "-"\}`/, "the quote form's summary");
+  // The builder, the list page and the review page all print a line, so how a
+  // line reads lives in one module rather than in each of them.
+  const lineText = read("lib/pcd-quote-line-text.js");
+  assert.match(
+    lineText,
+    /return `\$\{line\.height \|\| "-"\} x \$\{line\.width \|\| "-"\}`/,
+    "the quote form's summary"
+  );
 });
 
 // The form asks for them in the same order it prints them, so nobody has to
 // re-order the two numbers in their head between typing and checking.
 test("the form asks for the height before the width", () => {
-  const form = read("app/(site)/request-quote/RequestQuoteFormClient.js");
-  const height = form.indexOf("Height (mm)");
-  const width = form.indexOf("Width (mm)");
+  // The quote form and the shop's product pages ask the size through one
+  // shared component, so the order is checked there and both must use it.
+  const fields = read("app/(site)/_builder/SizeFields.js");
+  const height = fields.indexOf("Height (mm)");
+  const width = fields.indexOf("Width (mm)");
   assert.ok(height > -1 && width > -1);
   assert.ok(height < width, "height is asked first, the same way round as it is shown");
+  assert.match(read("app/(site)/request-quote/RequestQuoteFormClient.js"), /<SizeFields/);
+  assert.match(read("app/(site)/products/[slug]/ShopProductClient.js"), /<SizeFields/);
 });
 
 // ── THE EMAIL SAYS WHAT THEY ASKED FOR ─────────────────────────────────────
@@ -85,7 +97,7 @@ test("the form asks for the height before the width", () => {
 // they had asked for.
 
 test("the email names the hardware in the material column", () => {
-  const source = read("lib/pcd-email-templates.js");
+  const source = read("lib/pcd-line-summary.js");
   assert.match(source, /const named = line\.productName \|\| line\.product_name \|\| ""/);
   assert.match(
     source,
@@ -95,6 +107,15 @@ test("the email names the hardware in the material column", () => {
 });
 
 test("the form's summary names it too, from the same rule", () => {
-  const form = read("app/(site)/request-quote/RequestQuoteFormClient.js");
-  assert.match(form, /if \(item\.hardwareName\) return item\.hardwareName/);
+  const lineText = read("lib/pcd-quote-line-text.js");
+  assert.match(lineText, /if \(line\.hardwareName\) return text\(line\.hardwareName\)/);
+  // And every page that prints a line asks that module rather than working it
+  // out again, which is what stops the list describing a door differently from
+  // the page that made it. The builder is not one of them any more: it draws
+  // the line somebody is describing and the list page lists them.
+  ["app/(site)/request-quote/list/QuoteListClient.js", "app/(site)/request-quote/send/QuoteSendClient.js"].forEach(
+    (path) => {
+      assert.match(read(path), /from "@\/lib\/pcd-quote-line-text"/, `${path} has its own copy`);
+    }
+  );
 });

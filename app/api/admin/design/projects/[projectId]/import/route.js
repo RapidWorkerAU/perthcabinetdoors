@@ -4,6 +4,9 @@ import { calculateQuoteLine, calculateQuoteTotals, GST_RATE } from "../../../../
 import { getBusinessDefaults } from "../../../../../../../lib/pcd-business-defaults";
 import { getDatabaseColourRows, isMadeToOrder, normaliseColourMaterialKey } from "../../../../../../../lib/pcd-colour-library";
 import { withLibraryBoardRatesForAll } from "../../../../../../../lib/pcd-design-board-rates";
+// The same rule for bought items: an accessory is priced from the hardware
+// library the day the quote is staged, not from a copy taken when it was drawn.
+import { withLibraryHardwareRatesForGenerated } from "../../../../../../../lib/pcd-design-hardware-rates";
 import { mergeIdenticalLines } from "../../../../../../../lib/pcd-import-utils";
 import { assertQuoteEditable } from "../../../../../../../lib/pcd-quote-lock";
 // The design-to-pieces translation itself. Shared with the public request
@@ -136,6 +139,11 @@ export async function POST(request, { params }) {
     // numbers that get saved.
     const businessDefaults = await getBusinessDefaults(context.supabase);
 
+    // The hardware library, once, for the accessories fitted inside cabinets.
+    // A library that cannot be read leaves them at no price and says so in the
+    // warnings, rather than stopping the whole import.
+    const { data: hardwareRows } = await context.supabase.from("pcd_hardware").select("*");
+
     // ── Staging preview (dry-run) ──────────────────────────────────────────
     // Generate + price exactly what a commit would, grouped Room → Cabinet →
     // Part, with the same pre-flight warnings — but save nothing. Stage 1 of the
@@ -143,7 +151,15 @@ export async function POST(request, { params }) {
     if (preview) {
       const gstRate = businessDefaults.gst_rate ?? GST_RATE;
       const warnings = computeItemWarnings({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, isMadeToOrderBoard });
-      const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items });
+      const { generated, missing: missingHardware } = withLibraryHardwareRatesForGenerated(
+        generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items }),
+        hardwareRows || []
+      );
+      // An accessory whose library row has been retired. Named here so it is
+      // seen before the quote is made rather than found at $0 afterwards.
+      for (const gone of missingHardware) {
+        warnings.push({ itemId: null, label: `${gone.name} is not in the hardware library any more, so it has no price. Pick it again in the design tool.` });
+      }
       const mergedById = new Map(importableItems.map((i) => [i.id, i]));
 
       const pricedLines = [];
@@ -172,7 +188,7 @@ export async function POST(request, { params }) {
       // to "included" and reappeared in the priced list even after the user
       // deselected everything. Independent of `selections`, so it stays stable
       // as the user ticks.
-      const PART_ORDER = ["cabinet", "doors", "drawers", "kickboard", "filler", "panels"];
+      const PART_ORDER = ["cabinet", "doors", "drawers", "kickboard", "filler", "panels", "accessories"];
       const allCabinets = importableItems.filter((i) => CABINET_TYPES.includes(i.item_type));
       const fullGen = generateImportLines({ importableItems, selections: undefined, selectedCabinetItems: allCabinets, roomNameById, roomById, items });
       const treeRooms = new Map(); // roomName → Map(itemId → { itemId, label, isCabinet, parts:Set })
@@ -293,7 +309,10 @@ export async function POST(request, { params }) {
     // flat lines can be collapsed into one (qty summed) before any are saved —
     // e.g. two identical standalone panels, or the same door on two cabinets.
     // Same generator the staging preview uses, so a commit matches its preview.
-    const generated = generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items });
+    const { generated } = withLibraryHardwareRatesForGenerated(
+      generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items }),
+      hardwareRows || []
+    );
 
     const mergedById = new Map(importableItems.map((i) => [i.id, i]));
     for (const { line, itemId } of mergeIdenticalLines(generated)) {

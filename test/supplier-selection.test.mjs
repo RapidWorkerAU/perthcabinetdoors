@@ -243,10 +243,10 @@ const QUOTE_FORM = readFileSync(
 );
 
 test("picking a finish leaves the brand alone", () => {
-  const chooseFinish = QUOTE_FORM.slice(
-    QUOTE_FORM.indexOf("function chooseFinish"),
-    QUOTE_FORM.indexOf("function handleBlur")
-  );
+  // Chosen on the shared colour tiles, so the rule is the onFinish the form
+  // hands them.
+  const chooseFinish = QUOTE_FORM.slice(QUOTE_FORM.indexOf("onFinish="), QUOTE_FORM.indexOf("onColour="));
+  assert.ok(chooseFinish.length > 0, "the form must hand the tiles its own onFinish");
   assert.doesNotMatch(chooseFinish, /supplierName/, "the finish must not touch the brand that narrows it");
   assert.match(chooseFinish, /colour: "", colourSrc: "", colourLibraryId: ""/, "but the colour under it still goes");
 });
@@ -255,7 +255,7 @@ test("picking a finish leaves the brand alone", () => {
 // what was in it: a line set to Polytec still listed every Laminex finish and
 // colour, and picking one quietly moved the brand underneath.
 test("the colour list is narrowed to the brand, not merely gated by it", () => {
-  assert.match(QUOTE_FORM, /const finishGroups = \(colourFamily\?\.groups \|\| \[\]\)\s*\n\s*\.map\(/);
+  assert.match(QUOTE_FORM, /const groups = \(colourFamily\?\.groups \|\| \[\]\)\s*\n\s*\.map\(/);
   assert.match(QUOTE_FORM, /!supplier \|\| sameBrand\(colour\.supplier\)/);
   assert.match(QUOTE_FORM, /\.filter\(\(group\) => group\.colours\.length\)/, "a finish with nothing left under it is not offered");
 });
