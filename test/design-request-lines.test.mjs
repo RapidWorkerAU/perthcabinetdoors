@@ -301,11 +301,19 @@ test("a wall cabinet's notes say how high it hangs", () => {
   assert.match(line.notes, /No shelves/);
 });
 
+// THE WORDING CHANGED WITH THE MEANING. It used to read "Runner (supplied with
+// drawer)", because that is what a runner was: three generic words, no price,
+// no line. A runner picked from the hardware library is quoted as its own line,
+// so saying it comes free with the drawer would be untrue.
+//
+// What is unchanged, and is what this guards: the drawer line ALWAYS states a
+// runner. A blank one is the failure that matters, because it leaves whoever
+// fits the drawer with nothing to fit.
 test("a drawer front always states its runner", () => {
   const lines = linesFor(baseDrawers, ["drawers"]);
   assert.ok(lines.length > 0);
   for (const line of lines) {
-    assert.match(line.notes, /Runner \(supplied with drawer\):/);
+    assert.match(line.notes, /Runner: \S/);
   }
 });
 

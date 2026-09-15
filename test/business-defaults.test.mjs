@@ -121,8 +121,13 @@ test("the design importer invents no priced runner line", () => {
     read("app/api/admin/design/projects/[projectId]/import/route.js") + read("lib/pcd-design-to-lines.js");
   assert.doesNotMatch(src, /runnerUnitCost/, "no rate lookup should survive");
   assert.doesNotMatch(src, /product_name: `Drawer runner/, "no automatic runner line should survive");
-  // The runner is still the spec for whoever fits the drawer, so the NOTE stays.
-  assert.match(src, /Runner \(supplied with drawer\)/);
+  // The runner is still stated on the drawer line for whoever fits it, so the
+  // NOTE stays. The wording lost "(supplied with drawer)" when a runner became a
+  // library item that IS quoted: its own line, priced from the library at
+  // import. What must never come back is a runner line conjured from a rate in
+  // business defaults, which is what the two checks above guard.
+  assert.match(src, /Runner: \$\{runnerNoteLabel\(cfg\)\}/);
+  assert.match(src, /unit_cost_source_id: runner\.id/, "a runner line is priced from the library, never from a default");
 });
 
 // ── Fields that are saved but not yet wired up ───────────────────────────────

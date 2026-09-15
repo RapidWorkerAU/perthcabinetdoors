@@ -21,7 +21,7 @@ import {
   withAccessory,
   withoutAccessory,
 } from "../../../../lib/pcd-cabinet-accessories";
-import { ACCESSORY_TYPES, hardwareTypeLabel, isAccessoryType } from "../../../../lib/pcd-hardware-types";
+import { ACCESSORY_TYPES, hardwareMetaLabel, hardwareTypeLabel, isAccessoryType } from "../../../../lib/pcd-hardware-types";
 import ConfigSection from "../../../../components/ConfigSection";
 import ConfigWindow from "../../../../components/ConfigWindow";
 import { Toggle } from "../../../../components/ConfigControls";
@@ -46,7 +46,7 @@ import {
   benchtopCutouts,
   computeBenchtopRun,
 } from "../../../../lib/pcd-benchtop-utils";
-import { computeDrawerFrontHeights, DRAWER_RUNNER_LABELS, resolveRunnerType } from "../../../../lib/pcd-drawer-utils";
+import { computeDrawerFrontHeights, DRAWER_RUNNER_LABELS, resolveRunnerHardware, resolveRunnerType } from "../../../../lib/pcd-drawer-utils";
 import { FINGER_PULL_GAP_MM, DEFAULT_HINGE_QTY, DEFAULT_DOOR_REVEAL_MM, doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayShelfCount, applianceBayHeightMm, bayIsPinned, bayPercentOfCabinet, withResolvedBayHeights, legacyRowBayMigration } from "../../../../lib/pcd-door-utils";
 import { thicknessOptionsForMaterial, materialLabelForType } from "../../../../lib/pcd-colour-library";
 // Which board a panel actually resolves to, so the profile list on offer is the
@@ -1073,6 +1073,10 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm, part = null })
   const gapEnabled = cfg.gap_enabled || false;
   const gapMm = drawerGapMm(cfg);
   const runnerType = resolveRunnerType(cfg);
+  const runnerHardware = resolveRunnerHardware(cfg);
+  // How many runners this cabinet needs: one per drawer. Shown so the figure
+  // that reaches the quote is visible while it is being chosen.
+  const drawerCount = Array.isArray(cfg.heights_mm) && cfg.heights_mm.length ? cfg.heights_mm.length : 1;
 
   function onCountChange(newCount) {
     const evenH = Math.round((heightMm || 720) / newCount);
@@ -1149,17 +1153,28 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm, part = null })
 
       {show("runners") && (<>
       <SectionDivider label="Runners" />
-      <label className={styles.fieldLabel}>
-        Runner type
-        <select className={styles.fieldSelect} value={runnerType} onChange={(e) => onChangeNow({ runner_type: e.target.value })}>
-          {Object.entries(DRAWER_RUNNER_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-      </label>
-      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
-        Supplied with the drawer, not costed separately — carried onto the quote line as the fit spec.
-      </p>
+      <RunnerField value={runnerHardware} onPick={(patch) => onChangeNow(patch)} />
+      {runnerHardware ? (
+        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+          One per drawer, {drawerCount} in this cabinet. Quoted as its own line at the library price on the day it is imported.
+        </p>
+      ) : (<>
+        {/* No runner named, so the generic spec is still the only thing the
+            workshop gets. Kept so a design made before runners were a library
+            item can still be read and changed. */}
+        <label className={styles.fieldLabel}>
+          Runner type (spec only)
+          <select className={styles.fieldSelect} value={runnerType} onChange={(e) => onChangeNow({ runner_type: e.target.value })}>
+            {Object.entries(DRAWER_RUNNER_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0", lineHeight: 1.4 }}>
+          A description for whoever fits the drawer. Nothing is quoted. Pick a runner above to have it costed and
+          put on the quote as its own line.
+        </p>
+      </>)}
       </>)}
     </>
   );
@@ -1284,6 +1299,65 @@ function HardwareField({ type, label, value, onPick }) {
           <option key={m.id} value={m.name}>{m.name} — ${Number(m.unit_cost_ex_gst).toFixed(0)} ea</option>
         ))}
         {!knownValue && <option value={value}>{value}</option>}
+      </select>
+    </label>
+  );
+}
+
+// THE RUNNER THESE DRAWERS RUN ON, PICKED FROM THE LIBRARY.
+//
+// Not the three generic words it used to be. Those described a runner without
+// naming one, carried no price and produced no line, so a bank of drawers
+// reached a quote with its runners invisible.
+//
+// EACH OPTION SHOWS ITS SIZE, because the length is what decides whether a
+// runner fits the cabinet at all, and two runners named TANDEMBOX and LEGRABOX
+// are indistinguishable without it. A native select cannot hold two lines, so
+// the size, the brand and the price ride on the same line under the name. See
+// hardwareMetaLabel.
+//
+// BOTH THE ID AND THE NAME ARE STORED. The id is what the quote is priced by,
+// read fresh from the library at import; the name is so this panel, the drawer
+// line note and the cut list can say what it is without a lookup. Same pair an
+// accessory keeps.
+function RunnerField({ value, onPick }) {
+  const [items, setItems] = useState(_hardwareCache.drawer_runner || []);
+  useEffect(() => {
+    if (_hardwareCache.drawer_runner) return;
+    let alive = true;
+    fetch(`/api/admin/hardware?type=drawer_runner`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive && d?.ok) { _hardwareCache.drawer_runner = d.hardware || []; setItems(_hardwareCache.drawer_runner); }
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const active = items.filter((m) => m.is_active);
+  // A runner picked before it was switched off, or before this list loaded,
+  // stays in its own dropdown. Dropping it would silently unpick the runner on
+  // a design somebody has already sent.
+  const held = value?.id && !active.some((m) => m.id === value.id) ? value : null;
+
+  return (
+    <label className={styles.fieldLabel}>
+      Runner
+      <select
+        className={styles.fieldSelect}
+        value={value?.id || ""}
+        onChange={(e) => {
+          const id = e.target.value;
+          const row = items.find((x) => x.id === id);
+          onPick(id ? { runner_hardware_id: id, runner_name: row ? row.name : (held?.name || "") } : { runner_hardware_id: "", runner_name: "" });
+        }}
+      >
+        <option value="">Not supplied by us</option>
+        {active.map((m) => {
+          const meta = hardwareMetaLabel(m);
+          return <option key={m.id} value={m.id}>{meta ? `${m.name} — ${meta}` : m.name}</option>;
+        })}
+        {held && <option value={held.id}>{held.name || "Runner no longer in the library"}</option>}
       </select>
     </label>
   );
