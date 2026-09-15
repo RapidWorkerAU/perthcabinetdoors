@@ -1,3 +1,4 @@
+import { PRIVATE_PAGE_METADATA } from "@/lib/pcd-seo";
 import { Suspense } from "react";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
@@ -6,6 +7,10 @@ import styles from "../../contact/contact.module.css";
 import QuoteSentClient from "./QuoteSentClient";
 
 export const metadata = {
+  // NOT FOR A SEARCH RESULT: a thank you page with nothing to find.
+  // See NEVER_INDEX in lib/pcd-seo.js. robots.txt asks a crawler not to
+  // fetch this; that line is what stops it being listed anyway.
+  ...PRIVATE_PAGE_METADATA,
   title: "Quote Request Sent | Perth Cabinet Doors",
   description: "Your quote request is with us. We price it by hand and email you, usually within 1-3 business days.",
 };

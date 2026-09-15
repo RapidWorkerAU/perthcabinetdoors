@@ -1,3 +1,4 @@
+import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicCrossLink from "@/components/public/PublicCrossLink";
 import PublicFooter from "@/components/public/PublicFooter";
@@ -11,6 +12,15 @@ export const metadata = {
   title: "Request a Quote | Perth Cabinet Doors",
   description:
     "Request a free quote from Perth Cabinet Doors. Custom cabinet doors, drawer fronts and panels made to your measurements.",
+  // Its one true address and its share card, from the title and
+  // description above. This page is in the sitemap, so it has to carry a
+  // canonical: a listed page with none is the site telling a crawler two
+  // different things. See lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/request-quote",
+    title: "Request a Quote | Perth Cabinet Doors",
+    description: "Request a free quote from Perth Cabinet Doors. Custom cabinet doors, drawer fronts and panels made to your measurements.",
+  }),
 };
 
 // THE WAYS OFF THIS PAGE, AT THE FOOT OF IT.

@@ -1,3 +1,5 @@
+import { localBusinessSchema, pageMetadata } from "@/lib/pcd-seo";
+import JsonLd from "@/components/public/JsonLd";
 import LandingHeroVideo from "./LandingHeroVideo";
 import PublicSiteNav from "./PublicSiteNav";
 import PublicButton from "@/components/public/PublicButton";
@@ -76,6 +78,15 @@ export const metadata = {
   title: "Perth Cabinet Doors | Custom Cabinet Doors, Panels & Drawer Fronts - Perth WA",
   description:
     "Perth's cabinet door specialists. Ready-made doors, panels and drawer fronts in Polytec, pre-drilled, hinged and shipped flat rate across Perth metro.",
+  // ITS ONE TRUE ADDRESS, AND WHAT A LINK TO IT LOOKS LIKE.
+  // Built from the title and description above rather than written out
+  // again, so a reworded page cannot end up with a stale share card. See
+  // lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/",
+    title: "Perth Cabinet Doors | Custom Cabinet Doors, Panels & Drawer Fronts - Perth WA",
+    description: "Perth's cabinet door specialists. Ready-made doors, panels and drawer fronts in Polytec, pre-drilled, hinged and shipped flat rate across Perth metro.",
+  }),
 };
 
 export const dynamic = "force-dynamic";
@@ -90,6 +101,11 @@ export default async function HomePage() {
       <header className="landing-hero">
         <LandingHeroVideo />
         <div className="landing-hero-shade" />
+      {/* WHO AND WHERE WE ARE, once, on the page that represents the whole
+          business. The service pages point back at this rather than each
+          repeating it. See localBusinessSchema for what is deliberately
+          absent: a street address and opening hours we do not publish. */}
+      <JsonLd schema={localBusinessSchema()} />
         <PublicSiteNav active="home" variant="overlay" />
 
         <div className="landing-hero-copy">

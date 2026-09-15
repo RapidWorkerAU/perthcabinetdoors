@@ -1,3 +1,4 @@
+import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicArrowIcon from "@/components/public/PublicArrowIcon";
 import PublicFooter from "@/components/public/PublicFooter";
@@ -9,6 +10,15 @@ export const metadata = {
   title: "What Are You Working With? | Perth Cabinet Doors",
   description:
     "IKEA or Kaboodle cabinets, an existing kitchen you want to update, or new cabinetry built from scratch. Pick the one that sounds like your place and we will take you to the right prices or the right plan.",
+  // Its one true address and its share card, from the title and
+  // description above. This page is in the sitemap, so it has to carry a
+  // canonical: a listed page with none is the site telling a crawler two
+  // different things. See lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/start",
+    title: "What Are You Working With? | Perth Cabinet Doors",
+    description: "IKEA or Kaboodle cabinets, an existing kitchen you want to update, or new cabinetry built from scratch. Pick the one that sounds like your place and we will take you to the right prices or the right plan.",
+  }),
 };
 
 const CHOICES = [

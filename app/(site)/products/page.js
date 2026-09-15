@@ -1,3 +1,4 @@
+import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PublicFooter from "@/components/public/PublicFooter";
@@ -15,6 +16,15 @@ export const metadata = {
   title: "Shop Cabinet Doors Online | Perth Cabinet Doors",
   description:
     "Buy made to measure Polytec decorative board doors, drawer fronts and panels online. Priced as you size them, made in Perth and delivered across the Perth metro area.",
+  // In the sitemap whenever the shop is open, so it carries a canonical. It
+  // leaves the sitemap with the flag; the canonical is harmless either way.
+  // See lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/products",
+    title: "Shop Cabinet Doors Online | Perth Cabinet Doors",
+    description:
+      "Buy made to measure Polytec decorative board doors, drawer fronts and panels online. Priced as you size them, made in Perth and delivered across the Perth metro area.",
+  }),
 };
 
 // THE SHOP. Everything on it can be bought today, and it says so. It also names

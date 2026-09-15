@@ -1,3 +1,4 @@
+import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
 import { normaliseSupplierName } from "@/lib/pcd-colour-library";
@@ -11,6 +12,15 @@ export const metadata = {
   title: "Colours, Door Profiles & Edge Details | Perth Cabinet Doors",
   description:
     "Every colour we supply across Polytec, Laminex and Formica, all our door profiles and every edge detail. Filter by what you are making, by brand and by finish, search by name, and view any of them larger.",
+  // Its one true address and its share card, from the title and
+  // description above. This page is in the sitemap, so it has to carry a
+  // canonical: a listed page with none is the site telling a crawler two
+  // different things. See lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/finishes",
+    title: "Colours, Door Profiles & Edge Details | Perth Cabinet Doors",
+    description: "Every colour we supply across Polytec, Laminex and Formica, all our door profiles and every edge detail. Filter by what you are making, by brand and by finish, search by name, and view any of them larger.",
+  }),
 };
 
 export const dynamic = "force-dynamic";

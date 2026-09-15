@@ -1,3 +1,4 @@
+import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
 import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
@@ -10,6 +11,15 @@ export const metadata = {
   title: "Contact Us | Perth Cabinet Doors",
   description:
     "Get in touch with Perth Cabinet Doors for a free quote on custom cabinet doors, panels and drawer fronts.",
+  // Its one true address and its share card, from the title and
+  // description above. This page is in the sitemap, so it has to carry a
+  // canonical: a listed page with none is the site telling a crawler two
+  // different things. See lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/contact",
+    title: "Contact Us | Perth Cabinet Doors",
+    description: "Get in touch with Perth Cabinet Doors for a free quote on custom cabinet doors, panels and drawer fronts.",
+  }),
 };
 
 export default function ContactPage() {

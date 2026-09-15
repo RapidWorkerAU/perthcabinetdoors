@@ -1,3 +1,5 @@
+import { faqPageSchema, pageMetadata, serviceSchema } from "@/lib/pcd-seo";
+import JsonLd from "@/components/public/JsonLd";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
 import PublicPaths from "@/components/public/PublicPaths";
@@ -10,6 +12,15 @@ export const metadata = {
   title: "Kitchen Refresh | Keep the Cabinets, Change the Fronts | Perth Cabinet Doors",
   description:
     "Reface your existing kitchen with new doors, drawer fronts and panels in Polytec, Laminex and Formica. Over 270 colours, made to measure in Perth, with new cabinets added where you need them.",
+  // ITS ONE TRUE ADDRESS, AND WHAT A LINK TO IT LOOKS LIKE.
+  // Built from the title and description above rather than written out
+  // again, so a reworded page cannot end up with a stale share card. See
+  // lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/kitchen-refresh",
+    title: "Kitchen Refresh | Keep the Cabinets, Change the Fronts | Perth Cabinet Doors",
+    description: "Reface your existing kitchen with new doors, drawer fronts and panels in Polytec, Laminex and Formica. Over 270 colours, made to measure in Perth, with new cabinets added where you need them.",
+  }),
 };
 
 export const dynamic = "force-dynamic";
@@ -111,6 +122,15 @@ export default async function KitchenRefreshPage() {
   return (
     <>
       <PublicSiteNav variant="solid" />
+      {/* The same questions this page prints, said again for a crawler. */}
+      <JsonLd schema={faqPageSchema(FAQ)} />
+      <JsonLd
+        schema={serviceSchema({
+          path: "/kitchen-refresh",
+          name: "Kitchen refacing: replacement doors, drawer fronts and panels",
+          description: metadata.description,
+        })}
+      />
       <main className={styles.page}>
         <header className={styles.pageHeader}>
           <div className={styles.wrap}>

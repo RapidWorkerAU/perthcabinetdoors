@@ -1,3 +1,4 @@
+import { PRIVATE_PAGE_METADATA } from "@/lib/pcd-seo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PublicFooter from "@/components/public/PublicFooter";
@@ -7,6 +8,10 @@ import styles from "../contact/contact.module.css";
 import CheckoutClient from "./CheckoutClient";
 
 export const metadata = {
+  // NOT FOR A SEARCH RESULT: the middle of paying for something.
+  // See NEVER_INDEX in lib/pcd-seo.js. robots.txt asks a crawler not to
+  // fetch this; that line is what stops it being listed anyway.
+  ...PRIVATE_PAGE_METADATA,
   title: "Checkout | Perth Cabinet Doors",
 };
 

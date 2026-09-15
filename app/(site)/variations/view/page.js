@@ -1,3 +1,4 @@
+import { PRIVATE_PAGE_METADATA } from "@/lib/pcd-seo";
 import { Suspense } from "react";
 import VariationApprovalClient from "../VariationApprovalClient";
 import PcdLoader from "@/components/public/PcdLoader";
@@ -11,6 +12,10 @@ import {
 } from "@/lib/pcd-business-identity";
 
 export const metadata = {
+  // NOT FOR A SEARCH RESULT: somebody's variation, reached with a code.
+  // See NEVER_INDEX in lib/pcd-seo.js. robots.txt asks a crawler not to
+  // fetch this; that line is what stops it being listed anyway.
+  ...PRIVATE_PAGE_METADATA,
   title: "Order Variation | Perth Cabinet Doors",
 };
 

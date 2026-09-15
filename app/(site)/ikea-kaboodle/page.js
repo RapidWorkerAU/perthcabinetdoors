@@ -1,3 +1,5 @@
+import { faqPageSchema, pageMetadata, serviceSchema } from "@/lib/pcd-seo";
+import JsonLd from "@/components/public/JsonLd";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
 import PublicPaths from "@/components/public/PublicPaths";
@@ -35,6 +37,15 @@ export const metadata = {
   title: "IKEA & Kaboodle Replacement Doors, Drawer Fronts and Panels | Perth Cabinet Doors",
   description:
     "Made to measure replacement doors, drawer fronts and panels for IKEA Metod, Pax and Besta and Kaboodle cabinets. Standard sizes, bored for your hinges, made in Perth and installed across Perth metro.",
+  // ITS ONE TRUE ADDRESS, AND WHAT A LINK TO IT LOOKS LIKE.
+  // Built from the title and description above rather than written out
+  // again, so a reworded page cannot end up with a stale share card. See
+  // lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/ikea-kaboodle",
+    title: "IKEA & Kaboodle Replacement Doors, Drawer Fronts and Panels | Perth Cabinet Doors",
+    description: "Made to measure replacement doors, drawer fronts and panels for IKEA Metod, Pax and Besta and Kaboodle cabinets. Standard sizes, bored for your hinges, made in Perth and installed across Perth metro.",
+  }),
 };
 
 export const dynamic = "force-dynamic";
@@ -359,6 +370,18 @@ export default async function IkeaKaboodlePage() {
   return (
     <>
       <PublicSiteNav variant="solid" />
+      {/* WHAT THIS PAGE ANSWERS, IN THE FORM A MACHINE LIFTS.
+          Built from the FAQ constant this page already renders, so the
+          markup and the words on screen are the same sentences. An answer
+          written as JSX is skipped rather than guessed at. */}
+      <JsonLd schema={faqPageSchema(FAQ)} />
+      <JsonLd
+        schema={serviceSchema({
+          path: "/ikea-kaboodle",
+          name: "Replacement doors, drawer fronts and panels for IKEA and Kaboodle cabinets",
+          description: metadata.description,
+        })}
+      />
       <main className={styles.page}>
         <header className={styles.pageHeader}>
           <div className={styles.wrap}>

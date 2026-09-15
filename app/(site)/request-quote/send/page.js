@@ -1,3 +1,4 @@
+import { PRIVATE_PAGE_METADATA } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
 import PublicSiteNav from "../../PublicSiteNav";
@@ -5,6 +6,10 @@ import styles from "../../contact/contact.module.css";
 import QuoteSendClient from "./QuoteSendClient";
 
 export const metadata = {
+  // NOT FOR A SEARCH RESULT: the middle of sending a request.
+  // See NEVER_INDEX in lib/pcd-seo.js. robots.txt asks a crawler not to
+  // fetch this; that line is what stops it being listed anyway.
+  ...PRIVATE_PAGE_METADATA,
   title: "Review and Send | Perth Cabinet Doors",
   description:
     "Check your list, tell us how to reach you, and send it. There is no payment on this page: we price your request by hand and email you a quote.",

@@ -1,8 +1,16 @@
 ﻿import "./globals.css";
 
 import ClearLaunchAccessCookie from "./ClearLaunchAccessCookie";
+import { SITE_URL } from "@/lib/pcd-seo";
 
 export const metadata = {
+  // METADATABASE IS WHAT MAKES EVERY OTHER URL ON THE SITE ABSOLUTE.
+  //
+  // Canonical tags and Open Graph images have to be absolute addresses. Without
+  // this, Next resolves them against localhost at build time and warns, and the
+  // tags ship pointing at a machine nobody can reach. Every page that sets a
+  // canonical or an image is relying on this one line. See lib/pcd-seo.js.
+  metadataBase: new URL(SITE_URL),
   title: "Perth Cabinet Doors",
   description: "Custom cabinet doors made in Perth",
   icons: {
@@ -10,6 +18,18 @@ export const metadata = {
     shortcut: "/images/favicon.ico",
     apple: "/images/favicon.ico",
   },
+  // The default card for anything that does not set its own, so a link pasted
+  // into a message is never a bare blue string.
+  openGraph: {
+    type: "website",
+    siteName: "Perth Cabinet Doors",
+    locale: "en_AU",
+    url: "/",
+    title: "Perth Cabinet Doors",
+    description: "Custom cabinet doors made in Perth",
+    images: [{ url: "/images/kitchen.jpg", width: 1200, height: 630, alt: "Perth Cabinet Doors" }],
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport = {

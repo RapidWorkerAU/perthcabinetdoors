@@ -1,3 +1,5 @@
+import { pageMetadata, serviceSchema } from "@/lib/pcd-seo";
+import JsonLd from "@/components/public/JsonLd";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
 import PublicPaths from "@/components/public/PublicPaths";
@@ -10,6 +12,15 @@ export const metadata = {
   title: "Bespoke Cabinetry Perth | Designed, Built & Installed | Perth Cabinet Doors",
   description:
     "Custom kitchens, vanities, laundries, wardrobes and entertainment units designed, built and installed across Perth metro by cabinet makers with 20+ years of trade experience.",
+  // ITS ONE TRUE ADDRESS, AND WHAT A LINK TO IT LOOKS LIKE.
+  // Built from the title and description above rather than written out
+  // again, so a reworded page cannot end up with a stale share card. See
+  // lib/pcd-seo.js.
+  ...pageMetadata({
+    path: "/bespoke",
+    title: "Bespoke Cabinetry Perth | Designed, Built & Installed | Perth Cabinet Doors",
+    description: "Custom kitchens, vanities, laundries, wardrobes and entertainment units designed, built and installed across Perth metro by cabinet makers with 20+ years of trade experience.",
+  }),
 };
 
 export const dynamic = "force-dynamic";
@@ -50,6 +61,16 @@ export default async function BespokePage() {
   return (
     <>
       <PublicSiteNav variant="solid" />
+      {/* No FAQ block on this page, so no FAQPage markup. Describing
+          questions that are not on the page is the one thing structured
+          data must never do. */}
+      <JsonLd
+        schema={serviceSchema({
+          path: "/bespoke",
+          name: "Bespoke cabinetry designed, built and installed in Perth",
+          description: metadata.description,
+        })}
+      />
       <main className={styles.page}>
         <header className={styles.pageHeader}>
           <div className={styles.wrap}>

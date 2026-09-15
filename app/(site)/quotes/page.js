@@ -1,7 +1,12 @@
+import { PRIVATE_PAGE_METADATA } from "@/lib/pcd-seo";
 import QuoteAccessForm from "./QuoteAccessForm";
 import styles from "./quote-public.module.css";
 
 export const metadata = {
+  // NOT FOR A SEARCH RESULT: the door to somebody's own quote.
+  // See NEVER_INDEX in lib/pcd-seo.js. robots.txt asks a crawler not to
+  // fetch this; that line is what stops it being listed anyway.
+  ...PRIVATE_PAGE_METADATA,
   title: "Quote Access | Perth Cabinet Doors",
 };
 

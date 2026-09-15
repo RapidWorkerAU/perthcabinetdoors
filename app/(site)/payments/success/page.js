@@ -1,3 +1,4 @@
+import { PRIVATE_PAGE_METADATA } from "@/lib/pcd-seo";
 import Link from "next/link";
 import { retrieveCheckoutSession, siteUrl } from "../../../../lib/pcd-stripe";
 import { GATE_FLOWS } from "../../../../lib/pcd-deposit-gate";
@@ -14,6 +15,10 @@ import {
 
 export const dynamic = "force-dynamic";
 export const metadata = {
+  // NOT FOR A SEARCH RESULT: a receipt for one payment.
+  // See NEVER_INDEX in lib/pcd-seo.js. robots.txt asks a crawler not to
+  // fetch this; that line is what stops it being listed anyway.
+  ...PRIVATE_PAGE_METADATA,
   title: "Payment Successful | Perth Cabinet Doors",
 };
 
