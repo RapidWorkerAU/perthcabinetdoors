@@ -24,6 +24,7 @@ import {
   profileLibraryRowFromDraft,
 } from "../../../lib/pcd-profile-library";
 import { useLists } from "../../../lib/use-lists";
+import ListField from "@/components/admin/ListField";
 
 const ALL = "All";
 
@@ -380,18 +381,26 @@ export default function ProfileLibraryManager({ initialRows = [], initialError =
             </label>
             <label className={tw.label}>
               Category
-              <input
+              {/* A LIST, NOT A SUGGESTION. This was an input with a datalist on
+                  it, which offers the right words and then accepts anything
+                  anyway. That is how the board library ended up with
+                  "AbsoluteGrain" beside "Absolute Grain", and it matters more
+                  here: an edge profile whose category is spelt even slightly
+                  wrong never matches a line and the profile simply never
+                  appears, with nothing on screen to say why.
+
+                  Narrowed by KIND and not by supplier, deliberately. The edge
+                  categories are the material types, and a brand adding its
+                  first edge profile has none of its own to copy: scoping to the
+                  supplier would offer an empty list exactly when somebody needs
+                  the vocabulary most. */}
+              <ListField
                 className={tw.input}
+                placeholder="Select a category"
+                options={[...categoriesBySupplier(rows, draft.kind).values()].flat()}
                 value={draft.category}
-                list="profile-categories"
-                onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))}
-                placeholder="e.g. Soft"
+                onChange={(next) => setDraft((current) => ({ ...current, category: next }))}
               />
-              <datalist id="profile-categories">
-                {[...categoriesBySupplier(rows, draft.kind).values()].flat().map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
             </label>
             <label className={`${tw.label} md:col-span-2`}>
               Image

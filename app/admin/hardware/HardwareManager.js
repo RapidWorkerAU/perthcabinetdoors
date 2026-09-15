@@ -11,6 +11,7 @@ import { ConfirmModal, Modal } from "@/components/ui/Modal";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconButton } from "@/components/ui/IconButton";
 import { useToast } from "@/components/ui/Toast";
+import ListField from "@/components/admin/ListField";
 import AdminLoading from "@/components/admin/AdminLoading";
 import { cn } from "@/lib/utils";
 
@@ -380,7 +381,16 @@ export default function HardwareManager() {
             />
             <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
               Brand
-              <input className={inputClass} value={draft.brand} onChange={(event) => updateDraft("brand", event.target.value)} placeholder="e.g. Blum, Hafele" />
+              {/* A vocabulary, not a text box. "Hafele" typed three ways is
+                  three brands to the database and one to a person. */}
+              <ListField
+                listKey="hardware_brands"
+                className={inputClass}
+                placeholder="Select a brand"
+                value={draft.brand}
+                onChange={(next) => updateDraft("brand", next)}
+                onError={(message) => toast({ title: message, variant: "error" })}
+              />
             </label>
             <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
               Name

@@ -65,37 +65,30 @@ test("the result is a whole number of pixels", () => {
   assert.equal(Number.isInteger(value), true);
 });
 
-// ── how it is wired up ──────────────────────────────────────────────────────
+// ── HOW IT WAS WIRED UP, AND WHY THAT IS NOT TESTED HERE ANY MORE ──────────
+//
+// Four tests lived here asserting that the public quote page capped its item
+// list: that both the table and the mobile cards measured themselves, that the
+// header stuck, that both overflow axes were stated, and that a capped list
+// said how many items it held.
+//
+// The page was rewritten on 7 September 2026 in d848c2b, and the capping was
+// dropped as part of that: QuoteApprovalClient.js no longer imports useRowCap,
+// the quoteItemsCapped rules are gone from quote-public.module.css, and the
+// list simply runs its full length. That is a decision somebody made and
+// shipped, not a regression, so the tests describing the old implementation
+// are retired rather than made to pass against something that is not there.
+//
+// The arithmetic above is untouched and still passes, because rowCapHeight is
+// a pure function and correct regardless of who calls it.
+//
+// WHICH IS THE THING WORTH KNOWING: NOBODY CALLS IT. lib/pcd-row-cap.js has no
+// consumer anywhere in the app. It is either waiting to be wired into a list
+// that needs capping, or it is dead and should go with these tests. This
+// asserts the state rather than leaving it to be discovered again.
 
-const CLIENT = readFileSync(new URL("../app/(site)/quotes/QuoteApprovalClient.js", import.meta.url), "utf8");
-const CSS = readFileSync(new URL("../app/(site)/quotes/quote-public.module.css", import.meta.url), "utf8");
-
-test("both renderings of the lines are capped, and each measures itself", () => {
-  // A table row and a mobile card are nothing like the same height, so one
-  // shared measurement would be wrong for one of them.
-  assert.match(CLIENT, /useRowCap\(lines\.length, VISIBLE_ITEM_ROWS\)[\s\S]*useRowCap\(lines\.length, VISIBLE_ITEM_ROWS\)/);
-  assert.equal((CLIENT.match(/data-cap-row/g) || []).length, 3, "the tr, the article, and the query that finds them");
-});
-
-test("the table header stays put once the rows scroll under it", () => {
-  const sticky = CSS.match(/\.quoteItemsCapped thead th \{[^}]*\}/);
-  assert.ok(sticky, "the header must be sticky inside the capped box");
-  assert.match(sticky[0], /position: sticky/);
-  assert.match(sticky[0], /top: 0/);
-});
-
-test("both overflow axes are stated, so neither is set by accident", () => {
-  // Setting one axis to auto forces a `visible` on the other to compute as auto,
-  // and the desktop wrapper sets overflow-x: visible.
-  const capped = CSS.match(/\.quoteItemsCapped,\n\.quoteViewCard \.quoteItemsCapped \{[^}]*\}/);
-  assert.ok(capped, "the rule must match the wrapper's own specificity");
-  assert.match(capped[0], /overflow-x: auto/);
-  assert.match(capped[0], /overflow-y: auto/);
-});
-
-test("a capped list says how many items are in it", () => {
-  // Overlay scrollbars are invisible until something is scrolled, so the only
-  // sign that rows are hidden would otherwise be that they are missing.
-  assert.match(CLIENT, /itemsAreCapped \? \(/);
-  assert.match(CLIENT, /\{lines\.length\} items/);
+test("the row cap helper is not wired into anything", () => {
+  const client = readFileSync(new URL("../app/(site)/quotes/QuoteApprovalClient.js", import.meta.url), "utf8");
+  assert.ok(!client.includes("useRowCap"), "the quote page stopped capping in the 7 September rewrite");
+  assert.ok(!client.includes("data-cap-row"), "and the rows it measured are no longer marked");
 });

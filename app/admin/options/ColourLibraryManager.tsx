@@ -17,6 +17,7 @@ import {
   isMissingBoardPrice,
 } from '../../../lib/pcd-colour-library'
 import { useLists } from '../../../lib/use-lists'
+import ListField from '../../../components/admin/ListField'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -687,13 +688,23 @@ export default function ColourLibraryManager({
                     ))}
                   </select>
                 </label>
+                {/* A VOCABULARY, NOT A TEXT BOX.
+                    This was an input with "e.g. Woodmatt" in it, and the
+                    library grew "Absolute Grain" beside "AbsoluteGrain",
+                    "Absolute Matt" beside "AbsoluteMatte", and "Raw" beside
+                    "Raw Finish". Every screen that groups by finish read each
+                    spelling as its own finish. Add new writes into Settings,
+                    Lists, so the next person is offered the word rather than
+                    typing it again. */}
                 <label className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">
                   Finish type
-                  <input
+                  <ListField
+                    listKey="colour_finishes"
                     className={inputClass}
-                    placeholder="e.g. Woodmatt"
+                    placeholder="Select a finish"
                     value={draft.finish_type}
-                    onChange={e => updateDraft('finish_type', e.target.value)}
+                    onChange={(next: string) => updateDraft('finish_type', next)}
+                    onError={(message: string) => toast({ title: message, variant: 'error' })}
                   />
                 </label>
                 <div className="flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]">

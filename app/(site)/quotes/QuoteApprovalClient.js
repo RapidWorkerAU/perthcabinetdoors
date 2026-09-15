@@ -690,7 +690,7 @@ export default function QuoteApprovalClient() {
               </thead>
               <tbody>
                 {group.lines.map((line) => (
-                  <tr key={line.id || line.lineIndex} data-cap-row>
+                  <tr key={line.id || line.lineIndex}>
                     <td data-align="center">
                       <span className={styles.quoteItemNumber}>{line.lineIndex}</span>
                     </td>

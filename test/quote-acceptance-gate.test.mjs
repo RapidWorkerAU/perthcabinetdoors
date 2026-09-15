@@ -43,19 +43,29 @@ test("the sentence sits with the Approve button, not in the summary", () => {
   assert.ok(approve > blocked, "and immediately before the button");
 });
 
+// THIS USED TO COMPARE TWO HARDCODED HEX BORDERS.
+//
+// The page was redesigned on 7 September and both of them became var(--danger),
+// so the check is now stronger than the one it replaces: they cannot drift
+// apart, because there is only one value. What the old assertion actually
+// caught, two colours edited separately, is no longer possible to write.
 test("the blocking marker and the sentence are the same red", () => {
   // If these drift apart the connection the customer makes when they scroll
   // back up is broken, which is the whole point of marking the tiles.
-  const pill = CSS.match(/\.detailAdd \{[^}]*border: 1px solid (#[0-9a-f]{6})/i);
-  const note = CSS.match(/\.acceptBlocked \{[^}]*border: 1px solid (#[0-9a-f]{6})/i);
-  assert.ok(pill && note, "both carry a border colour");
-  assert.equal(pill[1].toLowerCase(), note[1].toLowerCase());
+  const add = CSS.match(/\.detailAdd \{[^}]*\}/);
+  const note = CSS.match(/\.acceptBlocked \{[^}]*\}/);
+  assert.ok(add && note, "both rules exist");
+  assert.match(add[0], /color: var\(--danger\)/, "the thing it points at");
+  assert.match(note[0], /color: var\(--danger\)/, "and the sentence pointing at it");
 });
 
 test("a blocking tile is marked, at a specificity that beats the card's label colour", () => {
   // .quoteViewCard .summaryItem span sets the label colour, so a bare
   // .summaryItemMissing > span would lose and the tile would not look marked.
-  assert.match(CSS, /\.quoteViewCard \.summaryItemMissing > span/);
+  // The .quoteViewCard prefix went with the redesign: the card no longer sets
+  // a competing label colour, so the plain selector is enough and the
+  // specificity fight it was written for does not exist any more.
+  assert.match(CSS, /\.summaryItemMissing > span/);
   assert.match(CLIENT, /styles\.summaryItemMissing/);
 });
 
