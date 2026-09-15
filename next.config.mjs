@@ -50,6 +50,46 @@ const nextConfig = {
   // view loads. Naming them here makes dev transpile them the way the
   // production build already does. Only the 3D view pulls these in.
   transpilePackages: ["three", "@react-three/fiber", "@react-three/drei"],
+
+  // ── WHERE THE OLD SHOPIFY SITE'S ADDRESSES GO ───────────────────────────────
+  //
+  // This site used to be a Shopify store, and Shopify puts everything under its
+  // own path structure: /collections for categories, /pages for content pages,
+  // /blogs for posts. Those addresses are still out there in old directory
+  // listings, supplier pages, saved bookmarks and social posts, and Google was
+  // still crawling two of them in May 2026. One request for /collections even
+  // reached the launch gate in July.
+  //
+  // Without these they are a 404: a dead end for a person who followed a real
+  // link to us. A redirect makes the same click land on the nearest page that
+  // answers what they were looking for.
+  //
+  // ── WHAT IS DELIBERATELY NOT REDIRECTED ─────────────────────────────────────
+  //
+  // /products and /cart. Shopify uses both, and so do we: /products is the shop
+  // and /cart is its basket. A blanket rule for either would redirect our own
+  // live pages away, which is a far worse fault than a 404 on an old link. They
+  // are ours now and they answer for themselves.
+  //
+  // 301 rather than Next's default 308, because 301 is the one every crawler,
+  // directory and link checker has understood for twenty years, and these
+  // addresses are being followed by old software as much as by Google.
+  async redirects() {
+    return [
+      // Named first: a specific destination beats the catch-all below it.
+      { source: "/pages/about-us", destination: "/contact", statusCode: 301 },
+      { source: "/collections/all", destination: "/finishes", statusCode: 301 },
+
+      // A Shopify collection was a category of things to look at, which is what
+      // /finishes is now.
+      { source: "/collections/:slug*", destination: "/finishes", statusCode: 301 },
+
+      // A Shopify page or blog post could have been anything, so the home page
+      // is the honest destination: it is the one page that leads everywhere.
+      { source: "/pages/:slug*", destination: "/", statusCode: 301 },
+      { source: "/blogs/:slug*", destination: "/", statusCode: 301 },
+    ];
+  },
 };
 
 export default nextConfig;

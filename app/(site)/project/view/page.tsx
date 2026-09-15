@@ -1,7 +1,13 @@
-﻿import type { Metadata } from "next";
+﻿import { PRIVATE_PAGE_METADATA } from "@/lib/pcd-seo";
+import type { Metadata } from "next";
 import ProjectViewClient from "../ProjectViewClient";
 
+// NOT FOR A SEARCH RESULT: this is the door to somebody own document, opened
+// with a code. robots.txt already asks a crawler not to fetch it, and that is
+// not enough on its own: a disallowed address can still be listed if anything
+// links to it. Only noindex on the page itself stops that. See lib/pcd-seo.js.
 export const metadata: Metadata = {
+  ...PRIVATE_PAGE_METADATA,
   title: "Project Schedule",
 };
 
