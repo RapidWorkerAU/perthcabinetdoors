@@ -35,11 +35,15 @@ const REPORTS = {
 
 Object.entries(REPORTS).forEach(([name, source]) => {
   test(`${name}: a wide table is desktop only, with cards in its place`, () => {
+    // A fixed pixel floor, or the shared wide table that is as wide as its
+    // columns. Either one is too wide for a 375px screen.
     const widest = Math.max(0, ...[...source.matchAll(/min-w-\[(\d+)px\]/g)].map((hit) => Number(hit[1])));
-    assert.ok(widest > 0, "the report has a table");
-    // Anything over 400 cannot sit on a 375px screen without scrolling.
-    assert.match(source, /hidden[^"]*md:block/, `${name} must hide its ${widest}px table below md`);
-    assert.match(source, /md:hidden/, `${name} must offer something in its place`);
+    const wide = widest > 0 || /tableStyles\.tableWide|tableWide/.test(source);
+    assert.ok(wide, "the report has a wide table");
+    // Written out, or through the shared table styles, which say the same thing
+    // once in components/ui/table-styles.ts.
+    assert.match(source, /hidden[^"]*md:block|desktopOnly/, `${name} must hide its table below md`);
+    assert.match(source, /md:hidden|mobileList/, `${name} must offer something in its place`);
   });
 
   test(`${name}: the date presets wrap instead of running off the side`, () => {

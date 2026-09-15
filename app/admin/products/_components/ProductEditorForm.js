@@ -15,6 +15,9 @@ import { Modal } from "@/components/ui/Modal";
 import { TextAction } from "@/components/ui/TextAction";
 import PcdLoader from "@/components/public/PcdLoader";
 import productStyles from "./product-editor.module.css";
+import { cn } from "@/lib/utils";
+import { tableStyles as t } from "@/components/ui/table-styles";
+import { AdminPagination, PAGE_SIZE, useAdminPagination } from "../../_components/AdminPagination";
 
 function productClass(name) {
   return [styles[name], productStyles[name]].filter(Boolean).join(" ");
@@ -320,6 +323,10 @@ export default function ProductEditorForm({
   const [finishes, setFinishes] = useState(normalizeFinishes(initialProduct?.finishes));
   const [pricingRows, setPricingRows] = useState(normalizePricingRows(initialProduct?.pricing_rows));
   const [selectedPricingRowIndexes, setSelectedPricingRowIndexes] = useState([]);
+  // Paging only changes which rows are drawn. Every edit, tick and delete still
+  // addresses the row by its place in the whole list, and Save sends the whole
+  // list, so a row on another page is never lost.
+  const pricingPages = useAdminPagination(pricingRows);
   const [infoCards, setInfoCards] = useState(normalizeInfoCards(initialProduct?.info_cards));
   const [relatedProductIdsText, setRelatedProductIdsText] = useState(
     arrayToLines(initialProduct?.related_product_ids)
@@ -550,6 +557,8 @@ export default function ProductEditorForm({
 
   function addPricingRow() {
     setPricingRows((previous) => [...previous, { size: "", description: "", price: "", popular: false }]);
+    // Show the page the new row lands on, or it appears where nobody is looking.
+    pricingPages.setPage(Math.ceil((pricingRows.length + 1) / PAGE_SIZE));
   }
 
   function removePricingRow(index) {
@@ -1313,51 +1322,68 @@ export default function ProductEditorForm({
               </div>
               <Button type="button" variant="neutral" size="sm" onClick={addPricingRow}>Add pricing row</Button>
             </div>
-            <div className={styles.pricingEditTableWrap}>
-              <table className={styles.pricingEditTable}>
-                <thead>
-                  <tr>
-                    <th className={styles.rowSelectCol}>
-                      <input
-                        type="checkbox"
-                        checked={pricingRows.length > 0 && selectedPricingRowIndexes.length === pricingRows.length}
-                        onChange={(event) => toggleSelectedPricingRows(event.target.checked)}
-                        aria-label="Select all pricing rows"
-                      />
-                    </th>
-                    <th>Size</th>
-                    <th>Description</th>
-                    <th>Price</th>
-                    <th>Popular</th>
-                    <th className={styles.actionsCol}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pricingRows.map((row, index) => (
-                    <tr key={`pricing-${index}`}>
-                      <td className={styles.rowSelectCol}>
+            <div className={t.card}>
+              <div className={t.sideScroll}>
+                <table className={t.table}>
+                  <thead>
+                    <tr>
+                      <th className={cn(t.th, "w-[42px] text-center")}>
+                        {/* Selects every row, not just this page, as it always has. */}
                         <input
                           type="checkbox"
-                          checked={selectedPricingRowIndexes.includes(index)}
-                          onChange={() => toggleSelectedPricingRow(index)}
-                          aria-label={`Select pricing row ${index + 1}`}
+                          className={t.checkbox}
+                          checked={pricingRows.length > 0 && selectedPricingRowIndexes.length === pricingRows.length}
+                          onChange={(event) => toggleSelectedPricingRows(event.target.checked)}
+                          aria-label="Select all pricing rows"
                         />
-                      </td>
-                      <td><input className={styles.fieldInput} value={row.size || ""} onChange={(event) => updatePricingRow(index, "size", event.target.value)} placeholder="e.g. 900Ã—2100" /></td>
-                      <td><input className={styles.fieldInput} value={row.description || ""} onChange={(event) => updatePricingRow(index, "description", event.target.value)} placeholder="e.g. Painted MDF" /></td>
-                      <td className={styles.pricingEditPriceCell}><input className={styles.fieldInput} type="number" step="0.01" value={row.price ?? ""} onChange={(event) => updatePricingRow(index, "price", event.target.value)} placeholder="0.00" /></td>
-                      <td className={styles.pricingEditCheckCell}>
-                        <input type="checkbox" checked={Boolean(row.popular)} onChange={(event) => updatePricingRow(index, "popular", event.target.checked)} />
-                      </td>
-                      <td className={styles.actionsCol}>
-                        <TextAction variant="danger" onClick={() => removePricingRow(index)}>
-                          Delete
-                        </TextAction>
-                      </td>
+                      </th>
+                      <th className={t.th}>Size</th>
+                      <th className={t.th}>Description</th>
+                      <th className={t.th}>Price</th>
+                      <th className={cn(t.th, "text-right")}>Popular</th>
+                      <th className={cn(t.th, "text-right")}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className={t.body}>
+                    {pricingPages.pageItems.map((row, pageIndex) => {
+                      // The row's place in the whole list, which is what every
+                      // handler below expects.
+                      const index = (pricingPages.page - 1) * PAGE_SIZE + pageIndex;
+                      return (
+                        <tr key={`pricing-${index}`}>
+                          <td className={cn(t.td, "w-[42px] text-center")}>
+                            <input
+                              type="checkbox"
+                              className={t.checkbox}
+                              checked={selectedPricingRowIndexes.includes(index)}
+                              onChange={() => toggleSelectedPricingRow(index)}
+                              aria-label={`Select pricing row ${index + 1}`}
+                            />
+                          </td>
+                          <td className={t.td}><input className={styles.fieldInput} value={row.size || ""} onChange={(event) => updatePricingRow(index, "size", event.target.value)} placeholder="e.g. 900Ã—2100" /></td>
+                          <td className={t.td}><input className={styles.fieldInput} value={row.description || ""} onChange={(event) => updatePricingRow(index, "description", event.target.value)} placeholder="e.g. Painted MDF" /></td>
+                          <td className={t.td}><input className={styles.fieldInput} type="number" step="0.01" value={row.price ?? ""} onChange={(event) => updatePricingRow(index, "price", event.target.value)} placeholder="0.00" /></td>
+                          <td className={cn(t.td, "whitespace-nowrap text-right")}>
+                            <input type="checkbox" className={t.checkbox} checked={Boolean(row.popular)} onChange={(event) => updatePricingRow(index, "popular", event.target.checked)} />
+                          </td>
+                          <td className={cn(t.td, "whitespace-nowrap text-right")}>
+                            <TextAction variant="danger" onClick={() => removePricingRow(index)}>
+                              Delete
+                            </TextAction>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <AdminPagination
+                label="price rows"
+                page={pricingPages.page}
+                pageCount={pricingPages.pageCount}
+                totalItems={pricingPages.totalItems}
+                onPageChange={pricingPages.setPage}
+              />
             </div>
           </div>
         );

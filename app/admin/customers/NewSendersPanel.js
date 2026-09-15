@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 import { AdminDataTable } from "@/components/ui/AdminDataTable";
+import { AdminPagination, useAdminPagination } from "../_components/AdminPagination";
 
 // Where individuals have their email, as opposed to a company. A rule here must
 // never be a domain rule.
@@ -139,6 +140,9 @@ export default function NewSendersPanel({ onCount }) {
   const rows = needle
     ? senders.filter((s) => `${s.email} ${s.display_name || ""}`.toLowerCase().includes(needle))
     : senders;
+  // Back to page one when the search changes, so a match is never hiding on a
+  // page the list has already moved past.
+  const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(rows, needle);
 
   const buttons = (sender) => {
     const domain = domainOf(sender.email);
@@ -257,7 +261,7 @@ export default function NewSendersPanel({ onCount }) {
       </div>
 
       <AdminDataTable
-        rows={rows}
+        rows={pageItems}
         columns={columns}
         getRowId={(sender) => sender.email}
         getRowLabel={(sender) => sender.email}
@@ -268,6 +272,15 @@ export default function NewSendersPanel({ onCount }) {
         onSearchChange={setSearch}
         searchPlaceholder="Search sender or domain"
         mobileCard={mobileCard}
+        pagination={
+          <AdminPagination
+            label="senders"
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        }
       />
     </>
   );

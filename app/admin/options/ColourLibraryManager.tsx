@@ -21,6 +21,8 @@ import ListField from '../../../components/admin/ListField'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import { tableStyles as t } from '@/components/ui/table-styles'
+import { sizeLabel } from '../../../lib/pcd-size-label'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -149,10 +151,8 @@ function calculateColourCosts(draft: Draft) {
 }
 
 function boardSizeLabel(row: ColourRow) {
-  const width  = Number(row.preferred_board_width_mm  || 0)
-  const height = Number(row.preferred_board_height_mm || 0)
-  if (!width && !height) return '-'
-  return `${height || '-'} x ${width || '-'}mm`
+  // Height first, the one way every table writes a size.
+  return sizeLabel(row.preferred_board_height_mm, row.preferred_board_width_mm)
 }
 
 function rowFromDraft(draft: Draft, image: { imageUrl: string; imagePath: string | null }, sortOrder: number, brands: { key: string }[] = []) {
@@ -529,6 +529,70 @@ export default function ColourLibraryManager({
   }
 
   // ── Column filter renderer ────────────────────────────────────────────────────
+
+  // A row with no tile image is not a cosmetic gap. The design tool paints
+  // panels from this picture, so a colour without one silently stays flat
+  // there, and the whole "show colours" toggle reads as broken on any job drawn
+  // in it. An empty grey square said nothing, so now it says it.
+  function renderTile(row: ColourRow) {
+    return (
+      <span
+        title={row.image_url ? undefined : 'No tile image. The design tool cannot paint this colour until one is uploaded.'}
+        className={cn(
+          'inline-flex items-center justify-center w-[36px] h-[36px] rounded-[4px] overflow-hidden flex-shrink-0 border',
+          row.image_url
+            ? 'bg-[#f5f5f4] border-[#edf4eb]'
+            : 'bg-[#fdf3dd] border-[#e0aa3c] text-[#8a6410] text-[9px] font-semibold leading-tight text-center'
+        )}
+      >
+        {row.image_url ? (
+          <img src={row.image_url} alt="" className="w-full h-full object-cover" />
+        ) : 'No tile'}
+      </span>
+    )
+  }
+
+  function renderStatusPill(row: ColourRow) {
+    return (
+      <span className={cn(
+        'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
+        row.is_active
+          ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
+          : 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'
+      )}>
+        {row.is_active ? 'Active' : 'Hidden'}
+      </span>
+    )
+  }
+
+  // Edit used to sit beside this as a button and repeated the row, which
+  // already opens the edit modal. Delete is the only thing left that the row
+  // cannot do. One menu for the table and the phone card.
+  function renderActionMenu(row: ColourRow) {
+    return (
+      <ActionMenu label={`Open actions for ${row.name}`}>
+        <ActionMenuItem variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
+          Delete
+        </ActionMenuItem>
+      </ActionMenu>
+    )
+  }
+
+  const emptyMessage = sortedRows.length
+    ? 'No colour lines match your search.'
+    : 'No colour lines yet. Add your first board colour entry.'
+
+  function renderSelectBox(row: ColourRow) {
+    return (
+      <input
+        type="checkbox"
+        checked={selectedRowIds.includes(row.id)}
+        onChange={() => toggleSelectedRow(row.id)}
+        aria-label={`Select ${row.name}`}
+        className={t.checkbox}
+      />
+    )
+  }
 
   function renderColumnFilter(column: keyof ColumnFilters, label: string) {
     const options  = filterOptions[column] || []
@@ -985,124 +1049,64 @@ export default function ColourLibraryManager({
         </div>
 
         {/* Table */}
-        <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px] whitespace-nowrap">
+        {/* Built from the shared tokens rather than AdminDataTable, because the
+            filters live in the column headers and that table's headers are plain. */}
+        <div className={cn(t.card, t.desktopOnly)}>
+          <div className={t.sideScroll}>
+            <table className={t.tableWide}>
               <thead>
-                <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                  <th className="w-[40px] px-4 py-[9px]">
+                <tr>
+                  <th className={cn(t.th, 'w-[40px]')}>
                     <input
                       type="checkbox"
                       checked={pageItems.length > 0 && pageItems.every(r => selectedRowIds.includes(r.id))}
                       onChange={e => toggleSelectedPage(e.target.checked)}
                       aria-label="Select all visible colour lines"
-                      className="accent-[#6b9e61]"
+                      className={t.checkbox}
                     />
                   </th>
                   {['Tile', 'Colour'].map(col => (
-                    <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                      {col}
-                    </th>
+                    <th key={col} className={t.th}>{col}</th>
                   ))}
-                  <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                    {renderColumnFilter('supplier', 'Supplier')}
-                  </th>
-                  <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                    {renderColumnFilter('material', 'Material')}
-                  </th>
-                  <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                    {renderColumnFilter('thickness', 'Thickness')}
-                  </th>
-                  <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                    {renderColumnFilter('finish', 'Finish')}
-                  </th>
-                  <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                    {renderColumnFilter('orderType', 'Order type')}
-                  </th>
-                  {['Board size', 'Cost / board', 'Cost / sqm', 'Status', 'Actions'].map(col => (
-                    <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                      {col}
-                    </th>
+                  <th className={t.th}>{renderColumnFilter('supplier', 'Supplier')}</th>
+                  <th className={t.th}>{renderColumnFilter('material', 'Material')}</th>
+                  <th className={t.th}>{renderColumnFilter('thickness', 'Thickness')}</th>
+                  <th className={t.th}>{renderColumnFilter('finish', 'Finish')}</th>
+                  <th className={t.th}>{renderColumnFilter('orderType', 'Order type')}</th>
+                  {['Size (H × W)', 'Cost / board', 'Cost / sqm', 'Status', 'Actions'].map(col => (
+                    <th key={col} className={t.th}>{col}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={t.body}>
                 {pageItems.map(row => (
-                  <tr
-                    key={row.id}
-                    className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                    onClick={() => openEditModal(row)}
-                  >
-                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRowIds.includes(row.id)}
-                        onChange={() => toggleSelectedRow(row.id)}
-                        aria-label={`Select ${row.name}`}
-                        className="accent-[#6b9e61]"
-                      />
+                  <tr key={row.id} className={t.rowClickable} onClick={() => openEditModal(row)}>
+                    <td className={t.td} onClick={event => event.stopPropagation()}>
+                      {renderSelectBox(row)}
                     </td>
-                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
-                      {/* A row with no tile image is not a cosmetic gap. The design
-                          tool paints panels from this picture, so a colour without
-                          one silently stays flat there, and the whole "show colours"
-                          toggle reads as broken on any job drawn in it. An empty
-                          grey square said nothing, so now it says it. */}
-                      <span
-                        title={row.image_url ? undefined : 'No tile image. The design tool cannot paint this colour until one is uploaded.'}
-                        className={cn(
-                          'inline-flex items-center justify-center w-[36px] h-[36px] rounded-[4px] overflow-hidden flex-shrink-0 border',
-                          row.image_url
-                            ? 'bg-[#f5f5f4] border-[#edf4eb]'
-                            : 'bg-[#fdf3dd] border-[#e0aa3c] text-[#8a6410] text-[9px] font-semibold leading-tight text-center'
-                        )}
-                      >
-                        {row.image_url ? (
-                          <img src={row.image_url} alt="" className="w-full h-full object-cover" />
-                        ) : 'No tile'}
-                      </span>
+                    <td className={t.td} onClick={event => event.stopPropagation()}>
+                      {renderTile(row)}
                     </td>
-                    <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{row.name}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{normaliseSupplierName(row.supplier_name) || 'Polytec'}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{materialLabelForType(row.material_type)}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{row.thickness || '-'}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{row.finish_type || '-'}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{orderTypesLabel(row) || '-'}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{boardSizeLabel(row)}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">${Number(row.cost_per_board_ex_gst || 0).toFixed(2)}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">${Number(row.cost_per_sqm_ex_gst  || 0).toFixed(2)}</td>
-                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
-                      <span className={cn(
-                        'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
-                        row.is_active
-                          ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
-                          : 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'
-                      )}>
-                        {row.is_active ? 'Active' : 'Hidden'}
-                      </span>
+                    <td className={cn(t.td, 'font-medium')}>{row.name}</td>
+                    <td className={t.td}>{normaliseSupplierName(row.supplier_name) || 'Polytec'}</td>
+                    <td className={t.td}>{materialLabelForType(row.material_type)}</td>
+                    <td className={t.td}>{row.thickness || '-'}</td>
+                    <td className={t.td}>{row.finish_type || '-'}</td>
+                    <td className={t.td}>{orderTypesLabel(row) || '-'}</td>
+                    <td className={t.td}>{boardSizeLabel(row)}</td>
+                    <td className={cn(t.td, t.num)}>${Number(row.cost_per_board_ex_gst || 0).toFixed(2)}</td>
+                    <td className={cn(t.td, t.num)}>${Number(row.cost_per_sqm_ex_gst  || 0).toFixed(2)}</td>
+                    <td className={t.td} onClick={event => event.stopPropagation()}>
+                      {renderStatusPill(row)}
                     </td>
-                    {/* Edit used to sit here as a button and repeated the row,
-                        which already opens the edit modal. Delete is the only
-                        thing left that the row cannot do, so it goes in the
-                        menu and the width comes back to the money columns. */}
-                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
-                      <div className="flex justify-end">
-                        <ActionMenu label={`Open actions for ${row.name}`}>
-                          <ActionMenuItem variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
-                            Delete
-                          </ActionMenuItem>
-                        </ActionMenu>
-                      </div>
+                    <td className={t.td} onClick={event => event.stopPropagation()}>
+                      <div className="flex justify-end">{renderActionMenu(row)}</div>
                     </td>
                   </tr>
                 ))}
                 {!filteredRows.length && (
                   <tr>
-                    <td colSpan={13} className="py-12 text-center text-[13px] text-[#8b8a81]">
-                      {sortedRows.length
-                        ? 'No colour lines match your search.'
-                        : 'No colour lines yet. Add your first board colour entry.'}
-                    </td>
+                    <td colSpan={13} className={t.empty}>{emptyMessage}</td>
                   </tr>
                 )}
               </tbody>
@@ -1115,6 +1119,73 @@ export default function ColourLibraryManager({
             totalItems={totalItems}
             onPageChange={setPage}
           />
+        </div>
+
+        {/* Below md the rows become cards. Tapping the colour name opens the same
+            editor the row does. The search box above still narrows the list. */}
+        <div className={t.mobileList}>
+          {!filteredRows.length && <div className={cn(t.card, t.empty)}>{emptyMessage}</div>}
+          {pageItems.map(row => (
+            <article key={row.id} className={t.mobileCard}>
+              <div className="flex items-start gap-3">
+                {renderSelectBox(row)}
+                {renderTile(row)}
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(row)}
+                    className="text-left text-[14px] font-semibold text-[#1a1a18]"
+                  >
+                    {row.name}
+                  </button>
+                  <p className="text-[12px] text-[#5a5a52]">{normaliseSupplierName(row.supplier_name) || 'Polytec'}</p>
+                </div>
+                {renderStatusPill(row)}
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                <div>
+                  <dt className="text-[#8b8a81]">Material</dt>
+                  <dd className="text-[#1a1a18]">{materialLabelForType(row.material_type)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">Thickness</dt>
+                  <dd className="text-[#1a1a18]">{row.thickness || '-'}</dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">Finish</dt>
+                  <dd className="text-[#1a1a18]">{row.finish_type || '-'}</dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">Order type</dt>
+                  <dd className="text-[#1a1a18]">{orderTypesLabel(row) || '-'}</dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">Size (H × W)</dt>
+                  <dd className="text-[#1a1a18]">{boardSizeLabel(row)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">Cost / board</dt>
+                  <dd className={cn(t.num, 'text-[#1a1a18]')}>${Number(row.cost_per_board_ex_gst || 0).toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">Cost / sqm</dt>
+                  <dd className={cn(t.num, 'text-[#1a1a18]')}>${Number(row.cost_per_sqm_ex_gst || 0).toFixed(2)}</dd>
+                </div>
+              </dl>
+              <div className="mt-3 flex items-center justify-end border-t border-[#edf4eb] pt-3">
+                {renderActionMenu(row)}
+              </div>
+            </article>
+          ))}
+          {filteredRows.length > 0 && (
+            <AdminPagination
+              label="colour lines"
+              page={page}
+              pageCount={pageCount}
+              totalItems={totalItems}
+              onPageChange={setPage}
+            />
+          )}
         </div>
       </div>
 

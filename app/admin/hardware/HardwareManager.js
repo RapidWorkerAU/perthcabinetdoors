@@ -13,6 +13,7 @@ import { IconButton } from "@/components/ui/IconButton";
 import { useToast } from "@/components/ui/Toast";
 import ListField from "@/components/admin/ListField";
 import AdminLoading from "@/components/admin/AdminLoading";
+import { tableStyles as t } from "@/components/ui/table-styles";
 import { cn } from "@/lib/utils";
 
 
@@ -259,6 +260,41 @@ export default function HardwareManager() {
     </>
   );
 
+  function thumbnail(row) {
+    return (
+      <span className="inline-flex h-[36px] w-[36px] flex-shrink-0 overflow-hidden rounded-[4px] border border-[#edf4eb] bg-[#f5f5f4]">
+        {row.image_url ? <img src={row.image_url} alt="" className="h-full w-full object-cover" /> : null}
+      </span>
+    );
+  }
+
+  function statusPill(row) {
+    return (
+      <span className={cn(
+        "inline-flex rounded-full border px-2 py-[3px] text-[11px] font-semibold",
+        row.is_active ? "border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28]" : "border-[#dbd8cc] bg-[#f5f5f4] text-[#5a5a52]"
+      )}>
+        {row.is_active ? "Active" : "Hidden"}
+      </span>
+    );
+  }
+
+  // One menu for the table and the phone card, so they cannot offer different things.
+  function actionMenu(row) {
+    return (
+      <ActionMenu label={`Open actions for ${row.name}`} size="sm">
+        <ActionMenuItem icon={<IconEdit size={14} />} disabled={isSaving} onClick={() => openEditModal(row)}>
+          Edit
+        </ActionMenuItem>
+        <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
+          Delete
+        </ActionMenuItem>
+      </ActionMenu>
+    );
+  }
+
+  const emptyMessage = rows.length ? "No hardware matches your search." : "No hardware yet. Add your first handle, hinge or drawer runner.";
+
   // First load owns the whole content area. A refresh with hardware already on
   // screen leaves it there rather than blanking the page.
   if (loading && !rows.length) {
@@ -307,63 +343,88 @@ export default function HardwareManager() {
           </button>
         </div>
 
-        <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full whitespace-nowrap text-[13px]">
+        {/* Built from the shared tokens rather than AdminDataTable, because the
+            type filter sits beside the search and that table has no place for it. */}
+        <div className={cn(t.card, t.desktopOnly)}>
+          <div className={t.sideScroll}>
+            <table className={t.tableWide}>
               <thead>
-                <tr className="border-b border-[#dbd8cc] bg-[#f5f8f4]">
+                <tr>
                   {["Image", "Name", "Type", "Brand", "SKU", "Dimensions", "Unit cost", "Status", "Actions"].map((heading) => (
-                    <th key={heading} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
+                    <th key={heading} className={t.th}>
                       {heading}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={t.body}>
                 {pageItems.map((row) => (
-                  <tr key={row.id} className="cursor-pointer border-b border-[#edf4eb] transition-colors last:border-b-0 hover:bg-[#f5f8f4]" onClick={() => openEditModal(row)}>
-                    <td className="px-4 py-[11px]">
-                      <span className="inline-flex h-[36px] w-[36px] overflow-hidden rounded-[4px] border border-[#edf4eb] bg-[#f5f5f4]">
-                        {row.image_url ? <img src={row.image_url} alt="" className="h-full w-full object-cover" /> : null}
-                      </span>
-                    </td>
-                    <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{row.name}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{hardwareTypeLabel(row.type)}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{row.brand || "-"}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{row.sku || "-"}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{dimensionLabel(row)}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{money(row.unit_cost_ex_gst)}</td>
-                    <td className="px-4 py-[11px]">
-                      <span className={cn(
-                        "inline-flex rounded-full border px-2 py-[3px] text-[11px] font-semibold",
-                        row.is_active ? "border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28]" : "border-[#dbd8cc] bg-[#f5f5f4] text-[#5a5a52]"
-                      )}>
-                        {row.is_active ? "Active" : "Hidden"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-[11px]" onClick={(event) => event.stopPropagation()}>
-                      <ActionMenu label={`Open actions for ${row.name}`} size="sm">
-                        <ActionMenuItem icon={<IconEdit size={14} />} disabled={isSaving} onClick={() => openEditModal(row)}>
-                          Edit
-                        </ActionMenuItem>
-                        <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
-                          Delete
-                        </ActionMenuItem>
-                      </ActionMenu>
+                  <tr key={row.id} className={t.rowClickable} onClick={() => openEditModal(row)}>
+                    <td className={t.td}>{thumbnail(row)}</td>
+                    <td className={cn(t.td, "font-medium")}>{row.name}</td>
+                    <td className={t.td}>{hardwareTypeLabel(row.type)}</td>
+                    <td className={t.td}>{row.brand || "-"}</td>
+                    <td className={t.td}>{row.sku || "-"}</td>
+                    <td className={t.td}>{dimensionLabel(row)}</td>
+                    <td className={cn(t.td, t.num)}>{money(row.unit_cost_ex_gst)}</td>
+                    <td className={t.td}>{statusPill(row)}</td>
+                    <td className={t.td} onClick={(event) => event.stopPropagation()}>
+                      {actionMenu(row)}
                     </td>
                   </tr>
                 ))}
                 {!loading && !filteredRows.length ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">
-                      {rows.length ? "No hardware matches your search." : "No hardware yet. Add your first handle, hinge or drawer runner."}
-                    </td>
+                    <td colSpan={9} className={t.empty}>{emptyMessage}</td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
           <AdminPagination label="hardware items" page={page} pageCount={pageCount} totalItems={totalItems} onPageChange={setPage} />
+        </div>
+
+        {/* Below md the rows become cards. Tapping the name opens the same editor the row does. */}
+        <div className={t.mobileList}>
+          {!loading && !filteredRows.length ? <div className={cn(t.card, t.empty)}>{emptyMessage}</div> : null}
+          {pageItems.map((row) => (
+            <article key={row.id} className={t.mobileCard}>
+              <div className="flex items-start gap-3">
+                {thumbnail(row)}
+                <div className="min-w-0 flex-1">
+                  <button type="button" onClick={() => openEditModal(row)} className="text-left text-[14px] font-semibold text-[#1a1a18]">
+                    {row.name}
+                  </button>
+                  <p className="text-[12px] text-[#5a5a52]">{hardwareTypeLabel(row.type)}</p>
+                </div>
+                {statusPill(row)}
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                <div>
+                  <dt className="text-[#8b8a81]">Brand</dt>
+                  <dd className="text-[#1a1a18]">{row.brand || "-"}</dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">SKU</dt>
+                  <dd className="text-[#1a1a18]">{row.sku || "-"}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-[#8b8a81]">Dimensions</dt>
+                  <dd className="text-[#1a1a18]">{dimensionLabel(row)}</dd>
+                </div>
+              </dl>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#edf4eb] pt-3 text-[12px]">
+                <span>
+                  <span className="text-[#8b8a81]">Unit cost </span>
+                  <span className={cn(t.num, "text-[#1a1a18]")}>{money(row.unit_cost_ex_gst)}</span>
+                </span>
+                {actionMenu(row)}
+              </div>
+            </article>
+          ))}
+          {filteredRows.length ? (
+            <AdminPagination label="hardware items" page={page} pageCount={pageCount} totalItems={totalItems} onPageChange={setPage} />
+          ) : null}
         </div>
       </div>
 

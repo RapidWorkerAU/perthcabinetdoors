@@ -5,6 +5,7 @@ import { IconSearch } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/EmptyState'
 import AdminLoading from '@/components/admin/AdminLoading'
+import { tableStyles as t } from '@/components/ui/table-styles'
 
 export interface AdminDataTableColumn<T> {
   id: string
@@ -34,6 +35,8 @@ export interface AdminDataTableProps<T> {
   mobileCard: (row: T) => React.ReactNode
   pagination?: React.ReactNode
   className?: string
+  /** Many columns: scroll sideways instead of crushing them into the card. */
+  wide?: boolean
 }
 
 
@@ -56,6 +59,7 @@ export function AdminDataTable<T>({
   mobileCard,
   pagination,
   className,
+  wide = false,
 }: AdminDataTableProps<T>) {
   const selectable = Boolean(onSelectedIdsChange)
   const rowIds = React.useMemo(() => rows.map(getRowId), [rows, getRowId])
@@ -85,9 +89,9 @@ export function AdminDataTable<T>({
 
   return (
     <div className={cn('w-full', className)}>
-      <div className="hidden overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white md:block">
+      <div className={cn(t.card, t.desktopOnly)}>
         {(onSearchChange || primaryAction || bulkActions) && (
-          <div className="flex items-center justify-between gap-3 border-b border-[#edf4eb] px-4 py-3">
+          <div className={t.toolbar}>
             <div className="flex min-w-0 items-center gap-3">
               {bulkActions ?? (
                 onSearchChange && (
@@ -108,36 +112,33 @@ export function AdminDataTable<T>({
           </div>
         )}
 
-        <table className="w-full border-collapse text-[13px]">
+        <div className={t.sideScroll}>
+        <table className={wide ? t.tableWide : t.table}>
           <thead>
-            <tr className="border-b border-[#dbd8cc] bg-[#f5f8f4]">
+            <tr>
               {selectable && (
-                <th className="w-[40px] px-4 py-[9px] text-left">
+                <th className={cn(t.th, 'w-[40px]')}>
                   <input
                     type="checkbox"
                     checked={allPageSelected}
                     ref={el => { if (el) el.indeterminate = somePageSelected }}
                     onChange={event => togglePage(event.target.checked)}
                     aria-label="Select all visible rows"
-                    className="accent-[#6b9e61]"
+                    className={t.checkbox}
                   />
                 </th>
               )}
               {columns.map(column => (
                 <th
                   key={column.id}
-                  className={cn(
-                    'px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]',
-                    column.widthClassName,
-                    column.headerClassName
-                  )}
+                  className={cn(t.th, column.widthClassName, column.headerClassName)}
                 >
                   {column.header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className={t.body}>
             {/* The cabinet builds while the first page of data is on its way,
                 so waiting looks the same here as it does in the design tools. */}
             {loading && (
@@ -162,27 +163,24 @@ export function AdminDataTable<T>({
               return (
                 <tr
                   key={rowId}
-                  className={cn(
-                    'border-b border-[#edf4eb] transition-colors last:border-b-0 hover:bg-[#f5f8f4]',
-                    onRowClick && 'cursor-pointer'
-                  )}
+                  className={cn(onRowClick && t.rowClickable)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {selectable && (
-                    <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
+                    <td className={t.td} onClick={event => event.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(rowId)}
                         onChange={() => toggleRow(rowId)}
                         aria-label={`Select ${rowLabel}`}
-                        className="accent-[#6b9e61]"
+                        className={t.checkbox}
                       />
                     </td>
                   )}
                   {columns.map(column => (
                     <td
                       key={column.id}
-                      className={cn('px-4 py-[11px] text-[#1a1a18]', column.className)}
+                      className={cn(t.td, column.className)}
                       onClick={column.id === 'actions' ? event => event.stopPropagation() : undefined}
                     >
                       {column.cell(row)}
@@ -193,6 +191,7 @@ export function AdminDataTable<T>({
             })}
           </tbody>
         </table>
+        </div>
 
         {pagination}
       </div>

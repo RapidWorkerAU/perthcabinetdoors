@@ -3,16 +3,15 @@
 import * as React from 'react'
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
+import { LIST_PAGE_SIZE, REPORT_PAGE_SIZE as REPORT_ROWS } from '@/components/ui/table-styles'
 
-// The default every table in the admin has always used. Left alone so that
-// making the page size adjustable changed nothing about the sixteen tables
-// that were already relying on it.
-export const PAGE_SIZE = 8
+// Ten rows on a list of records. It was eight, which paged a screen that had
+// room for more. Defined with the rest of the table look in table-styles.
+export const PAGE_SIZE = LIST_PAGE_SIZE
 
 // Reports are read down rather than clicked through, so they get a longer
-// page: fifteen rows is about a screen, and paging every eight turns reading
-// a colour list into a chore.
-export const REPORT_PAGE_SIZE = 15
+// page: fifteen rows is about a screen.
+export const REPORT_PAGE_SIZE = REPORT_ROWS
 
 export function useAdminPagination<T>(items: T[], resetKey: unknown = '', pageSize: number = PAGE_SIZE) {
   const [page, setPage] = React.useState(1)
@@ -51,7 +50,7 @@ export function AdminPagination({
   return (
     <div className="flex items-center justify-between px-4 py-[10px] border-t border-[#edf4eb] text-[13px] text-[#5a5a52]">
       <span>
-        {totalItems ? `Showing ${start}–${end} of ${totalItems} ${label}` : `No ${label}`}
+        {totalItems ? `Showing ${start} to ${end} of ${totalItems} ${label}` : `No ${label}`}
       </span>
       <div className="flex items-center gap-1">
         <button

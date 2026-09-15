@@ -11,12 +11,13 @@ import { cabinetOptions, isCabinetLine, orderItemLabel, orderItemOptions } from 
 import { edgeImageSrc } from "../../../../../../lib/pcd-profile-images";
 import { hardwareTypeLabel } from "../../../../../../lib/pcd-hardware-types";
 import AdminLoading from "@/components/admin/AdminLoading";
+import { tableStyles } from "@/components/ui/table-styles";
 import { useToast } from "@/components/ui/Toast";
 import { QuoteColourCombobox, QuoteImageCombobox, QuoteTileCombobox } from "@/components/admin/QuoteComboboxes";
 import styles from "../../../../admin-content.module.css";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, formatItemSpecs, formatMoney, roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
 import { HINGE_SIDES, readMiddles } from "../../../../../../lib/pcd-hinges";
-import { BANDED_EDGES, GRAIN_DIRECTIONS, HOLE_TYPES, PANEL_USES, SUPPLIED_BY, bandedEdgesText } from "../../../../../../lib/pcd-line-details";
+import { BANDED_EDGES, HOLE_TYPES, PANEL_USES, SUPPLIED_BY, bandedEdgesText } from "../../../../../../lib/pcd-line-details";
 import { cabinetBrandOptions } from "../../../../../../lib/quote-form-data";
 import {
   edgeProfilesForMaterial,
@@ -63,7 +64,7 @@ const variationProductTypes = [
 ];
 
 const tw = {
-  card: "bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden mb-3",
+  card: tableStyles.card + " mb-3",
   cardHeader: "px-4 py-3 border-b border-[#edf4eb] flex items-center justify-between gap-3",
   cardTitle: "text-[13px] font-semibold text-[#1a1a18]",
   cardBody: "px-4 py-4",
@@ -78,15 +79,20 @@ const tw = {
   smBtn: "h-[26px] px-3 text-[11px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
   dangerBtn: "h-[26px] px-3 text-[11px] font-medium rounded-[6px] border border-[#fca5a5] bg-white text-[#991b1b] hover:bg-[#fef2f2] disabled:opacity-50 transition-colors",
   muted: "text-[11px] text-[#8b8a81]",
-  tableWrap: "overflow-x-auto md:max-h-[calc(100vh-300px)] md:overflow-auto",
-  /* min-w-max keeps the columns at their natural width and lets the wrapper
-     scroll sideways, instead of the browser crushing every cell onto three
-     lines. Free text columns use tw.cellText so they wrap at a sensible
-     width rather than stretching the table. */
-  table: "w-full min-w-max text-[13px] border-collapse",
-  th: "sticky top-0 z-10 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] px-4 py-[9px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
-  td: "px-4 py-[11px] border-b border-[#edf4eb] text-[#1a1a18] align-middle",
-  tdLast: "px-4 py-[11px] text-[#1a1a18] align-middle",
+  /* The variation lines are a SCROLL table: they sit inside one variation, so
+     the look comes from the shared table styles and the header row is pinned.
+     The wide table keeps columns at their natural width and lets the box
+     scroll sideways; free text columns use tw.cellText so they wrap at a
+     sensible width rather than stretching the table. */
+  tableWrap: tableStyles.scrollBox,
+  table: tableStyles.tableWide,
+  th: tableStyles.th + " " + tableStyles.thSticky,
+  td: tableStyles.td,
+  // The last column keeps its row line too, or the divider stops one column short.
+  tdLast: tableStyles.td,
+  tbody: tableStyles.body,
+  empty: tableStyles.empty,
+  num: tableStyles.num,
   cellText: "block max-w-[280px] whitespace-normal",
   inlineInput: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
   inlineSelect: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
@@ -994,9 +1000,9 @@ export default function VariationEditor({ orderId, variationId }) {
         </td>
         <td className={tw.td}><span className={tw.cellText}>{line.title || "-"}</span></td>
         <td className={tw.td}>{line.qty ?? "-"}</td>
-        <td className={tw.td + " font-mono"}>{formatMoney(line.original_line_total_ex_gst, variation.currency)}</td>
-        <td className={tw.td + " font-mono"}>{formatMoney(line.proposed_line_total_ex_gst, variation.currency)}</td>
-        <td className={tw.td + " font-mono"}>{formatMoney(toNumber(line.line_total_ex_gst), variation.currency)}</td>
+        <td className={tw.td + " " + tw.num}>{formatMoney(line.original_line_total_ex_gst, variation.currency)}</td>
+        <td className={tw.td + " " + tw.num}>{formatMoney(line.proposed_line_total_ex_gst, variation.currency)}</td>
+        <td className={tw.td + " " + tw.num}>{formatMoney(toNumber(line.line_total_ex_gst), variation.currency)}</td>
         <td className={tw.td}><span className={tw.cellText}>{line.notes || "-"}</span></td>
         <td className={tw.tdLast}>
           {isEditable ? (
@@ -1323,20 +1329,8 @@ export default function VariationEditor({ orderId, variationId }) {
                 onChange={(patch) => updateLineDraft(patch)}
               />
             </label>
-            {/* WHICH WAY THE GRAIN RUNS, beside the colour it belongs to. */}
-            {lineDraft.material ? (
-              <label className={tw.fieldLabel}>Grain
-                <select
-                  className={tw.fieldInput}
-                  disabled={isRemove || isPriceAdjustment}
-                  value={lineDraft.grain_direction || ""}
-                  onChange={(event) => updateLineDraft({ grain_direction: event.target.value })}
-                >
-                  <option value="">Not recorded</option>
-                  {GRAIN_DIRECTIONS.map((grain) => <option key={grain}>{grain}</option>)}
-                </select>
-              </label>
-            ) : null}
+            {/* No grain control, the same as on the quote. Every job runs the
+                standard direction; anything else goes in the line's notes. */}
           </>
         )}
 
@@ -1693,10 +1687,10 @@ export default function VariationEditor({ orderId, variationId }) {
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={tw.tbody}>
                     {lines.map(renderLineEditor)}
                     {!lines.length ? (
-                      <tr><td colSpan={9} className="py-8 text-center text-[12px] text-[#8b8a81]">Add at least one variation line before sending to the customer.</td></tr>
+                      <tr><td colSpan={9} className={tw.empty}>Add at least one variation line before sending to the customer.</td></tr>
                     ) : null}
                   </tbody>
                 </table>

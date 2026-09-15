@@ -277,8 +277,11 @@ test("the quote editor has an Edges window for the banded edges, on desktop and 
   assert.ok((EDITOR.match(/openEdgesModal\((index|idx)\)/g) || []).length >= 2, "opened from the desktop row and the phone sheet");
 });
 
-test("the quote editor asks the grain and who supplies hardware, on desktop and phone", () => {
-  assert.ok((EDITOR.match(/grain_direction: e\.target\.value/g) || []).length >= 2, "grain in both layouts");
+test("the quote editor asks who supplies hardware on desktop and phone, and never the grain", () => {
+  // Grain direction was taken off the quote on 15 September 2026. Every job runs
+  // the standard direction and a customer who asks otherwise goes in the line's
+  // notes, so a per-line control coming back would be a regression.
+  assert.ok(!/grain_direction: e\.target\.value/.test(EDITOR), "no grain control on the quote");
   assert.ok((EDITOR.match(/supplied_by: e\.target\.value/g) || []).length >= 2, "supplied by in both layouts");
 });
 
@@ -286,13 +289,16 @@ test("the variation form asks every answer, beside what it belongs to", () => {
   for (const [field, words] of [
     ["panel_use", "Kind of panel"],
     ["banded_edges", "Banded edges"],
-    ["grain_direction", "Grain"],
     ["hole_type", "Hole type"],
     ["supplied_by", "Supplied by"],
   ]) {
     assert.ok(VARIATION_EDITOR.includes(words), `${words} is not on the variation form`);
     assert.match(VARIATION_EDITOR, new RegExp(`${field}: [^\\n]*item\\?\\.${field}`), `changing an item does not start from its ${field}`);
   }
+  // No grain control, the same as the quote. A change still starts from the
+  // item's own grain, so an answer that came in on the order form is not wiped.
+  assert.ok(!/grain_direction: event\.target\.value/.test(VARIATION_EDITOR), "no grain control on the variation form");
+  assert.match(VARIATION_EDITOR, /grain_direction: [^\n]*item\?\.grain_direction/, "changing an item keeps its grain");
 });
 
 test("both variation routes store the answers by the same rules as a quote line", () => {
@@ -397,5 +403,5 @@ test("the request preview puts the drilling under Hinges and the edges under Edg
   assert.match(preview, /hingeCustomerLines\(line\)/, "the drilling in the words the customer's quote uses");
   const edgeCell = preview.slice(preview.indexOf("{cleanValue(line.edge_mould)}"), preview.indexOf("[line.profile_type, line.profile]"));
   assert.ok(!edgeCell.includes("hole_type"), "the boring is not under Edge");
-  assert.match(preview, /'H × W'/, "and the size heading is height first, like the sizes under it");
+  assert.match(preview, /Size \(H × W\)/, "and the size heading is height first, like the sizes under it");
 });

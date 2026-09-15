@@ -4,6 +4,8 @@ import * as React from 'react'
 import { IconArrowDown, IconArrowUp } from '@tabler/icons-react'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
+import { cn } from '@/lib/utils'
+import { tableStyles as t } from '@/components/ui/table-styles'
 
 // SETTINGS, LISTS: the dropdown vocabularies you can add to yourself.
 //
@@ -186,23 +188,25 @@ export default function ListsManager() {
 
             {open && (
               <div className="border-t border-[#edf4eb]">
-                <table className="w-full text-[13px]">
+                {/* Unpaginated on purpose: the move buttons reorder the whole
+                    list, and a row cannot be moved past the edge of a page. */}
+                <table className={t.table}>
                   <thead>
-                    <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                      <th className="w-[70px] px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Order</th>
-                      <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Name</th>
+                    <tr>
+                      <th className={cn(t.th, 'w-[70px]')}>Order</th>
+                      <th className={t.th}>Name</th>
                       {list.fields.map(field => (
-                        <th key={field.key} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
+                        <th key={field.key} className={t.th}>
                           {field.label}
                         </th>
                       ))}
-                      <th className="w-[150px] px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Offered</th>
+                      <th className={cn(t.th, 'w-[150px]')}>Offered</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={t.body}>
                     {list.items.map((item, index) => (
-                      <tr key={item.id || item.key} className={`border-b border-[#edf4eb] last:border-b-0 ${item.is_active ? '' : 'bg-[#fafaf8]'}`}>
-                        <td className="px-4 py-[9px]">
+                      <tr key={item.id || item.key} className={item.is_active ? undefined : 'bg-[#fafaf8]'}>
+                        <td className={t.td}>
                           <div className="flex gap-[3px]">
                             <button
                               type="button"
@@ -225,7 +229,7 @@ export default function ListsManager() {
                           </div>
                         </td>
 
-                        <td className="px-4 py-[9px]">
+                        <td className={t.td}>
                           <input
                             className={inputClass}
                             defaultValue={item.label}
@@ -245,7 +249,7 @@ export default function ListsManager() {
                         </td>
 
                         {list.fields.map(field => (
-                          <td key={field.key} className="px-4 py-[9px] align-top">
+                          <td key={field.key} className={cn(t.td, 'align-top')}>
                             {field.type === 'boolean' ? (
                               <label className="flex items-center gap-2 text-[12.5px] text-[#5a5a52]">
                                 <input
@@ -275,7 +279,7 @@ export default function ListsManager() {
                           </td>
                         ))}
 
-                        <td className="px-4 py-[9px]">
+                        <td className={t.td}>
                           <button
                             type="button"
                             disabled={readOnly || busy === item.id || !item.id}

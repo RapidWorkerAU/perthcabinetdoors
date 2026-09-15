@@ -25,6 +25,9 @@ import {
   boardOrderText,
   buildBoardOrder,
 } from "../../../../lib/pcd-board-order";
+import { sizeLabel } from "../../../../lib/pcd-size-label";
+import { cn } from "@/lib/utils";
+import { tableStyles as t } from "@/components/ui/table-styles";
 
 // ── Drawing ──────────────────────────────────────────────────────────────────
 
@@ -51,8 +54,6 @@ const tw = {
   muted: "text-[11px] text-[#8b8a81]",
   smBtn:
     "h-[28px] px-3 text-[12px] font-medium rounded-[6px] border border-[#dbd8cc] bg-white text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
-  th: "bg-[#f5f8f4] border-b border-[#dbd8cc] px-2 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap",
-  td: "px-2 py-[7px] border-b border-[#edf4eb] align-top text-[#1a1a18]",
   pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium border",
   field: "flex flex-col gap-1 text-[11px] font-medium text-[#5a5a52]",
   num: "h-[30px] w-[76px] border border-[#dbd8cc] rounded-[6px] px-2 text-[12px] font-mono text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
@@ -345,57 +346,65 @@ function BoardGroup({ group, open, disabled, selected, onToggle, onPick, onSet, 
           </span>
         </div>
 
-        <div className="bg-white border border-[#dbd8cc] rounded-[6px] overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                <th className={tw.th}>From</th>
-                <th className={tw.th}>Panel</th>
-                <th className={`${tw.th} text-right`}>Size H x W</th>
-                <th className={`${tw.th} text-right`}>Qty</th>
-                <th className={tw.th}>On this board</th>
-                <th className={`${tw.th} text-right`}>Area sqm</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.rows.map((row) => (
-                <tr
-                  key={row.key}
-                  onClick={() => onPick(row.from_id)}
-                  className={`cursor-pointer ${selected === row.from_id ? "bg-[#edf4eb]" : "hover:bg-[#f5f8f4]"}`}
-                >
-                  <td className={`${tw.td} text-[12px] whitespace-nowrap`}>
-                    {row.from_label}
-                    {row.cabinet_label ? (
-                      <span className="block text-[10px] text-[#8b8a81]">{row.cabinet_label}</span>
-                    ) : null}
-                  </td>
-                  <td className={`${tw.td} text-[12px]`}>
-                    {row.name}
-                    {row.grain_direction ? (
-                      <span className="text-[#8b8a81]">{` · line says ${row.grain_direction}`}</span>
-                    ) : null}
-                  </td>
-                  <td className={`${tw.td} text-[12px] font-mono text-right whitespace-nowrap`}>
-                    {`${row.height_mm} x ${row.width_mm}`}
-                  </td>
-                  <td className={`${tw.td} text-[12px] font-mono text-right`}>{row.qty}</td>
-                  <td className={tw.td}>
-                    {row.axis === "free" ? (
-                      <span className={`${tw.pill} border-[#dbd8cc] bg-[#f5f8f4] text-[#5a5a52]`}>Can be turned</span>
-                    ) : (
-                      <span className={`${tw.pill} border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28]`}>
-                        {`Runs up the ${row.axis === "height" ? "height" : "width"}`}
-                      </span>
-                    )}
-                  </td>
-                  <td className={`${tw.td} text-[12px] font-mono text-right`}>
-                    {((row.height_mm * row.width_mm * row.qty) / 1e6).toFixed(2)}
-                  </td>
+        {/* The cut list stays unpaginated: a click on a row picks its panels on
+            the drawings above, and every panel on the board has to be there to
+            pick. Full token padding, because the panel runs the width of the
+            quote rather than sitting in a narrow column. */}
+        <div className={t.card}>
+          <div className={t.sideScroll}>
+            <table className={t.table}>
+              <thead>
+                <tr>
+                  <th className={t.th}>From</th>
+                  <th className={t.th}>Panel</th>
+                  <th className={cn(t.th, "text-right")}>Size (H × W)</th>
+                  <th className={cn(t.th, "text-right")}>Qty</th>
+                  <th className={t.th}>On this board</th>
+                  <th className={cn(t.th, "text-right")}>Area sqm</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className={t.body}>
+                {group.rows.map((row) => (
+                  <tr
+                    key={row.key}
+                    onClick={() => onPick(row.from_id)}
+                    // The picked row keeps its green, hover included, so it
+                    // still reads as picked while the pointer is over it.
+                    className={cn(t.rowClickable, selected === row.from_id && "bg-[#edf4eb] hover:bg-[#edf4eb]")}
+                  >
+                    <td className={cn(t.td, "whitespace-nowrap")}>
+                      {row.from_label}
+                      {row.cabinet_label ? (
+                        <span className="block text-[10px] text-[#8b8a81]">{row.cabinet_label}</span>
+                      ) : null}
+                    </td>
+                    <td className={t.td}>
+                      {row.name}
+                      {row.grain_direction ? (
+                        <span className="text-[#8b8a81]">{` · line says ${row.grain_direction}`}</span>
+                      ) : null}
+                    </td>
+                    <td className={cn(t.td, "whitespace-nowrap text-right")}>
+                      {sizeLabel(row.height_mm, row.width_mm)}
+                    </td>
+                    <td className={cn(t.td, t.num, "text-right")}>{row.qty}</td>
+                    <td className={t.td}>
+                      {row.axis === "free" ? (
+                        <span className={`${tw.pill} border-[#dbd8cc] bg-[#f5f8f4] text-[#5a5a52]`}>Can be turned</span>
+                      ) : (
+                        <span className={`${tw.pill} border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28]`}>
+                          {`Runs up the ${row.axis === "height" ? "height" : "width"}`}
+                        </span>
+                      )}
+                    </td>
+                    <td className={cn(t.td, t.num, "text-right")}>
+                      {((row.height_mm * row.width_mm * row.qty) / 1e6).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </details>

@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import { LIST_PAGE_SIZE, tableStyles } from "@/components/ui/table-styles";
+import { cn } from "@/lib/utils";
+import { sizeLabel } from "@/lib/pcd-size-label";
+import { AdminPagination, useAdminPagination } from "../../_components/AdminPagination";
 
 // READING A COMPLETED ORDER FORM ONTO THIS QUOTE.
 //
@@ -123,7 +127,9 @@ export default function ImportOrderFormModal({ quoteId, onClose, onImported }) {
     }
   }
 
-  const lines = preview?.lines || [];
+  const lines = useMemo(() => preview?.lines || [], [preview]);
+  // Back to page one whenever the file is read again.
+  const linePage = useAdminPagination(lines, `${file?.name || ""}|${lines.length}`, LIST_PAGE_SIZE);
 
   return (
     <Modal
@@ -368,42 +374,55 @@ export default function ImportOrderFormModal({ quoteId, onClose, onImported }) {
               </p>
             ) : null}
 
-            <div className="border border-[#dbd8cc] rounded-[8px] overflow-auto">
-              <table className="w-full border-collapse text-[11.5px]" style={{ minWidth: "620px" }}>
-                <thead>
-                  <tr>
-                    {["#", "Item", "Cabinet", "Specification", "H × W", "Qty", "Hinges"].map((head) => (
-                      <th
-                        key={head}
-                        className="text-left px-2.5 py-2 bg-[#f5f8f4] border-b border-[#dbd8cc] text-[9.5px] font-bold uppercase tracking-[0.05em] text-[#8b8a81] whitespace-nowrap"
-                      >
-                        {head}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line, index) => (
-                    <tr key={index}>
-                      <td className="px-2.5 py-2 border-b border-[#f0ede4] font-mono text-right">{index + 1}</td>
-                      <td className="px-2.5 py-2 border-b border-[#f0ede4]">{line.product_type || "—"}</td>
-                      <td className="px-2.5 py-2 border-b border-[#f0ede4]">{line.cabinet_brand || "—"}</td>
-                      <td className="px-2.5 py-2 border-b border-[#f0ede4] text-[#3a3a34]">
-                        {[line.supplier_name, line.material, line.thickness, line.colour].filter(Boolean).join(" · ") || "—"}
-                      </td>
-                      <td className="px-2.5 py-2 border-b border-[#f0ede4] font-mono whitespace-nowrap">
-                        {line.height_mm || "—"} × {line.width_mm || "—"}
-                      </td>
-                      <td className="px-2.5 py-2 border-b border-[#f0ede4] font-mono text-right">{line.qty}</td>
-                      <td className="px-2.5 py-2 border-b border-[#f0ede4] whitespace-nowrap">
-                        {line.hinge_holes
-                          ? [line.hinge_qty, line.hinge_side].filter(Boolean).join(" · ") || "Drill"
-                          : "—"}
-                      </td>
+            {/* The same table as the quote request's line items: the shared
+                look, paged ten lines at a time. */}
+            <div className={tableStyles.card}>
+              <div className={tableStyles.sideScroll}>
+                <table className={tableStyles.tableWide}>
+                  <thead>
+                    <tr>
+                      {["#", "Item", "Cabinet", "Specification", "Size (H × W)", "Qty", "Hinges"].map((head) => (
+                        <th key={head} className={tableStyles.th}>{head}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className={tableStyles.body}>
+                    {lines.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className={tableStyles.empty}>No lines were read from this file.</td>
+                      </tr>
+                    ) : linePage.pageItems.map((line, pageIndex) => {
+                      const index = (linePage.page - 1) * LIST_PAGE_SIZE + pageIndex;
+                      return (
+                        <tr key={index}>
+                          <td className={cn(tableStyles.td, "text-[#8b8a81]")}>{index + 1}</td>
+                          <td className={cn(tableStyles.td, "whitespace-nowrap font-medium")}>{line.product_type || "-"}</td>
+                          <td className={tableStyles.td}>{line.cabinet_brand || "-"}</td>
+                          <td className={tableStyles.td}>
+                            {[line.supplier_name, line.material, line.thickness, line.colour].filter(Boolean).join(" · ") || "-"}
+                          </td>
+                          <td className={cn(tableStyles.td, "whitespace-nowrap")}>{sizeLabel(line.height_mm, line.width_mm)}</td>
+                          <td className={cn(tableStyles.td, tableStyles.num)}>{line.qty}</td>
+                          <td className={cn(tableStyles.td, "whitespace-nowrap")}>
+                            {line.hinge_holes
+                              ? [line.hinge_qty, line.hinge_side].filter(Boolean).join(" · ") || "Drill"
+                              : "-"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {lines.length > 0 ? (
+                <AdminPagination
+                  label="lines"
+                  page={linePage.page}
+                  pageCount={linePage.pageCount}
+                  totalItems={linePage.totalItems}
+                  onPageChange={linePage.setPage}
+                />
+              ) : null}
             </div>
           </>
         ) : null}

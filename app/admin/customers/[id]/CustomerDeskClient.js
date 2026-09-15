@@ -19,6 +19,7 @@ import TermsEditor from "../../_components/TermsEditor";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import { customerFieldLabel } from "../../../../lib/pcd-customer-utils";
+import { addressFromRecord, formatSiteAddress } from "../../../../lib/pcd-contact-details";
 import { CLOSURE_REASONS, closureReasonLabel } from "../../../../lib/pcd-ticket-closure";
 import { Modal } from "@/components/ui/Modal";
 
@@ -283,10 +284,14 @@ export default function CustomerDeskClient({ customerId, initial }) {
   }
 
   const isNote = mode === "note";
+  // Everything held on the record, so a detail that is there never looks
+  // missing. The address reads the parts first and falls back to the old
+  // one-liner, so a record saved before the parts existed still shows it.
   const details = [
+    customer.company_name,
     customer.email,
     customer.phone,
-    [customer.site_suburb, customer.site_postcode].filter(Boolean).join(" "),
+    formatSiteAddress(addressFromRecord(customer)),
   ].filter(Boolean);
 
   return (

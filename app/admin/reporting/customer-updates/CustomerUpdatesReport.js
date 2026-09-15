@@ -11,6 +11,8 @@ import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 import { AdminPagination, useAdminPagination, REPORT_PAGE_SIZE } from '../../_components/AdminPagination'
+import { tableStyles as t } from '@/components/ui/table-styles'
+import { cn } from '@/lib/utils'
 
 import {
   internalLabelFor,
@@ -180,26 +182,24 @@ export default function CustomerUpdatesReport() {
         {sentCount > 0 && <>, <b className="font-semibold text-[#1a1a18]">{sentCount}</b> already sent</>}
       </p>
 
-      {/* Desktop table */}
-      <div className="hidden overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white md:block">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px] text-[13px]">
+      {/* Desktop table, in the shared list look. Raw markup rather than
+          AdminDataTable so the row loop stays readable to the phone test. */}
+      <div className={cn(t.card, t.desktopOnly)}>
+        <div className={t.sideScroll}>
+          <table className={t.tableWide}>
             <thead>
-              <tr className="border-b border-[#dbd8cc] bg-[#f5f8f4]">
+              <tr>
                 {['Customer', 'Orders', 'Updates', 'Latest update', 'Status', 'Actions'].map(column => (
-                  <th
-                    key={column}
-                    className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]"
-                  >
+                  <th key={column} className={t.th}>
                     {column}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className={t.body}>
               {!rows.length && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-[13px] text-[#8b8a81]">
+                  <td colSpan={6} className={t.empty}>
                     No customers had order updates in this period.
                   </td>
                 </tr>
@@ -207,14 +207,14 @@ export default function CustomerUpdatesReport() {
               {pageItems.map(row => (
                 <tr
                   key={row.key}
-                  className="cursor-pointer border-b border-[#edf4eb] transition-colors last:border-b-0 hover:bg-[#f5f8f4]"
+                  className={t.rowClickable}
                   onClick={() => openFor(row, 1)}
                 >
-                  <td className="px-4 py-[11px]">
+                  <td className={t.td}>
                     <div className="font-semibold text-[#1a1a18]">{row.name || 'Unnamed customer'}</div>
                     <div className="mt-[1px] text-[12px] text-[#8b8a81]">{row.email || 'No email address'}</div>
                   </td>
-                  <td className="px-4 py-[11px]">
+                  <td className={t.td}>
                     <div className="flex flex-wrap gap-1">
                       {row.orders.map(order => (
                         <span
@@ -226,18 +226,18 @@ export default function CustomerUpdatesReport() {
                       ))}
                     </div>
                   </td>
-                  <td className="px-4 py-[11px] tabular-nums text-[#1a1a18]">
+                  <td className={cn(t.td, t.num)}>
                     <span className="font-semibold">{row.updateCount}</span>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-[11px] text-[#1a1a18]">{shortDate(row.latestAt)}</td>
-                  <td className="px-4 py-[11px]">
+                  <td className={cn(t.td, 'whitespace-nowrap')}>{shortDate(row.latestAt)}</td>
+                  <td className={t.td}>
                     {row.lastSentAt && row.lastSentAt.slice(0, 10) >= from ? (
                       <StatusPill tone="success">Sent {shortDate(row.lastSentAt)}</StatusPill>
                     ) : (
                       <StatusPill tone="warning">Not sent</StatusPill>
                     )}
                   </td>
-                  <td className="px-4 py-[11px]" onClick={event => event.stopPropagation()}>
+                  <td className={t.td} onClick={event => event.stopPropagation()}>
                     <div className="flex justify-end">
                       <ActionMenu label={`Open actions for ${row.name || 'this customer'}`}>
                         <ActionMenuItem icon={<IconMail size={14} />} onClick={() => openFor(row, 2)}>
@@ -281,9 +281,9 @@ export default function CustomerUpdatesReport() {
       </div>
 
       {/* Mobile cards. A six column table on a phone is unreadable. */}
-      <div className="flex flex-col gap-2 md:hidden">
+      <div className={t.mobileList}>
         {!rows.length && (
-          <p className="py-10 text-center text-[13px] text-[#8b8a81]">
+          <p className={t.empty}>
             No customers had order updates in this period.
           </p>
         )}
@@ -292,7 +292,7 @@ export default function CustomerUpdatesReport() {
             key={row.key}
             type="button"
             onClick={() => openFor(row, 1)}
-            className="rounded-[8px] border border-[#dbd8cc] bg-white p-3 text-left"
+            className={cn(t.mobileCard, 'text-left')}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -311,6 +311,17 @@ export default function CustomerUpdatesReport() {
             </div>
           </button>
         ))}
+        {/* The phone pages too, reading the same slice as the table. */}
+        {totalItems > 0 && (
+          <AdminPagination
+            label="customers"
+            pageSize={REPORT_PAGE_SIZE}
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        )}
       </div>
 
       {open && <UpdateModal state={open} setState={setOpen} onSend={send} from={from} to={to} />}

@@ -45,7 +45,8 @@ test("a cabinet group holds its doors and its kickboard, not just its carcass", 
   const groups = group(["oven-carcass", "oven-doors", "oven-kick"]);
   assert.equal(groups.length, 1, "one group, not three");
   assert.equal(groups[0].name, "Oven cabinet");
-  assert.match(groups[0].meta, /600W x 890H x 600D mm/);
+  // Height first, the way every size in the business is written.
+  assert.match(groups[0].meta, /890H x 600W x 600D mm/);
   assert.deepEqual(groups[0].rows.map((row) => row.itemId), ["oven-carcass", "oven-doors", "oven-kick"]);
 });
 

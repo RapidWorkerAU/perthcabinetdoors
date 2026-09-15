@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react'
 import DayBars, { type DayPoint } from './DayBars'
 import type { Detail } from './detail'
+import { tableStyles } from '@/components/ui/table-styles'
+import { cn } from '@/lib/utils'
 
 // THE WEBSITE, ON THE DASHBOARD.
 //
@@ -116,7 +118,7 @@ function Change({ value, invert = false }: { value: number | null; invert?: bool
 }
 
 const secs = (ms: number | null) => {
-  if (!ms || ms <= 0) return '—'
+  if (!ms || ms <= 0) return '-'
   const total = Math.round(ms / 1000)
   return total >= 60 ? `${Math.floor(total / 60)}m ${String(total % 60).padStart(2, '0')}s` : `${total}s`
 }
@@ -150,20 +152,23 @@ function ChartPanel({ title, note, points, colour, unit, foot }: {
         </button>
         {numbers && (
           <div className="mt-2 max-h-[200px] overflow-auto">
-            <table className="w-full border-collapse text-[11.5px]">
+            {/* Kept to 200px because it lives in a dashboard widget, not a
+                record page. The header is pinned so the column names stay in
+                view, and the padding stays compact so a row fits the small box. */}
+            <table className={tableStyles.table}>
               <thead>
                 <tr>
-                  <th className="border-b border-[#edf4eb] px-1 py-1 text-left font-semibold text-[#8b8a81]">Day</th>
-                  <th className="border-b border-[#edf4eb] px-1 py-1 text-right font-semibold text-[#8b8a81]">{unit || 'Count'}</th>
+                  <th className={cn(tableStyles.th, tableStyles.thSticky, 'px-2 py-[6px]')}>Day</th>
+                  <th className={cn(tableStyles.th, tableStyles.thSticky, 'px-2 py-[6px] text-right')}>{unit || 'Count'}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tableStyles.body}>
                 {points.map(point => (
                   <tr key={point.day}>
-                    <td className="border-b border-[#edf4eb] px-1 py-1 font-mono tabular-nums">
+                    <td className={cn(tableStyles.td, tableStyles.num, 'px-2 py-[6px]')}>
                       {new Date(`${point.day}T00:00:00Z`).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
                     </td>
-                    <td className="border-b border-[#edf4eb] px-1 py-1 text-right font-mono tabular-nums">{point.value}</td>
+                    <td className={cn(tableStyles.td, tableStyles.num, 'px-2 py-[6px] text-right')}>{point.value}</td>
                   </tr>
                 ))}
               </tbody>
@@ -315,7 +320,7 @@ export default function WebsitePanels({ site, detail }: { site: SiteStats; detai
           foot={
             <>
               {site.traffic.totals.pageViews.toLocaleString('en-AU')} page views,{' '}
-              {site.traffic.pagesPerVisit ?? '—'} pages a visit, median stay {secs(site.traffic.totals.medianDwellMs)}.
+              {site.traffic.pagesPerVisit ?? '-'} pages a visit, median stay {secs(site.traffic.totals.medianDwellMs)}.
               {site.traffic.totals.botViews > 0 && ` ${site.traffic.totals.botViews.toLocaleString('en-AU')} crawler views were left out.`}
             </>
           }

@@ -1,12 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import * as Popover from '@radix-ui/react-popover'
 import { formatMoney, ORDER_FILTER_STATUSES } from '../../../lib/pcd-quote-utils'
 import { AdminPagination, useAdminPagination } from '../_components/AdminPagination'
 import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
+import { tableStyles } from '@/components/ui/table-styles'
 import AdminLoading from '@/components/admin/AdminLoading'
 import { orderStage } from '../../../lib/pcd-order-stage'
 
@@ -41,6 +44,8 @@ interface Stage {
   why:         string
   overdue:     boolean
   overdueDays: number
+  // Where the job is up to underneath an issue. Only set on Rectify issues.
+  alongside?:  Stage
 }
 
 interface Order {
@@ -85,42 +90,121 @@ function getStatusPillClass(status: string) {
 // one row in the same colour read as one fact said twice.
 function getStageTone(tone: string) {
   if (tone === 'stop')  return 'bg-[#fef2f2] text-[#991b1b] border-[#fca5a5]'
+  // Orange, between the red of a problem and the amber of waiting: something
+  // was due and has not been marked as happening.
+  if (tone === 'late')  return 'bg-[#fff4eb] text-[#9a3f07] border-[#f6b98a]'
   if (tone === 'wait')  return 'bg-[#fffdf0] text-[#8a6d0b] border-[#e8d68f]'
   if (tone === 'next')  return 'bg-[#eff6ff] text-[#1e40af] border-[#bfdbfe]'
   if (tone === 'done')  return 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
   return 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'
 }
 
-// Overdue rides beside the stage rather than replacing it, because "overdue" on
-// its own does not tell you what to do about it, and both facts are true at the
-// same time.
+const STAGE_PILL = 'inline-flex items-center whitespace-nowrap px-2 py-[3px] rounded-full text-[11px] font-semibold border'
+
+interface PillFact {
+  label: string
+  tone:  string
+  why:   string
+}
+
+// Every fact about where the job is up to, most important first: a problem,
+// then what is happening to the job, then whether it is late. The first one is
+// the pill in the column; the rest wait behind it.
+function stagePills(stage: Stage): PillFact[] {
+  const pills: PillFact[] = [{ label: stage.label, tone: stage.tone, why: stage.why }]
+  if (stage.alongside) {
+    pills.push({ label: stage.alongside.label, tone: stage.alongside.tone, why: stage.alongside.why })
+  }
+  if (stage.overdue) {
+    const days = stage.overdueDays
+    pills.push({ label: 'Overdue', tone: 'stop', why: `Past its due date by ${days} ${days === 1 ? 'day' : 'days'}.` })
+  }
+  return pills
+}
+
+// ONE PILL, AND A COUNT OF WHAT IS BEHIND IT.
+//
+// Two or three pills side by side made this the widest column on the page, and
+// the column is scanned, not read. So it shows the one that matters most and a
+// quiet "+1" beside it. Hovering the cell opens a card with every pill on the
+// row and the sentence behind each, which is where the detail was always meant
+// to be read. On a phone, tapping the count opens the same card.
+//
+// The card stays open while the pointer crosses the gap into it, so it can be
+// read without a race. Clicks inside it stop at the card, because the whole row
+// is a link to the order.
 function StagePill({ stage }: { stage: Stage }) {
-  const days = stage.overdueDays
+  const [main, ...more] = stagePills(stage)
+  const [open, setOpen] = useState(false)
+  const closeTimer = useRef<number | undefined>(undefined)
+  const lastPointer = useRef('mouse')
+
+  if (!more.length) {
+    return <span title={main.why} className={cn(STAGE_PILL, getStageTone(main.tone))}>{main.label}</span>
+  }
+
+  const show = () => {
+    window.clearTimeout(closeTimer.current)
+    setOpen(true)
+  }
+  const hideSoon = () => {
+    window.clearTimeout(closeTimer.current)
+    closeTimer.current = window.setTimeout(() => setOpen(false), 120)
+  }
+  const onHoverStart = (event: React.PointerEvent) => { if (event.pointerType === 'mouse') show() }
+  const onHoverEnd = (event: React.PointerEvent) => { if (event.pointerType === 'mouse') hideSoon() }
+
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      <span
-        title={stage.why}
-        className={cn(
-          'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
-          getStageTone(stage.tone)
-        )}
-      >
-        {stage.label}
-      </span>
-      {/* NOTHING IN THIS CELL THAT IS NOT A PILL. The counts used to sit here
-          as loose grey text, which made the column read as two different kinds
-          of thing in one strip. The wording of the pill carries the stage, and
-          the exact number is in its tooltip where it does not compete with the
-          scan down the column. */}
-      {stage.overdue && (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Anchor asChild>
         <span
-          title={'Past its due date by ' + days + (days === 1 ? ' day.' : ' days.')}
-          className="inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border bg-[#fef2f2] text-[#991b1b] border-[#fca5a5]"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap"
+          onPointerEnter={onHoverStart}
+          onPointerLeave={onHoverEnd}
         >
-          Overdue
+          <span className={cn(STAGE_PILL, getStageTone(main.tone))}>{main.label}</span>
+          <Popover.Trigger asChild>
+            <button
+              type="button"
+              aria-label={`${more.length} more: ${more.map(pill => pill.label).join(', ')}`}
+              onPointerDown={event => { lastPointer.current = event.pointerType }}
+              onClick={event => {
+                event.stopPropagation()
+                // Already open from hovering. A click there means "keep it",
+                // not "close it".
+                if (open && lastPointer.current === 'mouse') event.preventDefault()
+              }}
+              className="rounded-[4px] px-0.5 text-[11px] font-semibold text-[#8b8a81] transition-colors hover:text-[#1a1a18] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6b9e61]"
+            >
+              +{more.length}
+            </button>
+          </Popover.Trigger>
         </span>
-      )}
-    </span>
+      </Popover.Anchor>
+      <Popover.Portal>
+        <Popover.Content
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          collisionPadding={12}
+          onOpenAutoFocus={event => event.preventDefault()}
+          onPointerEnter={onHoverStart}
+          onPointerLeave={onHoverEnd}
+          onClick={event => event.stopPropagation()}
+          className="z-50 w-[280px] rounded-[8px] border border-[#dbd8cc] bg-white p-3 shadow-[0_16px_40px_rgba(26,26,24,0.14)]"
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[#8b8a81]">Where it&apos;s up to</p>
+          <ul className="flex flex-col gap-2.5">
+            {[main, ...more].map(pill => (
+              <li key={pill.label}>
+                <span className={cn(STAGE_PILL, getStageTone(pill.tone))}>{pill.label}</span>
+                <p className="mt-1 text-[11.5px] leading-[1.45] text-[#5a5a52]">{pill.why}</p>
+              </li>
+            ))}
+          </ul>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   )
 }
 
@@ -141,7 +225,8 @@ export default function OrdersManager() {
   // shows a less specific stage rather than a confidently wrong one.
   const [openIssues,     setOpenIssues]     = useState<Record<string, number>>({})
   const [paymentsByOrder, setPaymentsByOrder] = useState<Record<string, Payment[]>>({})
-  const [loaded,         setLoaded]         = useState({ issues: false, payments: false })
+  const [installBooked,  setInstallBooked]  = useState<Record<string, boolean>>({})
+  const [loaded,         setLoaded]         = useState({ issues: false, payments: false, installs: false })
 
   const statusCounts = useMemo(() => {
     return orders.reduce<Record<string, number>>(
@@ -179,9 +264,10 @@ export default function OrdersManager() {
     return (order: Order): Stage => orderStage(order, order.pcd_order_line_items || [], {
       openIssues: loaded.issues ? (openIssues[order.id] || 0) : 0,
       payments:   loaded.payments ? (paymentsByOrder[order.id] || []) : null,
+      installBooked: loaded.installs ? Boolean(installBooked[order.id]) : false,
       today,
     }) as Stage
-  }, [openIssues, paymentsByOrder, loaded])
+  }, [openIssues, paymentsByOrder, installBooked, loaded])
 
   async function loadOrders() {
     setIsLoading(true)
@@ -192,7 +278,8 @@ export default function OrdersManager() {
       setOrders(payload.orders || [])
       setOpenIssues(payload.openIssues || {})
       setPaymentsByOrder(payload.paymentsByOrder || {})
-      setLoaded(payload.loaded || { issues: false, payments: false })
+      setInstallBooked(payload.installBooked || {})
+      setLoaded({ issues: false, payments: false, installs: false, ...(payload.loaded || {}) })
       if (payload.error) toast({ title: payload.error, variant: 'error' })
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : 'Could not load orders.', variant: 'error' })
@@ -202,6 +289,58 @@ export default function OrdersManager() {
   }
 
   useEffect(() => { loadOrders() }, [])
+
+  // Where it's up to sits next to Status on purpose. Status is what kind of
+  // record this is; the stage is what is actually happening to it, and reading
+  // them together is how you tell an active job being planned from an active
+  // job in the workshop.
+  const columns: AdminDataTableColumn<Order>[] = [
+    {
+      id: 'order',
+      header: 'Order',
+      className: 'font-medium',
+      cell: order => (
+        <span className="flex items-center gap-1.5">
+          {isNewOrder(order) && (
+            <span
+              className="inline-block w-[6px] h-[6px] rounded-full bg-[#6b9e61] flex-shrink-0"
+              title="New order"
+              aria-label="New order"
+            />
+          )}
+          {order.order_number}
+        </span>
+      ),
+    },
+    { id: 'customer', header: 'Customer', cell: order => order.customer_name || '-' },
+    { id: 'job',      header: 'Job',      cell: order => order.name || '-' },
+    { id: 'items',    header: 'Items',    cell: order => sortedItems(order).length },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: order => {
+        const status = order.status || 'active'
+        return (
+          <span className={cn(
+            'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
+            getStatusPillClass(status)
+          )}>
+            {formatAdminLabel(status)}
+          </span>
+        )
+      },
+    },
+    { id: 'stage', header: "Where it's up to", cell: order => <StagePill stage={stageOf(order)} /> },
+    { id: 'total', header: 'Total', className: tableStyles.num, cell: order => formatMoney(order.total_inc_gst, 'AUD') },
+    {
+      id: 'accepted',
+      header: 'Accepted',
+      className: 'whitespace-nowrap',
+      cell: order => order.accepted_at
+        ? formatDate(order.accepted_at)
+        : <span className="text-[#8b8a81] italic">Not yet</span>,
+    },
+  ]
 
   // First load owns the whole content area. A refresh with orders already on
   // screen leaves them there rather than blanking the page.
@@ -248,93 +387,30 @@ export default function OrdersManager() {
           Run <code className="font-mono text-[12px]">supabase/pcd_enquiries_quote_requests_orders_setup.sql</code> before orders can be listed.
         </div>
       )}
-      {/* Desktop table */}
-      <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        {/* Scrolls sideways rather than crushing the columns into the panel. */}
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-[13px]">
-            <thead>
-              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                {/* Where it's up to sits next to Status on purpose. Status is
-                    what kind of record this is; the stage is what is actually
-                    happening to it, and reading them together is how you tell
-                    an active job being planned from an active job in the
-                    workshop. */}
-                {['Order', 'Customer', 'Job', 'Items', 'Status', "Where it's up to", 'Total', 'Accepted'].map(col => (
-                  <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {!isLoading && !visibleOrders.length && (
-                <tr><td colSpan={8} className="py-12 text-center text-[13px] text-[#8b8a81]">No orders match this filter.</td></tr>
-              )}
-              {pageItems.map(order => {
-                const items  = sortedItems(order)
-                const status = order.status || 'active'
-                return (
-                  <tr
-                    key={order.id}
-                    className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                    onClick={() => router.push(`/admin/orders/${order.id}`)}
-                  >
-                    <td className="px-4 py-[11px] font-medium text-[#1a1a18]">
-                      <span className="flex items-center gap-1.5">
-                        {isNewOrder(order) && (
-                          <span
-                            className="inline-block w-[6px] h-[6px] rounded-full bg-[#6b9e61] flex-shrink-0"
-                            title="New order"
-                            aria-label="New order"
-                          />
-                        )}
-                        {order.order_number}
-                      </span>
-                    </td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{order.customer_name || '-'}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{order.name || '-'}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{items.length}</td>
-                    <td className="px-4 py-[11px]">
-                      <span className={cn(
-                        'inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border',
-                        getStatusPillClass(status)
-                      )}>
-                        {formatAdminLabel(status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-[11px]"><StagePill stage={stageOf(order)} /></td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(order.total_inc_gst, 'AUD')}</td>
-                    <td className="px-4 py-[11px] whitespace-nowrap">
-                      {order.accepted_at
-                        ? <span className="text-[#1a1a18]">{formatDate(order.accepted_at)}</span>
-                        : <span className="text-[#8b8a81] italic">Not yet</span>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-        <AdminPagination
-          label="orders"
-          page={page}
-          pageCount={pageCount}
-          totalItems={totalItems}
-          onPageChange={setPage}
-        />
-      </div>
-
-      {/* Mobile cards */}
-      <div className="md:hidden flex flex-col gap-3">
-        {!isLoading && !visibleOrders.length && (
-          <div className="py-12 text-center text-[13px] text-[#8b8a81]">No orders match this filter.</div>
-        )}
-        {pageItems.map(order => {
+      {/* The shared list table. Scrolls sideways rather than crushing the
+          columns into the panel, and becomes a card each below md. */}
+      <AdminDataTable<Order>
+        wide
+        rows={pageItems}
+        columns={columns}
+        getRowId={order => order.id}
+        getRowLabel={order => `order ${order.order_number || order.id}`}
+        onRowClick={order => router.push(`/admin/orders/${order.id}`)}
+        emptyTitle="No orders match this filter."
+        pagination={
+          <AdminPagination
+            label="orders"
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        }
+        mobileCard={order => {
           const items  = sortedItems(order)
           const status = order.status || 'active'
           return (
-            <article key={order.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+            <article className={tableStyles.mobileCard}>
               <div className="mb-3">
                 <p className="text-[11px] uppercase tracking-[0.07em] text-[#8b8a81] font-semibold mb-1">Order</p>
                 <p className="text-[15px] font-semibold text-[#1a1a18] flex items-center gap-1.5">
@@ -384,17 +460,8 @@ export default function OrdersManager() {
               </div>
             </article>
           )
-        })}
-        {totalItems > 0 && (
-          <AdminPagination
-            label="orders"
-            page={page}
-            pageCount={pageCount}
-            totalItems={totalItems}
-            onPageChange={setPage}
-          />
-        )}
-      </div>
+        }}
+      />
     </div>
   )
 }

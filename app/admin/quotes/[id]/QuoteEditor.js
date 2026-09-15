@@ -37,7 +37,6 @@ import { measuredQuoteLine } from "../../../../lib/pcd-site-measure";
 import { BOARD_ORDER_DEFAULTS } from "../../../../lib/pcd-board-order";
 import {
   BANDED_EDGES,
-  GRAIN_DIRECTIONS,
   HOLE_TYPES,
   SUPPLIED_BY,
   bandedEdgesText,
@@ -70,6 +69,8 @@ import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import AdminLoading from "@/components/admin/AdminLoading";
+import { tableStyles } from "@/components/ui/table-styles";
+import { cn } from "@/lib/utils";
 import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
 import workflowStyles from "../../_components/admin-workflow.module.css";
@@ -569,12 +570,6 @@ function hasHingeConfig(line) {
 // and compact laminate is solid through. The same rule the saver enforces.
 function takesBanding(line) {
   return String(line?.material || "").trim().toLowerCase() === "decorative board";
-}
-
-// A board line, as opposed to hardware, a benchtop or a cabinet: the lines
-// that have a grain to run one way or the other.
-function hasGrain(line) {
-  return Boolean(line?.material) && !["Hardware", "Benchtop", BASE_CABINET_TYPE].includes(line?.product_type);
 }
 
 function hingeConfigLines(line) {
@@ -3002,37 +2997,40 @@ export default function QuoteEditor({ quoteId }) {
         {cabinets.length ? (
           <>
             {/* Desktop table */}
-            <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-              <div className="max-h-[calc(100vh-260px)] overflow-auto">
-                <table className="w-full text-[13px]">
+            {/* A SCROLL table: the cabinets inside one quote, header pinned.
+                The rows do nothing on click (Configure is in the menu), so no
+                hover. The # cell keeps its grey, a row number is not content. */}
+            <div className={`${tableStyles.desktopOnly} ${tableStyles.card}`}>
+              <div className={tableStyles.scrollBox}>
+                <table className={tableStyles.table}>
                   <thead>
-                    <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                    <tr>
                       {['#', 'Cabinet', 'Material', 'Colour', 'Qty', 'Configuration', 'Total ex GST', 'Actions'].map(h => (
-                        <th key={h} className="sticky top-0 z-10 bg-[#f5f8f4] px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{h}</th>
+                        <th key={h} className={`${tableStyles.th} ${tableStyles.thSticky}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={tableStyles.body}>
                     {cabinets.map(({ line, index }) => {
                       const config = line.cabinet_config;
                       const isConfigured = Boolean(config?.calculated_cut_list?.length);
                       return (
-                        <tr key={line.id || index} className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0">
-                          <td className="px-4 py-[11px] text-[#8b8a81] text-[12px] font-medium">{index + 1}</td>
-                          <td className="px-4 py-[11px]">
+                        <tr key={line.id || index}>
+                          <td className={cn(tableStyles.td, "text-[12px] font-medium text-[#8b8a81]")}>{index + 1}</td>
+                          <td className={tableStyles.td}>
                             <span className="text-[13px] font-medium text-[#1a1a18] block">{config?.label || line.product_name || "Base cabinet"}</span>
                             <span className="text-[11px] text-[#8b8a81] block mt-[1px]">{line.description || "Configure cabinet dimensions, cut list, pricing and schematic."}</span>
                           </td>
-                          <td className="px-4 py-[11px] text-[#1a1a18]">{lineValue(line.material)}</td>
-                          <td className="px-4 py-[11px] text-[#1a1a18]">{lineValue(line.colour)}</td>
-                          <td className="px-4 py-[11px] text-[#1a1a18]">{line.qty || 1}</td>
-                          <td className="px-4 py-[11px]">
+                          <td className={tableStyles.td}>{lineValue(line.material)}</td>
+                          <td className={tableStyles.td}>{lineValue(line.colour)}</td>
+                          <td className={tableStyles.td}>{line.qty || 1}</td>
+                          <td className={tableStyles.td}>
                             <span className={`inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border ${isConfigured ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]' : 'bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]'}`}>
                               {isConfigured ? "Configured" : "Needs configuration"}
                             </span>
                           </td>
-                          <td className="px-4 py-[11px] text-[#1a1a18] font-mono">{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
-                          <td className="px-4 py-[11px]">
+                          <td className={cn(tableStyles.td, tableStyles.num)}>{formatMoney(line.line_total_ex_gst || 0, form.currency)}</td>
+                          <td className={tableStyles.td}>
                             <ActionMenu label={`Open actions for ${config?.label || line.product_name || "base cabinet"}`}>
                               <ActionMenuItem icon={<IconSettings size={14} />} onClick={() => setActiveCabinetLineIndex(index)}>
                                 Configure
@@ -3463,25 +3461,11 @@ export default function QuoteEditor({ quoteId }) {
                               {line.colour || <span className="text-[#c5cdd8]">-</span>}
                             </span>
                           )}
-
-                          {/* WHICH WAY THE GRAIN RUNS, under the colour it belongs
-                              to. Blank means nobody said; Standard means somebody
-                              did and chose the way we always run it. */}
-                          {hasGrain(line) && !cabinetOwnsBoard ? (
-                            isEditable ? (
-                              <select
-                                aria-label={`Grain direction, line ${index + 1}`}
-                                className="mt-[3px] h-[20px] w-full rounded-[3px] border border-[#a8c5a0] bg-white px-[4px] text-[10px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
-                                value={line.grain_direction || ""}
-                                onChange={e => updateProductLine(index, { grain_direction: e.target.value })}
-                              >
-                                <option value="">Grain</option>
-                                {GRAIN_DIRECTIONS.map((grain) => <option key={grain}>{grain}</option>)}
-                              </select>
-                            ) : line.grain_direction ? (
-                              <span className="mt-[2px] block text-[10px] text-[#8b8a81]">Grain: {line.grain_direction}</span>
-                            ) : null
-                          ) : null}
+                          {/* No grain control here, on purpose. Every job runs the
+                              standard direction; a customer who asks otherwise is
+                              written in that line's notes. The Board to Order tab
+                              holds whether a board has a grain and what Standard
+                              means on it. */}
                         </td>
 
                         {/* Thickness */}
@@ -5403,19 +5387,6 @@ export default function QuoteEditor({ quoteId }) {
                             <span>{bandedEdgesText(line.banded_edges) || 'Set banded edges'}</span>
                             <span>open</span>
                           </button>
-                        </div>
-                      )}
-                      {hasGrain(line) && (
-                        <div className="col-span-2">
-                          <span className={mfl}>Grain direction</span>
-                          <select
-                            className="w-full h-[44px] rounded-[6px] border border-[#a8c5a0] bg-white px-3 text-[14px] text-[#1a1a18] focus:outline-none focus:border-[#6b9e61]"
-                            value={line.grain_direction || ""}
-                            onChange={e => updateProductLine(idx, { grain_direction: e.target.value })}
-                          >
-                            <option value="">Not recorded</option>
-                            {GRAIN_DIRECTIONS.map((grain) => <option key={grain}>{grain}</option>)}
-                          </select>
                         </div>
                       )}
                       {isHardware && (

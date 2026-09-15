@@ -156,7 +156,9 @@ const ADDRESS_SCREENS = [
   // hard coded pricing kept turning it up as though it were live.
   "app/admin/orders/[id]/OrderDetail.js",
   "app/admin/customers/CustomersManager.tsx",
-  "app/admin/design/_components/ImportModal.js",
+  // ImportModal was on this list and is gone: Import to Quote was removed once
+  // Stage Quote had been trusted on real jobs. StageQuoteModal is the screen
+  // that creates a quote from a design now, and it is checked below.
 ];
 
 test("no screen asks for the address as one free text box any more", () => {

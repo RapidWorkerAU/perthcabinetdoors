@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/Button'
 import { StatusPill } from '@/components/ui/StatusPill'
 import AdminLoading from '@/components/admin/AdminLoading'
 import { AdminPagination, useAdminPagination, REPORT_PAGE_SIZE } from '../../_components/AdminPagination'
+import { cn } from '@/lib/utils'
+import { tableStyles as t } from '@/components/ui/table-styles'
 
 // LEAD CONVERSION.
 //
@@ -336,39 +338,39 @@ function ExpiringList({ quotes }) {
         ))}
       </div>
 
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[680px] text-[13px]">
+      {/* The literal hidden and md:block stay in this file because
+          reporting-mobile.test reads them from the source. No row hover: only
+          the quote number is a link, so the row itself goes nowhere. */}
+      <div className={`hidden md:block ${t.sideScroll}`}>
+        <table className={cn(t.table, 'min-w-[680px]')}>
           <thead>
-            <tr className="border-b border-[#edf4eb]">
+            <tr>
               {['Quote', 'Customer', 'Expires', 'Reminded', 'Left', 'Value'].map((column, index) => (
-                <th
-                  key={column}
-                  className={`px-4 py-[7px] text-[11px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] ${index > 3 ? 'text-right' : 'text-left'}`}
-                >
+                <th key={column} className={cn(t.th, index > 3 && 'text-right')}>
                   {column}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className={t.body}>
             {pageItems.map(quote => (
-              <tr key={quote.id} className="border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4]">
-                <td className="px-4 py-[9px]">
+              <tr key={quote.id}>
+                <td className={t.td}>
                   <Link href={`/admin/quotes/${quote.id}`} className="font-mono text-[12px] text-[#1a1a18] hover:underline">
                     {quote.number}
                   </Link>
                 </td>
-                <td className="px-4 py-[9px] text-[#1a1a18]">{quote.customer || '-'}</td>
-                <td className="whitespace-nowrap px-4 py-[9px] text-[#5a5a52]">
+                <td className={t.td}>{quote.customer || '-'}</td>
+                <td className={cn(t.td, 'whitespace-nowrap text-[#5a5a52]')}>
                   {quote.expiresAt
                     ? new Date(quote.expiresAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
                     : '-'}
                 </td>
-                <td className="px-4 py-[9px] text-[#8b8a81]">{quote.warnedAt ? 'Yes' : 'Not yet'}</td>
-                <td className={`px-4 py-[9px] text-right font-semibold tabular-nums ${tone(quote.daysLeft)}`}>
+                <td className={cn(t.td, 'text-[#8b8a81]')}>{quote.warnedAt ? 'Yes' : 'Not yet'}</td>
+                <td className={cn(t.td, t.num, 'text-right font-semibold', tone(quote.daysLeft))}>
                   {dayLabel(quote.daysLeft)}
                 </td>
-                <td className="px-4 py-[9px] text-right tabular-nums text-[#1a1a18]">{money(quote.total)}</td>
+                <td className={cn(t.td, t.num, 'text-right')}>{money(quote.total)}</td>
               </tr>
             ))}
           </tbody>
@@ -391,7 +393,7 @@ function QuoteList({ quotes, view }) {
   // after switching to Converted shows a list nobody asked for.
   const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(quotes, view, REPORT_PAGE_SIZE)
 
-  if (!quotes.length) return <p className="px-4 py-10 text-center text-[13px] text-[#8b8a81]">Nothing in here.</p>
+  if (!quotes.length) return <p className={t.empty}>Nothing in here.</p>
 
   return (
     <>
@@ -427,33 +429,35 @@ function QuoteList({ quotes, view }) {
       ))}
     </div>
 
-    <div className="hidden overflow-x-auto md:block">
-      <table className="w-full min-w-[620px] text-[13px]">
+    {/* Same as the expiring list: the source literals are for the test, and
+        the row has no hover because only its quote number is a link. */}
+    <div className={`hidden md:block ${t.sideScroll}`}>
+      <table className={cn(t.table, 'min-w-[620px]')}>
         <thead>
-          <tr className="border-b border-[#edf4eb]">
+          <tr>
             {['Quote', 'Customer', 'Sent', 'Age', 'Value'].map((column, index) => (
-              <th key={column} className={`px-4 py-[7px] text-[11px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] ${index > 2 ? 'text-right' : 'text-left'}`}>
+              <th key={column} className={cn(t.th, index > 2 && 'text-right')}>
                 {column}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className={t.body}>
           {pageItems.map(quote => (
-            <tr key={quote.id} className="border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4]">
-              <td className="px-4 py-[9px]">
+            <tr key={quote.id}>
+              <td className={t.td}>
                 <Link href={`/admin/quotes/${quote.id}`} className="font-mono text-[12px] text-[#1a1a18] hover:underline">
                   {quote.number}
                 </Link>
               </td>
-              <td className="px-4 py-[9px] text-[#1a1a18]">{quote.customer || '-'}</td>
-              <td className="px-4 py-[9px] text-[#5a5a52] whitespace-nowrap">
+              <td className={t.td}>{quote.customer || '-'}</td>
+              <td className={cn(t.td, 'whitespace-nowrap text-[#5a5a52]')}>
                 {quote.sentAt ? new Date(quote.sentAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : 'Never'}
               </td>
-              <td className="px-4 py-[9px] text-right tabular-nums text-[#5a5a52]">
+              <td className={cn(t.td, t.num, 'text-right text-[#5a5a52]')}>
                 {quote.age === null ? '-' : `${quote.age}d`}
               </td>
-              <td className="px-4 py-[9px] text-right tabular-nums text-[#1a1a18]">{money(quote.total)}</td>
+              <td className={cn(t.td, t.num, 'text-right')}>{money(quote.total)}</td>
             </tr>
           ))}
         </tbody>

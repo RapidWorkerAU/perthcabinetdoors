@@ -1321,24 +1321,49 @@ function HardwareField({ type, label, value, onPick }) {
 // line note and the cut list can say what it is without a lookup. Same pair an
 // accessory keeps.
 function RunnerField({ value, onPick }) {
-  const [items, setItems] = useState(_hardwareCache.drawer_runner || []);
+  const [items, setItems] = useState(_hardwareCache.drawer_runner || null);
+  const [failed, setFailed] = useState(false);
+
   useEffect(() => {
     if (_hardwareCache.drawer_runner) return;
     let alive = true;
     fetch(`/api/admin/hardware?type=drawer_runner`)
       .then((r) => r.json())
       .then((d) => {
-        if (alive && d?.ok) { _hardwareCache.drawer_runner = d.hardware || []; setItems(_hardwareCache.drawer_runner); }
+        if (!alive) return;
+        if (!d?.ok) throw new Error(d?.error || "could not be read");
+        _hardwareCache.drawer_runner = d.hardware || [];
+        setItems(_hardwareCache.drawer_runner);
       })
-      .catch(() => {});
+      // NOT SWALLOWED. The picker this was copied from ends in an empty catch,
+      // and an empty catch here means a failed read looks exactly like a
+      // library with no runners in it: one grey line and no way to tell which.
+      // Somebody looking for the runner they added would be told nothing at all.
+      .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, []);
 
-  const active = items.filter((m) => m.is_active);
+  const loading = items === null && !failed;
+  const active = (items || []).filter((m) => m.is_active);
   // A runner picked before it was switched off, or before this list loaded,
   // stays in its own dropdown. Dropping it would silently unpick the runner on
   // a design somebody has already sent.
   const held = value?.id && !active.some((m) => m.id === value.id) ? value : null;
+
+  // WHAT THE UNPICKED STATE SAYS.
+  //
+  // It said "Not supplied by us", copied from the handle picker, where that is
+  // a real and common answer: plenty of customers supply their own handles.
+  // On a drawer we are building it is almost never the answer, and it reads as
+  // "there is nothing here to choose" rather than "nothing chosen yet", which
+  // is exactly how somebody looking for this field concluded it was missing.
+  const placeholder = loading
+    ? "Loading runners..."
+    : failed
+      ? "Could not load the runner list"
+      : active.length
+        ? "Select a runner"
+        : "No drawer runners in the hardware library";
 
   return (
     <label className={styles.fieldLabel}>
@@ -1348,17 +1373,29 @@ function RunnerField({ value, onPick }) {
         value={value?.id || ""}
         onChange={(e) => {
           const id = e.target.value;
-          const row = items.find((x) => x.id === id);
+          const row = (items || []).find((x) => x.id === id);
           onPick(id ? { runner_hardware_id: id, runner_name: row ? row.name : (held?.name || "") } : { runner_hardware_id: "", runner_name: "" });
         }}
       >
-        <option value="">Not supplied by us</option>
+        <option value="">{placeholder}</option>
         {active.map((m) => {
           const meta = hardwareMetaLabel(m);
           return <option key={m.id} value={m.id}>{meta ? `${m.name} — ${meta}` : m.name}</option>;
         })}
         {held && <option value={held.id}>{held.name || "Runner no longer in the library"}</option>}
       </select>
+      {/* A failure and an empty library are different problems with different
+          fixes, so they are told apart rather than both showing one grey line. */}
+      {failed && (
+        <span style={{ fontSize: 10, color: "var(--dt-danger, #b42318)", lineHeight: 1.4 }}>
+          The hardware library could not be read. The runner cannot be set until it can.
+        </span>
+      )}
+      {!failed && !loading && !active.length && (
+        <span style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", lineHeight: 1.4 }}>
+          Add one under Hardware in the admin, typed Drawer runner, and it appears here.
+        </span>
+      )}
     </label>
   );
 }

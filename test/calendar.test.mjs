@@ -749,13 +749,14 @@ test("a dropdown inside a design modal opens in front of it", () => {
   // link a design to an existing quote looked broken.
   //
   // The same thing had already been hit and fixed in ImportModal, which is why
-  // this checks both rather than the one that was reported.
+  // this used to check both. ImportModal went with Import to Quote, so the one
+  // modal that still creates a quote from a design is the one checked.
   const css = readFileSync(new URL("../app/admin/design/design.module.css", import.meta.url), "utf8");
   const box = css.slice(css.indexOf(".modalBox {"), css.indexOf("}", css.indexOf(".modalBox {")));
   const modalZ = Number(box.match(/z-index:\s*(\d+)/)?.[1]);
   assert.ok(modalZ > 60, "the modal really does sit above the dropdown's default");
 
-  ["StageQuoteModal", "ImportModal"].forEach((name) => {
+  ["StageQuoteModal"].forEach((name) => {
     const source = readFileSync(
       new URL(`../app/admin/design/_components/${name}.js`, import.meta.url), "utf8"
     );

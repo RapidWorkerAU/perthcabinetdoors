@@ -31,7 +31,7 @@ export async function GET() {
     const orders = data || [];
     const orderIds = orders.map((order) => order.id).filter(Boolean);
 
-    const [issues, payments] = orderIds.length
+    const [issues, payments, installs] = orderIds.length
       ? await Promise.all([
           context.supabase
             .from("pcd_order_issues")
@@ -42,8 +42,22 @@ export async function GET() {
             .from("pcd_order_payments")
             .select("id, order_id, payment_type, amount, is_paid")
             .in("order_id", orderIds),
+          // Nothing on an order says whether we install it. An install on the
+          // calendar does, and it is what turns "Ready to deliver" into "Ready
+          // to install".
+          context.supabase
+            .from("pcd_calendar_events")
+            .select("order_id")
+            .eq("kind", "install")
+            .neq("status", "cancelled")
+            .in("order_id", orderIds),
         ])
-      : [{ data: [] }, { data: [] }];
+      : [{ data: [] }, { data: [] }, { data: [] }];
+
+    const installBooked = {};
+    (installs?.data || []).forEach((event) => {
+      if (event.order_id) installBooked[event.order_id] = true;
+    });
 
     // Counted per order here rather than on the client, so the page receives a
     // number instead of a list it has to group itself.
@@ -69,13 +83,15 @@ export async function GET() {
       orders,
       openIssues,
       paymentsByOrder,
-      // Which of the two extra reads actually worked. The page shows the
-      // stages that depend on a source only when that source loaded, rather
-      // than reporting "finished and paid for" because the payments query
-      // errored and every job looked square.
+      installBooked,
+      // Which of the extra reads actually worked. The page shows the stages
+      // that depend on a source only when that source loaded, rather than
+      // reporting "finished and paid for" because the payments query errored
+      // and every job looked square.
       loaded: {
         issues: !issues?.error,
         payments: !payments?.error,
+        installs: !installs?.error,
       },
     });
   } catch (error) {
@@ -84,7 +100,8 @@ export async function GET() {
       orders: [],
       openIssues: {},
       paymentsByOrder: {},
-      loaded: { issues: false, payments: false },
+      installBooked: {},
+      loaded: { issues: false, payments: false, installs: false },
       setupRequired: true,
       error: error?.message || "Could not load orders.",
     });

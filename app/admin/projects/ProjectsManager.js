@@ -11,6 +11,8 @@ import { BulkActionBar } from "@/components/ui/BulkActionBar";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import AdminLoading from "@/components/admin/AdminLoading";
+import { tableStyles as t } from "@/components/ui/table-styles";
+import { cn } from "@/lib/utils";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -120,6 +122,57 @@ export default function ProjectsManager() {
     });
   }
 
+  function statusPill(project) {
+    const tone = project.status === "complete"
+      ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
+      : (project.status === "cancelled" || project.status === "on_hold")
+      ? "bg-[#fef2f2] text-[#b91c1c] border-[#fca5a5]"
+      : "bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]";
+    return (
+      <span className={`inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border ${tone}`}>
+        {formatAdminLabel(project.status || "active")}
+      </span>
+    );
+  }
+
+  function progressBar(project) {
+    const progress = getProgress(project);
+    return (
+      <div className="flex items-center gap-2">
+        <div className="w-[80px] h-[8px] rounded-full bg-[#eeecea] overflow-hidden flex-shrink-0" aria-hidden="true">
+          <span className="block h-full bg-[#1a2e20] rounded-full" style={{ width: `${progress.percent}%` }} />
+        </div>
+        <span className="text-[12px] text-[#5a5a52] whitespace-nowrap">{progress.completeCount}/{progress.totalCount} complete</span>
+      </div>
+    );
+  }
+
+  // One menu for the table and the phone card, so they cannot offer different things.
+  function actionMenu(project) {
+    return (
+      <ActionMenu label={`Open actions for project ${project.project_number || project.id}`}>
+        <ActionMenuItem variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([project.id])}>
+          Delete
+        </ActionMenuItem>
+      </ActionMenu>
+    );
+  }
+
+  function selectBox(project) {
+    return (
+      <input
+        type="checkbox"
+        checked={selectedProjectIds.includes(project.id)}
+        onChange={() => toggleSelectedProject(project.id)}
+        aria-label={`Select project ${project.project_number || project.id}`}
+        className={t.checkbox}
+      />
+    );
+  }
+
+  const emptyMessage = "No projects yet. Approved quotes will create projects automatically.";
+  const showEmpty = !projects.length && !isLoading;
+
   // First load owns the whole content area. A refresh with projects already on
   // screen leaves them there rather than blanking the page.
   if (isLoading && !projects.length) {
@@ -153,86 +206,55 @@ export default function ProjectsManager() {
         <div className={styles.inlineNotice}>Install `supabase/quote_project_workflow_setup.sql` before projects can be listed.</div>
       ) : null}
 
-      <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        <div className="overflow-x-auto">
-          {/* min-w keeps the columns readable: the wrapper scrolls instead of
-              the browser wrapping every cell onto two or three lines. */}
-          <table className="w-full min-w-[1040px] text-[13px] border-collapse">
+      {/* Built from the shared tokens rather than AdminDataTable, because the
+          totals sit in this page's own toolbar above the card. */}
+      <div className={cn(t.card, t.desktopOnly)}>
+        <div className={t.sideScroll}>
+          <table className={t.tableWide}>
             <thead>
-              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                <th className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] w-[40px]">
+              <tr>
+                <th className={cn(t.th, "w-[40px]")}>
                   <input
                     type="checkbox"
                     checked={pageItems.length > 0 && pageItems.every((project) => selectedProjectIds.includes(project.id))}
                     onChange={(event) => toggleSelectedProjectPage(event.target.checked)}
                     aria-label="Select all visible projects"
+                    className={t.checkbox}
                   />
                 </th>
                 {['Project', 'Customer', 'Job', 'Progress', 'Status', 'Total', 'Accepted', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{h}</th>
+                  <th key={h} className={t.th}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {pageItems.map((project) => {
-                const progress = getProgress(project);
-                const statusPill = project.status === "complete"
-                  ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
-                  : (project.status === "cancelled" || project.status === "on_hold")
-                  ? "bg-[#fef2f2] text-[#b91c1c] border-[#fca5a5]"
-                  : "bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]";
-
-                return (
-                  <tr
-                    key={project.id}
-                    className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                    onClick={() => router.push(`/admin/projects/${project.id}`)}
-                  >
-                    <td className="px-4 py-[11px]" onClick={(event) => event.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedProjectIds.includes(project.id)}
-                        onChange={() => toggleSelectedProject(project.id)}
-                        aria-label={`Select project ${project.project_number || project.id}`}
-                      />
-                    </td>
-                    <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{project.project_number}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{project.customer_name || "-"}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{project.name || "-"}</td>
-                    <td className="px-4 py-[11px]">
-                      <div className="flex items-center gap-2">
-                        <div className="w-[80px] h-[8px] rounded-full bg-[#eeecea] overflow-hidden flex-shrink-0" aria-hidden="true">
-                          <span className="block h-full bg-[#1a2e20] rounded-full" style={{ width: `${progress.percent}%` }} />
-                        </div>
-                        <span className="text-[12px] text-[#5a5a52] whitespace-nowrap">{progress.completeCount}/{progress.totalCount} complete</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-[11px]">
-                      <span className={`inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border ${statusPill}`}>
-                        {formatAdminLabel(project.status || "active")}
-                      </span>
-                    </td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(project.total_inc_gst, "AUD")}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{formatDate(project.accepted_at || project.created_at)}</td>
-                    <td className="px-4 py-[11px]" onClick={(event) => event.stopPropagation()}>
-                      <ActionMenu label={`Open actions for project ${project.project_number || project.id}`}>
-                        <ActionMenuItem variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([project.id])}>
-                          Delete
-                        </ActionMenuItem>
-                      </ActionMenu>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {!projects.length && !isLoading ? (
-                <tr>
-                  <td colSpan="9" className="px-4 py-[20px] text-center text-[#8b8a81] text-[13px]">
-                    No projects yet. Approved quotes will create projects automatically.
+            <tbody className={t.body}>
+              {pageItems.map((project) => (
+                <tr
+                  key={project.id}
+                  className={t.rowClickable}
+                  onClick={() => router.push(`/admin/projects/${project.id}`)}
+                >
+                  <td className={t.td} onClick={(event) => event.stopPropagation()}>
+                    {selectBox(project)}
+                  </td>
+                  <td className={cn(t.td, "font-medium")}>{project.project_number}</td>
+                  <td className={t.td}>{project.customer_name || "-"}</td>
+                  <td className={t.td}>{project.name || "-"}</td>
+                  <td className={t.td}>{progressBar(project)}</td>
+                  <td className={t.td}>{statusPill(project)}</td>
+                  <td className={cn(t.td, t.num)}>{formatMoney(project.total_inc_gst, "AUD")}</td>
+                  <td className={t.td}>{formatDate(project.accepted_at || project.created_at)}</td>
+                  <td className={t.td} onClick={(event) => event.stopPropagation()}>
+                    {actionMenu(project)}
                   </td>
                 </tr>
-              ) : null}
+              ))}
 
+              {showEmpty ? (
+                <tr>
+                  <td colSpan="9" className={t.empty}>{emptyMessage}</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -243,6 +265,59 @@ export default function ProjectsManager() {
           totalItems={totalItems}
           onPageChange={setPage}
         />
+      </div>
+
+      {/* Below md the rows become cards. The project number opens the project, as the row does. */}
+      <div className={t.mobileList}>
+        {showEmpty ? <div className={cn(t.card, t.empty)}>{emptyMessage}</div> : null}
+        {pageItems.map((project) => (
+          <article key={project.id} className={t.mobileCard}>
+            <div className="flex items-start gap-3">
+              {selectBox(project)}
+              <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/admin/projects/${project.id}`)}
+                  className="text-left text-[14px] font-semibold text-[#1a1a18]"
+                >
+                  {project.project_number}
+                </button>
+                <p className="text-[12px] text-[#5a5a52]">{project.customer_name || "-"}</p>
+              </div>
+              {statusPill(project)}
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+              <div className="col-span-2">
+                <dt className="text-[#8b8a81]">Job</dt>
+                <dd className="text-[#1a1a18]">{project.name || "-"}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-[#8b8a81]">Progress</dt>
+                <dd>{progressBar(project)}</dd>
+              </div>
+              <div>
+                <dt className="text-[#8b8a81]">Total</dt>
+                <dd className={cn(t.num, "text-[#1a1a18]")}>{formatMoney(project.total_inc_gst, "AUD")}</dd>
+              </div>
+              <div>
+                <dt className="text-[#8b8a81]">Accepted</dt>
+                <dd className="text-[#1a1a18]">{formatDate(project.accepted_at || project.created_at)}</dd>
+              </div>
+            </dl>
+            <div className="mt-3 flex items-center justify-end border-t border-[#edf4eb] pt-3">
+              {actionMenu(project)}
+            </div>
+          </article>
+        ))}
+        {projects.length ? (
+          <AdminPagination
+            label="projects"
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        ) : null}
       </div>
 
       <ConfirmModal

@@ -42,6 +42,8 @@ import {
   money,
 } from '../../../lib/pcd-financials'
 import { settlementMethodLabel } from '../../../lib/pcd-payment-settlement'
+import { cn } from '@/lib/utils'
+import { tableStyles as t } from '@/components/ui/table-styles'
 
 type Payment = {
   id: string
@@ -77,9 +79,13 @@ interface Props {
 }
 
 const CARD = 'bg-white border border-[#dbd8cc] rounded-[10px]'
-const TH = 'text-left text-[10px] font-semibold uppercase tracking-[0.04em] text-[#8b8a81] px-3 py-2 border-b border-[#dbd8cc] whitespace-nowrap'
-const TD = 'px-3 py-2 text-[12px] text-[#1a1a18] border-b border-black/5 whitespace-nowrap'
-const NUM = 'font-mono tabular-nums'
+// The same ledger look as the Work tab, from the shared table tokens, and
+// unpaginated for the same reason: the totals row adds up every row shown.
+const TH = t.th
+const TD = cn(t.td, 'whitespace-nowrap')
+const NUM = t.num
+// The totals row: a cell like the rest, with its line above rather than below.
+const FOOT = cn(t.td, 'whitespace-nowrap border-b-0 border-t border-[#dbd8cc] font-semibold')
 
 function money2(value: number): string {
   return Number(value || 0).toLocaleString('en-AU', {
@@ -235,7 +241,7 @@ export default function CashReceivedPanel({
       </div>
 
       {/* ── The ledger ── */}
-      <div className={`${CARD} overflow-hidden`}>
+      <div className={t.card}>
 
         {/* Month by month, so a quarter can be read off for a BAS without
             exporting anything. Only months with movement get a column. */}
@@ -278,7 +284,7 @@ export default function CashReceivedPanel({
         </div>
 
         {shown.length === 0 ? (
-          <p className="px-4 py-8 text-center text-[12px] italic text-[#8b8a81]">
+          <p className={t.empty}>
             {banked.length === 0
               ? `No money was banked in ${periodLabel.toLowerCase()}.`
               : 'Nothing matches that search.'}
@@ -287,7 +293,7 @@ export default function CashReceivedPanel({
           <>
             {/* Desktop */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className={t.table}>
                 <thead>
                   <tr>
                     <th className={TH}>Paid</th>
@@ -296,30 +302,32 @@ export default function CashReceivedPanel({
                     <th className={TH}>What for</th>
                     <th className={TH}>How</th>
                     <th className={TH}>Reference</th>
-                    <th className={`${TH} text-right`}>Amount</th>
+                    <th className={cn(TH, 'text-right')}>Amount</th>
                   </tr>
                 </thead>
-                <tbody>
+                {/* No row hover: only the order number is a link. A refund keeps
+                    its red tint so money going out is seen at a glance. */}
+                <tbody className={t.body}>
                   {shown.map(row => (
-                    <tr key={row.id} className={row.isRefund ? 'bg-[#fef7f6] hover:bg-[#fdeeec]' : 'hover:bg-[#faf9f5]'}>
-                      <td className={`${TD} text-[#5a5a52]`}>{dateLabel(row.on)}</td>
+                    <tr key={row.id} className={row.isRefund ? 'bg-[#fef7f6]' : undefined}>
+                      <td className={cn(TD, 'text-[#5a5a52]')}>{dateLabel(row.on)}</td>
                       <td className={TD}>
                         {row.orderId
                           ? <Link href={`/admin/orders/${row.orderId}`} className="font-medium text-[#2d5e28] hover:underline">{row.orderNumber || 'Order'}</Link>
                           : <span className="text-[#8b8a81]">·</span>}
                       </td>
-                      <td className={`${TD} text-[#5a5a52]`}>{row.customerName || '·'}</td>
+                      <td className={cn(TD, 'text-[#5a5a52]')}>{row.customerName || '·'}</td>
                       <td className={TD}>
                         {PAYMENT_TYPE_LABELS[row.payment_type] || 'Other'}
                         {(row.order_status === 'cancelled' || row.order_status === 'archived') && (
                           <span className="ml-1.5 text-[10px] text-[#8a6d0b]">{row.order_status === 'archived' ? 'archived' : 'cancelled'}</span>
                         )}
                       </td>
-                      <td className={`${TD} text-[#5a5a52]`}>{methodLabel(row.method)}</td>
-                      <td className={`${TD} ${NUM} text-[11px] text-[#8b8a81]`}>
+                      <td className={cn(TD, 'text-[#5a5a52]')}>{methodLabel(row.method)}</td>
+                      <td className={cn(TD, NUM, 'text-[11px] text-[#8b8a81]')}>
                         {row.settlement_reference || row.receipt_number || '·'}
                       </td>
-                      <td className={`${TD} text-right ${NUM} ${row.isRefund ? 'text-[#a32b21]' : 'text-[#1a1a18]'}`}>
+                      <td className={cn(TD, NUM, 'text-right', row.isRefund && 'text-[#a32b21]')}>
                         {money2(row.amount)}
                       </td>
                     </tr>
@@ -327,11 +335,11 @@ export default function CashReceivedPanel({
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td className="px-3 py-2 text-[11px] font-semibold text-[#8b8a81]" colSpan={6}>
+                    <td className={cn(FOOT, 'text-[12px] text-[#8b8a81]')} colSpan={6}>
                       {shown.length}{shown.length !== banked.length ? ` of ${banked.length}` : ''}{' '}
                       payment{shown.length === 1 ? '' : 's'} · {periodLabel.toLowerCase()}
                     </td>
-                    <td className={`px-3 py-2 text-right text-[13px] font-semibold ${NUM} text-[#1a1a18]`}>{money2(shownNet)}</td>
+                    <td className={cn(FOOT, NUM, 'text-right')}>{money2(shownNet)}</td>
                   </tr>
                 </tfoot>
               </table>

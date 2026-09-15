@@ -6,7 +6,7 @@ import { addressColumns, addressFromRecord } from "../../../../lib/pcd-contact-d
 import AddressFields from "../../../../components/admin/AddressFields";
 import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNote";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { IconArrowLeft, IconChevronRight, IconMessage, IconSettings } from "@tabler/icons-react";
+import { IconArrowLeft, IconChevronRight, IconLayoutGrid, IconMessage, IconSettings } from "@tabler/icons-react";
 import {
   formatItemSpecs,
   formatMoney,
@@ -32,12 +32,15 @@ import AdminLoading from "@/components/admin/AdminLoading";
 import { panelNumberKey } from "../../../../lib/pcd-order-panel-numbers";
 import { groupProductionRows } from "../../../../lib/pcd-production-groups";
 import { lineNotes, lineNotesText } from "../../../../lib/pcd-line-notes";
+import { tableStyles } from "@/components/ui/table-styles";
+import { sizeLabel } from "../../../../lib/pcd-size-label";
 import { useLists } from "../../../../lib/use-lists";
 // Every cup from the bottom edge, worked out the one way. See lib/pcd-hinges.js.
 import { hingePositionLines, hingeSummaryLines, holeTypeOf } from "../../../../lib/pcd-hinges";
 import { bandedEdgesText, panelUseFor } from "../../../../lib/pcd-line-details";
 import { taxInvoiceReadiness } from "../../../../lib/pcd-tax-invoice";
 import TaxInvoiceModal from "./TaxInvoiceModal";
+import CuttingPlanModal from "./CuttingPlanModal";
 import { supplierFromColour, supplierLookupKey } from "../../../../lib/pcd-line-supplier";
 import { historyGaps, orderVersions } from "../../../../lib/pcd-order-history";
 import {
@@ -137,6 +140,11 @@ function sortedVariations(order) {
   return [...(order?.pcd_order_variations || [])].sort(
     (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
   );
+}
+
+function formatTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit" }).format(new Date(value)).toLowerCase();
 }
 
 function formatDate(value) {
@@ -304,20 +312,11 @@ function madeByBadge(row) {
   return { label: "Supplier", tone: "bg-[#fbf2e1] text-[#8a5a12] border-[#8a5a12]" };
 }
 
-function formatCutDimension(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? `${number}mm` : "-";
-}
-
-function formatCutSize(heightMm, widthMm) {
-  return `${formatCutDimension(heightMm)} x ${formatCutDimension(widthMm)}`;
-}
-
 function cabinetDimensions(config) {
   const width = Number(config?.width_mm || 0);
   const height = Number(config?.height_mm || 0);
   const depth = Number(config?.depth_mm || 0);
-  return width && height && depth ? `${width}W x ${height}H x ${depth}D mm` : "";
+  return width && height && depth ? `${height}H x ${width}W x ${depth}D mm` : "";
 }
 
 function cabinetCutLabel(item, itemIndex, copyIndex, totalCopies) {
@@ -370,7 +369,7 @@ function buildOrderPlanningRows(items) {
               qty: 1,
               width_mm: piece.width_mm,
               height_mm: piece.height_mm,
-              size: formatCutSize(piece.height_mm, piece.width_mm),
+              size: sizeLabel(piece.height_mm, piece.width_mm),
               thickness: piece.thickness_mm ? `${piece.thickness_mm}mm` : item.thickness || "-",
               material: cutMaterialDisplay(item, piece),
               edging: cutEdgingDisplay(item, piece),
@@ -399,7 +398,7 @@ function buildOrderPlanningRows(items) {
       qty: item.qty || 1,
       width_mm: item.width_mm,
       height_mm: item.height_mm,
-      size: item.width_mm || item.height_mm ? formatCutSize(item.height_mm, item.width_mm) : "-",
+      size: sizeLabel(item.height_mm, item.width_mm),
       thickness: item.thickness || "-",
       material: cutMaterialDisplay(item),
       edging: cutEdgingDisplay(item),
@@ -441,15 +440,51 @@ function quoteLineTitle(line) {
   return line?.product_name || line?.product_type || "Quote item";
 }
 
+// Height first, with depth when the line is a cabinet. See lib/pcd-size-label.js.
 function quoteLineSize(line) {
-  const width = line?.width_mm || "-";
-  const height = line?.height_mm || "-";
-  const depth = line?.cabinet_config?.depth_mm || line?.depth_mm;
-  return depth ? `${height} x ${width} x ${depth}mm` : `${height} x ${width}mm`;
+  return sizeLabel(line?.height_mm, line?.width_mm, line?.cabinet_config?.depth_mm || line?.depth_mm);
 }
 
 function lineValue(value, fallback = "-") {
   return value === null || value === undefined || value === "" ? fallback : value;
+}
+
+// ONE LOOK FOR A CELL THAT SAYS TWO THINGS. What it is on the first line, the
+// detail under it in grey, the same as the Item column. `strong` is for the
+// column that names the row; everywhere else the first line stays regular so a
+// row does not become a wall of bold.
+// A grey line that only repeats the first one is dropped: a loose door's item
+// and piece are both "Door", and "Door" twice says nothing.
+function CellLines({ main, sub, strong = false }) {
+  const repeats = String(sub ?? "").trim().toLowerCase() === String(main ?? "").trim().toLowerCase();
+  return (
+    <>
+      <p className={`block max-w-[280px] whitespace-normal text-[12px] text-[#1a1a18] ${strong ? "font-semibold" : ""}`}>{main}</p>
+      {sub && !repeats ? <p className="block max-w-[280px] whitespace-normal text-[11px] text-[#8b8a81]">{sub}</p> : null}
+    </>
+  );
+}
+
+function thicknessLabel(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  return /^\d+(\.\d+)?$/.test(text) ? `${text}mm` : text;
+}
+
+// THE COLOUR ON TOP. It is what tells one row from the next; the board and its
+// finish are the same down most of an order, so they sit underneath. Takes the
+// separate fields where a line has them, or the joined "Board - Finish - Colour"
+// text a cut list piece carries.
+function MaterialLines({ text, material, finish, colour, thickness }) {
+  const clean = (value) => {
+    const trimmed = String(value ?? "").trim();
+    return trimmed && trimmed !== "-" ? trimmed : "";
+  };
+  let parts = [clean(material), clean(finish), clean(colour)].filter(Boolean);
+  if (!parts.length) parts = String(text ?? "").split(" - ").map(clean).filter(Boolean);
+  const main = parts.pop() || "-";
+  const sub = [...parts, thicknessLabel(thickness)].filter(Boolean).join(" · ");
+  return <CellLines main={main} sub={sub} />;
 }
 
 export default function OrderDetail({ orderId }) {
@@ -532,6 +567,7 @@ export default function OrderDetail({ orderId }) {
   const [savingPaymentId, setSavingPaymentId] = useState("");
   const [editingPaymentId, setEditingPaymentId] = useState("");
   const [isGeneratingCutListPdf, setIsGeneratingCutListPdf] = useState(false);
+  const [cuttingPlanOpen, setCuttingPlanOpen] = useState(false);
   const [generatingLabels, setGeneratingLabels] = useState("");
   // "all" | "here" | "mto". Narrowing to the cut work is what someone at the
   // saw wants; the whole order is what everyone else wants.
@@ -689,7 +725,7 @@ export default function OrderDetail({ orderId }) {
   const [savingIssue, setSavingIssue] = useState(false);
 
   const tw = {
-    card: "bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden mb-3",
+    card: tableStyles.card + " mb-3",
     cardHeader: "px-4 py-3 border-b border-[#edf4eb] flex items-center justify-between",
     cardTitle: "text-[13px] font-semibold text-[#1a1a18]",
     cardBody: "px-4 py-4",
@@ -708,22 +744,29 @@ export default function OrderDetail({ orderId }) {
     muted: "text-[11px] text-[#8b8a81]",
     mono: "font-mono",
     pill: "inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border",
-    tableWrap: "overflow-x-auto md:max-h-[calc(100vh-260px)] md:overflow-auto",
-    /* min-w-max stops these wide tables being crushed into the panel width.
-       Without it the browser wraps every cell ("1mm Square Edge" over three
-       lines) instead of letting the wrapper scroll sideways. Free text cells
-       opt back into wrapping with tw.cellText so one long note cannot stretch
-       the whole table. */
-    table: "w-full min-w-max text-[13px] border-collapse",
+    /* Every table on this page is a SCROLL table: it sits inside one order, so
+       the look comes from the shared table styles and the header row is pinned
+       while the box scrolls. Free text cells opt back into wrapping with
+       tw.cellText so one long note cannot stretch the whole table. */
+    tableWrap: tableStyles.scrollBox,
+    table: tableStyles.tableWide,
     /* Fixed layout, so the declared shares are the widths and one long value
        cannot stretch a column. The floor keeps ten columns readable on a narrow
        window: below it the wrapper scrolls rather than crushing them. */
-    tableFixed: "w-full table-fixed min-w-[1180px] text-[13px] border-collapse",
+    tableFixed: tableStyles.tableFixed + " min-w-[1180px]",
+    tbody: tableStyles.body,
+    empty: tableStyles.empty,
+    num: tableStyles.num,
     wrapCell: "whitespace-normal break-words",
-    th: "sticky top-0 z-10 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] px-4 py-[9px] border-b border-[#dbd8cc] bg-[#f5f8f4] whitespace-nowrap",
-    td: "px-4 py-[11px] border-b border-[#edf4eb] text-[#1a1a18] align-middle",
-    tdLast: "px-4 py-[11px] text-[#1a1a18] align-middle",
+    th: tableStyles.th + " " + tableStyles.thSticky,
+    td: tableStyles.td,
+    tdLast: tableStyles.td,
+    rowClickable: tableStyles.rowClickable,
     cellText: "block max-w-[280px] whitespace-normal",
+    /* The Item column on the two planning tables. Narrower than cellText and
+       wrapping, because those tables carry six inputs as well, and at 280px or
+       unbounded the Actions column was pushed off a normal screen. */
+    planItemText: "block max-w-[240px] whitespace-normal",
     inlineInput: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
     inlineSelect: "h-[28px] w-full border border-[#dbd8cc] rounded-[4px] px-2 text-[12px] text-[#1a1a18] bg-white focus:outline-none focus:border-[#6b9e61] disabled:bg-[#f5f8f4] disabled:text-[#8b8a81]",
     totalRow: "flex justify-between items-center gap-4 py-[5px] border-b border-[#edf4eb] text-[12px] last:border-0",
@@ -1710,24 +1753,24 @@ export default function OrderDetail({ orderId }) {
     return (
       <div className="md:flex md:h-full md:min-h-0 md:flex-col">
         <div className="mb-3 px-3 py-2 bg-[#edf4eb] border border-[#a8c5a0] rounded-[6px] text-[12px] text-[#2d5e28]">
-          Read only — edit line items in the original quote.
+          Read only. Edit line items in the original quote.
         </div>
 
-        <div className={`${tw.card} md:flex md:min-h-0 md:flex-1 md:flex-col`}>
+        <div className={tw.card}>
           <div className={tw.cardHeader}>
             <span className={tw.cardTitle}>Line items</span>
             <span className={tw.muted}>{quoteLines.length} {quoteLines.length === 1 ? "line" : "lines"}</span>
           </div>
-          <div className={`${tw.tableWrap} md:min-h-0 md:flex-1 md:overflow-auto`}>
+          <div className={tw.tableWrap}>
             <table className={tw.table}>
               <thead>
                 <tr>
-                  {["#","Type","Material / colour","Size","Qty","Edge","Drill?","Hinge qty","Unit cost","Markup","Unit price","Total ex GST"].map(h => (
-                    <th key={h} className={`${tw.th} md:sticky md:top-0 md:z-10`}>{h}</th>
+                  {["#","Type","Material / colour","Size (H × W)","Qty","Edge","Drill?","Hinge qty","Unit cost","Markup","Unit price","Total ex GST"].map(h => (
+                    <th key={h} className={tw.th}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tw.tbody}>
                 {quoteLines.map((line, index) => {
                   const showProfiles = line.material === "Thermolaminate";
                   const hingesApplicable = line.product_type === "Door";
@@ -1735,31 +1778,25 @@ export default function OrderDetail({ orderId }) {
                     <tr key={line.id || index}>
                       <td className={tw.td}>{index + 1}</td>
                       <td className={tw.td}>
-                        {lineValue(quoteLineTitle(line))}
-                        {/* What kind of panel it is. A Scribe and a Kickboard
-                            both quote as Panel, and they are made differently. */}
-                        {panelUseFor(line.product_type, line.panel_use) ? (
-                          <span className="block text-[11px] font-semibold text-[#2d5e28] mt-[2px]">
-                            {panelUseFor(line.product_type, line.panel_use)}
-                          </span>
-                        ) : null}
-                        {/* Whose carcass it goes on. Under the type rather than
-                            in a column of its own: this table is already wide,
-                            and it belongs with what the thing IS. */}
-                        {line.cabinet_brand ? (
-                          <span className="block text-[11px] text-[#8b8a81] mt-[2px]">{line.cabinet_brand}</span>
-                        ) : null}
+                        {/* What kind of panel it is, then whose carcass it goes
+                            on. A Scribe and a Kickboard both quote as Panel and
+                            are made differently, and the brand belongs with what
+                            the thing IS rather than in a column of its own. */}
+                        <CellLines
+                          strong
+                          main={lineValue(quoteLineTitle(line))}
+                          sub={[panelUseFor(line.product_type, line.panel_use), line.cabinet_brand].filter(Boolean).join(" · ")}
+                        />
                       </td>
-                      <td className={tw.td}>{[lineValue(line.material), lineValue(line.colour)].filter(v => v !== "-").join(" — ") || "—"}</td>
+                      <td className={tw.td}>
+                        <MaterialLines material={line.material} finish={line.finish} colour={line.colour} thickness={line.thickness} />
+                      </td>
                       <td className={tw.td + " whitespace-nowrap"}>{lineValue(quoteLineSize(line))}</td>
                       <td className={tw.td}>{line.qty || 1}</td>
                       <td className={tw.td}>
-                        {lineValue(line.edge_mould)}
                         {/* Which edges get tape, asked one at a time on the
-                            website and now shown where the edge is. */}
-                        {bandedEdgesText(line.banded_edges) ? (
-                          <span className="block text-[11px] text-[#8b8a81] mt-[2px]">{bandedEdgesText(line.banded_edges)}</span>
-                        ) : null}
+                            website and shown under the edge itself. */}
+                        <CellLines main={lineValue(line.edge_mould)} sub={bandedEdgesText(line.banded_edges)} />
                       </td>
                       {/* HANDING AND CUPS, in the two columns that already exist
                           rather than in two more. Which side is the one that
@@ -1790,24 +1827,24 @@ export default function OrderDetail({ orderId }) {
                           </span>
                         ) : null}
                       </td>
-                      <td className={tw.td + " " + tw.mono}>{formatMoney(line.product_unit_cost_ex_gst || 0, quoteCurrency)}</td>
+                      <td className={tw.td + " " + tw.num}>{formatMoney(line.product_unit_cost_ex_gst || 0, quoteCurrency)}</td>
                       {/* The markup this line was actually quoted at. It used to
                           print the built-in 40% whenever the line had none,
                           which read as fact: this screen never loads business
                           defaults, so that number was neither the line's nor
                           the configured one. A dash says "not recorded". */}
-                      <td className={tw.td + " " + tw.mono}>
+                      <td className={tw.td + " " + tw.num}>
                         {line.markup_percent === null || line.markup_percent === undefined
                           ? "-"
                           : `${line.markup_percent}%`}
                       </td>
-                      <td className={tw.td + " " + tw.mono}>{formatMoney(line.unit_price_ex_gst || 0, quoteCurrency)}</td>
-                      <td className={tw.tdLast + " " + tw.mono + " font-semibold"}>{formatMoney(line.line_total_ex_gst || 0, quoteCurrency)}</td>
+                      <td className={tw.td + " " + tw.num}>{formatMoney(line.unit_price_ex_gst || 0, quoteCurrency)}</td>
+                      <td className={tw.tdLast + " " + tw.num + " font-semibold"}>{formatMoney(line.line_total_ex_gst || 0, quoteCurrency)}</td>
                     </tr>
                   );
                 })}
                 {!quoteLines.length && (
-                  <tr><td colSpan={13} className="py-8 text-center text-[12px] text-[#8b8a81]">No quote line items found for this order.</td></tr>
+                  <tr><td colSpan={12} className={tw.empty}>No quote line items found for this order.</td></tr>
                 )}
               </tbody>
             </table>
@@ -1868,15 +1905,30 @@ export default function OrderDetail({ orderId }) {
     if (!bulkFieldsFor(sectionKey).length) return null;
     return (
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => setBulkOpen(sectionKey)}
-          className="inline-flex h-[30px] items-center gap-[6px] whitespace-nowrap rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[12px] font-medium text-[#1a1a18] transition-colors hover:bg-[#f5f8f4]"
-        >
-          <IconSettings size={13} />
-          Set on many lines
-          <span className="text-[11px] font-normal text-[#8b8a81]">{rows.length}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setBulkOpen(sectionKey)}
+            className="inline-flex h-[30px] items-center gap-[6px] whitespace-nowrap rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[12px] font-medium text-[#1a1a18] transition-colors hover:bg-[#f5f8f4]"
+          >
+            <IconSettings size={13} />
+            Set on many lines
+            <span className="text-[11px] font-normal text-[#8b8a81]">{rows.length}</span>
+          </button>
+          {/* The cutting plan sits with the panels we cut, and nowhere else. */}
+          {sectionKey === "madeInHouse" ? (
+            <button
+              type="button"
+              onClick={() => setCuttingPlanOpen(true)}
+              disabled={!rows.length}
+              title={rows.length ? "Lay every panel onto boards for the panel saw" : "Nothing on this order is made in house"}
+              className="inline-flex h-[30px] items-center gap-[6px] whitespace-nowrap rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[12px] font-medium text-[#1a1a18] transition-colors hover:bg-[#f5f8f4] disabled:opacity-50"
+            >
+              <IconLayoutGrid size={13} />
+              Cutting plan
+            </button>
+          ) : null}
+        </div>
         {planSaveStatus()}
       </div>
     );
@@ -2110,12 +2162,12 @@ export default function OrderDetail({ orderId }) {
             <table className={tw.table}>
               <thead>
                 <tr>
-                  {["Item","Cabinet","Panel / piece","Qty","Size","Material","Fulfilment"].map(h => (
+                  {["Item","Cabinet","Panel / piece","Qty","Size (H × W)","Material","Fulfilment"].map(h => (
                     <th key={h} className={tw.th}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tw.tbody}>
                 {planningRows.map(row => {
                   const item = row.item;
                   const thermolaminated = isThermolaminatedItem(item);
@@ -2125,11 +2177,11 @@ export default function OrderDetail({ orderId }) {
                         <p className={`${tw.cellText} text-[12px] font-semibold text-[#1a1a18]`}>{row.source}</p>
                         <p className={`${tw.cellText} ${tw.muted}`}>{itemMeta(item) || "No item details recorded"}</p>
                       </td>
-                      <td className={tw.td + " whitespace-nowrap"}>{row.cabinet || "—"}</td>
+                      <td className={tw.td + " whitespace-nowrap"}>{row.cabinet || "-"}</td>
                       <td className={tw.td}>{row.piece}</td>
                       <td className={tw.td}>{row.qty}</td>
                       <td className={tw.td + " whitespace-nowrap"}>{row.size}</td>
-                      <td className={tw.td}>{row.material}</td>
+                      <td className={tw.td}><MaterialLines text={row.material} /></td>
                       <td className={tw.tdLast}>
                         <select
                           className={tw.inlineSelect}
@@ -2147,7 +2199,7 @@ export default function OrderDetail({ orderId }) {
                   );
                 })}
                 {!planningRows.length && (
-                  <tr><td colSpan={7} className="py-8 text-center text-[12px] text-[#8b8a81]">No order items yet.</td></tr>
+                  <tr><td colSpan={7} className={tw.empty}>No order items yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -2164,11 +2216,11 @@ export default function OrderDetail({ orderId }) {
                   <p className="text-[11px] text-[#8b8a81]">{itemMeta(item) || "No item details recorded"}</p>
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-                  <div><dt className="text-[#8b8a81]">Cabinet</dt><dd className="text-[#1a1a18]">{row.cabinet || "—"}</dd></div>
+                  <div><dt className="text-[#8b8a81]">Cabinet</dt><dd className="text-[#1a1a18]">{row.cabinet || "-"}</dd></div>
                   <div><dt className="text-[#8b8a81]">Panel / piece</dt><dd className="text-[#1a1a18]">{row.piece}</dd></div>
                   <div><dt className="text-[#8b8a81]">Qty</dt><dd className="text-[#1a1a18]">{row.qty}</dd></div>
-                  <div><dt className="text-[#8b8a81]">Size</dt><dd className="text-[#1a1a18]">{row.size}</dd></div>
-                  <div className="col-span-2"><dt className="text-[#8b8a81]">Material</dt><dd className="text-[#1a1a18]">{row.material}</dd></div>
+                  <div><dt className="text-[#8b8a81]">Size (H × W)</dt><dd className="text-[#1a1a18]">{row.size}</dd></div>
+                  <div className="col-span-2"><dt className="text-[#8b8a81]">Material</dt><dd className="text-[#1a1a18]"><MaterialLines text={row.material} /></dd></div>
                 </dl>
                 <div className="pt-3 mt-3 border-t border-[#edf4eb]">
                   <select
@@ -2209,12 +2261,12 @@ export default function OrderDetail({ orderId }) {
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tw.tbody}>
                 {supplierMadeRows.map(row => (
                   <tr key={row.key}>
                     <td className={tw.td}>
-                      <p className={`${tw.cellText} text-[12px] font-semibold text-[#1a1a18]`}>{row.source}</p>
-                      <p className={`${tw.cellText} ${tw.muted}`}>{row.piece} · {row.size} · {row.material}</p>
+                      <p className={`${tw.planItemText} text-[12px] font-semibold text-[#1a1a18]`}>{row.source}</p>
+                      <p className={`${tw.planItemText} ${tw.muted}`}>{row.piece} · {row.size} · {row.material}</p>
                     </td>
                     <td className={tw.td}>
                       <select
@@ -2283,7 +2335,7 @@ export default function OrderDetail({ orderId }) {
                   </tr>
                 ))}
                 {!supplierMadeRows.length && (
-                  <tr><td colSpan={7} className="py-8 text-center text-[12px] text-[#8b8a81]">No supplier-made items yet.</td></tr>
+                  <tr><td colSpan={7} className={tw.empty}>No supplier-made items yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -2349,14 +2401,14 @@ export default function OrderDetail({ orderId }) {
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tw.tbody}>
                 {madeInHouseRows.map(row => {
                   const boardRequired = !!row.plan.board_required;
                   return (
                     <tr key={row.key}>
                       <td className={tw.td}>
-                        <p className="text-[12px] font-semibold text-[#1a1a18]">{row.source}</p>
-                        <p className={tw.muted}>{row.piece} · {row.size} · {row.material}</p>
+                        <p className={`${tw.planItemText} text-[12px] font-semibold text-[#1a1a18]`}>{row.source}</p>
+                        <p className={`${tw.planItemText} ${tw.muted}`}>{row.piece} · {row.size} · {row.material}</p>
                       </td>
                       <td className={tw.td}>
                         <select
@@ -2438,7 +2490,7 @@ export default function OrderDetail({ orderId }) {
                   );
                 })}
                 {!madeInHouseRows.length && (
-                  <tr><td colSpan={8} className="py-8 text-center text-[12px] text-[#8b8a81]">No made-in-house items yet.</td></tr>
+                  <tr><td colSpan={8} className={tw.empty}>No made-in-house items yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -2546,7 +2598,7 @@ export default function OrderDetail({ orderId }) {
           { label: "Piece", share: 17 },
           { label: "Made by", share: 8 },
           { label: "Qty", share: 3 },
-          { label: "Cut size", share: 12 },
+          { label: "Cut size (H × W)", share: 12 },
           { label: "Thick.", share: 5 },
           { label: "Material / colour", share: 18 },
           { label: "Edging / supplier", share: 13 },
@@ -2556,7 +2608,7 @@ export default function OrderDetail({ orderId }) {
           { label: "#", share: 4 },
           { label: "Piece", share: 19 },
           { label: "Qty", share: 3 },
-          { label: "Cut size", share: 13 },
+          { label: "Cut size (H × W)", share: 13 },
           { label: "Thick.", share: 5 },
           { label: "Material / colour", share: 19 },
           { label: "Edging / supplier", share: 17 },
@@ -2569,7 +2621,9 @@ export default function OrderDetail({ orderId }) {
         <tr key={row.key}>
           <td className={tw.td}>{renderPanelBadge(row)}</td>
           <td className={tw.td + " " + tw.wrapCell}>
-            <p className="text-[12px] font-semibold text-[#1a1a18]">{row.piece}</p>
+            {/* Which item it comes off, as the phone card already said. A loose
+                panel in a list of forty is otherwise just "Door". */}
+            <CellLines strong main={row.piece} sub={row.source} />
           </td>
           {showMadeBy ? (
             <td className={tw.td}>
@@ -2578,14 +2632,18 @@ export default function OrderDetail({ orderId }) {
               </span>
             </td>
           ) : null}
-          <td className={tw.td + " font-mono"}>{row.qty}</td>
-          <td className={tw.td + " whitespace-nowrap font-mono text-[11px]"}>{row.size}</td>
-          <td className={tw.td + " font-mono text-[11px]"}>{row.thickness}</td>
-          <td className={tw.td + " " + tw.wrapCell}>{row.material}</td>
+          <td className={tw.td}>{row.qty}</td>
+          <td className={tw.td + " whitespace-nowrap"}>{row.size}</td>
+          <td className={tw.td}>{row.thickness}</td>
+          <td className={tw.td + " " + tw.wrapCell}><MaterialLines text={row.material} /></td>
           <td className={tw.td + " " + tw.wrapCell}>
-            {madeHere ? row.edging : (row.plan.supplier_name || defaultSupplierForItem(row.item))}
+            {/* The column holds one of two things, so the grey line says which. */}
+            <CellLines
+              main={madeHere ? row.edging : (row.plan.supplier_name || defaultSupplierForItem(row.item) || "-")}
+              sub={madeHere ? "Edging" : "Supplier"}
+            />
           </td>
-          <td className={tw.tdLast + " " + tw.wrapCell + " text-[11px] text-[#5a5a52] italic"}>{row.notes || "—"}</td>
+          <td className={tw.tdLast + " " + tw.wrapCell + " text-[11px] text-[#5a5a52] italic"}>{row.notes || "-"}</td>
         </tr>
       );
     }
@@ -2670,7 +2728,7 @@ export default function OrderDetail({ orderId }) {
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tw.tbody}>
                 {assemblies.map(group => (
                   <React.Fragment key={group.key}>
                     <tr>
@@ -2687,7 +2745,7 @@ export default function OrderDetail({ orderId }) {
                 ))}
                 {standalone.map(renderRow)}
                 {!visibleRows.length && (
-                  <tr><td colSpan={columns.length} className="py-8 text-center text-[12px] text-[#8b8a81]">No panels in this view.</td></tr>
+                  <tr><td colSpan={columns.length} className={tw.empty}>No panels in this view.</td></tr>
                 )}
               </tbody>
             </table>
@@ -2713,9 +2771,9 @@ export default function OrderDetail({ orderId }) {
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
                   <div><dt className="text-[#8b8a81]">Qty</dt><dd className="text-[#1a1a18]">{row.qty}</dd></div>
-                  <div><dt className="text-[#8b8a81]">Cut size</dt><dd className="text-[#1a1a18] font-mono text-[11px]">{row.size}</dd></div>
+                  <div><dt className="text-[#8b8a81]">Cut size (H × W)</dt><dd className="text-[#1a1a18]">{row.size}</dd></div>
                   <div><dt className="text-[#8b8a81]">Thickness</dt><dd className="text-[#1a1a18]">{row.thickness}</dd></div>
-                  <div className="col-span-2"><dt className="text-[#8b8a81]">Material</dt><dd className="text-[#1a1a18]">{row.material}</dd></div>
+                  <div className="col-span-2"><dt className="text-[#8b8a81]">Material</dt><dd className="text-[#1a1a18]"><MaterialLines text={row.material} /></dd></div>
                   <div className="col-span-2">
                     <dt className="text-[#8b8a81]">{madeHere ? "Edging" : "Supplier"}</dt>
                     <dd className="text-[#1a1a18]">{madeHere ? row.edging : (row.plan.supplier_name || defaultSupplierForItem(row.item))}</dd>
@@ -2812,7 +2870,7 @@ export default function OrderDetail({ orderId }) {
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tw.tbody}>
                 {rows.map(issue => (
                   <tr key={issue.id}>
                     <td className={tw.td}>
@@ -2838,12 +2896,17 @@ export default function OrderDetail({ orderId }) {
                         ? <span className={`${tw.pill} bg-[#fef2f2] text-[#b91c1c] border-[#fca5a5]`}>The whole order</span>
                         : <span className={tw.muted}>{issueBlocksLabel(issue.blocks)}</span>}
                     </td>
-                    <td className={tw.td + " " + tw.mono}>
+                    <td className={tw.td + " " + tw.num}>
                       {Number(issue.extra_cost_ex_gst) > 0
                         ? formatMoney(issue.extra_cost_ex_gst, order.currency || "AUD")
                         : <span className={tw.muted}>·</span>}
                     </td>
-                    <td className={tw.td + " whitespace-nowrap"}>{daysSince(issue.raised_at)}d ago</td>
+                    <td className={tw.td + " whitespace-nowrap"}>
+                      <CellLines
+                        main={daysSince(issue.raised_at) === 0 ? "Today" : `${daysSince(issue.raised_at)} ${daysSince(issue.raised_at) === 1 ? "day" : "days"} ago`}
+                        sub={formatDate(issue.raised_at)}
+                      />
+                    </td>
                     <td className={tw.td}>
                       {issue.resolved_at
                         ? <span className={`${tw.pill} bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]`}>Resolved</span>
@@ -2929,7 +2992,7 @@ export default function OrderDetail({ orderId }) {
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={tw.tbody}>
                   {payments.map(payment => {
                     const isEditing = editingPaymentId === payment.id;
                     const isSaving = savingPaymentId === payment.id;
@@ -2951,14 +3014,22 @@ export default function OrderDetail({ orderId }) {
                               {paymentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
                             </select>
                           ) : (
-                            <span className="text-[12px] font-medium text-[#1a1a18]">
-                              {isRefund(payment) ? "Refund" : paymentTypeText(payment.payment_type)}
-                              {isRefund(payment) && (
-                                <span className="block text-[10.5px] font-normal text-[#8b8a81]">
-                                  {refundMethodLabel(payment.refund_method)}
-                                </span>
-                              )}
-                            </span>
+                            // How a refund goes back, or whether a payment has been
+                            // asked for yet. A paid line nobody sent a link for
+                            // needs neither, so it gets no grey line.
+                            <CellLines
+                              strong
+                              main={isRefund(payment) ? "Refund" : paymentTypeText(payment.payment_type)}
+                              sub={
+                                isRefund(payment)
+                                  ? refundMethodLabel(payment.refund_method)
+                                  : payment.requested_at
+                                  ? `Requested ${formatDate(payment.requested_at)}`
+                                  : payment.is_paid
+                                  ? ""
+                                  : "Not requested yet"
+                              }
+                            />
                           )}
                         </td>
                         <td className={tw.td}>
@@ -3006,7 +3077,7 @@ export default function OrderDetail({ orderId }) {
                               onBlur={e => updatePayment(payment, { paid_at: e.target.value })}
                             />
                           ) : (
-                            <span className="text-[12px] text-[#5a5a52]">{payment.paid_at ? formatDate(payment.paid_at) : "—"}</span>
+                            <span className="text-[12px] text-[#5a5a52]">{payment.paid_at ? formatDate(payment.paid_at) : "-"}</span>
                           )}
                         </td>
                         <td className={tw.td}>
@@ -3023,7 +3094,7 @@ export default function OrderDetail({ orderId }) {
                             // Wrapped, not truncated. A payment note now carries the
                             // settlement trail as well as whatever was typed, and an
                             // ellipsis hid exactly the part saying how the money arrived.
-                            <span className="block min-w-[260px] max-w-[460px] whitespace-normal break-words text-[12px] leading-[1.45] text-[#5a5a52]">{payment.notes || "—"}</span>
+                            <span className="block min-w-[260px] max-w-[460px] whitespace-normal break-words text-[12px] leading-[1.45] text-[#5a5a52]">{payment.notes || "-"}</span>
                           )}
                         </td>
                         <td className={tw.tdLast}>
@@ -3081,7 +3152,7 @@ export default function OrderDetail({ orderId }) {
                                 disabled={isSaving}
                                 onClick={() => setPaymentRequestModal({
                                   payment,
-                                  subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
+                                  subject: `Payment request for ${order.order_number || "Perth Cabinet Doors"}`,
                                   message: [`Hi ${order.customer_name || "there"},`, "", `A payment is requested for ${order.order_number || "your order"}.`, "", "Please use the button below to complete your payment.", "", "Regards,", "Perth Cabinet Doors"].join("\n"),
                                 })}
                               >
@@ -3112,7 +3183,7 @@ export default function OrderDetail({ orderId }) {
                     );
                   })}
                   {!payments.length && (
-                    <tr><td colSpan={6} className="py-8 text-center text-[12px] text-[#8b8a81]">No payment lines yet.</td></tr>
+                    <tr><td colSpan={6} className={tw.empty}>No payment lines yet.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -3172,8 +3243,8 @@ export default function OrderDetail({ orderId }) {
                     </>
                   ) : (
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px] mb-3">
-                      <div><dt className="text-[#8b8a81]">Date paid</dt><dd className="text-[#1a1a18]">{payment.paid_at ? formatDate(payment.paid_at) : "—"}</dd></div>
-                      <div><dt className="text-[#8b8a81]">Notes</dt><dd className="text-[#1a1a18]">{payment.notes || "—"}</dd></div>
+                      <div><dt className="text-[#8b8a81]">Date paid</dt><dd className="text-[#1a1a18]">{payment.paid_at ? formatDate(payment.paid_at) : "-"}</dd></div>
+                      <div><dt className="text-[#8b8a81]">Notes</dt><dd className="text-[#1a1a18]">{payment.notes || "-"}</dd></div>
                     </dl>
                   )}
                   <div className="pt-3 mt-3 border-t border-[#edf4eb] flex flex-wrap gap-2">
@@ -3211,7 +3282,7 @@ export default function OrderDetail({ orderId }) {
                     {!isRefund(payment) && canRequestPaymentLine(payment) && (
                       <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => setPaymentRequestModal({
                         payment,
-                        subject: `Payment request — ${order.order_number || "Perth Cabinet Doors"}`,
+                        subject: `Payment request for ${order.order_number || "Perth Cabinet Doors"}`,
                         message: [`Hi ${order.customer_name || "there"},`, "", `A payment is requested for ${order.order_number || "your order"}.`, "", "Please use the button below to complete your payment.", "", "Regards,", "Perth Cabinet Doors"].join("\n"),
                       })}>Request</button>
                     )}
@@ -3571,26 +3642,33 @@ export default function OrderDetail({ orderId }) {
             <table className={tw.table}>
               <thead>
                 <tr>
-                  {["#", "Item", "Material / colour", "Size", "Qty", "Total ex GST"].map((header) => (
+                  {["#", "Item", "Material / colour", "Size (H × W)", "Qty", "Total ex GST"].map((header) => (
                     <th key={header} className={tw.th}>{header}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tw.tbody}>
                 {selected.lines.map((line, index) => (
                   <tr key={line.id || index} className={line.variation_status === "removed" ? "opacity-55" : ""}>
                     <td className={tw.td}>{index + 1}</td>
                     <td className={tw.td}>
-                      <span className={tw.cellText + " font-medium"}>{line.title || line.product_type || "Item"}</span>
-                      {line.variation_status === "removed" ? <span className={tw.muted}>Removed</span> : null}
+                      <CellLines
+                        strong
+                        main={line.title || line.product_type || "Item"}
+                        sub={line.variation_status === "removed" ? "Removed" : ""}
+                      />
+                      {/* Amber, not grey: this one is a warning that the row is
+                          not what the variation originally said. */}
                       {line.history_unknown ? (
                         <span className="block text-[11px] text-[#8a6d0b]">Shown as it is now</span>
                       ) : null}
                     </td>
-                    <td className={tw.td}>{[line.material, line.colour].filter(Boolean).join(" - ") || "-"}</td>
-                    <td className={tw.td + " whitespace-nowrap"}>{formatCutSize(line.height_mm, line.width_mm)}</td>
+                    <td className={tw.td}>
+                      <MaterialLines material={line.material} finish={line.finish} colour={line.colour} thickness={line.thickness} />
+                    </td>
+                    <td className={tw.td + " whitespace-nowrap"}>{sizeLabel(line.height_mm, line.width_mm)}</td>
                     <td className={tw.td}>{line.qty || 1}</td>
-                    <td className={tw.tdLast + " " + tw.mono}>
+                    <td className={tw.tdLast + " " + tw.num}>
                       {formatMoney(line.line_total_ex_gst || 0, order.currency || "AUD")}
                     </td>
                   </tr>
@@ -3704,7 +3782,7 @@ export default function OrderDetail({ orderId }) {
                    size of a word on a row the width of the screen. */
                 <tr
                   key={variation.id}
-                  className="cursor-pointer transition-colors hover:bg-[#f5f8f4]"
+                  className={tw.rowClickable}
                   onClick={() => router.push(`/admin/orders/${orderId}/variations/${variation.id}`)}
                 >
                   <td className={tw.td}>
@@ -3723,8 +3801,8 @@ export default function OrderDetail({ orderId }) {
                     }`}>{titleCaseStatus(variation.status)}</span>
                   </td>
                   <td className={tw.td}>{variation.pcd_order_variation_lines?.length || 0}</td>
-                  <td className={tw.td + " font-mono"}>{formatMoney(variation.total_inc_gst, variation.currency || order.currency || "AUD")}</td>
-                  <td className={tw.td + " font-mono"}>{formatMoney(variation.deposit_topup_required, variation.currency || order.currency || "AUD")}</td>
+                  <td className={tw.td + " " + tw.num}>{formatMoney(variation.total_inc_gst, variation.currency || order.currency || "AUD")}</td>
+                  <td className={tw.td + " " + tw.num}>{formatMoney(variation.deposit_topup_required, variation.currency || order.currency || "AUD")}</td>
                   <td className={tw.td}>{formatDate(variation.sent_at)}</td>
                   <td className={tw.tdLast}>{formatDate(variation.approved_at || variation.applied_at)}</td>
                 </tr>
@@ -3755,7 +3833,7 @@ export default function OrderDetail({ orderId }) {
               ))}
               {!variations.length ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-[12px] text-[#8b8a81]">
+                  <td colSpan={7} className={tw.empty}>
                     No variations yet. Create one when the customer asks to add, change, or remove accepted scope.
                   </td>
                 </tr>
@@ -3832,25 +3910,32 @@ export default function OrderDetail({ orderId }) {
         <div className={`${tw.tableWrap} hidden md:block`}>
           <table className={tw.table}>
             <thead>
-              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                {['Date', 'Event', 'Detail', 'Actor', 'Type'].map(h => (
+              <tr>
+                {['Date', 'Event', 'Actor', 'Type'].map(h => (
                   <th key={h} className={tw.th}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {activity.map((entry) => (
-                <tr key={entry.id} className="border-b border-[#edf4eb] last:border-b-0 hover:bg-[#f5f8f4] transition-colors">
-                  <td className={tw.td + ' whitespace-nowrap text-[#8b8a81] text-[11px]'}>
-                    {formatDateTime(entry.created_at)}
+                <tr key={entry.id}>
+                  <td className={tw.td + ' whitespace-nowrap'}>
+                    <CellLines main={formatDate(entry.created_at)} sub={formatTime(entry.created_at)} />
                   </td>
-                  <td className={tw.td + ' font-medium whitespace-nowrap'}>
-                    {entry.title}
-                  </td>
-                  <td className={tw.td + ' text-[#5a5a52]'}>
-                    <span className="block max-w-[320px] truncate text-[11px]" title={formatActivityDescription(entry.description)}>
-                      {formatActivityDescription(entry.description) || '—'}
-                    </span>
+                  {/* The detail under the event it belongs to, in one column. As
+                      a column of its own it was cut off at one line, which hid
+                      most of what changed. Two lines here, and the whole of it
+                      on hover. */}
+                  <td className={tw.td}>
+                    <p className="block max-w-[520px] whitespace-normal text-[12px] font-semibold text-[#1a1a18]">{entry.title}</p>
+                    {formatActivityDescription(entry.description) ? (
+                      <p
+                        className="block max-w-[520px] whitespace-normal line-clamp-2 text-[11px] text-[#8b8a81]"
+                        title={formatActivityDescription(entry.description)}
+                      >
+                        {formatActivityDescription(entry.description)}
+                      </p>
+                    ) : null}
                   </td>
                   <td className={tw.td}>
                     <span className={`${tw.pill} ${
@@ -3872,7 +3957,7 @@ export default function OrderDetail({ orderId }) {
               ))}
               {!activity.length && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-[12px] text-[#8b8a81]">
+                  <td colSpan={4} className={tw.empty}>
                     No activity recorded for this order yet.
                   </td>
                 </tr>
@@ -4300,6 +4385,12 @@ export default function OrderDetail({ orderId }) {
       {renderPanelNotesModal()}
       {issueModal}
       {planBulkModal()}
+      <CuttingPlanModal
+        open={cuttingPlanOpen}
+        onClose={() => setCuttingPlanOpen(false)}
+        orderId={orderId}
+        orderNumber={order?.order_number}
+      />
       {resolveModal}
 
       {/* Archiving takes an order off the board, out of the financials and out

@@ -25,8 +25,17 @@ import {
 } from "../../../lib/pcd-profile-library";
 import { useLists } from "../../../lib/use-lists";
 import ListField from "@/components/admin/ListField";
+import { tableStyles as t } from "@/components/ui/table-styles";
+import { cn } from "@/lib/utils";
 
 const ALL = "All";
+
+// Both is the normal case and says nothing useful, so it is the exceptions
+// that are worth printing.
+function thicknessLabel(row) {
+  if (row.available_18mm && row.available_21mm) return "18mm & 21mm";
+  return row.available_21mm ? "21mm only" : "18mm only";
+}
 
 const tw = {
   input:
@@ -39,8 +48,6 @@ const tw = {
   secondary:
     "h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] " +
     "hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors",
-  th: "px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]",
-  td: "px-4 py-[11px] text-[#1a1a18]",
   pill: "inline-flex items-center px-2 py-[3px] rounded-full text-[11px] font-semibold border",
 };
 
@@ -172,6 +179,39 @@ export default function ProfileLibraryManager({ initialRows = [], initialError =
     }
   }
 
+  function thumbnail(row) {
+    return (
+      <span className="inline-flex w-[44px] h-[44px] flex-shrink-0 rounded-[4px] overflow-hidden bg-[#f5f5f4] border border-[#edf4eb]">
+        {row.image_url ? <img src={row.image_url} alt="" className="w-full h-full object-cover" /> : null}
+      </span>
+    );
+  }
+
+  function statusPill(row) {
+    return (
+      <span
+        className={`${tw.pill} ${
+          row.is_active ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]" : "bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]"
+        }`}
+      >
+        {row.is_active ? "Active" : "Hidden"}
+      </span>
+    );
+  }
+
+  // One menu for the table and the phone card, so they cannot offer different things.
+  function actionMenu(row) {
+    return (
+      <ActionMenu label={`Open actions for ${row.name}`}>
+        <ActionMenuItem variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
+          Delete
+        </ActionMenuItem>
+      </ActionMenu>
+    );
+  }
+
+  const emptyMessage = rows.length ? "No profiles match these filters." : "The profile library is empty.";
+
   return (
     <div className="p-4 md:p-6">
       <div className="mb-5 flex items-start justify-between gap-3">
@@ -251,75 +291,78 @@ export default function ProfileLibraryManager({ initialRows = [], initialError =
         </button>
       </div>
 
-      <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-[13px] border-collapse">
+      {/* Built from the shared tokens rather than AdminDataTable, because three
+          filters sit beside the search and that table has room for one box. */}
+      <div className={cn(t.card, t.desktopOnly)}>
+        <div className={t.sideScroll}>
+          <table className={t.tableWide}>
             <thead>
-              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+              <tr>
                 {["Image", "Profile", "Supplier", "Category", "Thickness", "Status", "Actions"].map((col) => (
-                  <th key={col} className={`${tw.th}${col === "Actions" ? " text-right" : ""}`}>{col}</th>
+                  <th key={col} className={cn(t.th, col === "Actions" && "text-right")}>{col}</th>
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className={t.body}>
               {pageItems.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                  onClick={() => openEdit(row)}
-                >
-                  <td className={tw.td}>
-                    <span className="inline-flex w-[44px] h-[44px] rounded-[4px] overflow-hidden bg-[#f5f5f4] border border-[#edf4eb]">
-                      {row.image_url ? (
-                        <img src={row.image_url} alt="" className="w-full h-full object-cover" />
-                      ) : null}
-                    </span>
-                  </td>
-                  <td className={`${tw.td} font-medium`}>{row.name}</td>
-                  <td className={tw.td}>{row.supplier_name}</td>
-                  <td className={tw.td}>{row.category}</td>
-                  <td className={tw.td}>
-                    {/* Both is the normal case and says nothing useful, so it is
-                        the exceptions that are worth printing. */}
-                    {row.available_18mm && row.available_21mm
-                      ? "18mm & 21mm"
-                      : row.available_21mm
-                        ? "21mm only"
-                        : "18mm only"}
-                  </td>
-                  <td className={tw.td}>
-                    <span
-                      className={`${tw.pill} ${
-                        row.is_active
-                          ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
-                          : "bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]"
-                      }`}
-                    >
-                      {row.is_active ? "Active" : "Hidden"}
-                    </span>
-                  </td>
-                  <td className={tw.td} onClick={(event) => event.stopPropagation()}>
-                    <div className="flex justify-end">
-                      <ActionMenu label={`Open actions for ${row.name}`}>
-                        <ActionMenuItem variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
-                          Delete
-                        </ActionMenuItem>
-                      </ActionMenu>
-                    </div>
+                <tr key={row.id} className={t.rowClickable} onClick={() => openEdit(row)}>
+                  <td className={t.td}>{thumbnail(row)}</td>
+                  <td className={cn(t.td, "font-medium")}>{row.name}</td>
+                  <td className={t.td}>{row.supplier_name}</td>
+                  <td className={t.td}>{row.category}</td>
+                  <td className={t.td}>{thicknessLabel(row)}</td>
+                  <td className={t.td}>{statusPill(row)}</td>
+                  <td className={t.td} onClick={(event) => event.stopPropagation()}>
+                    <div className="flex justify-end">{actionMenu(row)}</div>
                   </td>
                 </tr>
               ))}
-              {!pageItems.length ? (
+              {/* Tested on the filtered list, not the page. An empty page with
+                  matches elsewhere cannot happen, but an empty filter can. */}
+              {!filtered.length ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[13px] text-[#8b8a81]">
-                    {rows.length ? "No profiles match these filters." : "The profile library is empty."}
-                  </td>
+                  <td colSpan={7} className={t.empty}>{emptyMessage}</td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
-        <AdminPagination page={page} pageCount={pageCount} totalItems={totalItems} onPageChange={setPage} />
+        <AdminPagination label="profiles" page={page} pageCount={pageCount} totalItems={totalItems} onPageChange={setPage} />
+      </div>
+
+      {/* Below md the rows become cards. Tapping the name opens the same editor the row does. */}
+      <div className={t.mobileList}>
+        {!filtered.length ? <div className={cn(t.card, t.empty)}>{emptyMessage}</div> : null}
+        {pageItems.map((row) => (
+          <article key={row.id} className={t.mobileCard}>
+            <div className="flex items-start gap-3">
+              {thumbnail(row)}
+              <div className="min-w-0 flex-1">
+                <button type="button" onClick={() => openEdit(row)} className="text-left text-[14px] font-semibold text-[#1a1a18]">
+                  {row.name}
+                </button>
+                <p className="text-[12px] text-[#5a5a52]">{row.supplier_name}</p>
+              </div>
+              {statusPill(row)}
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+              <div>
+                <dt className="text-[#8b8a81]">Category</dt>
+                <dd className="text-[#1a1a18]">{row.category || "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-[#8b8a81]">Thickness</dt>
+                <dd className="text-[#1a1a18]">{thicknessLabel(row)}</dd>
+              </div>
+            </dl>
+            <div className="mt-3 flex items-center justify-end border-t border-[#edf4eb] pt-3">
+              {actionMenu(row)}
+            </div>
+          </article>
+        ))}
+        {filtered.length ? (
+          <AdminPagination label="profiles" page={page} pageCount={pageCount} totalItems={totalItems} onPageChange={setPage} />
+        ) : null}
       </div>
 
       {isOpen ? (

@@ -145,6 +145,7 @@ export async function loadBoard(supabase: Supabase) {
   const messageState = (messagesQ.error ? null : messagesQ.data) as {
     last_by_ticket?: { ticket_id: string; direction: string; created_at?: string }[]
     last_outbound?: { email: string; sent_at: string }[]
+    customer_addresses?: { customer_id: string; email: string }[]
     last_inbound?: { email: string; received_at: string }[]
   } | null
   if (messagesQ.error) failed.add('messages')
@@ -231,15 +232,39 @@ export async function loadBoard(supabase: Supabase) {
   // We answered that customer; whether the reply threaded onto that particular
   // conversation is an email client's business, not ours. Only what came after
   // our reply is still owed, and that is what the clock should count.
-  // Every address that reaches this person, so a reply sent to either of a
-  // merged pair counts as having answered them.
+  // EVERY ADDRESS THAT REACHES THIS PERSON.
+  //
+  // Two sources, because the record on its own was not enough:
+  //
+  //   THEIR RECORDS. A reply sent to either of a merged pair counts as having
+  //   answered them.
+  //
+  //   THEIR CONVERSATIONS. Every address they have actually written from, which
+  //   is the half that was missing. People write from more than one address, we
+  //   reply to whichever one they used, and that address often never makes it
+  //   onto their record. The board then found no reply to that person anywhere
+  //   and fell into the rule below for somebody we have never answered, which
+  //   treats EVERYTHING they ever sent as still waiting. The card got timed from
+  //   their first ever email while the conversation carried on in front of us.
+  //   See supabase/202609151400_pcd_board_customer_addresses.sql.
+  const writtenFrom = new Map<string, Set<string>>()
+  ;(messageState?.customer_addresses || []).forEach(a => {
+    const primary = asPrimary(a.customer_id)
+    const email = String(a.email || '').trim().toLowerCase()
+    if (!primary || !email) return
+    const set = writtenFrom.get(primary) || new Set<string>()
+    set.add(email)
+    writtenFrom.set(primary, set)
+  })
+
   const addressesFor = (customerId?: string | null) => {
     const primary = asPrimary(customerId)
     if (!primary) return []
-    return customers
+    const onRecord = customers
       .filter(c => c.id === primary || c.merged_into_id === primary)
       .map(c => String(c.email || '').trim().toLowerCase())
       .filter(Boolean)
+    return Array.from(new Set(onRecord.concat(Array.from(writtenFrom.get(primary) || []))))
   }
 
   const lastReplyTo = (customerId?: string | null) => {

@@ -18,6 +18,8 @@ import {
   money,
 } from '../../../lib/pcd-financials'
 import CashReceivedPanel from './CashReceivedPanel'
+import { cn } from '@/lib/utils'
+import { tableStyles as t } from '@/components/ui/table-styles'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -101,9 +103,14 @@ type LedgerRow = {
 // ─── Small pieces ────────────────────────────────────────────────────────────
 
 const CARD = 'bg-white border border-[#dbd8cc] rounded-[10px]'
-const TH = 'text-left text-[10px] font-semibold uppercase tracking-[0.04em] text-[#8b8a81] px-3 py-2 border-b border-[#dbd8cc] whitespace-nowrap'
-const TD = 'px-3 py-2 text-[12px] text-[#1a1a18] border-b border-black/5 whitespace-nowrap'
-const NUM = 'font-mono tabular-nums'
+// The ledger takes its look from the shared table tokens. It stays unpaginated
+// because the totals row adds up every row shown, and a total under one page of
+// many reads as the whole period. Figures never wrap, so a column lines up.
+const TH = t.th
+const TD = cn(t.td, 'whitespace-nowrap')
+const NUM = t.num
+// The totals row: a cell like the rest, with its line above rather than below.
+const FOOT = cn(t.td, 'whitespace-nowrap border-b-0 border-t border-[#dbd8cc] font-semibold')
 
 function dateLabel(value: string | null): string {
   if (!value) return '·'
@@ -527,7 +534,7 @@ export default function FinancialsClient({
         </div>
 
         {/* ── The ledger ── */}
-        <div className={`${CARD} overflow-hidden`}>
+        <div className={t.card}>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-[10px] border-b border-[#dbd8cc]">
             <div className="inline-flex max-w-full rounded-[7px] border border-[#dbd8cc] overflow-hidden self-start">
@@ -564,7 +571,7 @@ export default function FinancialsClient({
           </div>
 
           {shown.length === 0 ? (
-            <p className="px-4 py-8 text-center text-[12px] italic text-[#8b8a81]">
+            <p className={t.empty}>
               {ledger.length === 0
                 ? isOrders
                   ? `No orders were confirmed in ${periodLabel.toLowerCase()}.`
@@ -575,30 +582,31 @@ export default function FinancialsClient({
             <>
               {/* Desktop: the ledger proper. */}
               <div className="hidden md:block overflow-x-auto">
-                <table className="w-full border-collapse">
+                <table className={t.table}>
                   <thead>
                     <tr>
                       <th className={TH}>{isOrders ? 'Confirmed' : 'Sent'}</th>
                       <th className={TH}>{isOrders ? 'Order' : 'Quote'}</th>
                       <th className={TH}>Customer</th>
                       <th className={TH}>Status</th>
-                      <th className={`${TH} text-right`}>Total inc GST</th>
-                      <th className={`${TH} text-right`}>GST</th>
-                      <th className={`${TH} text-right`}>{isOrders ? 'Profit' : 'Profit if won'}</th>
+                      <th className={cn(TH, 'text-right')}>Total inc GST</th>
+                      <th className={cn(TH, 'text-right')}>GST</th>
+                      <th className={cn(TH, 'text-right')}>{isOrders ? 'Profit' : 'Profit if won'}</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  {/* No row hover: only the reference is a link, the row goes nowhere. */}
+                  <tbody className={t.body}>
                     {shown.map(row => (
-                      <tr key={row.id} className="hover:bg-[#faf9f5]">
-                        <td className={`${TD} text-[#5a5a52]`}>{dateLabel(row.on)}</td>
+                      <tr key={row.id}>
+                        <td className={cn(TD, 'text-[#5a5a52]')}>{dateLabel(row.on)}</td>
                         <td className={TD}>
                           <Link href={row.href} className="font-medium text-[#2d5e28] hover:underline">{row.ref}</Link>
                         </td>
-                        <td className={`${TD} text-[#5a5a52]`}>{row.customer || '·'}</td>
+                        <td className={cn(TD, 'text-[#5a5a52]')}>{row.customer || '·'}</td>
                         <td className={TD}><StatusChip status={row.status} /></td>
-                        <td className={`${TD} text-right ${NUM}`}>{money2(row.amount)}</td>
-                        <td className={`${TD} text-right ${NUM} text-[#5a5a52]`}>{money2(row.gst)}</td>
-                        <td className={`${TD} text-right ${NUM}`}>
+                        <td className={cn(TD, NUM, 'text-right')}>{money2(row.amount)}</td>
+                        <td className={cn(TD, NUM, 'text-right text-[#5a5a52]')}>{money2(row.gst)}</td>
+                        <td className={cn(TD, NUM, 'text-right')}>
                           {row.profit === null
                             ? <span className="text-[11px] italic text-[#8b8a81]">Unknown</span>
                             : money2(row.profit)}
@@ -608,13 +616,13 @@ export default function FinancialsClient({
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td className="px-3 py-2 text-[11px] font-semibold text-[#8b8a81]" colSpan={4}>
+                      <td className={cn(FOOT, 'text-[12px] text-[#8b8a81]')} colSpan={4}>
                         {shown.length}{shown.length !== ledger.length ? ` of ${ledger.length}` : ''}{' '}
                         {isOrders ? 'order' : 'quote'}{shown.length === 1 ? '' : 's'} · {periodLabel.toLowerCase()}
                       </td>
-                      <td className={`px-3 py-2 text-right text-[13px] font-semibold ${NUM} text-[#1a1a18]`}>{money2(shownTotal)}</td>
-                      <td className={`px-3 py-2 text-right text-[12px] font-semibold ${NUM} text-[#5a5a52]`}>{money2(shownGst)}</td>
-                      <td className={`px-3 py-2 text-right text-[13px] font-semibold ${NUM} text-[#1a1a18]`}>
+                      <td className={cn(FOOT, NUM, 'text-right')}>{money2(shownTotal)}</td>
+                      <td className={cn(FOOT, NUM, 'text-right text-[#5a5a52]')}>{money2(shownGst)}</td>
+                      <td className={cn(FOOT, NUM, 'text-right')}>
                         {money2(shownProfit)}
                         {shownMargin !== null && (
                           <span className="font-normal text-[10px] text-[#8b8a81]"> · {shownMargin.toFixed(0)}%</span>

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconEdit, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
+import { IconEdit, IconPlus, IconTrash } from "@tabler/icons-react";
 import { AdminPagination, useAdminPagination } from "../_components/AdminPagination";
 import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
+import { AdminDataTable } from "@/components/ui/AdminDataTable";
+import { tableStyles as t } from "@/components/ui/table-styles";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal, Modal } from "@/components/ui/Modal";
 import { IconButton } from "@/components/ui/IconButton";
@@ -153,6 +155,58 @@ export default function BenchtopMaterialsManager() {
     </>
   );
 
+  function statusPill(row) {
+    return (
+      <span className={cn(
+        "inline-flex rounded-full border px-2 py-[3px] text-[11px] font-semibold",
+        row.is_active ? "border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28]" : "border-[#dbd8cc] bg-[#f5f5f4] text-[#5a5a52]"
+      )}>
+        {row.is_active ? "Active" : "Hidden"}
+      </span>
+    );
+  }
+
+  // One menu for the table and the phone card, so they cannot offer different things.
+  function actionMenu(row) {
+    return (
+      <ActionMenu label={`Open actions for ${row.name}`} size="sm">
+        <ActionMenuItem icon={<IconEdit size={14} />} disabled={isSaving} onClick={() => openEditModal(row)}>
+          Edit
+        </ActionMenuItem>
+        <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
+          Delete
+        </ActionMenuItem>
+      </ActionMenu>
+    );
+  }
+
+  const columns = [
+    { id: "name", header: "Material", className: "font-medium", cell: (row) => row.name },
+    { id: "cost", header: "$/sqm ex GST", className: t.num, cell: (row) => money(row.cost_per_sqm_ex_gst) },
+    { id: "status", header: "Status", cell: statusPill },
+    { id: "actions", header: "Actions", cell: actionMenu },
+  ];
+
+  function renderMobileCard(row) {
+    return (
+      <article className={t.mobileCard}>
+        <div className="flex items-start justify-between gap-3">
+          <button type="button" onClick={() => openEditModal(row)} className="min-w-0 text-left text-[14px] font-semibold text-[#1a1a18]">
+            {row.name}
+          </button>
+          {statusPill(row)}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#edf4eb] pt-3 text-[12px]">
+          <span>
+            <span className="text-[#8b8a81]">$/sqm ex GST </span>
+            <span className={cn(t.num, "text-[#1a1a18]")}>{money(row.cost_per_sqm_ex_gst)}</span>
+          </span>
+          {actionMenu(row)}
+        </div>
+      </article>
+    );
+  }
+
   // First load owns the whole content area. A refresh with materials already on
   // screen leaves them there rather than blanking the page.
   if (loading && !rows.length) {
@@ -172,72 +226,30 @@ export default function BenchtopMaterialsManager() {
           </IconButton>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="relative">
-            <IconSearch size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8b8a81]" />
-            <input
-              type="search"
-              placeholder="Search benchtop materials"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              className="h-[34px] min-w-[260px] rounded-[6px] border border-[#dbd8cc] bg-white pl-9 pr-3 text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
-            />
-          </div>
-          <button type="button" onClick={openAddModal} className="hidden h-[34px] items-center gap-2 rounded-[6px] bg-[#1c2b1e] px-4 text-[13px] font-medium text-white hover:bg-[#2d3f2f] md:inline-flex">
-            <IconPlus size={15} />
-            Add material
-          </button>
-        </div>
-
-        <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full whitespace-nowrap text-[13px]">
-              <thead>
-                <tr className="border-b border-[#dbd8cc] bg-[#f5f8f4]">
-                  {["Material", "$/sqm ex GST", "Status", "Actions"].map((heading) => (
-                    <th key={heading} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {pageItems.map((row) => (
-                  <tr key={row.id} className="cursor-pointer border-b border-[#edf4eb] transition-colors last:border-b-0 hover:bg-[#f5f8f4]" onClick={() => openEditModal(row)}>
-                    <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{row.name}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{money(row.cost_per_sqm_ex_gst)}</td>
-                    <td className="px-4 py-[11px]">
-                      <span className={cn(
-                        "inline-flex rounded-full border px-2 py-[3px] text-[11px] font-semibold",
-                        row.is_active ? "border-[#a8c5a0] bg-[#edf4eb] text-[#2d5e28]" : "border-[#dbd8cc] bg-[#f5f5f4] text-[#5a5a52]"
-                      )}>
-                        {row.is_active ? "Active" : "Hidden"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-[11px]" onClick={(event) => event.stopPropagation()}>
-                      <ActionMenu label={`Open actions for ${row.name}`} size="sm">
-                        <ActionMenuItem icon={<IconEdit size={14} />} disabled={isSaving} onClick={() => openEditModal(row)}>
-                          Edit
-                        </ActionMenuItem>
-                        <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => setRowToDelete(row)}>
-                          Delete
-                        </ActionMenuItem>
-                      </ActionMenu>
-                    </td>
-                  </tr>
-                ))}
-                {!loading && !filteredRows.length ? (
-                  <tr>
-                    <td colSpan={4} className="py-12 text-center text-[13px] text-[#8b8a81]">
-                      {rows.length ? "No benchtop materials match your search." : "No benchtop materials yet. Add your first material."}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-          <AdminPagination label="benchtop materials" page={page} pageCount={pageCount} totalItems={totalItems} onPageChange={setPage} />
-        </div>
+        {/* Search, add, a row that opens the editor and one menu: exactly what
+            the shared table does, so it draws the table and the phone cards. */}
+        <AdminDataTable
+          wide
+          rows={pageItems}
+          columns={columns}
+          getRowId={(row) => row.id}
+          getRowLabel={(row) => row.name}
+          onRowClick={openEditModal}
+          emptyTitle={rows.length ? "No benchtop materials match your search." : "No benchtop materials yet."}
+          emptyDescription={rows.length ? undefined : "Add your first material."}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder="Search benchtop materials"
+          primaryAction={
+            // The phone already has the add button beside the page title.
+            <button type="button" onClick={openAddModal} className="hidden h-[34px] items-center gap-2 rounded-[6px] bg-[#1c2b1e] px-4 text-[13px] font-medium text-white hover:bg-[#2d3f2f] md:inline-flex">
+              <IconPlus size={15} />
+              Add material
+            </button>
+          }
+          mobileCard={renderMobileCard}
+          pagination={<AdminPagination label="benchtop materials" page={page} pageCount={pageCount} totalItems={totalItems} onPageChange={setPage} />}
+        />
       </div>
 
       <Modal open={isModalOpen} onClose={closeModal} title={draft.id ? "Edit benchtop material" : "Add benchtop material"} subtitle="Set material name, sqm rate and status." size="md" footer={modalFooter}>

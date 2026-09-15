@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button'
 import AdminLoading from '@/components/admin/AdminLoading'
 import { AdminPagination, useAdminPagination, REPORT_PAGE_SIZE } from '../../_components/AdminPagination'
 import { shareOf } from '@/lib/pcd-report-materials'
+import { cn } from '@/lib/utils'
+import { tableStyles as t } from '@/components/ui/table-styles'
 
 // COLOURS AND MATERIALS.
 //
@@ -215,7 +217,7 @@ function Ranked({ rows, total, view, label }) {
   const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(rows || [], view, REPORT_PAGE_SIZE)
 
   if (!rows?.length) {
-    return <p className="px-4 py-8 text-center text-[13px] text-[#8b8a81]">No {label} are recorded on these orders.</p>
+    return <p className={t.empty}>No {label} are recorded on these orders.</p>
   }
 
   return (
@@ -238,30 +240,29 @@ function Ranked({ rows, total, view, label }) {
       ))}
     </div>
 
-    <div className="hidden overflow-x-auto md:block">
-      <table className="w-full min-w-[420px] text-[13px]">
+    {/* The literal hidden and md:block stay in this file because
+        reporting-mobile.test reads them from the source. */}
+    <div className={`hidden md:block ${t.sideScroll}`}>
+      <table className={cn(t.table, 'min-w-[420px]')}>
         <thead>
-          <tr className="border-b border-[#edf4eb]">
+          <tr>
             {['', 'Pieces', 'Orders', 'Value'].map((column, index) => (
-              <th
-                key={column || index}
-                className={`px-4 py-[7px] text-[11px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] ${index ? 'text-right' : 'text-left'}`}
-              >
+              <th key={column || index} className={cn(t.th, index && 'text-right')}>
                 {column}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className={t.body}>
           {pageItems.map(row => (
-            <tr key={row.key} className="border-b border-[#edf4eb] last:border-b-0">
-              <td className="px-4 py-[9px]">
-                <div className="text-[#1a1a18]">{row.key}</div>
+            <tr key={row.key}>
+              <td className={t.td}>
+                <div>{row.key}</div>
                 <Bar percent={shareOf(row.pieces, total)} />
               </td>
-              <td className="px-4 py-[9px] text-right font-semibold tabular-nums text-[#1a1a18]">{row.pieces}</td>
-              <td className="px-4 py-[9px] text-right tabular-nums text-[#5a5a52]">{row.orders}</td>
-              <td className="px-4 py-[9px] text-right tabular-nums text-[#5a5a52]">{money(row.value)}</td>
+              <td className={cn(t.td, t.num, 'text-right font-semibold')}>{row.pieces}</td>
+              <td className={cn(t.td, t.num, 'text-right text-[#5a5a52]')}>{row.orders}</td>
+              <td className={cn(t.td, t.num, 'text-right text-[#5a5a52]')}>{money(row.value)}</td>
             </tr>
           ))}
         </tbody>

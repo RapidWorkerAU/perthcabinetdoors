@@ -10,9 +10,13 @@
 import { createPortal } from "react-dom";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconChevronRight } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "../design.module.css";
 import { formatMoney } from "../../../../lib/pcd-quote-utils";
+import { sizeLabel } from "../../../../lib/pcd-size-label";
+import { cn } from "@/lib/utils";
+import { tableStyles as tbl } from "@/components/ui/table-styles";
+import { AdminPagination, useAdminPagination } from "../../_components/AdminPagination";
 
 // Part = the six per-cabinet selection categories the import handler tags lines
 // with (plus "include" for a standalone item). Kept in a fixed order so a
@@ -31,17 +35,14 @@ const PART_LABELS = {
   include: "Include",
 };
 
-// ── Right-pane table styling (mirrors the cut-list columns) ──
+// The warnings and totals boxes. The lines table itself takes the shared table
+// look from table-styles rather than a palette of its own.
 const card = { background: "#fff", border: "1px solid #e6e2d8", borderRadius: 10, marginBottom: 14, overflow: "hidden" };
-const th = { textAlign: "left", fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "#8a8780", padding: "7px 10px", borderBottom: "1px solid #e6e2d8", whiteSpace: "nowrap" };
-const td = { padding: "6px 10px", borderBottom: "1px solid #f2efe7", fontSize: 12, color: "#1c1c1a", verticalAlign: "top" };
-const tdNum = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 const btn = { padding: "8px 14px", borderRadius: 8, border: "1px solid #d8d3c8", background: "#fff", cursor: "pointer", font: "inherit", fontSize: 13 };
 const btnPrimary = { ...btn, background: "#2f5d8f", color: "#fff", borderColor: "#2f5d8f", fontWeight: 600 };
 
-const dash = (v) => (v === "" || v === null || v === undefined ? "—" : v);
-const dims = (l) => (l.width_mm || l.height_mm ? `${l.height_mm || "—"} × ${l.width_mm || "—"}` : "—");
-const finishOf = (l) => [l.colour, l.finish].filter(Boolean).join(" · ") || "—";
+const dash = (v) => (v === "" || v === null || v === undefined ? "-" : v);
+const finishOf = (l) => [l.colour, l.finish].filter(Boolean).join(" · ") || "-";
 
 // Distinct parts a cabinet actually produces, in canonical order — derived from
 // its lines in the first (everything-on) preview so the tree is complete.
@@ -283,6 +284,22 @@ export default function StageQuoteModal({ projectId, onClose }) {
     });
   }, []);
 
+  // Every line in the preview, one entry each, so the table pages by line
+  // rather than by room. A cabinet with no lines still gets an entry, or its
+  // heading would vanish from the preview.
+  const previewLines = useMemo(
+    () =>
+      groups.flatMap((group) =>
+        (group.cabinets || []).flatMap((cab) =>
+          cab.lines?.length
+            ? cab.lines.map((line, index) => ({ room: group.room, cab, line, index }))
+            : [{ room: group.room, cab, line: null, index: 0 }]
+        )
+      ),
+    [groups]
+  );
+  const linePages = useAdminPagination(previewLines);
+
   // ── Commit ──
   async function runImport(quoteId, force) {
     const res = await fetch(`/api/admin/design/projects/${projectId}/import`, {
@@ -459,33 +476,39 @@ export default function StageQuoteModal({ projectId, onClose }) {
                     Nothing selected — tick something on the left to build the quote.
                   </p>
                 ) : (
-                  groups.map((group) => (
-                    <div key={group.room} style={card}>
-                      <div style={{ padding: "9px 12px", background: "#f7f5ef", borderBottom: "1px solid #e6e2d8", fontSize: 12.5, fontWeight: 700, color: "#1c1c1a" }}>
-                        {group.room}
-                      </div>
-                      <div style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
-                          <thead>
-                            <tr>
-                              <th style={th}>Part</th>
-                              <th style={th}>Material</th>
-                              <th style={th}>Thick</th>
-                              <th style={th}>Finish / colour</th>
-                              <th style={{ ...th, textAlign: "right" }}>W × H</th>
-                              <th style={{ ...th, textAlign: "right" }}>Qty</th>
-                              <th style={{ ...th, textAlign: "right" }}>Unit</th>
-                              <th style={{ ...th, textAlign: "right" }}>Markup</th>
-                              <th style={{ ...th, textAlign: "right" }}>Line</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {group.cabinets.map((cab) => <CabinetRows key={cab.itemId} cab={cab} />)}
-                          </tbody>
-                        </table>
-                      </div>
+                  // One card for every room, paged by line. The room and cabinet
+                  // headings are repeated at the top of a page when their lines
+                  // carry on from the page before, so no line is ever orphaned.
+                  <div className={cn(tbl.card, "mb-[14px]")}>
+                    {/* Sideways scroll inside the modal: nine columns need the width. */}
+                    <div className={tbl.sideScroll}>
+                      <table className={cn(tbl.table, "min-w-[760px]")}>
+                        <thead>
+                          <tr>
+                            <th className={tbl.th}>Part</th>
+                            <th className={tbl.th}>Material</th>
+                            <th className={tbl.th}>Thick</th>
+                            <th className={tbl.th}>Finish / colour</th>
+                            <th className={cn(tbl.th, "text-right")}>Size (H × W)</th>
+                            <th className={cn(tbl.th, "text-right")}>Qty</th>
+                            <th className={cn(tbl.th, "text-right")}>Unit</th>
+                            <th className={cn(tbl.th, "text-right")}>Markup</th>
+                            <th className={cn(tbl.th, "text-right")}>Line</th>
+                          </tr>
+                        </thead>
+                        <tbody className={tbl.body}>
+                          <PreviewRows entries={linePages.pageItems} />
+                        </tbody>
+                      </table>
                     </div>
-                  ))
+                    <AdminPagination
+                      label="lines"
+                      page={linePages.page}
+                      pageCount={linePages.pageCount}
+                      totalItems={linePages.totalItems}
+                      onPageChange={linePages.setPage}
+                    />
+                  </div>
                 )}
 
                 {/* Totals */}
@@ -567,28 +590,50 @@ export default function StageQuoteModal({ projectId, onClose }) {
   );
 }
 
-// One cabinet's rows: a header row (label + subtotal) then a read-only row per part.
-function CabinetRows({ cab }) {
-  const subtotal = cab.lines.reduce((s, l) => s + (Number(l.material_cost_ex_gst) || 0), 0);
-  return (
-    <>
-      <tr>
-        <td colSpan={8} style={{ ...td, fontWeight: 600, background: "#faf9f4", borderBottom: "1px solid #ece8de" }}>{cab.label}</td>
-        <td style={{ ...tdNum, fontWeight: 600, background: "#faf9f4", borderBottom: "1px solid #ece8de" }}>{formatMoney(subtotal)}</td>
-      </tr>
-      {cab.lines.map((l, i) => (
-        <tr key={i}>
-          <td style={{ ...td, paddingLeft: 20 }}>{dash(l.product_name || l.description)}</td>
-          <td style={td}>{dash(l.material)}</td>
-          <td style={td}>{dash(l.thickness)}</td>
-          <td style={td}>{finishOf(l)}</td>
-          <td style={tdNum}>{dims(l)}</td>
-          <td style={tdNum}>{l.qty}</td>
-          <td style={tdNum}>{formatMoney(l.product_unit_cost_ex_gst)}</td>
-          <td style={tdNum}>{formatMoney(l.markup_amount_ex_gst)}</td>
-          <td style={tdNum}>{formatMoney(l.material_cost_ex_gst)}</td>
+// One page of preview lines. A room heading, then each cabinet's heading with
+// its subtotal, then a read-only row per part. The subtotal is always the whole
+// cabinet, even when some of its lines sit on another page.
+function PreviewRows({ entries }) {
+  const rows = [];
+  let room = null;
+  let cabinetId = null;
+  const numCell = cn(tbl.td, tbl.num, "whitespace-nowrap text-right align-top");
+  const textCell = cn(tbl.td, "align-top");
+
+  for (const { room: roomName, cab, line, index } of entries) {
+    if (roomName !== room) {
+      room = roomName;
+      cabinetId = null;
+      rows.push(
+        <tr key={`room-${roomName}`}>
+          <td colSpan={9} className={cn(tbl.td, "bg-[#edf4eb] font-semibold")}>{roomName}</td>
         </tr>
-      ))}
-    </>
-  );
+      );
+    }
+    if (cab.itemId !== cabinetId) {
+      cabinetId = cab.itemId;
+      const subtotal = (cab.lines || []).reduce((s, l) => s + (Number(l.material_cost_ex_gst) || 0), 0);
+      rows.push(
+        <tr key={`cab-${roomName}-${cab.itemId}`}>
+          <td colSpan={8} className={cn(tbl.td, "bg-[#f5f8f4] font-semibold")}>{cab.label}</td>
+          <td className={cn(numCell, "bg-[#f5f8f4] font-semibold")}>{formatMoney(subtotal)}</td>
+        </tr>
+      );
+    }
+    if (!line) continue;
+    rows.push(
+      <tr key={`line-${roomName}-${cab.itemId}-${index}`}>
+        <td className={cn(textCell, "pl-8")}>{dash(line.product_name || line.description)}</td>
+        <td className={textCell}>{dash(line.material)}</td>
+        <td className={textCell}>{dash(line.thickness)}</td>
+        <td className={textCell}>{finishOf(line)}</td>
+        <td className={numCell}>{sizeLabel(line.height_mm, line.width_mm)}</td>
+        <td className={numCell}>{line.qty}</td>
+        <td className={numCell}>{formatMoney(line.product_unit_cost_ex_gst)}</td>
+        <td className={numCell}>{formatMoney(line.markup_amount_ex_gst)}</td>
+        <td className={numCell}>{formatMoney(line.material_cost_ex_gst)}</td>
+      </tr>
+    );
+  }
+  return rows;
 }

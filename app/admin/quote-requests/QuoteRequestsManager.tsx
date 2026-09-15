@@ -16,6 +16,9 @@ import { useFocusedRow } from '../_utils/useFocusedRow'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 import OrderFormActions from '../_components/OrderFormActions'
+import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
+import { LIST_PAGE_SIZE, tableStyles } from '@/components/ui/table-styles'
+import { sizeLabel } from '@/lib/pcd-size-label'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,10 +94,8 @@ function cleanValue(value?: string | number | null) {
   return String(value)
 }
 
-function sizeText(line: LineItem) {
-  if (!line.width_mm && !line.height_mm) return '-'
-  return `${line.height_mm || '-'} × ${line.width_mm || '-'} mm`
-}
+// The spec table pages like any other list of lines.
+const LINE_PAGE_SIZE = LIST_PAGE_SIZE
 
 // ── Preview modal ─────────────────────────────────────────────────────────────
 
@@ -108,9 +109,11 @@ function QuoteRequestPreviewModal({
   onUpdateStatus: (id: string, status: string) => void
 }) {
   const incomplete = incompleteLines(request)
-  const lineItems = [...(request.pcd_quote_request_line_items || [])].sort(
+  const lineItems = React.useMemo(() => [...(request.pcd_quote_request_line_items || [])].sort(
     (a, b) => (a.sort_order || 0) - (b.sort_order || 0)
-  )
+  ), [request.pcd_quote_request_line_items])
+  // Back to page one when a different request is opened.
+  const linePage = useAdminPagination(lineItems, request.id, LINE_PAGE_SIZE)
 
   return (
     <Modal
@@ -199,39 +202,46 @@ function QuoteRequestPreviewModal({
             </div>
           )}
           <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] mb-2">Line items</p>
-          <div className="overflow-x-auto rounded-[6px] border border-[#dbd8cc]">
-            <table className="w-full text-[12px] min-w-[820px] border-collapse">
+          {/* The shared table look, paged ten lines at a time. A note is a second
+              row under its line, so the pair shares one row line: the line's own
+              cells drop theirs and the note's cells carry it. */}
+          <div className={tableStyles.card}>
+          <div className={tableStyles.sideScroll}>
+            <table className={tableStyles.tableWide}>
               <thead>
-                <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                  {['#', 'Type', 'Material', 'Thickness', 'H × W', 'Finish', 'Colour', 'Qty', 'Edge', 'Profile', 'Hinges'].map(col => (
-                    <th key={col} className="px-2 py-[7px] text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81] whitespace-nowrap">{col}</th>
+                <tr>
+                  {['#', 'Type', 'Material', 'Thickness', 'Size (H × W)', 'Finish', 'Colour', 'Qty', 'Edge', 'Profile', 'Hinges'].map(col => (
+                    <th key={col} className={tableStyles.th}>{col}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={tableStyles.body}>
                 {lineItems.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-3 py-8 text-center text-[12px] text-[#8b8a81]">
+                    <td colSpan={11} className={tableStyles.empty}>
                       No line items were submitted with this request.
                     </td>
                   </tr>
-                ) : lineItems.map((line, i) => (
+                ) : linePage.pageItems.map((line, pageIndex) => {
+                  const i = (linePage.page - 1) * LINE_PAGE_SIZE + pageIndex
+                  const cell = cn(tableStyles.td, line.notes && 'border-b-0')
+                  return (
                   <React.Fragment key={line.id || i}>
-                  <tr className={`hover:bg-[#f5f8f4] transition-colors ${line.notes ? '' : 'border-b border-[#edf4eb]'}`}>
-                    <td className="px-2 py-[7px] text-[#8b8a81] text-[11px]">{i + 1}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap font-medium">
+                  <tr>
+                    <td className={cn(cell, 'text-[#8b8a81]')}>{i + 1}</td>
+                    <td className={cn(cell, 'whitespace-nowrap font-medium')}>
                       {cleanValue(line.panel_use || line.product_type || line.product_name)}
                       {line.panel_use && (
                         <span className="ml-1.5 text-[10px] font-normal text-[#8b8a81]">panel</span>
                       )}
                     </td>
-                    <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.material)}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.thickness)}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap font-mono text-[11px]">{sizeText(line)}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.finish)}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18]">{cleanValue(line.colour)}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18]">{line.qty || 1}</td>
-                    <td className="px-2 py-[7px] text-[#1a1a18]">
+                    <td className={cell}>{cleanValue(line.material)}</td>
+                    <td className={cell}>{cleanValue(line.thickness)}</td>
+                    <td className={cn(cell, 'whitespace-nowrap')}>{sizeLabel(line.height_mm, line.width_mm)}</td>
+                    <td className={cell}>{cleanValue(line.finish)}</td>
+                    <td className={cell}>{cleanValue(line.colour)}</td>
+                    <td className={cn(cell, tableStyles.num)}>{line.qty || 1}</td>
+                    <td className={cell}>
                       {cleanValue(line.edge_mould)}
                       {/* WHICH EDGES ARE BANDED, in the same words the quote, the
                           order and the customer's copy use. Anything less than
@@ -243,10 +253,10 @@ function QuoteRequestPreviewModal({
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-[7px] text-[#1a1a18] whitespace-nowrap">
+                    <td className={cn(cell, 'whitespace-nowrap')}>
                       {[line.profile_type, line.profile].filter(Boolean).join(' / ') || '-'}
                     </td>
-                    <td className="px-2 py-[7px]">
+                    <td className={cell}>
                       {/* THE DRILLING, in the words the customer's quote uses:
                           how many, which side, which boring and where the cups
                           go. Only a door is drilled, so anything else says so.
@@ -270,17 +280,28 @@ function QuoteRequestPreviewModal({
                       for a design it is the brief someone configures from, so
                       it belongs here rather than only in the database. */}
                   {line.notes ? (
-                    <tr className="border-b border-[#edf4eb] last:border-b-0">
-                      <td />
-                      <td colSpan={10} className="px-2 pb-[8px] pt-0 text-[11px] leading-relaxed text-[#5a5a52]">
+                    <tr>
+                      <td className={cn(tableStyles.td, 'pt-0')} />
+                      <td colSpan={10} className={cn(tableStyles.td, 'pt-0 text-[12px] leading-relaxed text-[#5a5a52]')}>
                         {line.notes}
                       </td>
                     </tr>
                   ) : null}
                   </React.Fragment>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
+          </div>
+          {lineItems.length > 0 && (
+            <AdminPagination
+              label="lines"
+              page={linePage.page}
+              pageCount={linePage.pageCount}
+              totalItems={linePage.totalItems}
+              onPageChange={linePage.setPage}
+            />
+          )}
           </div>
         </div>
 
@@ -412,19 +433,72 @@ export default function QuoteRequestsManager() {
     }
   }
 
-  function toggleSelectedQuoteRequest(id: string) {
-    setSelectedQuoteRequestIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
-  }
-
-  function toggleSelectedQuoteRequestPage(checked: boolean) {
-    const pageIds = pageItems.map(r => r.id)
-    setSelectedQuoteRequestIds(current => {
-      if (!checked) return current.filter(id => !pageIds.includes(id))
-      return Array.from(new Set([...current, ...pageIds]))
-    })
-  }
-
-  const allPageSelected = pageItems.length > 0 && pageItems.every(r => selectedQuoteRequestIds.includes(r.id))
+  const columns: AdminDataTableColumn<QuoteRequest>[] = [
+    { id: 'customer', header: 'Customer', className: 'font-medium', cell: request => request.customer_name || '-' },
+    { id: 'suburb',   header: 'Suburb',   cell: request => request.delivery_suburb || '-' },
+    { id: 'source',   header: 'Source',   cell: request => formatAdminLabel(request.source || '-') },
+    {
+      id: 'items',
+      header: 'Items',
+      cell: request => (
+        <>
+          {request.pcd_quote_request_line_items?.length || 0}
+          {incompleteLines(request).length > 0 && (
+            <span
+              title="Some lines cannot be priced as submitted. Open the request to see what is missing."
+              className="ml-2 inline-flex items-center px-2 py-[1px] rounded-full text-[10px] font-semibold bg-[#fdf7ec] text-[#7a5a2a] border border-[#e7d3b0] align-middle"
+            >
+              {incompleteLines(request).length} to confirm
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: request => (
+        // Changing the status is not opening the request.
+        <div onClick={e => e.stopPropagation()}>
+          <select
+            value={request.status || 'new'}
+            onChange={e => updateStatus(request.id, e.target.value)}
+            disabled={isStatusLocked(request)}
+            className="h-[30px] border border-[#dbd8cc] rounded-[4px] bg-white text-[12px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer disabled:opacity-60"
+          >
+            {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
+          </select>
+        </div>
+      ),
+    },
+    { id: 'received', header: 'Received', className: 'whitespace-nowrap', cell: request => formatDate(request.created_at) },
+    {
+      id: 'actions',
+      header: '',
+      className: 'text-right',
+      cell: request => (
+        <div className="flex justify-end">
+          <ActionMenu label={`Open actions for quote request from ${request.customer_name || 'customer'}`}>
+            <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewRequest(request)}>
+              Preview
+            </ActionMenuItem>
+            {request.converted_quote_id ? (
+              <ActionMenuItem icon={<IconArrowRight size={14} />} onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}>
+                Open quote
+              </ActionMenuItem>
+            ) : (
+              <ActionMenuItem icon={<IconArrowRight size={14} />} onClick={() => convertToQuote(request.id)}>
+                Convert
+              </ActionMenuItem>
+            )}
+            <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => deleteQuoteRequests([request.id])}>
+              Delete
+            </ActionMenuItem>
+          </ActionMenu>
+        </div>
+      ),
+    },
+  ]
 
   // First load owns the whole content area. A refresh with requests already on
   // screen leaves them there rather than blanking the page.
@@ -467,128 +541,45 @@ export default function QuoteRequestsManager() {
         ))}
       </div>
 
-      {/* Desktop table */}
-      <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#edf4eb]">
-          {selectedQuoteRequestIds.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => deleteQuoteRequests(selectedQuoteRequestIds)}
-              disabled={isDeleting}
-              className="text-[13px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-            >
-              Delete {selectedQuoteRequestIds.length} selected
-            </button>
-          ) : (
-            <span className="text-[13px] text-[#8b8a81]">{visibleQuoteRequests.length} {visibleQuoteRequests.length === 1 ? 'request' : 'requests'}</span>
-          )}
-        </div>
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-              <th className="w-[40px] px-4 py-[9px]">
-                <input
-                  type="checkbox"
-                  checked={allPageSelected}
-                  onChange={e => toggleSelectedQuoteRequestPage(e.target.checked)}
-                  aria-label="Select all visible quote requests"
-                  className="accent-[#6b9e61]"
-                />
-              </th>
-              {['Customer', 'Suburb', 'Source', 'Items', 'Status', 'Received', ''].map(col => (
-                <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">{col}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {!isLoading && !visibleQuoteRequests.length && (
-              <tr><td colSpan={8} className="py-12 text-center text-[13px] text-[#8b8a81]">No quote requests match this filter.</td></tr>
-            )}
-            {pageItems.map(request => (
-              <tr
-                key={request.id}
-                className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                onClick={() => setPreviewRequest(request)}
-              >
-                <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    checked={selectedQuoteRequestIds.includes(request.id)}
-                    onChange={() => toggleSelectedQuoteRequest(request.id)}
-                    aria-label={`Select quote request from ${request.customer_name || 'customer'}`}
-                    className="accent-[#6b9e61]"
-                  />
-                </td>
-                <td className="px-4 py-[11px] text-[13px] font-medium text-[#1a1a18]">{request.customer_name || '-'}</td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{request.delivery_suburb || '-'}</td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{formatAdminLabel(request.source || '-')}</td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">
-                  {request.pcd_quote_request_line_items?.length || 0}
-                  {incompleteLines(request).length > 0 && (
-                    <span
-                      title="Some lines cannot be priced as submitted. Open the request to see what is missing."
-                      className="ml-2 inline-flex items-center px-2 py-[1px] rounded-full text-[10px] font-semibold bg-[#fdf7ec] text-[#7a5a2a] border border-[#e7d3b0] align-middle"
-                    >
-                      {incompleteLines(request).length} to confirm
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                  <select
-                    value={request.status || 'new'}
-                    onChange={e => updateStatus(request.id, e.target.value)}
-                    disabled={isStatusLocked(request)}
-                    className="h-[30px] border border-[#dbd8cc] rounded-[4px] bg-white text-[12px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer disabled:opacity-60"
-                  >
-                    {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
-                  </select>
-                </td>
-                <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] whitespace-nowrap">{formatDate(request.created_at)}</td>
-                <td className="px-4 py-[11px] text-right" onClick={e => e.stopPropagation()}>
-                  <div className="flex justify-end">
-                    <ActionMenu label={`Open actions for quote request from ${request.customer_name || 'customer'}`}>
-                      <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewRequest(request)}>
-                      Preview
-                      </ActionMenuItem>
-                      {request.converted_quote_id ? (
-                        <ActionMenuItem icon={<IconArrowRight size={14} />} onClick={() => router.push(`/admin/quotes/${request.converted_quote_id}`)}>
-                          Open quote
-                        </ActionMenuItem>
-                      ) : (
-                        <ActionMenuItem icon={<IconArrowRight size={14} />} onClick={() => convertToQuote(request.id)}>
-                          Convert
-                        </ActionMenuItem>
-                      )}
-                      <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => deleteQuoteRequests([request.id])}>
-                      Delete
-                      </ActionMenuItem>
-                    </ActionMenu>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <AdminPagination
-          label="quote requests"
-          page={page}
-          pageCount={pageCount}
-          totalItems={totalItems}
-          onPageChange={setPage}
-        />
-      </div>
-
-      {/* Mobile cards */}
-      <div className="md:hidden flex flex-col gap-3">
-        {!isLoading && !visibleQuoteRequests.length && (
-          <div className="py-12 text-center text-[13px] text-[#8b8a81]">No quote requests match this filter.</div>
+      {/* The shared list table, the same as Enquiries: it scrolls sideways
+          rather than crushing its columns, which this one used to do. */}
+      <AdminDataTable<QuoteRequest>
+        wide
+        rows={pageItems}
+        columns={columns}
+        getRowId={request => request.id}
+        getRowLabel={request => `quote request from ${request.customer_name || 'customer'}`}
+        onRowClick={request => setPreviewRequest(request)}
+        selectedIds={selectedQuoteRequestIds}
+        onSelectedIdsChange={setSelectedQuoteRequestIds}
+        bulkActions={selectedQuoteRequestIds.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => deleteQuoteRequests(selectedQuoteRequestIds)}
+            disabled={isDeleting}
+            className="text-[13px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
+          >
+            Delete {selectedQuoteRequestIds.length} selected
+          </button>
+        ) : (
+          <span className={tableStyles.meta}>{visibleQuoteRequests.length} {visibleQuoteRequests.length === 1 ? 'request' : 'requests'}</span>
         )}
-        {pageItems.map(request => (
-          <div key={request.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+        emptyTitle="No quote requests match this filter."
+        pagination={
+          <AdminPagination
+            label="quote requests"
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        }
+        mobileCard={request => (
+          <div className={tableStyles.mobileCard}>
             <div className="flex items-start justify-between mb-3">
               <div>
-                <p className="text-[14px] font-semibold text-[#1a1a18]">{request.customer_name || '—'}</p>
-                <p className="text-[12px] text-[#5a5a52]">{request.delivery_suburb || '—'}</p>
+                <p className="text-[14px] font-semibold text-[#1a1a18]">{request.customer_name || '-'}</p>
+                <p className="text-[12px] text-[#5a5a52]">{request.delivery_suburb || '-'}</p>
               </div>
               <select
                 value={request.status || 'new'}
@@ -624,17 +615,8 @@ export default function QuoteRequestsManager() {
               </ActionMenu>
             </div>
           </div>
-        ))}
-        {totalItems > 0 && (
-          <AdminPagination
-            label="quote requests"
-            page={page}
-            pageCount={pageCount}
-            totalItems={totalItems}
-            onPageChange={setPage}
-          />
         )}
-      </div>
+      />
 
       {/* Preview modal */}
       {previewRequest && (

@@ -31,6 +31,7 @@ type Card = {
   why: string
   days: number
   late: boolean
+  latest?: number | null
   amt: number
   tags: [string, string][]
   theirs: boolean
@@ -697,6 +698,18 @@ function BoardCard({ card, showCat, onClose }: { card: Card; showCat: boolean; o
         >
           {card.days}d {clockFor(card.cat)}
         </span>
+        {/* THE NEWEST MESSAGE, when it is not the one being timed. Without it a
+            card reading "45d since they wrote" about somebody who wrote again
+            yesterday looks like a customer we have missed. Deliberately quiet:
+            the old clock is still the one to act on. */}
+        {typeof card.latest === 'number' && (
+          <span
+            title="Their oldest waiting conversation sets the clock. This is their newest message."
+            className="inline-flex whitespace-nowrap rounded-[5px] border border-[#dbd8cc] bg-white px-1.5 py-px font-mono text-[9.5px] font-semibold text-[#8b8a81]"
+          >
+            newest {card.latest}d
+          </span>
+        )}
         {card.theirs && (
           <span className="inline-flex whitespace-nowrap rounded-[5px] border border-[#dbd8cc] bg-[#f5f4ee] px-1.5 py-px text-[9.5px] font-semibold text-[#5a5a52]">
             Customer action

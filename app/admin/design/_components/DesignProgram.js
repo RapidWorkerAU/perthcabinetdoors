@@ -9,7 +9,6 @@ import DesignTopBar, { barButton } from "../../../../components/DesignTopBar";
 import DesignCanvas from "./DesignCanvas";
 import DesignLeftPanel from "./DesignLeftPanel";
 import DesignRightPanel from "./DesignRightPanel";
-import ImportModal from "./ImportModal";
 import MaterialDefaultsModal from "./MaterialDefaultsModal";
 import { DesignColourContext } from "./ColourField";
 import DesignPlanExportModal from "./DesignPlanExportModal";
@@ -70,7 +69,6 @@ export default function DesignProgram({ projectId }) {
     selectedRoomId, setSelectedRoomId,
     selectedItemId, setSelectedItemId,
     isAddingItem, setIsAddingItem,
-    importOpen, setImportOpen,
     materialDefaultsOpen, setMaterialDefaultsOpen,
     frontViewWall, setFrontViewWall,
     loading, error,
@@ -163,7 +161,17 @@ export default function DesignProgram({ projectId }) {
                 <div onClick={() => setActionsOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
                 <div role="menu" style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 21, background: "#2f302c", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, minWidth: 210, padding: 6, boxShadow: "0 14px 36px rgba(0,0,0,0.45)" }}>
                   <ActionMenuItem onClick={() => { setStageOpen(true); setActionsOpen(false); }}>Stage Quote</ActionMenuItem>
-                  <ActionMenuItem onClick={() => { setImportOpen(true); setActionsOpen(false); }}>Import to Quote</ActionMenuItem>
+                  {/* IMPORT TO QUOTE STOOD HERE AND IS GONE.
+                      It put a design straight onto a quote with no chance to
+                      look at what it was about to write. Stage Quote above
+                      does the same job and shows the lines, the warnings and
+                      the prices first, so the two were kept side by side only
+                      until the new one had been trusted on real jobs. It has
+                      been.
+
+                      The endpoint they shared is NOT gone: Stage Quote posts
+                      to the same route to preview and again to commit. See
+                      app/api/admin/design/projects/[projectId]/import. */}
                   <ActionMenuItem disabled={rooms.length === 0} onClick={() => { setExportOpen(true); setActionsOpen(false); }}>Export PDF</ActionMenuItem>
                   {/* Below a divider on purpose. The three above put this
                       design into a quote or onto paper for us; this one sends
@@ -292,14 +300,6 @@ export default function DesignProgram({ projectId }) {
       />
       </div>
 
-      {importOpen && (
-        <ImportModal
-          projectId={projectId}
-          items={items}
-          rooms={rooms}
-          onClose={() => setImportOpen(false)}
-        />
-      )}
 
       {exportOpen && rooms.length > 0 && (
         <DesignPlanExportModal

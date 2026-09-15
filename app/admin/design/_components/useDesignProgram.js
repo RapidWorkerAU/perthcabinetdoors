@@ -38,7 +38,6 @@ export default function useDesignProgram(projectId) {
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [isAddingItem, setIsAddingItem]  = useState(false);
-  const [importOpen, setImportOpen]     = useState(false);
   const [materialDefaultsOpen, setMaterialDefaultsOpen] = useState(false);
   const [frontViewWall, setFrontViewWall] = useState(null);
   const [loading, setLoading]           = useState(true);
@@ -250,7 +249,6 @@ export default function useDesignProgram(projectId) {
     selectedRoomId, setSelectedRoomId,
     selectedItemId, setSelectedItemId,
     isAddingItem, setIsAddingItem,
-    importOpen, setImportOpen,
     materialDefaultsOpen, setMaterialDefaultsOpen,
     frontViewWall, setFrontViewWall,
     loading, error,

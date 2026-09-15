@@ -5,8 +5,9 @@ import Link from "next/link";
 import { formatItemSpecs, formatMoney, PROJECT_LINE_STATUSES, PROJECT_STATUSES } from "../../../../lib/pcd-quote-utils";
 import AdminLoading from "@/components/admin/AdminLoading";
 import styles from "../../admin-content.module.css";
-import { AdminPagination, useAdminPagination } from "../../_components/AdminPagination";
 import { useToast } from "@/components/ui/Toast";
+import { tableStyles as t } from "@/components/ui/table-styles";
+import { cn } from "@/lib/utils";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -72,8 +73,9 @@ export default function ProjectDetail({ projectId }) {
   const [savingItemId, setSavingItemId] = useState("");
   const { toast } = useToast();
 
+  // Every line, no pages. These are the lines inside one project, and you work
+  // down all of them, so the table scrolls in its own box instead.
   const items = useMemo(() => sortedItems(project), [project]);
-  const { page, pageCount, pageItems, setPage, totalItems } = useAdminPagination(items);
   const progress = useMemo(() => {
     const completeCount = items.filter((item) => item.status === "Complete").length;
     const issueCount = items.filter((item) => item.status === "Issue Follow-Up").length;
@@ -173,6 +175,51 @@ export default function ProjectDetail({ projectId }) {
     }
   }
 
+  // The status and notes editors, shared by the table row and the phone card so
+  // both save the same way.
+  function statusSelect(item) {
+    return (
+      <select
+        className={styles.fieldInput}
+        value={item.status || "Not Ordered"}
+        disabled={savingItemId === item.id}
+        onChange={(event) => updateItem(item, { status: event.target.value })}
+      >
+        {PROJECT_LINE_STATUSES.map((status) => (
+          <option key={status} value={status}>
+            {status}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  function notesField(item) {
+    return (
+      <textarea
+        className={`${styles.textareaInput} ${styles.projectLineNotes}`}
+        rows={2}
+        value={item.notes || ""}
+        disabled={savingItemId === item.id}
+        onChange={(event) => {
+          const notes = event.target.value;
+          setProject((current) => (current ? setProjectItem(current, item.id, { notes }) : current));
+        }}
+        onBlur={(event) => updateItem(item, { notes: event.target.value })}
+      />
+    );
+  }
+
+  function linePill(item) {
+    return (
+      <span className={`inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-semibold border ${lineStatusPill(item.status)}`}>
+        {item.status || "Not Ordered"}
+      </span>
+    );
+  }
+
+  const emptyMessage = "This project does not have any converted quote products yet.";
+
   if (isLoading) {
     return <AdminLoading steps={["Opening the project", "Loading the products", "Almost there"]} label="Loading project" />;
   }
@@ -267,81 +314,78 @@ export default function ProjectDetail({ projectId }) {
           <p className={styles.sectionText}>Update each product as it moves from ordering through install and completion.</p>
         </div>
 
-        <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-          <div className="overflow-x-auto">
-            {/* min-w keeps the columns readable: the wrapper scrolls instead of
-                the browser wrapping every cell onto two or three lines. */}
-            <table className="w-full min-w-[1040px] text-[13px] border-collapse">
+        {/* SCROLL, not paginate: the box is as tall as the window and the
+            header row stays pinned while the lines move under it. */}
+        <div className={cn(t.card, t.desktopOnly)}>
+          <div className={t.scrollBox}>
+            <table className={t.tableWide}>
               <thead>
-                <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
+                <tr>
                   {['Product', 'Details', 'Qty', 'Total ex GST', 'Status', 'Notes', 'Updated'].map(h => (
-                    <th key={h} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52] whitespace-nowrap">{h}</th>
+                    <th key={h} className={cn(t.th, t.thSticky)}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {pageItems.map((item) => (
-                  <tr key={item.id} className="border-b border-[#edf4eb] last:border-b-0">
-                    <td className="px-4 py-[11px]">
+              <tbody className={t.body}>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td className={t.td}>
                       <div className="text-[13px] font-medium text-[#1a1a18] mb-[4px]">{item.title || "Cabinetry item"}</div>
-                      <span className={`inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-semibold border ${lineStatusPill(item.status)}`}>
-                        {item.status || "Not Ordered"}
-                      </span>
+                      {linePill(item)}
                     </td>
-                    <td className="px-4 py-[11px]">
+                    <td className={t.td}>
                       <div className="text-[#1a1a18]">{item.description || "-"}</div>
                       <div className="text-[11px] text-[#8b8a81] mt-[2px]">{itemMeta(item) || "-"}</div>
                     </td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{item.qty || 0}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(item.line_total_ex_gst, "AUD")}</td>
-                    <td className="px-4 py-[11px]">
-                      <select
-                        className={styles.fieldInput}
-                        value={item.status || "Not Ordered"}
-                        disabled={savingItemId === item.id}
-                        onChange={(event) => updateItem(item, { status: event.target.value })}
-                      >
-                        {PROJECT_LINE_STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-[11px]">
-                      <textarea
-                        className={`${styles.textareaInput} ${styles.projectLineNotes}`}
-                        rows={2}
-                        value={item.notes || ""}
-                        disabled={savingItemId === item.id}
-                        onChange={(event) => {
-                          const notes = event.target.value;
-                          setProject((current) => (current ? setProjectItem(current, item.id, { notes }) : current));
-                        }}
-                        onBlur={(event) => updateItem(item, { notes: event.target.value })}
-                      />
-                    </td>
-                    <td className="px-4 py-[11px] text-[#5a5a52] text-[12px] whitespace-nowrap">{formatDateTime(item.status_updated_at || item.updated_at || item.created_at)}</td>
+                    <td className={cn(t.td, t.num)}>{item.qty || 0}</td>
+                    <td className={cn(t.td, t.num)}>{formatMoney(item.line_total_ex_gst, "AUD")}</td>
+                    <td className={t.td}>{statusSelect(item)}</td>
+                    <td className={t.td}>{notesField(item)}</td>
+                    <td className={cn(t.td, "text-[#5a5a52] text-[12px] whitespace-nowrap")}>{formatDateTime(item.status_updated_at || item.updated_at || item.created_at)}</td>
                   </tr>
                 ))}
 
                 {!items.length ? (
                   <tr>
-                    <td colSpan="7" className="px-4 py-[20px] text-center text-[#8b8a81] text-[13px]">
-                      This project does not have any converted quote products yet.
-                    </td>
+                    <td colSpan="7" className={t.empty}>{emptyMessage}</td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
-          <AdminPagination
-            label="quote products"
-            page={page}
-            pageCount={pageCount}
-            totalItems={totalItems}
-            onPageChange={setPage}
-          />
+        </div>
+
+        {/* Below md each line is a card with the same status and notes editors,
+            so a line can still be moved along from a phone. */}
+        <div className={t.mobileList}>
+          {!items.length ? <div className={cn(t.card, t.empty)}>{emptyMessage}</div> : null}
+          {items.map((item) => (
+            <article key={item.id} className={t.mobileCard}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold text-[#1a1a18]">{item.title || "Cabinetry item"}</p>
+                  <p className="text-[12px] text-[#5a5a52]">{item.description || "-"}</p>
+                  <p className="text-[11px] text-[#8b8a81] mt-[2px]">{itemMeta(item) || "-"}</p>
+                </div>
+                {linePill(item)}
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                <div>
+                  <dt className="text-[#8b8a81]">Qty</dt>
+                  <dd className={cn(t.num, "text-[#1a1a18]")}>{item.qty || 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-[#8b8a81]">Total ex GST</dt>
+                  <dd className={cn(t.num, "text-[#1a1a18]")}>{formatMoney(item.line_total_ex_gst, "AUD")}</dd>
+                </div>
+              </dl>
+              <div className="mt-3 flex flex-col gap-2 border-t border-[#edf4eb] pt-3">
+                {statusSelect(item)}
+                {notesField(item)}
+                <p className="text-[11px] text-[#8b8a81]">Updated {formatDateTime(item.status_updated_at || item.updated_at || item.created_at)}</p>
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 

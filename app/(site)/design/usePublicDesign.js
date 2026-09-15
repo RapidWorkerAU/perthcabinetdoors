@@ -99,9 +99,26 @@ function applyCarcassDefault(item, carcassDefault) {
   return { ...item, ...forced };
 }
 
+// WHICH DESIGN TO OPEN, AND WHY IT ACCEPTS TWO SPELLINGS OF THE SAME THING.
+//
+// The planner has always written ?c= and read ?c=. The admin's "share this
+// design with the customer" route built ?code= instead, so the parameter was
+// ignored, the code below fell through to localStorage, and the link opened
+// whatever design that browser had drawn last. Sharing a design with a customer
+// showed them their own old one, or an empty planner, and never once showed
+// them the design that was sent.
+//
+// The route now writes ?c=. This still reads ?code= as well, because links with
+// the old spelling have already been emailed and there is no way to recall
+// them. A link is a promise made to somebody outside the building.
+//
+// THE URL BEATS localStorage, ALWAYS. That order is the whole fix: somebody
+// following a link is asking for THAT design, and the one saved in their
+// browser is only the answer when they arrive with no link at all.
 function readInitialCode() {
   if (typeof window === "undefined") return null;
-  const fromUrl = new URLSearchParams(window.location.search).get("c");
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get("c") || params.get("code");
   if (fromUrl) return fromUrl;
   try { return window.localStorage.getItem(CODE_STORAGE_KEY); } catch { return null; }
 }

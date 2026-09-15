@@ -10,6 +10,8 @@ import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { useFocusedRow } from '../_utils/useFocusedRow'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
+import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
+import { tableStyles } from '@/components/ui/table-styles'
 
 const STATUSES = ['new', 'in_progress', 'responded', 'closed', 'not_required']
 const FILTERS  = ['all', ...STATUSES]
@@ -201,19 +203,48 @@ export default function EnquiriesManager() {
     }
   }
 
-  function toggleSelected(id: string) {
-    setSelectedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
-  }
-
-  function toggleSelectedPage(checked: boolean) {
-    const pageIds = pageItems.map(e => e.id)
-    setSelectedIds(current => {
-      if (!checked) return current.filter(id => !pageIds.includes(id))
-      return Array.from(new Set([...current, ...pageIds]))
-    })
-  }
-
-  const allPageSelected = pageItems.length > 0 && pageItems.every(e => selectedIds.includes(e.id))
+  const columns: AdminDataTableColumn<Enquiry>[] = [
+    { id: 'customer', header: 'Customer', className: 'font-medium', cell: enquiry => enquiry.customer_name || '-' },
+    { id: 'contact',  header: 'Contact',  cell: enquiry => enquiry.customer_email || enquiry.customer_phone || '-' },
+    { id: 'postcode', header: 'Postcode', cell: enquiry => enquiry.postcode || '-' },
+    { id: 'topic',    header: 'Topic',    cell: enquiry => enquiry.topic || '-' },
+    // Truncated inside a box, because a table cell will not hold a max width.
+    { id: 'message',  header: 'Message',  cell: enquiry => <div className="max-w-[200px] truncate">{enquiry.message || '-'}</div> },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: enquiry => (
+        // Changing the status is not opening the enquiry.
+        <div onClick={e => e.stopPropagation()}>
+          <select
+            value={enquiry.status || 'new'}
+            onChange={e => updateStatus(enquiry.id, e.target.value)}
+            className="h-[30px] border border-[#dbd8cc] rounded-[4px] bg-white text-[12px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer"
+          >
+            {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
+          </select>
+        </div>
+      ),
+    },
+    { id: 'received', header: 'Received', className: 'whitespace-nowrap', cell: enquiry => formatDate(enquiry.created_at) },
+    {
+      id: 'actions',
+      header: '',
+      className: 'text-right',
+      cell: enquiry => (
+        <div className="flex justify-end">
+          <ActionMenu label={`Open actions for enquiry from ${enquiry.customer_name || 'customer'}`}>
+            <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewEnquiry(enquiry)}>
+              Preview
+            </ActionMenuItem>
+            <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => deleteEnquiries([enquiry.id])}>
+              Delete
+            </ActionMenuItem>
+          </ActionMenu>
+        </div>
+      ),
+    },
+  ]
 
   // First load owns the whole content area. A refresh with enquiries already on
   // screen leaves them there rather than blanking the page.
@@ -255,112 +286,45 @@ export default function EnquiriesManager() {
         ))}
       </div>
 
-      {/* Desktop table */}
-      <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#edf4eb]">
-          {selectedIds.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => deleteEnquiries(selectedIds)}
-              disabled={isSaving}
-              className="text-[13px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
-            >
-              Delete {selectedIds.length} selected
-            </button>
-          ) : (
-            <span className="text-[13px] text-[#8b8a81]">{visibleEnquiries.length} {visibleEnquiries.length === 1 ? 'enquiry' : 'enquiries'}</span>
-          )}
-        </div>
-        {/* Scrolls sideways rather than crushing nine columns into the panel. */}
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-[13px]">
-            <thead>
-              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                <th className="w-[40px] px-4 py-[9px]">
-                  <input
-                    type="checkbox"
-                    checked={allPageSelected}
-                    onChange={e => toggleSelectedPage(e.target.checked)}
-                    aria-label="Select all visible enquiries"
-                    className="accent-[#6b9e61]"
-                  />
-                </th>
-                {['Customer', 'Contact', 'Postcode', 'Topic', 'Message', 'Status', 'Received', ''].map(col => (
-                  <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">{col}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {!isLoading && !visibleEnquiries.length && (
-                <tr><td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">No enquiries match this filter.</td></tr>
-              )}
-              {pageItems.map(enquiry => (
-                <tr
-                  key={enquiry.id}
-                  className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                  onClick={() => setPreviewEnquiry(enquiry)}
-                >
-                  <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(enquiry.id)}
-                      onChange={() => toggleSelected(enquiry.id)}
-                      aria-label={`Select enquiry from ${enquiry.customer_name || 'customer'}`}
-                      className="accent-[#6b9e61]"
-                    />
-                  </td>
-                  <td className="px-4 py-[11px] text-[13px] font-medium text-[#1a1a18]">{enquiry.customer_name || '-'}</td>
-                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.customer_email || enquiry.customer_phone || '-'}</td>
-                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.postcode || '-'}</td>
-                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18]">{enquiry.topic || '-'}</td>
-                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] max-w-[200px] truncate">{enquiry.message || '-'}</td>
-                  <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                    <select
-                      value={enquiry.status || 'new'}
-                      onChange={e => updateStatus(enquiry.id, e.target.value)}
-                      className="h-[30px] border border-[#dbd8cc] rounded-[4px] bg-white text-[12px] text-[#1a1a18] px-2 outline-none focus:border-[#6b9e61] cursor-pointer"
-                    >
-                      {STATUSES.map(s => <option key={s} value={s}>{formatAdminLabel(s)}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-4 py-[11px] text-[13px] text-[#1a1a18] whitespace-nowrap">{formatDate(enquiry.created_at)}</td>
-                  <td className="px-4 py-[11px] text-right" onClick={e => e.stopPropagation()}>
-                    <div className="flex justify-end">
-                      <ActionMenu label={`Open actions for enquiry from ${enquiry.customer_name || 'customer'}`}>
-                        <ActionMenuItem icon={<IconEye size={14} />} onClick={() => setPreviewEnquiry(enquiry)}>
-                        Preview
-                        </ActionMenuItem>
-                        <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isSaving} onClick={() => deleteEnquiries([enquiry.id])}>
-                        Delete
-                        </ActionMenuItem>
-                      </ActionMenu>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <AdminPagination
-          label="enquiries"
-          page={page}
-          pageCount={pageCount}
-          totalItems={totalItems}
-          onPageChange={setPage}
-        />
-      </div>
-
-      {/* Mobile cards */}
-      <div className="md:hidden flex flex-col gap-3">
-        {!isLoading && !visibleEnquiries.length && (
-          <div className="py-12 text-center text-[13px] text-[#8b8a81]">No enquiries match this filter.</div>
+      {/* The shared list table. Scrolls sideways rather than crushing nine
+          columns into the panel, and becomes a card each below md. */}
+      <AdminDataTable<Enquiry>
+        wide
+        rows={pageItems}
+        columns={columns}
+        getRowId={enquiry => enquiry.id}
+        getRowLabel={enquiry => `enquiry from ${enquiry.customer_name || 'customer'}`}
+        onRowClick={enquiry => setPreviewEnquiry(enquiry)}
+        selectedIds={selectedIds}
+        onSelectedIdsChange={setSelectedIds}
+        bulkActions={selectedIds.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => deleteEnquiries(selectedIds)}
+            disabled={isSaving}
+            className="text-[13px] font-medium text-[#b42318] hover:underline disabled:opacity-50"
+          >
+            Delete {selectedIds.length} selected
+          </button>
+        ) : (
+          <span className={tableStyles.meta}>{visibleEnquiries.length} {visibleEnquiries.length === 1 ? 'enquiry' : 'enquiries'}</span>
         )}
-        {pageItems.map(enquiry => (
-          <div key={enquiry.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
+        emptyTitle="No enquiries match this filter."
+        pagination={
+          <AdminPagination
+            label="enquiries"
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        }
+        mobileCard={enquiry => (
+          <div className={tableStyles.mobileCard}>
             <div className="flex items-start justify-between mb-3">
               <div>
-                <p className="text-[14px] font-semibold text-[#1a1a18]">{enquiry.customer_name || '—'}</p>
-                <p className="text-[12px] text-[#5a5a52]">{enquiry.customer_email || enquiry.customer_phone || '—'}</p>
+                <p className="text-[14px] font-semibold text-[#1a1a18]">{enquiry.customer_name || '-'}</p>
+                <p className="text-[12px] text-[#5a5a52]">{enquiry.customer_email || enquiry.customer_phone || '-'}</p>
               </div>
               <select
                 value={enquiry.status || 'new'}
@@ -371,8 +335,8 @@ export default function EnquiriesManager() {
               </select>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px] mb-3">
-              <div><span className="text-[#8b8a81]">Postcode</span><p className="text-[#1a1a18]">{enquiry.postcode || '—'}</p></div>
-              <div><span className="text-[#8b8a81]">Topic</span><p className="text-[#1a1a18]">{enquiry.topic || '—'}</p></div>
+              <div><span className="text-[#8b8a81]">Postcode</span><p className="text-[#1a1a18]">{enquiry.postcode || '-'}</p></div>
+              <div><span className="text-[#8b8a81]">Topic</span><p className="text-[#1a1a18]">{enquiry.topic || '-'}</p></div>
               <div><span className="text-[#8b8a81]">Received</span><p className="text-[#1a1a18]">{formatDate(enquiry.created_at)}</p></div>
             </div>
             {enquiry.message && <p className="text-[12px] text-[#5a5a52] leading-relaxed border-t border-[#edf4eb] pt-3">{enquiry.message}</p>}
@@ -387,18 +351,8 @@ export default function EnquiriesManager() {
               </ActionMenu>
             </div>
           </div>
-        ))}
-        {/* Mobile pagination */}
-        {totalItems > 0 && (
-          <AdminPagination
-            label="enquiries"
-            page={page}
-            pageCount={pageCount}
-            totalItems={totalItems}
-            onPageChange={setPage}
-          />
         )}
-      </div>
+      />
 
       {previewEnquiry && (
         <EnquiryPreviewModal

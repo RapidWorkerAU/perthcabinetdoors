@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/Button'
 import { ConfirmModal } from '@/components/ui/Modal'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
+import { tableStyles as t } from '@/components/ui/table-styles'
+import { cn } from '@/lib/utils'
 
 function prettyCategory(category?: string | null) {
   if (!category) return '-'
@@ -94,6 +96,59 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
 
   const allPageSelected = pageItems.length > 0 && pageItems.every(p => selectedProductIds.includes(p.id))
 
+  const emptyMessage = 'No products yet. Click Add product to create your first product.'
+
+  function thumbnail(product: Product) {
+    const thumbnailSrc = resolveImageSrc(product.primary_image_url)
+    return thumbnailSrc ? (
+      <img
+        src={thumbnailSrc}
+        alt={product.card_title || product.name || 'Product image'}
+        className="w-[40px] h-[40px] flex-shrink-0 object-cover rounded-[4px] block"
+      />
+    ) : (
+      <div className="w-[40px] h-[40px] flex-shrink-0 rounded-[4px] bg-[#f5f5f4] border border-[#dbd8cc] flex items-center justify-center text-[9px] text-[#8b8a81] text-center leading-tight">
+        No image
+      </div>
+    )
+  }
+
+  function statusPill(product: Product) {
+    return (
+      <StatusPill tone={product.is_active ? 'active' : 'neutral'} status={product.is_active ? 'active' : 'draft'}>
+        {product.is_active ? 'Active' : 'Draft'}
+      </StatusPill>
+    )
+  }
+
+  // One menu for the table and the phone card, so they cannot offer different things.
+  function actionMenu(product: Product) {
+    return (
+      <ActionMenu label={`Open actions for product ${product.card_title || product.name || 'product'}`}>
+        {/* Edit was here and repeated the row: clicking the row
+            already opens the editor. */}
+        <ActionMenuItem icon={<IconFileText size={14} />} onClick={() => router.push(`/admin/products/${product.id}/quote`)}>
+        Quote
+        </ActionMenuItem>
+        <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([product.id])}>
+        Delete
+        </ActionMenuItem>
+      </ActionMenu>
+    )
+  }
+
+  function selectBox(product: Product) {
+    return (
+      <input
+        type="checkbox"
+        checked={selectedProductIds.includes(product.id)}
+        onChange={() => toggleSelectedProduct(product.id)}
+        aria-label={`Select ${product.name}`}
+        className={t.checkbox}
+      />
+    )
+  }
+
   return (
     <div className="p-4 md:p-6">
       <AdminPageHeader title="Products" subtitle="Manage your product catalogue" />
@@ -126,100 +181,61 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
         </Button>
       </div>
 
-      <div className="bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        <div className="overflow-x-auto">
-          {/* min-w keeps the columns readable: the wrapper scrolls instead of
-              the browser wrapping every cell onto two or three lines. */}
-          <table className="w-full min-w-[840px] text-[13px]">
+      {/* Built from the shared tokens rather than AdminDataTable, which has no
+          way to let a row be opened from the keyboard, and this one can be. */}
+      <div className={cn(t.card, t.desktopOnly)}>
+        <div className={t.sideScroll}>
+          <table className={t.tableWide}>
             <thead>
-              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                <th className="w-[40px] px-4 py-[9px]">
+              <tr>
+                <th className={cn(t.th, 'w-[40px]')}>
                   <input
                     type="checkbox"
                     checked={allPageSelected}
                     onChange={e => toggleSelectedPage(e.target.checked)}
                     aria-label="Select all visible products"
-                    className="accent-[#6b9e61]"
+                    className={t.checkbox}
                   />
                 </th>
                 {['Image', 'Name', 'Status', 'Images', 'Category', 'Actions'].map(col => (
-                  <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
+                  <th key={col} className={t.th}>
                     {col}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {pageItems.map(product => {
-                const active       = product.is_active
-                const thumbnailSrc = resolveImageSrc(product.primary_image_url)
-                return (
-                  <tr
-                    key={product.id}
-                    className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                    onClick={() => router.push(`/admin/products/${product.id}/edit`)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        router.push(`/admin/products/${product.id}/edit`)
-                      }
-                    }}
-                    tabIndex={0}
-                  >
-                    <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedProductIds.includes(product.id)}
-                        onChange={() => toggleSelectedProduct(product.id)}
-                        aria-label={`Select ${product.name}`}
-                        className="accent-[#6b9e61]"
-                      />
-                    </td>
-                    <td className="px-4 py-[11px]">
-                      {thumbnailSrc ? (
-                        <img
-                          src={thumbnailSrc}
-                          alt={product.card_title || product.name || 'Product image'}
-                          className="w-[40px] h-[40px] object-cover rounded-[4px] block"
-                        />
-                      ) : (
-                        <div className="w-[40px] h-[40px] rounded-[4px] bg-[#f5f5f4] border border-[#dbd8cc] flex items-center justify-center text-[9px] text-[#8b8a81] text-center leading-tight">
-                          No image
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-[11px] font-medium text-[#1a1a18]">
-                      {product.card_title || product.name}
-                    </td>
-                    <td className="px-4 py-[11px]">
-                      <StatusPill tone={active ? 'active' : 'neutral'} status={active ? 'active' : 'draft'}>
-                        {active ? 'Active' : 'Draft'}
-                      </StatusPill>
-                    </td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{product.image_count || 0}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{prettyCategory(product.category)}</td>
-                    <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                      <div className="flex justify-end">
-                        <ActionMenu label={`Open actions for product ${product.card_title || product.name || 'product'}`}>
-                          {/* Edit was here and repeated the row: clicking the row
-                              already opens the editor. */}
-                          <ActionMenuItem icon={<IconFileText size={14} />} onClick={() => router.push(`/admin/products/${product.id}/quote`)}>
-                          Quote
-                          </ActionMenuItem>
-                          <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([product.id])}>
-                          Delete
-                          </ActionMenuItem>
-                        </ActionMenu>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
+            <tbody className={t.body}>
+              {pageItems.map(product => (
+                <tr
+                  key={product.id}
+                  className={t.rowClickable}
+                  onClick={() => router.push(`/admin/products/${product.id}/edit`)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      router.push(`/admin/products/${product.id}/edit`)
+                    }
+                  }}
+                  tabIndex={0}
+                >
+                  <td className={t.td} onClick={e => e.stopPropagation()}>
+                    {selectBox(product)}
+                  </td>
+                  <td className={t.td}>{thumbnail(product)}</td>
+                  <td className={cn(t.td, 'font-medium')}>
+                    {product.card_title || product.name}
+                  </td>
+                  <td className={t.td}>{statusPill(product)}</td>
+                  <td className={cn(t.td, t.num)}>{product.image_count || 0}</td>
+                  <td className={t.td}>{prettyCategory(product.category)}</td>
+                  <td className={t.td} onClick={e => e.stopPropagation()}>
+                    <div className="flex justify-end">{actionMenu(product)}</div>
+                  </td>
+                </tr>
+              ))}
               {!sorted.length && (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[13px] text-[#8b8a81]">
-                    No products yet. Click Add product to create your first product.
-                  </td>
+                  <td colSpan={7} className={t.empty}>{emptyMessage}</td>
                 </tr>
               )}
             </tbody>
@@ -232,6 +248,46 @@ export default function ProductsTable({ initialProducts }: { initialProducts?: P
           totalItems={totalItems}
           onPageChange={setPage}
         />
+      </div>
+
+      {/* Below md the rows become cards. The name links to the same editor the row opens. */}
+      <div className={t.mobileList}>
+        {!sorted.length && <div className={cn(t.card, t.empty)}>{emptyMessage}</div>}
+        {pageItems.map(product => (
+          <article key={product.id} className={t.mobileCard}>
+            <div className="flex items-start gap-3">
+              {selectBox(product)}
+              {thumbnail(product)}
+              <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/admin/products/${product.id}/edit`)}
+                  className="text-left text-[14px] font-semibold text-[#1a1a18]"
+                >
+                  {product.card_title || product.name}
+                </button>
+                <p className="text-[12px] text-[#5a5a52]">{prettyCategory(product.category)}</p>
+              </div>
+              {statusPill(product)}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#edf4eb] pt-3 text-[12px]">
+              <span>
+                <span className="text-[#8b8a81]">Images </span>
+                <span className={cn(t.num, 'text-[#1a1a18]')}>{product.image_count || 0}</span>
+              </span>
+              {actionMenu(product)}
+            </div>
+          </article>
+        ))}
+        {sorted.length > 0 && (
+          <AdminPagination
+            label="products"
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        )}
       </div>
 
       <ConfirmModal

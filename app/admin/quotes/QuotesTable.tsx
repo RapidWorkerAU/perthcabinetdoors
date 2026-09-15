@@ -15,6 +15,9 @@ import { StatusFilterBar, type StatusFilterOption } from '@/components/ui/Status
 import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
+import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
+import { tableStyles } from '@/components/ui/table-styles'
+import { cn } from '@/lib/utils'
 
 // awaiting_deposit is its own tab on purpose. It is the chase list: everyone who
 // said yes and has not paid the deposit, which is the closest thing to a warm
@@ -181,19 +184,55 @@ export default function QuotesTable() {
     }
   }
 
-  function toggleSelectedQuote(id: string) {
-    setSelectedQuoteIds(current => current.includes(id) ? current.filter(i => i !== id) : [...current, id])
-  }
-
-  function toggleSelectedPage(checked: boolean) {
-    const pageIds = pageItems.map(q => q.id)
-    setSelectedQuoteIds(current => {
-      if (!checked) return current.filter(id => !pageIds.includes(id))
-      return Array.from(new Set([...current, ...pageIds]))
-    })
-  }
-
-  const allPageSelected = pageItems.length > 0 && pageItems.every(q => selectedQuoteIds.includes(q.id))
+  const columns: AdminDataTableColumn<Quote>[] = [
+    { id: 'quote', header: 'Quote', className: 'font-medium', cell: quote => quote.quote_number },
+    {
+      id: 'access_code',
+      header: 'Access code',
+      cell: quote => (
+        <code className="font-mono text-[11px] bg-[#f5f8f4] border border-[#dbd8cc] px-2 py-[2px] rounded-[4px]">
+          {quote.access_code || '-'}
+        </code>
+      ),
+    },
+    { id: 'customer', header: 'Customer', cell: quote => quote.customer_name || '-' },
+    { id: 'suburb',   header: 'Suburb',   cell: quote => quoteCustomerSuburb(quote) },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: quote => {
+        const status = quote.status || 'draft'
+        return <StatusPill status={status}>{formatAdminLabel(status)}</StatusPill>
+      },
+    },
+    { id: 'total', header: 'Total', className: tableStyles.num, cell: quote => formatMoney(quote.total_inc_gst, quote.currency || 'AUD') },
+    { id: 'updated', header: 'Updated', className: 'whitespace-nowrap', cell: quote => formatDate(quote.updated_at || quote.created_at) },
+    {
+      // The id is what stops a click in the menu opening the quote as well.
+      id: 'actions',
+      header: 'Actions',
+      cell: quote => (
+        <div className="flex justify-end">
+          <ActionMenu label={`Open actions for quote ${quote.quote_number || 'draft quote'}`}>
+            {quote.access_code && (
+              <ActionMenuItem
+                icon={<IconExternalLink size={14} />}
+                onClick={() => window.open(`/quotes/view?code=${encodeURIComponent(quote.access_code!)}`, '_blank', 'noopener,noreferrer')}
+              >
+                View
+              </ActionMenuItem>
+            )}
+            <ActionMenuItem icon={<IconCopy size={14} />} onClick={() => duplicateQuote(quote.id)} disabled={duplicatingQuoteId === quote.id}>
+              {duplicatingQuoteId === quote.id ? 'Duplicating...' : 'Duplicate'}
+            </ActionMenuItem>
+            <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([quote.id])}>
+              Delete
+            </ActionMenuItem>
+          </ActionMenu>
+        </div>
+      ),
+    },
+  ]
 
   // First load owns the whole content area. A refresh with quotes already on
   // screen leaves them there rather than blanking the page.
@@ -245,109 +284,31 @@ export default function QuotesTable() {
           Install <code className="font-mono text-[12px]">supabase/quote_project_workflow_setup.sql</code> before saving quotes.
         </div>
       )}
-      {/* Desktop table */}
-      <div className="hidden md:block bg-white border border-[#dbd8cc] rounded-[8px] overflow-hidden">
-        <div className="overflow-x-auto">
-          {/* min-w keeps the columns readable: the wrapper scrolls instead of
-              the browser wrapping every cell onto two or three lines. */}
-          <table className="w-full min-w-[1000px] text-[13px]">
-            <thead>
-              <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                <th className="w-[40px] px-4 py-[9px]">
-                  <input
-                    type="checkbox"
-                    checked={allPageSelected}
-                    onChange={e => toggleSelectedPage(e.target.checked)}
-                    aria-label="Select all visible quotes"
-                    className="accent-[#6b9e61]"
-                  />
-                </th>
-                {['Quote', 'Access code', 'Customer', 'Suburb', 'Status', 'Total', 'Updated', 'Actions'].map(col => (
-                  <th key={col} className="px-4 py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {!isLoading && !visibleQuotes.length && (
-                <tr><td colSpan={9} className="py-12 text-center text-[13px] text-[#8b8a81]">No quotes match this filter.</td></tr>
-              )}
-              {pageItems.map(quote => {
-                const status = quote.status || 'draft'
-                return (
-                  <tr
-                    key={quote.id}
-                    className="border-b border-[#edf4eb] hover:bg-[#f5f8f4] transition-colors last:border-b-0 cursor-pointer"
-                    onClick={() => router.push(`/admin/quotes/${quote.id}`)}
-                  >
-                    <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedQuoteIds.includes(quote.id)}
-                        onChange={() => toggleSelectedQuote(quote.id)}
-                        aria-label={`Select quote ${quote.quote_number || quote.id}`}
-                        className="accent-[#6b9e61]"
-                      />
-                    </td>
-                    <td className="px-4 py-[11px] font-medium text-[#1a1a18]">{quote.quote_number}</td>
-                    <td className="px-4 py-[11px]">
-                      <code className="font-mono text-[11px] bg-[#f5f8f4] border border-[#dbd8cc] px-2 py-[2px] rounded-[4px]">
-                        {quote.access_code || '-'}
-                      </code>
-                    </td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{quote.customer_name || '-'}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{quoteCustomerSuburb(quote)}</td>
-                    <td className="px-4 py-[11px]">
-                      <StatusPill status={status}>{formatAdminLabel(status)}</StatusPill>
-                    </td>
-                    <td className="px-4 py-[11px] text-[#1a1a18]">{formatMoney(quote.total_inc_gst, quote.currency || 'AUD')}</td>
-                    <td className="px-4 py-[11px] text-[#1a1a18] whitespace-nowrap">{formatDate(quote.updated_at || quote.created_at)}</td>
-                    <td className="px-4 py-[11px]" onClick={e => e.stopPropagation()}>
-                      <div className="flex justify-end">
-                        <ActionMenu label={`Open actions for quote ${quote.quote_number || 'draft quote'}`}>
-                        {quote.access_code && (
-                          <ActionMenuItem
-                            icon={<IconExternalLink size={14} />}
-                            onClick={() => window.open(`/quotes/view?code=${encodeURIComponent(quote.access_code!)}`, '_blank', 'noopener,noreferrer')}
-                          >
-                            View
-                          </ActionMenuItem>
-                        )}
-                          <ActionMenuItem icon={<IconCopy size={14} />} onClick={() => duplicateQuote(quote.id)} disabled={duplicatingQuoteId === quote.id}>
-                          {duplicatingQuoteId === quote.id ? 'Duplicating...' : 'Duplicate'}
-                          </ActionMenuItem>
-                          <ActionMenuItem icon={<IconTrash size={14} />} variant="danger" disabled={isDeleting} onClick={() => setConfirmDeleteIds([quote.id])}>
-                          Delete
-                          </ActionMenuItem>
-                        </ActionMenu>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-        <AdminPagination
-          label="quotes"
-          page={page}
-          pageCount={pageCount}
-          totalItems={totalItems}
-          onPageChange={setPage}
-        />
-      </div>
-
-      {/* Mobile cards */}
-      <div className="md:hidden flex flex-col gap-3">
-        {!isLoading && !visibleQuotes.length && (
-          <div className="py-12 text-center text-[13px] text-[#8b8a81]">No quotes match this filter.</div>
-        )}
-        {pageItems.map(quote => {
+      {/* The shared list table. `wide` lets the wrapper scroll instead of the
+          browser wrapping every cell onto two or three lines. */}
+      <AdminDataTable<Quote>
+        wide
+        rows={pageItems}
+        columns={columns}
+        getRowId={quote => quote.id}
+        getRowLabel={quote => `quote ${quote.quote_number || quote.id}`}
+        onRowClick={quote => router.push(`/admin/quotes/${quote.id}`)}
+        selectedIds={selectedQuoteIds}
+        onSelectedIdsChange={setSelectedQuoteIds}
+        emptyTitle="No quotes match this filter."
+        pagination={
+          <AdminPagination
+            label="quotes"
+            page={page}
+            pageCount={pageCount}
+            totalItems={totalItems}
+            onPageChange={setPage}
+          />
+        }
+        mobileCard={quote => {
           const status = quote.status || 'draft'
           return (
             <article
-              key={quote.id}
               role="button"
               tabIndex={0}
               onClick={() => router.push(`/admin/quotes/${quote.id}`)}
@@ -357,7 +318,7 @@ export default function QuotesTable() {
                   router.push(`/admin/quotes/${quote.id}`)
                 }
               }}
-              className="bg-white border border-[#dbd8cc] rounded-[8px] p-4 cursor-pointer hover:bg-[#f5f8f4] focus:outline-none focus:ring-2 focus:ring-[#6b9e61]"
+              className={cn(tableStyles.mobileCard, 'cursor-pointer hover:bg-[#f5f8f4] focus:outline-none focus:ring-2 focus:ring-[#6b9e61]')}
             >
               <div className="mb-3">
                 <p className="text-[11px] uppercase tracking-[0.07em] text-[#8b8a81] font-semibold mb-1">Quote</p>
@@ -403,17 +364,8 @@ export default function QuotesTable() {
               </div>
             </article>
           )
-        })}
-        {totalItems > 0 && (
-          <AdminPagination
-            label="quotes"
-            page={page}
-            pageCount={pageCount}
-            totalItems={totalItems}
-            onPageChange={setPage}
-          />
-        )}
-      </div>
+        }}
+      />
 
       <ConfirmModal
         open={confirmDeleteIds.length > 0}

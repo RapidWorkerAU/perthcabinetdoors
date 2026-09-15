@@ -78,7 +78,17 @@ export async function POST(request, { params }) {
       .single();
     if (writeError) throw writeError;
 
-    const shareUrl = `${String(siteUrl(request.url)).replace(/\/+$/, "")}/design?code=${encodeURIComponent(code)}`;
+    // ?c=, WHICH IS WHAT THE PLANNER READS.
+    //
+    // This built ?code= and the planner has only ever read ?c=, so every link
+    // sent from here was ignored: it fell through to the code saved in that
+    // browser and opened whatever design it had drawn last. A customer was
+    // shown their own old design, or an empty planner, and never the one sent.
+    //
+    // usePublicDesign now accepts both spellings, so links already emailed with
+    // ?code= start working too. New ones are written the way the planner writes
+    // them itself, so there is one spelling from here on.
+    const shareUrl = `${String(siteUrl(request.url)).replace(/\/+$/, "")}/design?c=${encodeURIComponent(code)}`;
 
     // ── the email is best effort ────────────────────────────────────────────
     // The link works the moment the row is saved. A refused email means the
@@ -96,7 +106,10 @@ export async function POST(request, { params }) {
           { email, name: name || null },
           { source: "design_share" }
         );
-        emailed = await sendDesignLinkEmail({ name, email, shareUrl });
+        // drawnByUs: this is us sharing a design we drafted, not a customer
+        // asking for their own link back. canEdit so the email does not tell
+        // somebody to change a design that opens read-only.
+        emailed = await sendDesignLinkEmail({ name, email, shareUrl, drawnByUs: true, canEdit: mode === EDITABLE });
         if (!emailed) emailError = "The email did not go out. Copy the link and send it yourself.";
       } catch (thrown) {
         emailError = thrown?.message || "The email did not go out.";

@@ -39,7 +39,9 @@ test("no code path writes the old terms sentence any more", () => {
   const writePaths = [
     "app/api/admin/quote-requests/route.js",
     "app/admin/quotes/QuotesTable.tsx",
-    "app/admin/design/_components/ImportModal.js",
+    // ImportModal is gone with Import to Quote. StageQuoteModal replaces it and
+    // is checked in the same way below.
+    "app/admin/design/_components/StageQuoteModal.js",
     "app/api/admin/orders/[id]/variations/route.js",
     "lib/pcd-quote-utils.js",
   ];
@@ -70,7 +72,9 @@ test("configured terms come through untouched", () => {
 test("the create-quote buttons no longer send their own currency, GST or terms", () => {
   // The server fills each of these from Business Defaults only when the caller
   // omits it, so sending a value from the browser silently beat the setting.
-  for (const path of ["app/admin/quotes/QuotesTable.tsx", "app/admin/design/_components/ImportModal.js"]) {
+  // StageQuoteModal in place of the removed ImportModal: it is the screen that
+  // creates a quote from a design now, and it must not send these either.
+  for (const path of ["app/admin/quotes/QuotesTable.tsx", "app/admin/design/_components/StageQuoteModal.js"]) {
     const src = read(path);
     const body = src.slice(src.indexOf("/api/admin/quotes"), src.indexOf("/api/admin/quotes") + 900);
     assert.ok(!/gst_rate:/.test(body), `${path} still sends a GST rate`);
