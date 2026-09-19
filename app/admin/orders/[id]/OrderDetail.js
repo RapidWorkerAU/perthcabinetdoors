@@ -89,6 +89,7 @@ import {
   isScheduled,
   scheduleProblems,
 } from "../../../../lib/pcd-order-schedule";
+import { staleScheduleNotice } from "../../../../lib/pcd-quote-schedule";
 import { useToast } from "@/components/ui/Toast";
 import styles from "../../admin-content.module.css";
 
@@ -1609,6 +1610,9 @@ export default function OrderDetail({ orderId }) {
   if (!order) return <section className={styles.emptyState}><p>Order not found.</p></section>;
 
   function renderOverview() {
+    // Said only when the start date this order inherited from its quote has
+    // already been passed. Null the rest of the time, which is almost always.
+    const staleSchedule = staleScheduleNotice(order);
     return (
       <div>
         <div className={tw.card}>
@@ -1676,6 +1680,24 @@ export default function OrderDetail({ orderId }) {
                   onBlur={e => saveOrder({ target_completion_date: e.target.value })}
                 />
               </label>
+
+              {/* THE DATES THE QUOTE PROMISED, ONCE THEY HAVE GONE STALE.
+
+                  These two came off the quote the customer approved, so on a
+                  quote accepted weeks after it was sent the start date can
+                  already be behind us. They are still copied across, because an
+                  order with no dates is invisible to the calendar and to every
+                  list that plans work, and a date somebody can see is the one
+                  that gets corrected. This is the seeing part.
+
+                  Sits under the two boxes it is about and says nothing when
+                  there is nothing wrong. It is not a status and it is not on
+                  the board: it is a note next to the field that fixes it. */}
+              {staleSchedule ? (
+                <p className="col-span-2 m-0 rounded-[6px] border border-[#e8d68f] bg-[#fffdf0] px-3 py-2 text-[12px] leading-[1.5] text-[#8a6d0b]">
+                  {staleSchedule}
+                </p>
+              ) : null}
 
               {/* TWO FACTS, NOT TWO FIELDS.
                   Both of these are set once by something that is not this

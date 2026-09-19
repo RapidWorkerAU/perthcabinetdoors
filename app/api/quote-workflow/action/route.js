@@ -6,6 +6,9 @@ import { returnOrigin } from "../../../../lib/pcd-stripe";
 import { cancelOpenCheckouts, startDepositCheckout } from "../../../../lib/pcd-deposit-gate";
 import { depositAmountForQuote } from "../../../../lib/pcd-quote-acceptance";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
+import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
+import { quoteScheduleView } from "../../../../lib/pcd-quote-schedule";
+import { releaseCreditsForQuote } from "../../../../lib/pcd-customer-credits";
 import { upsertCustomerByEmail } from "../../../../lib/pcd-customer-utils";
 import {
   DETAIL_FIELDS,
@@ -284,6 +287,15 @@ export async function POST(request) {
       // still holding that tab could otherwise pay for a job they just declined.
       await cancelOpenCheckouts(supabase, quote.id, { status: "cancelled" });
 
+      // THE CREDIT LETS GO WITH THE QUOTE.
+      //
+      // Written in the same step that closes the quote, so there is no window
+      // where a dead quote is still holding somebody's money and no second
+      // quote can be raised for them. Releasing needs no reason recorded: it
+      // only moves money between our own quotes and it stays the customer's
+      // either way. See lib/pcd-customer-credits.js.
+      await releaseCreditsForQuote(supabase, quote.id);
+
       await logOrderActivity(supabase, {
         quote_id: quote.id,
         actor_type: "customer",
@@ -309,7 +321,17 @@ export async function POST(request) {
       const { data: raisedOrder } = orderId
         ? await supabase.from("pcd_orders").select("order_number").eq("id", orderId).maybeSingle()
         : { data: null };
-      await sendQuoteApprovedToCustomer({ quote, orderNumber: raisedOrder?.order_number || "" });
+      // The dates the quote suggested, read once more now the answer is in:
+      // either the job is booked for them, or the quote sat long enough that
+      // they no longer hold and the customer is told so in the same email.
+      // Worked out against the quote as it was BEFORE approving, which is the
+      // version they were looking at.
+      const businessDefaults = await getBusinessDefaults(supabase);
+      await sendQuoteApprovedToCustomer({
+        quote,
+        orderNumber: raisedOrder?.order_number || "",
+        schedule: quoteScheduleView(quote, businessDefaults),
+      });
     }
 
     return Response.json({ ok: true, orderId });

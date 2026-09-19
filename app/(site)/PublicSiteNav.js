@@ -53,6 +53,10 @@ const NAV_LINKS = [
   { href: "/start", label: "Services", key: "start" },
   { href: "/products", label: "Shop", key: "shop", shopOnly: true },
   { href: "/finishes", label: "Finishes", key: "finishes" },
+  // The page decides for itself whether it is taking bookings, so the link is
+  // always here and lands on "not open at the moment" when it is not. A link
+  // that appears and disappears with a setting is a link nobody can send.
+  { href: "/book-a-site-measure", label: "Book a measure", key: "book-measure" },
 ];
 
 export default function PublicSiteNav({ active = "", variant = "solid" }) {

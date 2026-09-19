@@ -38,6 +38,8 @@ import {
   collapseReplies,
 } from "../lib/pcd-board.js";
 import { outstandingOnOrder, refundedOnOrder } from "../lib/pcd-board-money.js";
+// The rule the board no longer keeps its own copy of. See the tests below it.
+import { nothingHasMoved, panelAtStartOfList } from "../lib/pcd-order-stage.js";
 
 const TODAY = "2026-08-19";
 
@@ -441,13 +443,16 @@ test("a materials card says how soon the job starts", () => {
     [{ id: "o1", notOrdered: 3, scheduled_start_date: "2026-08-24", accepted_at: "2026-08-05" }],
     TODAY
   );
-  assert.match(soon.why, /3 panels still Not Ordered/);
+  // NOT "Not Ordered". That is the first word on the supplier list only, and
+  // the count spans both lists now, so half the panels it describes were never
+  // in that state. See materialCards.
+  assert.match(soon.why, /3 panels not started/);
   assert.match(soon.why, /in 5 days/);
   const [passed] = materialCards(
     [{ id: "o2", notOrdered: 1, scheduled_start_date: "2026-08-12", accepted_at: "2026-08-05" }],
     TODAY
   );
-  assert.match(passed.why, /1 panel still Not Ordered/);
+  assert.match(passed.why, /1 panel not started/);
   assert.match(passed.why, /already/);
 });
 
@@ -904,9 +909,9 @@ test("every tile counts panels, never the column beside them", () => {
   assert.match(build, /const panels = lines\.flatMap\(panelsOf\)/, "the panels are resolved once, at the top");
 
   [
-    ["materials", /const notOrdered = panels\.filter/],
+    ["materials", /const notOrdered = panels\.filter\(panelAtStartOfList\)/],
     ["planning", /const undecided = panels\.filter\(p => !p\.fulfilment_method\)/],
-    ["late", /panels\.every\(p => \{/],
+    ["late", /const nothingMoved = nothingHasMoved\(panels\)/],
   ].forEach(([tile, pattern]) => {
     assert.match(build, pattern, `the ${tile} tile must count panels`);
   });
@@ -925,10 +930,57 @@ test("every tile counts panels, never the column beside them", () => {
 test("a panel nobody has decided on counts as not done", () => {
   // panelsOf deliberately does NOT fall back to the line's column when a plan
   // exists: an undecided panel has to read as undecided rather than borrowing a
-  // guess from the row above it. So the tiles have to treat a missing status as
+  // guess from the row above it. So the tiles have to treat a missing answer as
   // outstanding, or a half filled plan would read as finished work.
+  assert.equal(panelAtStartOfList({ fulfilment_method: "supplier_ready_made" }), true, "no status at all");
+  assert.equal(panelAtStartOfList({ fulfilment_method: "in_house" }), true, "no stage at all");
+});
+
+test("which list a panel is judged against is decided by who makes it", () => {
+  // THE BUG THIS PINS, and it is the second time this exact class of fault has
+  // put a wrong card on the board.
+  //
+  // The board kept its own copy of this rule and read `production_stage ||
+  // status`, taking the production stage first whenever there was one. EVERY
+  // panel has one, including the ones a supplier makes, where it means nothing
+  // and sits at "Not Started" for the life of the job.
+  //
+  // Ian Brennan's ten Polytec doors, nine Complete and one Ordered with a 23
+  // September ETA, were read as ten panels still at the start. The board said
+  // "Never started", 26 days overdue, and told somebody to chase finished work.
+  // Seven of twenty active orders were carrying that card wrongly.
+  //
+  // And the same fault ran the other way on the materials tile: Tori Pree had
+  // eighteen in-house panels marked Complete on the bench whose supplier status
+  // column still said "Not Ordered", so the board asked for materials to be
+  // ordered for work that was done.
+  const supplierDone = { fulfilment_method: "supplier_ready_made", status: "Complete", production_stage: "Not Started" };
+  assert.equal(panelAtStartOfList(supplierDone), false, "a supplier panel is judged on its order status");
+
+  const ourDone = { fulfilment_method: "in_house", status: "Not Ordered", production_stage: "Complete" };
+  assert.equal(panelAtStartOfList(ourDone), false, "one we cut is judged on its production stage");
+
+  const supplierWaiting = { fulfilment_method: "supplier_ready_made", status: "Not Ordered", production_stage: "Complete" };
+  assert.equal(panelAtStartOfList(supplierWaiting), true, "and a stage on a supplier panel means nothing");
+});
+
+test("nothing has moved is false for a job with nothing on it", () => {
+  // A different problem, and worth saying differently: there is nothing to
+  // make, rather than nothing done. The board says which of the two it is.
+  assert.equal(nothingHasMoved([]), false);
+  assert.equal(nothingHasMoved([{ fulfilment_method: "in_house" }]), true);
+  assert.equal(
+    nothingHasMoved([
+      { fulfilment_method: "supplier_ready_made", status: "Complete", production_stage: "Not Started" },
+      { fulfilment_method: "supplier_ready_made", status: "Not Ordered", production_stage: "Not Started" },
+    ]),
+    false,
+    "one panel that has moved is enough"
+  );
+});
+
+test("the board no longer keeps its own copy of the rule", () => {
   const page = readFileSync(new URL("../lib/pcd-board-load.ts", import.meta.url), "utf8");
-  assert.match(page, /panels\.filter\(p => !p\.status \|\| p\.status === 'Not Ordered'\)/);
-  // The late card already took the same direction, and the two must agree.
-  assert.match(page, /return !at \|\| START_OF_LIST\.has\(String\(at\)\)/);
+  assert.ok(!/START_OF_LIST = new Set/.test(page), "the second copy is gone");
+  assert.match(page, /import \{ nothingHasMoved, orderPanels, panelAtStartOfList \} from '\.\/pcd-order-stage'/);
 });

@@ -409,6 +409,15 @@ export default function QuoteApprovalClient() {
   // customer record by the get route, and edited in the summary panel where
   // the customer can already see what is missing.
   const [details, setDetails] = useState({});
+  // When we say the job would happen, worked out by the server: the pair of
+  // dates, how long the job runs, and the one sentence that states how long
+  // they hold for. Null on a quote that suggests no dates, which is most older
+  // ones, and the panel is then not rendered at all.
+  const [schedule, setSchedule] = useState(null);
+  // What they have already paid us, worked out by the server: the lines, what
+  // it comes to, and what is left to pay. Null when they hold nothing, and the
+  // block is then not rendered at all. See lib/pcd-customer-credits.js.
+  const [credit, setCredit] = useState(null);
   // Which summary tile is currently a field rather than a value. One at a time,
   // because there is nowhere for a second one to go.
   const [openTile, setOpenTile] = useState(null);
@@ -461,7 +470,13 @@ export default function QuoteApprovalClient() {
   ].filter((row) => row.always || row.amount > 0);
   const depositPercent = Number(quote?.deposit_percent || 0);
   const depositRequired = Boolean(quote?.deposit_required && depositPercent > 0);
-  const depositAmount = depositRequired ? Number((toNumber(quote?.total_inc_gst) * depositPercent / 100).toFixed(2)) : 0;
+  // THE DEPOSIT IS WHAT THEY PAY, not a share of a total they are not paying.
+  // A credit is money we already have, so it comes off the deposit and the
+  // figure on this page has to be the reduced one or the payment page will ask
+  // for something different than the quote promised. The server works it out;
+  // see depositAmountForQuote in lib/pcd-quote-acceptance.js.
+  const depositFull = depositRequired ? Number((toNumber(quote?.total_inc_gst) * depositPercent / 100).toFixed(2)) : 0;
+  const depositAmount = credit ? toNumber(credit.depositAfter) : depositFull;
 
   useEffect(() => {
     async function loadQuote() {
@@ -481,6 +496,8 @@ export default function QuoteApprovalClient() {
         }
         setQuote(payload.quote);
         setDetails(payload.details || {});
+        setSchedule(payload.schedule || null);
+        setCredit(payload.credit || null);
       } catch (error) {
         setMessage(error?.message || "We could not load this quote.");
       } finally {
@@ -633,6 +650,40 @@ export default function QuoteApprovalClient() {
           </div>
         </div>
       </section>
+
+      {/* WHEN THE JOB WOULD HAPPEN.
+
+          Its own panel rather than two more tiles in the summary above, because
+          it carries a condition and a condition has to be read, not skimmed
+          past in a grid of fifteen values.
+
+          The dates are shown whether or not the hold has lapsed. Taking them
+          off the page once the window passes would leave the customer with less
+          than they were sent and no idea what they had been offered; the
+          sentence underneath changes instead, which is the honest version.
+
+          Said once. There is no repeat of this next to the Approve button and
+          no second warning at the top of the page. */}
+      {schedule ? (
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>Suggested Dates</div>
+          <div className={styles.panelBody}>
+            <div className={styles.quoteViewSummaryGrid}>
+              <div className={styles.summaryItem}><span>Suggested start</span><strong>{schedule.startWords}</strong></div>
+              <div className={styles.summaryItem}><span>Suggested completion</span><strong>{schedule.completionWords}</strong></div>
+              <div className={styles.summaryItem}>
+                <span>On the bench</span>
+                <strong>{schedule.days} {schedule.days === 1 ? "day" : "days"}</strong>
+              </div>
+            </div>
+            <p className={schedule.state === "lapsed" ? styles.scheduleNoticeLapsed : styles.scheduleNotice}>
+              {schedule.state === "lapsed"
+                ? `This quote was sent more than ${schedule.holdWindow} ago, so these dates are no longer held. If you approve it, we will confirm new dates for your job.`
+                : schedule.notice}
+            </p>
+          </div>
+        </section>
+      ) : null}
 
       {/* THE LIST IS GROUPED BY THE BOARD IT IS MADE FROM.
           A quote is a handful of boards used over and over, so the board is
@@ -849,6 +900,28 @@ export default function QuoteApprovalClient() {
                 <div className={styles.totalRow}><span>GST</span><strong>{formatMoney(quote.gst_amount, quote.currency)}</strong></div>
                 <div className={`${styles.totalRow} ${styles.totalRowGrand}`}><span>Total inc GST</span><strong>{formatMoney(quote.total_inc_gst, quote.currency)}</strong></div>
               </div>
+
+              {/* MONEY ALREADY RECEIVED, UNDER THE TOTAL. NOT A DISCOUNT ROW.
+                  A credit in the cost breakdown above would land before GST and
+                  hand back more than the customer paid us, and it would break
+                  the line check on every tax invoice for the job that follows.
+                  Under the total it is what it actually is: the quote is the
+                  quote, and this much of it is already paid for. */}
+              {credit ? (
+                <div className={styles.publicCreditBlock}>
+                  {credit.lines.map((line) => (
+                    <div className={styles.publicCreditRow} key={line.label}>
+                      <span>{line.label}</span>
+                      <strong>{formatMoney(-line.amount, quote.currency)}</strong>
+                    </div>
+                  ))}
+                  <div className={styles.publicCreditPayable}>
+                    <span>Amount payable</span>
+                    <strong>{formatMoney(credit.payable, quote.currency)}</strong>
+                  </div>
+                  {credit.sentence ? <p className={styles.publicCreditNote}>{credit.sentence}</p> : null}
+                </div>
+              ) : null}
             </div>
             {attachments.length ? (
               <button type="button" className={styles.attachmentModalButton} onClick={() => setIsAttachmentsOpen(true)}>
@@ -892,8 +965,11 @@ export default function QuoteApprovalClient() {
         <div className={styles.responseBar}>
           <div className={styles.responseBarInner}>
             <div className={styles.responseBarText}>
-              <span>Total inc GST</span>
-              <strong>{formatMoney(quote.total_inc_gst, quote.currency)}</strong>
+              {/* What they pay, not what the job costs. A bar showing the full
+                  total on a quote with a credit on it is the one number they
+                  would quote back at us. */}
+              <span>{credit ? "Amount payable" : "Total inc GST"}</span>
+              <strong>{formatMoney(credit ? credit.payable : quote.total_inc_gst, quote.currency)}</strong>
             </div>
             <div className={styles.responseBarButtons}>
               <button type="button" className={styles.buttonSecondary} onClick={scrollToResponse}>

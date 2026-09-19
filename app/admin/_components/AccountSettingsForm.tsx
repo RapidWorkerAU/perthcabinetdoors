@@ -11,6 +11,7 @@ import { IconArrowLeft, IconChevronRight } from '@tabler/icons-react'
 import launchStyles from './launch-preview.module.css'
 import QuoteTermsManager from './QuoteTermsManager'
 import EmailSignatureCard from './EmailSignatureCard'
+import BookingSettingsCard from './BookingSettingsCard'
 import ListsManager from './ListsManager'
 
 interface DefaultField {
@@ -75,6 +76,19 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     suffix: 'days',
     step:   '1',
     hint:   'How long a quote stands for. The customer is emailed a reminder 7 days before it runs out, and it archives itself the day after. Change your terms wording to match.',
+  },
+  // THE DATES ARE A SEPARATE PROMISE FROM THE PRICE. A quote can still be good
+  // at the old price long after the week we had free for it has gone to
+  // somebody else, so the suggested start and completion dates hold for their
+  // own, much shorter, window. Read by the public quote page, the quote PDF and
+  // the approval confirmation email, which all say this number out loud.
+  {
+    group:  'Pricing',
+    key:    'schedule_hold_hours',
+    label:  'Suggested dates hold for',
+    suffix: 'hours',
+    step:   '1',
+    hint:   'How long the suggested start and completion dates on a quote stand, counted from when it was sent. The customer is told this on the quote. Past it they are told we will confirm new dates.',
   },
   // Workshop fees. The drawer runner rates used to live here, one per runner
   // type. Runners are ordinary hardware now, picked from the hardware library
@@ -187,7 +201,7 @@ const DEFAULTS_GROUPS = ['Labour', 'Pricing', 'Workshop fees']
 // empty and save.
 // A quote good for zero days would archive every live quote on the next pass
 // and kill every customer link with it.
-const DEFAULTS_MUST_BE_POSITIVE = new Set(['worker_hourly_rate', 'quote_valid_days'])
+const DEFAULTS_MUST_BE_POSITIVE = new Set(['worker_hourly_rate', 'quote_valid_days', 'schedule_hold_hours'])
 
 const LAUNCH_TEXT_FIELDS: [string, string, string?][] = [
   ['statusPill', 'Status pill'],
@@ -299,7 +313,7 @@ const primaryBtn = 'h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-mediu
 const secondaryBtn = 'h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors'
 const fieldLabelClass = 'flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]'
 
-type Tab = 'profile' | 'launch' | 'defaults' | 'lists'
+type Tab = 'profile' | 'launch' | 'defaults' | 'lists' | 'bookings'
 
 export default function AccountSettingsForm({ currentEmail }: { currentEmail?: string }) {
   const [activeTab,        setActiveTab]        = useState<Tab>('profile')
@@ -508,6 +522,12 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     // Defaults changes what every quote costs; this changes what a dropdown
     // offers.
     { key: 'lists',    label: 'Lists',              description: 'Dropdown options you can add to yourself',            icon: 'LI' },
+    // Its own tab rather than a card among the pricing defaults, because it is
+    // a different kind of setting: Business Defaults changes what a job costs,
+    // and this decides what a customer can buy and when we are out to do it.
+    // It is also the only screen here that can take the website offline, which
+    // is not something to meet while looking for a markup.
+    { key: 'bookings', label: 'Site Measures',      description: 'Days, windows and the fee for online bookings',       icon: 'SM' },
   ]
 
   // Profile tab content
@@ -816,6 +836,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     activeTab === 'profile'  ? profileContent  :
     activeTab === 'launch'   ? launchContent   :
     activeTab === 'lists'    ? <ListsManager /> :
+    activeTab === 'bookings' ? <BookingSettingsCard /> :
     defaultsContent
 
   const launchPreviewModal =

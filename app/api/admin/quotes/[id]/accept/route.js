@@ -23,6 +23,8 @@ import {
 import { sendQuoteApprovedToCustomer } from "../../../../../../lib/pcd-customer-confirmations";
 import { editability } from "../../../../../../lib/pcd-document-lock";
 import { orderForQuote } from "../../../../../../lib/pcd-quote-lock";
+import { getBusinessDefaults } from "../../../../../../lib/pcd-business-defaults";
+import { quoteScheduleView } from "../../../../../../lib/pcd-quote-schedule";
 
 export async function POST(request, { params }) {
   const context = await requireAdminApiContext();
@@ -117,9 +119,15 @@ export async function POST(request, { params }) {
     const { data: raisedOrder } = orderId
       ? await context.supabase.from("pcd_orders").select("order_number").eq("id", orderId).maybeSingle()
       : { data: null };
+    // The same schedule line the customer's own approval email carries. An
+    // acceptance taken over the phone is exactly the case where the dates are
+    // most likely to have lapsed, because nobody was watching the clock on a
+    // quote that was never opened.
+    const businessDefaults = await getBusinessDefaults(context.supabase);
     const confirmation = await sendQuoteApprovedToCustomer({
       quote,
       orderNumber: raisedOrder?.order_number || "",
+      schedule: quoteScheduleView(quote, businessDefaults),
     });
 
     return Response.json({

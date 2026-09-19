@@ -6,6 +6,8 @@ import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { defaultQuoteTermsFor } from "../../../../lib/pcd-quote-terms";
 import { sanitizeTermsHtml, toTermsHtml } from "../../../../lib/pcd-terms-html";
 import { applyQuoteCostDefaults, calculateQuoteTotals } from "../../../../lib/pcd-quote-utils";
+import { scheduleDate } from "../../../../lib/pcd-order-schedule";
+import { suggestedScheduleProblems } from "../../../../lib/pcd-quote-schedule";
 import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
 import { isMissingSupplierNameSchemaError, withoutSupplierName } from "./[id]/_quote-line-save";
 
@@ -50,6 +52,12 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       site_suburb: payload.site_suburb || null,
       site_postcode: payload.site_postcode || null,
       project_name: payload.project_name || null,
+      // WHEN WE SAY THE JOB WOULD HAPPEN. Shown to the customer on the quote,
+      // and copied onto the order as its schedule the moment they accept. Kept
+      // as plain dates or nothing: half a pair cannot be planned around and
+      // reads on the quote as if we could not decide.
+      suggested_start_date: scheduleDate(payload.suggested_start_date),
+      suggested_completion_date: scheduleDate(payload.suggested_completion_date),
       currency: quoteCurrency,
       gst_rate: gstRate,
       subtotal_ex_gst: totals.subtotal_ex_gst,
@@ -126,6 +134,15 @@ export async function POST(request) {
   try {
     const payload = await request.json();
     const normalized = await normalizeQuotePayload(context.supabase, payload);
+
+    // REFUSED HERE RATHER THAN ON THE ORDER IT BECOMES. This pair is copied
+    // onto the order at acceptance, where a completion date before the start
+    // is already refused. Catching it on the quote means the customer is never
+    // shown a schedule that runs backwards.
+    const scheduleFault = suggestedScheduleProblems(normalized.quote)[0];
+    if (scheduleFault) {
+      return Response.json({ ok: false, error: scheduleFault.message }, { status: 400 });
+    }
 
     const { data: quote, error: quoteError } = await context.supabase
       .from("pcd_quotes")

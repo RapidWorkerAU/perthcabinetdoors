@@ -6,6 +6,7 @@ import { fromCents, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-str
 import { syncDepositFields } from "../../../../lib/pcd-order-deposit";
 import { GATE_FLOWS, markCheckoutExpired } from "../../../../lib/pcd-deposit-gate";
 import { completeGateSession } from "../../../../lib/pcd-gate-complete";
+import { completeSiteMeasureBooking } from "../../../../lib/pcd-site-measure-booking";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -179,12 +180,18 @@ export async function POST(request) {
     const baseUrl = siteUrl(request.url);
     // A deposit gate session, or a web order: both become an order here.
     const isDepositGate = GATE_FLOWS.has(session?.metadata?.flow);
+    // A site measure booked on the website. It carries neither an order nor a
+    // payment row, because neither exists: what it has is a held day that turns
+    // into a calendar event the moment the fee clears. Kept apart from both
+    // handlers below rather than teaching either to cope with it.
+    const isSiteMeasure = session?.metadata?.flow === "site_measure_booking";
 
     if (event.type === "checkout.session.completed") {
       // The deposit gate sessions carry no order_id or payment_id, because
       // neither exists until this runs. The old handler needs both, so the two
       // are kept apart rather than one being taught to cope with the other.
-      if (isDepositGate) await completeDepositGateSession(session, { baseUrl, request });
+      if (isSiteMeasure) await completeSiteMeasureBooking(createSupabaseAdminClient(), session, { baseUrl });
+      else if (isDepositGate) await completeDepositGateSession(session, { baseUrl, request });
       else await completeCheckoutSession(session, { baseUrl });
     }
 
@@ -194,8 +201,27 @@ export async function POST(request) {
     // way, and only later say whether it arrived. Without these two, a customer
     // paying that way was treated as if they never paid at all.
     if (event.type === "checkout.session.async_payment_succeeded") {
-      if (isDepositGate) await completeDepositGateSession(session, { baseUrl, request });
+      if (isSiteMeasure) await completeSiteMeasureBooking(createSupabaseAdminClient(), session, { baseUrl });
+      else if (isDepositGate) await completeDepositGateSession(session, { baseUrl, request });
       else await completeCheckoutSession(session, { baseUrl });
+    }
+
+    // THE DAY GOES BACK THE MOMENT THE PAYMENT DIES.
+    //
+    // Both of these mean nobody is paying for that day, and leaving the hold in
+    // place would keep it off the website until its twenty minutes ran out. The
+    // update is conditional on still holding, so a payment that failed after
+    // somehow succeeding cannot cancel a real booking.
+    if (
+      isSiteMeasure &&
+      (event.type === "checkout.session.async_payment_failed" || event.type === "checkout.session.expired")
+    ) {
+      const supabase = createSupabaseAdminClient();
+      await supabase
+        .from("pcd_site_measure_bookings")
+        .update({ status: "expired", hold_expires_at: null, updated_at: new Date().toISOString() })
+        .eq("stripe_checkout_session_id", session.id)
+        .eq("status", "holding");
     }
 
     if (event.type === "checkout.session.async_payment_failed" && isDepositGate) {

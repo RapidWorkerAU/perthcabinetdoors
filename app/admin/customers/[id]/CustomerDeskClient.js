@@ -12,6 +12,8 @@
 // happened with these people" is one question and it used to need four screens.
 
 import PushDetailsModal from "../../_components/PushDetailsModal";
+import CustomerCreditsCard from "./CustomerCreditsCard";
+import CustomerPaymentsCard from "./CustomerPaymentsCard";
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
@@ -102,6 +104,9 @@ export default function CustomerDeskClient({ customerId, initial }) {
   };
 
   const { customer, entries, pendingChanges, quotes, orders, stats } = desk;
+  // Money in, from wherever it came. Defaulted so a desk payload cached from
+  // before this existed renders rather than throwing. See pcd-customer-payments.
+  const payments = desk.payments || [];
   const selected = entries.find((entry) => entry.id === selectedId) || entries[0] || null;
 
   // Giving a linked contact its own record back. Nothing was moved when they
@@ -800,6 +805,18 @@ export default function CustomerDeskClient({ customerId, initial }) {
               Nothing to show yet.
             </div>
           )}
+
+          {/* MONEY WE ARE HOLDING FOR THEM.
+              Above the quotes and orders on purpose: a credit is a thing we owe
+              and the rest of this panel is a list of things that happened. It
+              draws nothing when they have never had one. */}
+          {/* MONEY IN, THEN MONEY WE HOLD. Next to each other on purpose:
+              "they paid us $100" and "we owe them $100 of work" are both true
+              at once and mean opposite things. */}
+          <div className="mt-4 grid gap-4">
+            <CustomerPaymentsCard payments={payments} />
+            <CustomerCreditsCard customerId={customerId} />
+          </div>
 
           {/* quotes and orders */}
           {(quotes.length || orders.length) ? (

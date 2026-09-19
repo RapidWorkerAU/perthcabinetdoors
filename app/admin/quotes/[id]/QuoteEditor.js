@@ -49,6 +49,8 @@ import {
 import LockedRegion from "../../_components/LockedRegion";
 import AcceptForCustomerModal from "../../_components/AcceptForCustomerModal";
 import { editability } from "../../../../lib/pcd-document-lock";
+import { holdWindowLabel, suggestedDurationDays, suggestedScheduleProblems } from "../../../../lib/pcd-quote-schedule";
+import { applyCredits, creditsOnQuote, depositAfterCredit } from "../../../../lib/pcd-customer-credits";
 import CabinetConfigurator from "../../../../components/admin/CabinetConfigurator";
 import {
   edgeProfilesForMaterial,
@@ -201,6 +203,8 @@ const emptyForm = {
   site_suburb: "",
   site_postcode: "",
   project_name: "",
+  suggested_start_date: "",
+  suggested_completion_date: "",
   currency: DEFAULT_BUSINESS_DEFAULTS.currency,
   gst_rate: DEFAULT_BUSINESS_DEFAULTS.gst_rate,
   labour_hours: "",
@@ -319,6 +323,10 @@ function formFromQuote(quote) {
     customer_phone: quote.customer_phone || "",
     ...addressColumns(addressFromRecord(quote)),
     project_name: quote.project_name || "",
+    // Plain dates, blank when nothing has been suggested yet. Not defaulted to
+    // anything: a date nobody chose is a promise nobody made.
+    suggested_start_date: quote.suggested_start_date || "",
+    suggested_completion_date: quote.suggested_completion_date || "",
     // The override, not the total. Null means nothing has been typed, so the
     // box shows what the lines work out to and stays editable.
     labour_hours: quote.manual_labour_hours ?? "",
@@ -362,6 +370,10 @@ function mergeQuoteIntoForm(current, quote) {
     customer_phone: quote.customer_phone || "",
     ...addressColumns(addressFromRecord(quote)),
     project_name: quote.project_name || "",
+    // Plain dates, blank when nothing has been suggested yet. Not defaulted to
+    // anything: a date nobody chose is a promise nobody made.
+    suggested_start_date: quote.suggested_start_date || "",
+    suggested_completion_date: quote.suggested_completion_date || "",
     // The override, not the total. Null means nothing has been typed, so the
     // box shows what the lines work out to and stays editable.
     labour_hours: quote.manual_labour_hours ?? "",
@@ -1280,6 +1292,60 @@ export default function QuoteEditor({ quoteId }) {
     window.addEventListener('mouseup', onMouseUp)
   }
 
+  // The pair of suggested dates, read the same way the quote page and the PDF
+  // read them, so the length shown here is the length the customer sees.
+  // WHAT THIS CUSTOMER HAS ALREADY PAID US.
+  //
+  // Read whenever the quote is loaded or saved, because a credit attaches on
+  // the save and the card has to show it immediately. Held credits belong to
+  // this quote; available ones are money sitting on the customer that this
+  // quote has not claimed, which is worth saying out loud rather than leaving
+  // for somebody to find. See lib/pcd-customer-credits.js.
+  const [credits, setCredits] = useState([]);
+  const loadCredits = useCallback(async (customerId) => {
+    if (!customerId) { setCredits([]); return; }
+    try {
+      const response = await fetch(`/api/admin/customers/${customerId}/credits`, { cache: "no-store" });
+      const payload = await response.json();
+      setCredits(response.ok && payload.ok ? payload.credits || [] : []);
+    } catch {
+      setCredits([]);
+    }
+  }, []);
+
+  // Held by THIS quote, and worth what they are worth against THIS total.
+  // The same two functions the public page and the order read, so the builder
+  // cannot show a figure the customer never sees.
+  const heldCredits = useMemo(() => creditsOnQuote(credits, quoteId), [credits, quoteId]);
+  const creditApplied = useMemo(
+    () => applyCredits(heldCredits, totals.total_inc_gst),
+    [heldCredits, totals.total_inc_gst]
+  );
+  // Money sitting on the customer that this quote has NOT claimed. Almost
+  // always empty, because a save claims everything available. It is shown when
+  // it is not, because a credit nobody can see is a credit nobody gives back.
+  const unclaimedCredits = useMemo(
+    () => credits.filter((credit) => credit.state === "available"),
+    [credits]
+  );
+
+  const suggestedDays = useMemo(
+    () => suggestedDurationDays({
+      suggested_start_date: form.suggested_start_date,
+      suggested_completion_date: form.suggested_completion_date,
+    }),
+    [form.suggested_start_date, form.suggested_completion_date]
+  );
+  // Said next to the boxes as it is typed rather than only refused on save,
+  // because the save is a whole quote and this is one field.
+  const suggestedScheduleFault = useMemo(
+    () => suggestedScheduleProblems({
+      suggested_start_date: form.suggested_start_date,
+      suggested_completion_date: form.suggested_completion_date,
+    })[0] || null,
+    [form.suggested_start_date, form.suggested_completion_date]
+  );
+
   const totals = useMemo(
     // form.labour_hours is the OVERRIDE here, not a base to add on top. Blank
     // means follow the lines. See calculateQuoteTotals.
@@ -1476,6 +1542,7 @@ export default function QuoteEditor({ quoteId }) {
         return;
       }
       setForm(formFromQuote(payload.quote));
+      loadCredits(payload.quote?.customer_id);
       setEditableLineIndex(null);
       setEditableLineDraft(null);
       setActiveCabinetLineIndex(null);
@@ -2537,6 +2604,41 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
+  /**
+   * Take the credits off this quote.
+   *
+   * They go back to available on the customer, not away: releasing only moves
+   * money between our own quotes and it stays theirs either way, which is why
+   * this needs no reason recorded. Writing one off is the operation that takes
+   * money, and that lives on the customer record with a justification box.
+   */
+  async function removeCredits() {
+    if (isSaving) return;
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/credits`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not remove the credit.");
+      await loadCredits(form.customer_id);
+      toast({ title: payload.message, variant: "success" });
+    } catch (error) {
+      toast({ title: error?.message || "Could not remove the credit.", variant: "error" });
+    }
+  }
+
+  /** Claim whatever this customer has sitting available, for this quote. */
+  async function applyAvailableCredits() {
+    if (isSaving) return;
+    try {
+      const response = await fetch(`/api/admin/quotes/${quoteId}/credits`, { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not apply the credit.");
+      await loadCredits(form.customer_id);
+      toast({ title: payload.message, variant: "success" });
+    } catch (error) {
+      toast({ title: error?.message || "Could not apply the credit.", variant: "error" });
+    }
+  }
+
   async function saveQuote(eventOrForm) {
     const nextForm = eventOrForm && typeof eventOrForm.preventDefault === "function" ? form : eventOrForm || form;
     if (eventOrForm && typeof eventOrForm.preventDefault === "function") {
@@ -2573,6 +2675,9 @@ export default function QuoteEditor({ quoteId }) {
         return false;
       }
       setForm((current) => mergeQuoteIntoForm(current, payload.quote));
+      // The save is what attaches an available credit, so the card is only
+      // right once this has come back. See refreshQuoteCredits.
+      loadCredits(payload.quote?.customer_id);
       toast({ title: "Quote saved.", variant: "success" });
       return true;
     } catch (error) {
@@ -2914,6 +3019,54 @@ export default function QuoteEditor({ quoteId }) {
                 <input className={tw.fieldInput} value={form.currency} onChange={e => updateForm("currency", e.target.value)} />
               </label>
             </div>
+            {/* WHEN THE JOB WOULD HAPPEN, SAID BEFORE THEY COMMIT.
+                These two dates print on the quote, on the PDF and on the page
+                the customer opens, and they BECOME the order the moment the
+                quote is accepted: start goes to Scheduled start, completion to
+                Estimated completion, and the calendar picks the job up from
+                there. Nothing here is a placeholder or a hint. Both boxes are
+                empty until somebody chooses a date, because a date nobody
+                chose is a promise nobody made. */}
+            <div className="mt-4 border-t border-[#ecebe4] pt-4">
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <span className="text-[13px] font-semibold text-[#1a1a18]">Suggested dates</span>
+                {suggestedDays ? (
+                  <span className="text-[12px] text-[#5a5a52]">{suggestedDays} {suggestedDays === 1 ? "day" : "days"} on the bench</span>
+                ) : null}
+              </div>
+              <div className={tw.grid2}>
+                <label className={tw.fieldLabel}>
+                  Suggested start
+                  <input
+                    type="date"
+                    className={tw.fieldInput}
+                    value={form.suggested_start_date || ""}
+                    onChange={e => updateForm("suggested_start_date", e.target.value)}
+                  />
+                </label>
+                <label className={tw.fieldLabel}>
+                  Suggested completion
+                  <input
+                    type="date"
+                    className={tw.fieldInput}
+                    min={form.suggested_start_date || undefined}
+                    value={form.suggested_completion_date || ""}
+                    onChange={e => updateForm("suggested_completion_date", e.target.value)}
+                  />
+                </label>
+              </div>
+              {suggestedScheduleFault ? (
+                <p className="mt-2 mb-0 text-[12px] text-[#9e2717]">{suggestedScheduleFault.message}</p>
+              ) : (
+                <p className="mt-2 mb-0 text-[12px] leading-[1.5] text-[#8b8a81]">
+                  Shown to the customer on the quote and on the PDF, and copied onto the order as its
+                  {" "}schedule when they accept. The customer is told the dates hold for
+                  {" "}{holdWindowLabel(businessDefaults)} from when the quote is sent. Change that window in
+                  {" "}Business Defaults.
+                </p>
+              )}
+            </div>
+
           </div>
         </div>
 
@@ -4285,6 +4438,78 @@ export default function QuoteEditor({ quoteId }) {
             <span className="text-[15px] font-semibold text-[#2d5e28]">Total inc GST</span>
             <strong className="text-[20px] font-semibold text-[#1a1a18] font-mono">{formatMoney(totals.total_inc_gst, form.currency)}</strong>
           </div>
+
+          {/* MONEY ALREADY RECEIVED, UNDER THE TOTAL. NOT A COST ROW.
+              A credit among the job costs above would land before GST and hand
+              back more than the customer paid, and it would break the line
+              check on every tax invoice for the job. Under the total it is what
+              it is: the quote is the quote, and this much of it is paid for.
+              See lib/pcd-customer-credits.js. */}
+          {creditApplied.applied > 0 ? (
+            <>
+              {creditApplied.lines.map((line) => (
+                <div key={line.id} className="flex justify-between items-center pt-2 text-[13px]">
+                  <span className="flex items-center gap-2 text-[#92400e]">
+                    <span className="rounded-full border border-[#fcd34d] bg-[#fffbeb] px-[7px] py-[1px] text-[10px] font-bold uppercase tracking-[0.05em]">
+                      credit
+                    </span>
+                    {line.label}
+                  </span>
+                  <strong className="font-mono font-semibold text-[#92400e]">
+                    {formatMoney(-line.amount, form.currency)}
+                  </strong>
+                </div>
+              ))}
+              <div className="mt-2 flex justify-between items-center border-t-2 border-[#2d5e28] pt-[10px]">
+                <span className="text-[13px] font-bold text-[#2d5e28]">Amount payable</span>
+                <strong className="text-[18px] font-bold text-[#1a1a18] font-mono">
+                  {formatMoney(creditApplied.payable, form.currency)}
+                </strong>
+              </div>
+              {form.deposit_required && Number(form.deposit_percent) > 0 ? (
+                <p className="mt-2 mb-0 text-[11px] leading-snug text-[#2d5e28]">
+                  It comes off the deposit, so the deposit to start is{" "}
+                  {formatMoney(
+                    depositAfterCredit(
+                      (Number(totals.total_inc_gst) * Number(form.deposit_percent)) / 100,
+                      creditApplied.applied
+                    ),
+                    form.currency
+                  )}{" "}
+                  rather than{" "}
+                  {formatMoney((Number(totals.total_inc_gst) * Number(form.deposit_percent)) / 100, form.currency)}.
+                </p>
+              ) : null}
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  className="text-[11px] text-[#2d5e28] underline disabled:opacity-50"
+                  disabled={isSaving || isLocked}
+                  onClick={removeCredits}
+                >
+                  {creditApplied.lines.length === 1 ? "Remove this credit" : "Remove these credits"}
+                </button>
+              </div>
+            </>
+          ) : unclaimedCredits.length ? (
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-[#a8c5a0] pt-3">
+              <span className="text-[12px] text-[#5a5a52]">
+                {formatMoney(
+                  unclaimedCredits.reduce((sum, credit) => sum + Number(credit.amount || 0), 0),
+                  form.currency
+                )}{" "}
+                credit available, not applied
+              </span>
+              <button
+                type="button"
+                className="h-[26px] rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-[11px] font-medium text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50"
+                disabled={isSaving || isLocked}
+                onClick={applyAvailableCredits}
+              >
+                Apply
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     );

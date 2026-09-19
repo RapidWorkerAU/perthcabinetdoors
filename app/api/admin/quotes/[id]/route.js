@@ -6,6 +6,9 @@ import { calculateQuoteTotals } from "../../../../../lib/pcd-quote-utils";
 import { sanitizeTermsHtml, toTermsHtml } from "../../../../../lib/pcd-terms-html";
 import { cabinetConfigRow, dbNumber, isMissingSupplierNameSchemaError, quoteLineRow, withoutSupplierName } from "./_quote-line-save";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
+import { scheduleDate } from "../../../../../lib/pcd-order-schedule";
+import { suggestedScheduleProblems } from "../../../../../lib/pcd-quote-schedule";
+import { refreshQuoteCredits } from "../../../../../lib/pcd-customer-credits";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -123,6 +126,12 @@ async function normalizeQuotePayload(supabase, payload = {}) {
       site_suburb: payload.site_suburb || null,
       site_postcode: payload.site_postcode || null,
       project_name: payload.project_name || null,
+      // WHEN WE SAY THE JOB WOULD HAPPEN. Shown to the customer on the quote,
+      // and copied onto the order as its schedule the moment they accept. Kept
+      // as plain dates or nothing: half a pair cannot be planned around and
+      // reads on the quote as if we could not decide.
+      suggested_start_date: scheduleDate(payload.suggested_start_date),
+      suggested_completion_date: scheduleDate(payload.suggested_completion_date),
       currency: quoteCurrency,
       gst_rate: gstRate,
       subtotal_ex_gst: totals.subtotal_ex_gst,
@@ -203,6 +212,15 @@ export async function PUT(request, { params }) {
     const payload = await request.json();
     const normalized = await normalizeQuotePayload(context.supabase, payload);
 
+    // REFUSED HERE RATHER THAN ON THE ORDER IT BECOMES. This pair is copied
+    // onto the order at acceptance, where a completion date before the start
+    // is already refused. Catching it on the quote means the customer is never
+    // shown a schedule that runs backwards.
+    const scheduleFault = suggestedScheduleProblems(normalized.quote)[0];
+    if (scheduleFault) {
+      return Response.json({ ok: false, error: scheduleFault.message }, { status: 400 });
+    }
+
     const { data: beforeQuote } = await context.supabase
       .from("pcd_quotes")
       .select("*")
@@ -235,6 +253,8 @@ export async function PUT(request, { params }) {
       site_suburb: "Suburb",
       site_postcode: "Postcode",
       project_name: "Project",
+      suggested_start_date: "Suggested start",
+      suggested_completion_date: "Suggested completion",
       total_inc_gst: "Total inc GST",
     });
     await logOrderActivity(context.supabase, {
@@ -314,6 +334,14 @@ export async function PUT(request, { params }) {
       if (deleteError) throw deleteError;
     }
 
+    // CREDITS ATTACH ON THE SAVE, not on a prompt at send.
+    //
+    // A question you can dismiss is a credit that gets lost, and the customer
+    // who paid it never gets it back with nothing anywhere saying so. It is on
+    // the totals card from the first save, and taking it off is a deliberate
+    // act rather than a forgotten one. See lib/pcd-customer-credits.js.
+    await refreshQuoteCredits(context.supabase, id, normalized.quote.customer_id);
+
     const savedQuote = await loadQuoteWithRelations(context.supabase, id);
 
     return Response.json({ ok: true, quote: savedQuote });
@@ -349,6 +377,14 @@ export async function PATCH(request, { params }) {
       lines: existingLines || [],
     });
 
+    // The same refusal as the full save above. The editor reaches this route,
+    // so leaving it out here would let a backwards schedule through the door
+    // the editor actually uses.
+    const patchScheduleFault = suggestedScheduleProblems(normalized.quote)[0];
+    if (patchScheduleFault) {
+      return Response.json({ ok: false, error: patchScheduleFault.message }, { status: 400 });
+    }
+
     const { data: quote, error: quoteError } = await context.supabase
       .from("pcd_quotes")
       .update(normalized.quote)
@@ -366,6 +402,8 @@ export async function PATCH(request, { params }) {
       site_suburb: "Suburb",
       site_postcode: "Postcode",
       project_name: "Project",
+      suggested_start_date: "Suggested start",
+      suggested_completion_date: "Suggested completion",
       total_inc_gst: "Total inc GST",
     });
 
@@ -384,7 +422,19 @@ export async function PATCH(request, { params }) {
       });
     }
 
-    return Response.json({ ok: true, quote });
+    // CREDITS ATTACH ON THE SAVE, not on a prompt at send.
+    //
+    // A question you can dismiss is a credit that gets lost, and the customer
+    // who paid it never gets it back with nothing anywhere saying so. It is on
+    // the totals card from the first save, and taking it off is a deliberate
+    // act rather than a forgotten one. See lib/pcd-customer-credits.js.
+    await refreshQuoteCredits(context.supabase, id, normalized.quote.customer_id);
+
+    // Re-read, because refreshQuoteCredits has just written the credit total
+    // onto the row and the editor draws its totals card from what comes back.
+    const withCredits = await loadQuoteWithRelations(context.supabase, id);
+
+    return Response.json({ ok: true, quote: withCredits || quote });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not update quote." }, { status: 500 });
   }

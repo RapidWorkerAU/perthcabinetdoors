@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Modal } from "@/components/ui/Modal";
 import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import OverrideModal from "../../../../_components/OverrideModal";
+import ApproveVariationOverrideModal from "../../../../_components/ApproveVariationOverrideModal";
+import { overrideApprovalEligibility } from "../../../../../../lib/pcd-variation-override";
 import LockedRegion from "../../../../_components/LockedRegion";
 import { editability } from "../../../../../../lib/pcd-document-lock";
 import { cabinetOptions, isCabinetLine, orderItemLabel, orderItemOptions } from "../../../../../../lib/pcd-order-item-label";
@@ -434,6 +436,9 @@ export default function VariationEditor({ orderId, variationId }) {
   // decide on, and the decision is the very next button press.
   const [sendWarning, setSendWarning] = useState("");
   const [overrideOpen, setOverrideOpen] = useState(false);
+  // The admin approval, for a change the customer has already agreed to in
+  // person. Only ever offered on a variation that is nothing but size changes.
+  const [approveOverrideOpen, setApproveOverrideOpen] = useState(false);
   const [hardwareRows, setHardwareRows] = useState([]);
   // Which brands stock which material, and the profile catalogue. The same two
   // sources the quote editor and the public quote form read, so a variation
@@ -468,6 +473,26 @@ export default function VariationEditor({ orderId, variationId }) {
   const lockState = editability("variation", variation?.status);
   const isEditable = lockState === "open";
   const isSealed = lockState === "sealed";
+  // CAN THIS BE APPROVED WITHOUT THE CUSTOMER?
+  //
+  // Worked out here, on the screen, from the variation lines and the order lines
+  // it already has, using the very same function the route checks with. So the
+  // button and the refusal agree by construction rather than by two people
+  // keeping two copies of a rule in step.
+  //
+  // The route checks again against the database before it does anything. This
+  // decides what to OFFER; that decides what to allow.
+  const overrideEligibility = useMemo(
+    () => overrideApprovalEligibility(lines, orderItems),
+    [lines, orderItems]
+  );
+  // Offered on anything the customer has not answered yet, draft included: a
+  // change agreed on site can be written up and approved without being emailed
+  // out first. Never once it has been answered, where the answer is the record.
+  const canApproveForCustomer = !["approved", "approved_pending_payment", "applied", "rejected", "cancelled"].includes(
+    variation?.status
+  );
+
   const lineDraftMaterialOptions = materialOptionsForType(lineDraft.product_type);
 
   // WHOSE BOARD IS THIS. A variation writes the same line shape a quote does,
@@ -517,27 +542,36 @@ export default function VariationEditor({ orderId, variationId }) {
     toastRef.current = toast;
   }, [toast]);
 
-  useEffect(() => {
-    async function load() {
-      setIsLoading(true);
-      try {
-        const [orderResponse, variationResponse] = await Promise.all([
-          fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" }),
-          fetch(`/api/admin/orders/${orderId}/variations/${variationId}`, { cache: "no-store" }),
-        ]);
-        const [orderPayload, variationPayload] = await Promise.all([orderResponse.json(), variationResponse.json()]);
-        if (!orderResponse.ok || !orderPayload.ok) throw new Error(orderPayload.error || "Could not load order.");
-        if (!variationResponse.ok || !variationPayload.ok) throw new Error(variationPayload.error || "Could not load variation.");
-        setOrder(orderPayload.order);
-        setVariation(variationPayload.variation);
-      } catch (error) {
-        toastRef.current({ title: error?.message || "Could not load variation.", variant: "error" });
-      } finally {
-        setIsLoading(false);
-      }
+  // BOTH SIDES, ALWAYS TOGETHER.
+  //
+  // The variation and the order are read as a pair because half the screen is
+  // about the difference between them. Lifted out of its own effect so an
+  // action that changes both can simply ask for them again: applying a
+  // variation rewrites the order's line items, so patching the variation into
+  // state and leaving the order alone would leave the sizes on screen
+  // disagreeing with the sizes on the order.
+  const loadAll = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [orderResponse, variationResponse] = await Promise.all([
+        fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" }),
+        fetch(`/api/admin/orders/${orderId}/variations/${variationId}`, { cache: "no-store" }),
+      ]);
+      const [orderPayload, variationPayload] = await Promise.all([orderResponse.json(), variationResponse.json()]);
+      if (!orderResponse.ok || !orderPayload.ok) throw new Error(orderPayload.error || "Could not load order.");
+      if (!variationResponse.ok || !variationPayload.ok) throw new Error(variationPayload.error || "Could not load variation.");
+      setOrder(orderPayload.order);
+      setVariation(variationPayload.variation);
+    } catch (error) {
+      toastRef.current({ title: error?.message || "Could not load variation.", variant: "error" });
+    } finally {
+      setIsLoading(false);
     }
-    load();
   }, [orderId, variationId]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1647,6 +1681,21 @@ export default function VariationEditor({ orderId, variationId }) {
           <div className="flex items-center gap-2">
             <span className={`${tw.pill} ${statusClass(variation.status)}`}>{titleCase(variation.status)}</span>
             {isEditable ? <button type="button" className={tw.primaryBtn} disabled={isSaving || !lines.length} onClick={prepareSend}>Send variation</button> : null}
+            {/* THE ADMIN APPROVAL, beside the send it stands in for.
+                Shown whenever the customer has not answered, and it opens
+                whether or not the variation qualifies: a variation that does
+                not is told which line broke the rule, which is more use than a
+                button that is simply not there. */}
+            {canApproveForCustomer ? (
+              <button
+                type="button"
+                className={tw.secondaryBtn}
+                disabled={isSaving || !lines.length}
+                onClick={() => setApproveOverrideOpen(true)}
+              >
+                Approve for the customer
+              </button>
+            ) : null}
             {isSealed ? (
               <button type="button" className={tw.secondaryBtn} onClick={() => setOverrideOpen(true)}>
                 Edit with override
@@ -1773,6 +1822,45 @@ export default function VariationEditor({ orderId, variationId }) {
           setOverrideOpen(false);
           setVariation((current) => ({ ...current, ...payload.variation }));
           toast({ title: payload.message, variant: "success" });
+        }}
+      />
+
+      <ApproveVariationOverrideModal
+        open={approveOverrideOpen}
+        variationNumber={variation.variation_number}
+        customerName={variation.customer_name || order.customer_name || ""}
+        currency={variation.currency || order.currency || "AUD"}
+        eligibility={overrideEligibility}
+        onClose={() => setApproveOverrideOpen(false)}
+        onConfirm={async (body) => {
+          const response = await fetch(
+            `/api/admin/orders/${orderId}/variations/${variationId}/approve-override`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            }
+          );
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            // The route answers a refusal with the reasons per line. Joined onto
+            // the message so the modal says which line stopped it rather than
+            // only that something did.
+            const detail = (payload.reasons || []).join(" ");
+            throw new Error([payload.error || "Could not approve this variation.", detail].filter(Boolean).join(" "));
+          }
+          return payload;
+        }}
+        onApproved={async (payload) => {
+          setApproveOverrideOpen(false);
+          // Both sides moved: the variation is applied and the order lines now
+          // carry the new sizes. Reloaded rather than patched in, because the
+          // order's lines changed underneath this screen.
+          await loadAll();
+          toast({
+            title: payload.message,
+            variant: payload.applied ? "success" : "error",
+          });
         }}
       />
 

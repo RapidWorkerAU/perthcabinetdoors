@@ -10,6 +10,7 @@
 // somebody will ask and the answer belongs in the record.
 
 import { requireAdminApiContext } from "../../../../../../lib/admin-api";
+import { refreshQuoteCredits, releaseCreditsForQuote } from "../../../../../../lib/pcd-customer-credits";
 import { logOrderActivity } from "../../../../../../lib/pcd-activity-log";
 import {
   ARCHIVED_MANUAL,
@@ -83,6 +84,19 @@ export async function POST(request, { params }) {
       .select("*")
       .single();
     if (saveError) throw saveError;
+
+    // THE CREDIT LETS GO WITH THE QUOTE, AND COMES BACK WITH IT.
+    //
+    // Written in the same step that closes the quote, so there is no window
+    // where a put-away quote is still holding somebody's money and no second
+    // quote can be raised for them. Restoring claims it again, because a quote
+    // brought back should look exactly as it did when it was put away.
+    //
+    // Releasing needs no reason recorded: it only moves money between our own
+    // quotes and it stays the customer's either way. See
+    // lib/pcd-customer-credits.js.
+    if (archiving) await releaseCreditsForQuote(context.supabase, id);
+    else await refreshQuoteCredits(context.supabase, id, quote.customer_id);
 
     await logOrderActivity(context.supabase, {
       quote_id: quote.id,

@@ -3,7 +3,7 @@ import { applyDismissals } from './pcd-board-dismissal'
 import { primaryIdIndex } from './pcd-customer-links'
 import { issueKindLabel } from './pcd-order-issues'
 import { outstandingOnOrder } from './pcd-board-money'
-import { orderPanels } from './pcd-order-stage'
+import { nothingHasMoved, orderPanels, panelAtStartOfList } from './pcd-order-stage'
 import { createSupabaseAdminClient } from './supabase/admin'
 
 // EVERYTHING WAITING ON US, READ ONCE.
@@ -37,10 +37,16 @@ type Json = Record<string, unknown>
 // the type checking off six hundred lines at once.
 type Supabase = ReturnType<typeof createSupabaseAdminClient>
 
-// Panels a supplier makes carry an order status; the ones we cut carry a
-// production stage. "Nothing has moved" has to mean the start of whichever
-// list applies, or a job that is part supplier made can never be judged.
-const START_OF_LIST = new Set(['Not Started', 'Not Ordered'])
+// "Nothing has moved" comes from lib/pcd-order-stage.js, not from here.
+//
+// This file used to keep its own copy: a set holding both start words, tested
+// against `production_stage || status`. That reads the production stage first,
+// and EVERY panel has one, including the ones a supplier makes, where it means
+// nothing and sits at "Not Started" for the life of the job. Ian Brennan's ten
+// Polytec doors were nine Complete and one Ordered, and this called the order
+// never started and 26 days overdue.
+//
+// Which list applies is decided by who makes the panel. See panelAtStartOfList.
 
 // A panel's decisions come from its own plan first, then the line it sits on.
 // Both can be blank, which is the point: an undecided panel has to read as
@@ -539,8 +545,14 @@ export async function loadBoard(supabase: Supabase) {
     // A panel with no status at all still counts: nobody has said it is
     // ordered, and undecided is not the same as done. That is the same
     // direction panelsOf takes and the same one the late card takes below.
+    //
+    // THE LIST IS CHOSEN BY WHO MAKES THE PANEL. This read the order status on
+    // every panel, which is the right question for a supplier panel and the
+    // wrong one for a panel we cut: ours carry a production stage instead, so a
+    // door already packed on the bench had a blank order status and was counted
+    // as still unordered. Same rule as the late card, same function.
     const until = daysUntil(order.scheduled_start_date, today)
-    const notOrdered = panels.filter(p => !p.status || p.status === 'Not Ordered').length
+    const notOrdered = panels.filter(panelAtStartOfList).length
     if (notOrdered && until !== null && until <= 7) {
       materials.push({ ...order, notOrdered, customerId: whoIsIt(order.customer_id as string, order.customer_email as string) })
     }
@@ -548,10 +560,7 @@ export async function loadBoard(supabase: Supabase) {
     // Late: past the promised date, or booked in and nothing has moved.
     const overdue = order.target_completion_date ? -1 * (daysUntil(order.target_completion_date, today) ?? 0) : 0
     const startPassed = until !== null && until < 0
-    const nothingMoved = panels.length > 0 && panels.every(p => {
-      const at = p.production_stage || p.status
-      return !at || START_OF_LIST.has(String(at))
-    })
+    const nothingMoved = nothingHasMoved(panels)
     // An order with NO panels at all was silent here, because "every panel is
     // still at the start" is trivially true of no panels and the length guard
     // above then dropped it. A job booked to start with nothing on it to make

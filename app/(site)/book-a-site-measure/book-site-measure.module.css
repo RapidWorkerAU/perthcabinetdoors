@@ -1,0 +1,633 @@
+/* THE PUBLIC SITE MEASURE BOOKING PAGE.
+ *
+ * The marketing look, not the document look: rounded cards, soft shadow, warm
+ * ground. Every value here is one of the --pcd tokens out of frontend.css,
+ * repeated locally so this module does not depend on the cascade reaching it.
+ * See app/(site)/frontend.css for the originals.
+ */
+
+.page {
+  --ink: #1a1a18;
+  --ink-soft: #3a3a34;
+  --mut: #5a5a52;
+  --mut-light: #8b8a81;
+  --line: #dbd8cc;
+  --line-soft: rgba(26, 26, 24, 0.1);
+  --green: #1c2b1e;
+  --green-deep: #111b13;
+  --green-dark: #2d5e28;
+  --green-mid: #6b9e61;
+  --green-soft: #a8c5a0;
+  --green-panel: #edf4eb;
+  --cream: #f0ede4;
+  --paper: #faf9f6;
+  --danger: #b42318;
+  --danger-soft: #fdf3f1;
+  --danger-line: #dfbab5;
+  --warn: #8a6d0b;
+  --warn-soft: #fffdf0;
+  --warn-line: #e8d68f;
+  --placeholder: #9a978d;
+
+  --shadow: 0 16px 30px rgba(28, 43, 30, 0.08);
+  --radius: 8px;
+
+  min-height: 100vh;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: "Source Sans 3", Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── masthead ────────────────────────────────────────────────────────────── */
+.band {
+  background: var(--green-deep);
+  color: #ffffff;
+}
+
+.bandInner {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.bandLogo { height: 26px; width: auto; display: block; }
+
+.bandPrice {
+  font-size: 13px;
+  color: #d7e3d3;
+}
+
+/* align-content IS NOT OPTIONAL HERE.
+ *
+ * This is both a flex child with flex:1 (so it fills the page down to the
+ * footer) and a grid. A grid's default align-content is stretch, so on a short
+ * page every auto-sized row grew to swallow the leftover height: the heading
+ * sat at the top, the card sat near the bottom, and the card itself stretched
+ * to several hundred pixels of white space.
+ *
+ * start packs the rows at the top and lets the flex:1 do its one job, which is
+ * holding the footer down. */
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.lead h1 {
+  margin: 0 0 8px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  font-size: clamp(27px, 4.6vw, 36px);
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.lead p {
+  margin: 0;
+  max-width: 58ch;
+  color: var(--mut);
+  font-size: 15px;
+}
+
+.lead p b { color: var(--ink); }
+
+/* ── steps ───────────────────────────────────────────────────────────────── */
+/* THREE COLUMNS, NOT A WRAPPING ROW.
+ *
+ * As a flex row with wrap this broke at exactly the width most phones are:
+ * two steps on the first line and the third hanging underneath on its own,
+ * which reads as a mistake rather than as a step. A three column grid cannot
+ * do that, whatever the labels say, and each cell just gets narrower.
+ */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mut-light);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  font-family: inherit;
+  cursor: default;
+}
+
+.stepLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepClickable { cursor: pointer; }
+.stepClickable:hover { color: var(--ink); }
+
+.stepMark {
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e5e1d5;
+  color: var(--mut-light);
+  flex: none;
+}
+
+.stepOn { color: var(--ink); border-bottom-color: var(--green-dark); }
+.stepOn .stepMark { background: var(--green-dark); color: #ffffff; }
+.stepDone { color: var(--mut); border-bottom-color: var(--green-soft); }
+.stepDone .stepMark { background: var(--green-soft); color: var(--green); }
+
+/* ── cards ───────────────────────────────────────────────────────────────── */
+.card {
+  background: #ffffff;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.cardHead {
+  padding: 15px 18px 11px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.cardBody {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+/* ── the week strip ──────────────────────────────────────────────────────── */
+.strip { display: grid; gap: 10px; }
+
+.week {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.weekOf {
+  flex: none;
+  width: 72px;
+  padding-top: 12px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--mut-light);
+  font-variant-numeric: tabular-nums;
+}
+
+.weekDays {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.day {
+  font: inherit;
+  cursor: pointer;
+  padding: 8px 2px 7px;
+  border-radius: 4px;
+  border: 1px solid #e3e0d5;
+  background: #ffffff;
+  color: var(--ink);
+  display: grid;
+  gap: 1px;
+  text-align: center;
+  min-width: 0;
+}
+
+.dayName {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mut-light);
+}
+
+.dayNum { font-size: 16px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.dayLeft { font-size: 9px; color: var(--green-mid); }
+
+.dayFree { border-color: var(--green-soft); background: #f4f9f2; }
+.dayFree:hover { background: var(--green-panel); border-color: var(--green-mid); }
+
+.dayClosed,
+.dayFull {
+  color: #c2bfb5;
+  background: #f6f5f0;
+  cursor: default;
+  border-color: #eceadf;
+}
+.dayClosed .dayName,
+.dayFull .dayName,
+.dayFull .dayLeft { color: #c2bfb5; }
+
+.daySel {
+  background: var(--green-dark);
+  border-color: var(--green-dark);
+  color: #ffffff;
+}
+.daySel .dayName, .daySel .dayLeft { color: #cfe3ca; }
+
+.day:focus-visible { outline: 2px solid var(--green-mid); outline-offset: 1px; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--mut);
+}
+.legend span { display: flex; align-items: center; gap: 6px; }
+.legend i { width: 11px; height: 11px; border-radius: 3px; display: block; border: 1px solid; }
+
+/* ── the chosen window ───────────────────────────────────────────────────── */
+.window {
+  border: 1px solid var(--green-soft);
+  background: var(--green-panel);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 5px;
+}
+.window b { font-size: 15px; color: var(--green); }
+.window span { font-size: 13px; color: #2f4a2b; line-height: 1.5; }
+
+/* ── the two money notices ───────────────────────────────────────────────── */
+.feeNote {
+  border: 1px solid var(--green-soft);
+  background: var(--green-panel);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 5px;
+}
+.feeNote b { font-size: 14.5px; color: var(--green); }
+.feeNote span { font-size: 13px; color: #2f4a2b; line-height: 1.5; }
+
+.cancelNote {
+  border: 1px solid var(--warn-line);
+  background: var(--warn-soft);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 5px;
+}
+.cancelNote b { font-size: 14.5px; color: var(--warn); }
+.cancelNote span { font-size: 13px; color: #6f5808; line-height: 1.5; }
+
+.policyLink {
+  font: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  color: #6f5808;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ── fields ──────────────────────────────────────────────────────────────── */
+.fields { display: grid; gap: 13px; }
+.two { grid-template-columns: 1fr 1fr; }
+.narrow { max-width: 190px; }
+
+.field { display: grid; gap: 5px; }
+.field > span { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+
+.field input,
+.field textarea {
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid #c6c2b4;
+  border-radius: 4px;
+  padding: 9px 11px;
+  width: 100%;
+}
+.field input::placeholder, .field textarea::placeholder { color: var(--placeholder); }
+.field input:focus, .field textarea:focus { outline: 2px solid var(--green-mid); outline-offset: -1px; }
+.field textarea { min-height: 70px; resize: vertical; }
+.fieldBad input { border-color: var(--danger); }
+
+.hint { margin: 0; font-size: 13px; color: var(--mut-light); }
+
+/* ── summary and payment ─────────────────────────────────────────────────── */
+.summary { display: grid; }
+.summaryRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid #ece9df;
+  font-size: 14px;
+}
+.summaryRow:last-child { border-bottom: 0; }
+.summaryRow span { color: var(--mut); }
+.summaryRow b { font-weight: 600; text-align: right; }
+
+.total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 11px;
+  margin-top: 3px;
+  border-top: 1px solid var(--green);
+}
+.total span { font-size: 14px; font-weight: 700; }
+.total b { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.ack {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--mut);
+  cursor: pointer;
+}
+.ack input { margin: 2px 0 0; width: 16px; height: 16px; accent-color: var(--green-dark); flex: none; }
+.ack strong { color: var(--ink); font-weight: 700; }
+
+.stripeStrip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed #c6c2b4;
+  border-radius: 6px;
+  background: #f8f7f2;
+  font-size: 12.5px;
+  color: var(--mut);
+}
+.stripeStrip b { color: var(--ink); font-weight: 600; }
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+.button {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 11px 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--green-dark);
+  background: var(--green-dark);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.button:hover { background: var(--green-deep); border-color: var(--green-deep); }
+.button:disabled { opacity: 0.45; cursor: default; }
+
+.ghost { background: none; color: var(--green-dark); }
+.ghost:hover { background: var(--green-panel); color: var(--green-deep); }
+
+.tiny { font-size: 12.5px; color: var(--mut-light); }
+
+.error {
+  margin: 0;
+  border: 1px solid var(--danger-line);
+  background: var(--danger-soft);
+  border-radius: 6px;
+  padding: 10px 13px;
+  font-size: 13.5px;
+  color: var(--danger);
+}
+
+.empty {
+  margin: 0;
+  padding: 18px;
+  text-align: center;
+  color: var(--mut);
+  font-size: 14.5px;
+}
+
+/* ── the policy modal ────────────────────────────────────────────────────── */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 27, 19, 0.5);
+  display: grid;
+  place-items: center;
+  padding: 20px 16px;
+  z-index: 60;
+}
+
+.modal {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(17, 27, 19, 0.35);
+  width: 100%;
+  max-width: 540px;
+  max-height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.modalHead {
+  background: var(--green);
+  color: #ffffff;
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.modalHead b { font-size: 12px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase; }
+.modalClose {
+  font: inherit;
+  background: none;
+  border: 0;
+  color: var(--green-soft);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.modalClose:hover { color: #ffffff; }
+
+/* Packed to the top for the same reason .main is: this is the 1fr row of the
+   modal, so on a short policy its rows would stretch to fill the dialog. */
+.modalBody { padding: 16px; overflow-y: auto; display: grid; gap: 13px; align-content: start; }
+.modalBody p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-soft); }
+
+.modalFoot {
+  border-top: 1px solid var(--line);
+  background: var(--cream);
+  padding: 11px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── the two halves of the rule, shared with the policy page ─────────────── */
+.rules {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid #c6c2b4;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.rule { padding: 14px; display: grid; gap: 6px; align-content: start; }
+.rule + .rule { border-left: 1px solid #c6c2b4; }
+.ruleWhen {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--green-dark);
+}
+.ruleKeep .ruleWhen { color: var(--warn); }
+.ruleHead { font-size: 16px; font-weight: 700; line-height: 1.25; }
+.rule p { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--mut); }
+
+/* ── the confirmation page ───────────────────────────────────────────────── */
+.done { display: grid; gap: 14px; }
+.doneMark {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--green-panel);
+  border: 1px solid var(--green-soft);
+  color: var(--green-dark);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* ── footer ──────────────────────────────────────────────────────────────── */
+.footer {
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+.footerInner {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 18px 20px 26px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  font-size: 12.5px;
+  color: var(--mut-light);
+}
+.footerInner a { color: var(--mut); }
+
+@media (max-width: 720px) {
+  .two { grid-template-columns: 1fr; }
+  .rules { grid-template-columns: 1fr; }
+  .rule + .rule { border-left: 0; border-top: 1px solid #c6c2b4; }
+
+  /* The week label sits above its days rather than beside them: seven day
+     cells and a date label do not share 350px without the cells becoming
+     unreadable. */
+  .week { flex-direction: column; gap: 4px; }
+  .weekOf { width: auto; padding-top: 0; }
+  .weekDays { gap: 4px; }
+}
+
+/* ── phones ──────────────────────────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .main { padding: 20px 16px 36px; gap: 14px; }
+  .bandInner { padding: 12px 16px; gap: 10px; }
+  .footerInner { padding: 16px 16px 24px; gap: 4px 16px; }
+
+  /* The mark goes above the label so all three steps keep a readable word
+     each. Side by side, "Pay and confirm" does not fit a third of a phone. */
+  .step {
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 4px;
+    font-size: 11px;
+    line-height: 1.25;
+    text-align: center;
+  }
+  .stepLabel { white-space: normal; text-overflow: clip; }
+  .stepMark { width: 19px; height: 19px; font-size: 10px; }
+
+  .cardHead { padding: 13px 14px 9px; font-size: 11px; }
+  .cardBody { padding: 14px; gap: 12px; }
+
+  .dayNum { font-size: 14px; }
+  .dayName { font-size: 9px; }
+  .dayLeft { font-size: 8.5px; }
+  .day { padding: 7px 1px 6px; }
+
+  /* A long address has nowhere to go on one line, so the value drops under its
+     label rather than being squeezed into three words per row. */
+  .summaryRow { flex-wrap: wrap; gap: 2px 12px; }
+  .summaryRow b { text-align: left; width: 100%; }
+
+  /* Full width, because a thumb aims at a button and not at a word. The ghost
+     button sits under the primary one rather than beside it. */
+  .actions { flex-direction: column; align-items: stretch; }
+  .actions .button { width: 100%; }
+  .actions .tiny { text-align: center; }
+
+  .modalFoot { flex-direction: column-reverse; align-items: stretch; gap: 8px; }
+  .modalFoot .button { width: 100%; }
+  .modalFoot .tiny { text-align: center; }
+
+  .scrim { padding: 12px; }
+  .lead h1 { font-size: 26px; }
+}
+
+/* Scoped to the page rather than written as a bare `*`: a CSS module refuses a
+   selector with no local class in it, and a global reset from one page's module
+   would reach every other page anyway. */
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .page * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

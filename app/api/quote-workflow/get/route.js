@@ -1,6 +1,9 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { getDatabaseColourItems } from "../../../../lib/pcd-colour-library";
 import { prefillDetails } from "../../../../lib/pcd-contact-details";
+import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
+import { quoteScheduleView } from "../../../../lib/pcd-quote-schedule";
+import { creditsHeldByQuote, creditSentence, depositAfterCredit, quoteCreditView } from "../../../../lib/pcd-customer-credits";
 
 // THE COLOUR'S PHOTO, RESOLVED HERE RATHER THAN IN THE BROWSER.
 //
@@ -138,6 +141,44 @@ export async function GET(request) {
 
     const colours = await colourImageIndex(supabase);
 
+    // THE DATES, WORKED OUT HERE RATHER THAN IN THE BROWSER.
+    //
+    // How long the suggested dates hold for is a Business Default, and the
+    // browser has no business reading the settings row to find out. So the
+    // page is handed the finished answer: the pair, how long the job runs, and
+    // the one sentence that states the condition. Null when the quote suggests
+    // no dates, which most older quotes do.
+    const businessDefaults = await getBusinessDefaults(supabase);
+    const schedule = quoteScheduleView(quote, businessDefaults);
+
+    // WHAT THEY HAVE ALREADY PAID, WORKED OUT HERE.
+    //
+    // The page could add it up itself, but then two places would decide what a
+    // credit is worth against a total and the customer's screen is the worst
+    // place for that argument to be settled. The deposit comes with it for the
+    // same reason: it is a share of the job less money already received, and
+    // the rule for that lives in lib/pcd-quote-acceptance.js where the payment
+    // gate reads it too.
+    const heldCredits = await creditsHeldByQuote(supabase, quote.id).catch(() => []);
+    const creditView = quoteCreditView(quote, heldCredits);
+    const depositPercent = Number(quote.deposit_percent || 0);
+    const depositFull = quote.deposit_required && depositPercent > 0
+      ? Number(((Number(quote.total_inc_gst || 0) * depositPercent) / 100).toFixed(2))
+      : 0;
+    const credit = creditView
+      ? {
+          lines: creditView.lines.map((line) => ({ label: line.label, amount: line.amount })),
+          applied: creditView.applied,
+          payable: creditView.payable,
+          depositBefore: depositFull,
+          depositAfter: depositAfterCredit(depositFull, creditView.applied),
+          sentence: creditSentence(creditView, {
+            depositBefore: depositFull,
+            depositAfter: depositAfterCredit(depositFull, creditView.applied),
+          }),
+        }
+      : null;
+
     return Response.json({
       ok: true,
       quote: {
@@ -149,6 +190,8 @@ export async function GET(request) {
         })),
       },
       details: prefillDetails({ customer, quote }),
+      schedule,
+      credit,
     });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not load quote." }, { status: 500 });

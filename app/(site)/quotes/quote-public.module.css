@@ -240,6 +240,82 @@
   color: var(--danger);
 }
 
+/* MONEY ALREADY PAID, UNDER THE TOTAL.
+
+   Dressed as a panel rather than as two more total rows, because it is a
+   different KIND of fact: everything above it is what the work costs, and this
+   is what has already been settled against it. The amount payable is the
+   number they act on, so it is the one that gets the weight. */
+.publicCreditBlock {
+  margin-top: 12px;
+  padding: 12px 13px;
+  border: 1px solid var(--green-soft);
+  background: var(--green-panel);
+  display: grid;
+  gap: 7px;
+}
+
+.publicCreditRow,
+.publicCreditPayable {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  font-size: var(--t-sm);
+  color: var(--green-dark);
+}
+
+.publicCreditRow strong,
+.publicCreditPayable strong {
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+}
+
+.publicCreditPayable {
+  padding-top: 8px;
+  border-top: 1px solid var(--green-soft);
+  font-size: var(--t-body);
+}
+
+.publicCreditPayable span {
+  font-weight: 700;
+  color: var(--green);
+}
+
+.publicCreditPayable strong { font-size: var(--t-total); font-weight: 700; }
+
+.publicCreditNote {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  color: var(--green-dark);
+}
+
+/* THE CONDITION UNDER THE SUGGESTED DATES.
+
+   Set apart from the values above it with a rule and a little air, because it
+   is the part people skip and it is the part that matters: the dates are only
+   ours to promise for as long as the bench is still free.
+
+   Two versions of the same line. The held one is quiet, because it is a note
+   on an offer that still stands. The lapsed one is not quiet, because the
+   dates on the screen above it are no longer ours to give and saying that
+   softly would be a way of not saying it. */
+.scheduleNotice,
+.scheduleNoticeLapsed {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--mut);
+}
+
+.scheduleNoticeLapsed {
+  border-top-color: var(--danger-line);
+  color: var(--danger);
+}
+
 /* The tile that edits itself. Nothing opens below it, the value is replaced
    by its field or fields in place. */
 .detailAdd,
