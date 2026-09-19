@@ -2,8 +2,11 @@
 //
 // An admin approving a variation for the customer skips the one mechanism by
 // which an order is allowed to change: the customer reading what is being done
-// and saying yes. That is safe for exactly one kind of change, a size, at the
-// price the order already holds, and unsafe for every other kind.
+// and saying yes.
+//
+// That is safe for three things and three only, because none of them moves the
+// price: a size, a colour on the same board, and where the top and bottom
+// hinges sit. Everything else is unsafe, and the price is held either way.
 //
 // So the rule is not a preference. Every case below is a way the order's money,
 // its invoice or its contents could have moved without anybody agreeing to it,
@@ -13,6 +16,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  CHANGEABLE_COLUMNS,
+  lineEdits,
   lineOverrideProblems,
   overrideApprovalEligibility,
   sizeWords,
@@ -42,6 +47,10 @@ const orderLine = {
   qty: 12,
   line_total_ex_gst: 1240,
   banded_edges: ["top", "bottom"],
+  hinge_qty: "2",
+  hinge_side: "Left",
+  hinge_from_bottom_mm: 100,
+  hinge_from_top_mm: 100,
 };
 
 const sizeOnly = {
@@ -61,18 +70,57 @@ const sizeOnly = {
   height_mm: 715,
   width_mm: 397,
   qty: 12,
+  hinge_qty: "2",
+  hinge_side: "Left",
+  hinge_from_bottom_mm: 100,
+  hinge_from_top_mm: 100,
 };
 
 const check = (line) => overrideApprovalEligibility([line], [orderLine]);
 
-test("a size change on an existing line is the one thing this allows", () => {
+test("a size change on an existing line qualifies", () => {
   const result = check(sizeOnly);
   assert.equal(result.ok, true, "it qualifies");
   assert.deepEqual(result.reasons, []);
   assert.equal(result.changes.length, 1);
-  assert.equal(result.changes[0].from, "720 x 397mm", "height before width, as everywhere else");
-  assert.equal(result.changes[0].to, "715 x 397mm");
+  assert.deepEqual(result.changes[0].edits, [
+    { what: "Size", from: "720 x 397mm", to: "715 x 397mm" },
+  ], "height before width, as everywhere else");
   assert.equal(result.changes[0].held_line_total_ex_gst, 1240, "the price it keeps is shown");
+});
+
+test("a colour change qualifies, because the board is priced by its finish", () => {
+  // The shade is not part of the price. Finish, material, thickness and brand
+  // all stay locked below, and with those fixed Classic White and Alabaster are
+  // the same money, so holding the price costs nothing at all.
+  const result = check({ ...sizeOnly, height_mm: 720, width_mm: 397, colour: "Alabaster" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.changes[0].edits, [
+    { what: "Colour", from: "Classic White", to: "Alabaster" },
+  ]);
+});
+
+test("the hinge positions qualify, because drilling is charged per hole", () => {
+  // The number of holes is locked, so moving one up or down is free.
+  const bottom = check({ ...sizeOnly, height_mm: 720, width_mm: 397, hinge_from_bottom_mm: 90 });
+  assert.equal(bottom.ok, true);
+  assert.deepEqual(bottom.changes[0].edits, [{ what: "Bottom hinge", from: "100mm", to: "90mm" }]);
+
+  const top = check({ ...sizeOnly, height_mm: 720, width_mm: 397, hinge_from_top_mm: 85 });
+  assert.equal(top.ok, true);
+  assert.deepEqual(top.changes[0].edits, [{ what: "Top hinge", from: "100mm", to: "85mm" }]);
+});
+
+test("several allowed changes on one line are each named", () => {
+  // So nobody confirms a colour swap thinking they approved a size.
+  const result = check({ ...sizeOnly, colour: "Alabaster", hinge_from_top_mm: 85 });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.changes[0].edits.map((e) => e.what), ["Size", "Colour", "Top hinge"]);
+});
+
+test("a blank hinge position reads as our standard, not as nothing", () => {
+  const edits = lineEdits({ hinge_from_bottom_mm: 90 }, { hinge_from_bottom_mm: null });
+  assert.deepEqual(edits, [{ what: "Bottom hinge", from: "our standard", to: "90mm" }]);
 });
 
 test("adding a panel is refused: it is new work at a new price", () => {
@@ -107,20 +155,15 @@ test("a price adjustment line is refused, and so is a job cost", () => {
   );
 });
 
-test("every spec field is refused, one at a time", () => {
-  // A door's size is a measurement; its colour is a decision, and a decision is
-  // the customer's. Each of these would reach the workshop as a different
-  // product than the one that was agreed to.
+test("the four that set the price are refused, one at a time", () => {
+  // THE FINISH, MATERIAL, THICKNESS AND BRAND ARE WHAT MAKE A COLOUR FREE.
+  // A board is priced by those four. Unlock any of them and the override starts
+  // giving away money it cannot see, because the price is held either way.
   const cases = [
-    ["colour", "Alabaster", /changes the colour/],
     ["material", "Thermolaminate", /changes the material/],
     ["thickness", "16mm", /changes the thickness/],
-    ["profile", "Bevel", /changes the profile\./],
-    ["profile_type", "Slab", /changes the profile type/],
-    ["edge_mould", "Bullnose", /changes the edge/],
     ["finish", "Gloss", /changes the finish/],
     ["supplier_name", "Laminex", /changes the supplier/],
-    ["product_type", "drawer_front", /changes the item type/],
   ];
   for (const [field, value, expected] of cases) {
     const result = check({ ...sizeOnly, [field]: value });
@@ -129,9 +172,26 @@ test("every spec field is refused, one at a time", () => {
   }
 });
 
-test("hinge boring is refused: a door drilled wrong is scrap", () => {
+test("everything else about the product is still refused", () => {
+  const cases = [
+    ["profile", "Bevel", /changes the profile\./],
+    ["profile_type", "Slab", /changes the profile type/],
+    ["edge_mould", "Bullnose", /changes the edge/],
+    ["product_type", "drawer_front", /changes the item type/],
+  ];
+  for (const [field, value, expected] of cases) {
+    const result = check({ ...sizeOnly, [field]: value });
+    assert.equal(result.ok, false, `${field} must be refused`);
+    assert.match(result.reasons.join(" "), expected);
+  }
+});
+
+test("the hinge COUNT and the side are still refused, only the positions moved", () => {
+  // A door drilled wrong is scrap, and the count is what the drilling is
+  // charged on. The side decides which way it swings, which a customer notices.
   assert.equal(check({ ...sizeOnly, hinge_holes: true }).ok, false);
-  assert.equal(check({ ...sizeOnly, hinge_side: "Left" }).ok, false);
+  assert.equal(check({ ...sizeOnly, hinge_side: "Right" }).ok, false);
+  assert.equal(check({ ...sizeOnly, hinge_qty: "3" }).ok, false);
 });
 
 test("banded edges are refused when the variation actually names a different set", () => {
@@ -144,12 +204,11 @@ test("banded edges are refused when the variation actually names a different set
   assert.equal(check(sizeOnly).ok, true, "and a line that never mentions them has not changed them");
 });
 
-test("a variation that changes no size at all is refused", () => {
-  // Nothing to approve, and approving it would put an admin's name against a
-  // change nobody made.
+test("a variation that changes nothing we can approve is refused", () => {
+  // Approving it would put an admin's name against a change nobody made.
   const result = check({ ...sizeOnly, height_mm: 720, width_mm: 397 });
   assert.equal(result.ok, false);
-  assert.match(result.reasons.join(" "), /changes nothing about the size/);
+  assert.match(result.reasons.join(" "), /changes nothing we can approve here/);
 });
 
 test("a line pointing at nothing on the order is refused", () => {
@@ -224,15 +283,35 @@ test("a held apply does not write the order's totals at all", () => {
   assert.match(VARIATIONS, /let \{ error: orderError \} = holdPricing\s*\n\s*\? \{ error: null \}/);
 });
 
-test("a held change writes the size and leaves the costing columns alone", () => {
-  assert.match(VARIATIONS, /if \(holdPricing\) \{\s*\n\s*const heldPatch = \{/);
+test("a held change writes every column the gate lets through, and no others", () => {
+  // THE GATE AND THE WRITE READ THE SAME LIST. A field allowed through the gate
+  // and not written here is a change that never reaches the workshop, which is
+  // how a door gets cut in last month's colour with every screen looking right.
+  assert.match(VARIATIONS, /for \(const column of CHANGEABLE_COLUMNS\) \{/);
+  assert.ok(
+    VARIATIONS.includes('import { CHANGEABLE_COLUMNS } from "./pcd-variation-override"'),
+    "read from the gate, not copied"
+  );
+  assert.deepEqual(
+    [...CHANGEABLE_COLUMNS].sort(),
+    ["colour", "height_mm", "hinge_from_bottom_mm", "hinge_from_top_mm", "width_mm"],
+    "and the list itself is the five that cost nothing to move"
+  );
+});
+
+test("a held change still leaves every costing column alone", () => {
   const held = VARIATIONS.slice(VARIATIONS.indexOf("const heldPatch = {"));
-  const patch = held.slice(0, held.indexOf("};"));
-  assert.ok(patch.includes("height_mm"), "the new size lands");
-  assert.ok(patch.includes("width_mm"), "both of it");
+  const patch = held.slice(0, held.indexOf("const { error: heldError }"));
   assert.ok(!patch.includes("line_total_ex_gst"), "the price is not touched");
   assert.ok(!patch.includes("markup_percent"), "nor the markup");
-  assert.ok(!patch.includes("colour"), "nor the spec, which is already known to match");
+  assert.ok(!patch.includes("unit_cost_per_sqm_ex_gst"), "nor the board rate");
+});
+
+test("a colour change drops the cost source rather than leaving it pointing at the old shade", () => {
+  // An id that contradicts the words beside it is the exact fault that put a
+  // wardrobe on a quote at the wrong rate. See matchBoardCost.
+  assert.match(VARIATIONS, /THE COST SOURCE CANNOT SURVIVE A COLOUR CHANGE/);
+  assert.match(VARIATIONS, /heldPatch\.unit_cost_source_id = null/);
 });
 
 test("the history says it was not charged, with the figure it was not charged at", () => {
