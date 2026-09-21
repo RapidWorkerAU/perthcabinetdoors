@@ -1292,8 +1292,6 @@ export default function QuoteEditor({ quoteId }) {
     window.addEventListener('mouseup', onMouseUp)
   }
 
-  // The pair of suggested dates, read the same way the quote page and the PDF
-  // read them, so the length shown here is the length the customer sees.
   // WHAT THIS CUSTOMER HAS ALREADY PAID US.
   //
   // Read whenever the quote is loaded or saved, because a credit attaches on
@@ -1317,10 +1315,6 @@ export default function QuoteEditor({ quoteId }) {
   // The same two functions the public page and the order read, so the builder
   // cannot show a figure the customer never sees.
   const heldCredits = useMemo(() => creditsOnQuote(credits, quoteId), [credits, quoteId]);
-  const creditApplied = useMemo(
-    () => applyCredits(heldCredits, totals.total_inc_gst),
-    [heldCredits, totals.total_inc_gst]
-  );
   // Money sitting on the customer that this quote has NOT claimed. Almost
   // always empty, because a save claims everything available. It is shown when
   // it is not, because a credit nobody can see is a credit nobody gives back.
@@ -1364,6 +1358,16 @@ export default function QuoteEditor({ quoteId }) {
       form.edging_cost_override_ex_gst,
       businessDefaults,
     ]
+  );
+  // WHAT THE CREDITS ARE WORTH AGAINST THIS TOTAL.
+  //
+  // Below `totals` because it reads it. A const cannot be read above its own
+  // line, and a useMemo dependency array is read on the spot as the line runs,
+  // not later when the quote is drawn. Sitting above `totals`, this threw
+  // before the first render finished and took the whole quote page down.
+  const creditApplied = useMemo(
+    () => applyCredits(heldCredits, totals.total_inc_gst),
+    [heldCredits, totals.total_inc_gst]
   );
   // A CALCULATED FIGURE BELONGS IN ITS FIELD, NOT BESIDE IT.
   //
