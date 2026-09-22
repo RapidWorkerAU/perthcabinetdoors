@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
+import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
 import { siteUrl } from "../../../../lib/pcd-stripe";
 import {
   fillCustomerBlanks,
@@ -38,6 +39,11 @@ export const maxDuration = 30;
 
 export async function POST(request) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "respond");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const payload = await request.json();
     const code = String(payload.code || "").trim();
     const answer = String(payload.answer || "").trim();

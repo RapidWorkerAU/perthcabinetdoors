@@ -1,11 +1,17 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
 
 // Reads a saved list back by its code. Public, because the code is the only
 // credential and the visitor may be arriving on a device that has never seen
 // this site. Nothing personal is returned - sizes, colours and profiles only.
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "lookup");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const resolved = await Promise.resolve(params);
     const code = String(resolved?.code || "").trim().toUpperCase();
 

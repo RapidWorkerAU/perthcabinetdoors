@@ -169,7 +169,7 @@ export default function VariationApprovalClient() {
         }
         setVariation(payload.variation);
       } catch (error) {
-        setMessage(error?.message || "We could not load this variation.");
+        setMessage("We could not load this variation. Please check your connection and refresh the page.");
       } finally {
         setIsLoading(false);
       }
@@ -211,7 +211,7 @@ export default function VariationApprovalClient() {
       setVariation((current) => ({ ...current, status: action === "approved" ? "applied" : "rejected" }));
       setMessage(action === "approved" ? "Variation approved. Your order has been updated." : "Variation rejected. Perth Cabinet Doors has received your response.");
     } catch (error) {
-      setMessage(error?.message || "We could not record your response.");
+      setMessage("We could not record your response. Please check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }

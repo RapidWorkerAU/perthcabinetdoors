@@ -1,4 +1,5 @@
 import { createOrderFromQuote } from "../../../../lib/pcd-order-from-quote";
+import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
 import { sendQuoteApprovedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { approvalEvidence } from "../../../../lib/pcd-approval-evidence";
@@ -8,7 +9,7 @@ import { depositAmountForQuote } from "../../../../lib/pcd-quote-acceptance";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { quoteScheduleView } from "../../../../lib/pcd-quote-schedule";
-import { releaseCreditsForQuote } from "../../../../lib/pcd-customer-credits";
+import { releaseCreditsForQuote, syncQuoteCreditTotal } from "../../../../lib/pcd-customer-credits";
 import { upsertCustomerByEmail } from "../../../../lib/pcd-customer-utils";
 import {
   DETAIL_FIELDS,
@@ -37,6 +38,11 @@ function customerColumns(details) {
 
 export async function POST(request) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "respond");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const payload = await request.json();
     const accessCode = String(payload.code || "")
       .replace(/[^a-zA-Z0-9]/g, "")
@@ -175,6 +181,18 @@ export async function POST(request) {
       // Doing it the other way round is what left an order behind for work
       // nobody had paid for, and locked the customer out of their own quote so
       // they could not come back and finish.
+      // THE CREDIT IS RE-READ BEFORE THE DEPOSIT IS WORKED OUT.
+      //
+      // The page shows a deposit worked out from the credits as they were when
+      // it loaded. depositAmountForQuote reads the stored credit_applied_inc_gst
+      // column. Those normally agree, because every admin path that touches a
+      // credit syncs the column, but there is a window: the customer has the
+      // page open, somebody releases the credit, the customer then approves. The
+      // page had promised one figure and the checkout would ask for a larger
+      // one. Re-reading here closes it, so the amount charged is worked out from
+      // the credits as they are at the moment of charging.
+      quote.credit_applied_inc_gst = await syncQuoteCreditTotal(supabase, quote.id);
+
       if (quote.deposit_required && depositAmountForQuote(quote) > 0) {
         const started = await startDepositCheckout(supabase, quote, {
           // Back to the site they approved the quote on, not to whichever
@@ -336,6 +354,18 @@ export async function POST(request) {
 
     return Response.json({ ok: true, orderId });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not record quote response." }, { status: 500 });
+    // OUR WORDING, NOT THE DATABASE'S. The real error goes to the log, where
+    // it is useful; the customer gets a sentence they can act on. Anything
+    // this route genuinely means them to read is returned further up with its
+    // own status, not thrown.
+    console.error("[quote-workflow/action]", error?.message || error);
+    return Response.json(
+      {
+        ok: false,
+        error:
+          "We could not record your response just now. Nothing has been lost. Please try again in a few minutes, or contact us and we will sort it out.",
+      },
+      { status: 500 }
+    );
   }
 }

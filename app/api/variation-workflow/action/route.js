@@ -1,4 +1,5 @@
 import { createCheckoutSession, returnOrigin } from "../../../../lib/pcd-stripe";
+import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
 import { applyAcceptedVariation } from "../../../../lib/pcd-order-variations";
 import { sendVariationApprovedToCustomer } from "../../../../lib/pcd-customer-confirmations";
 import { formatMoney, toNumber } from "../../../../lib/pcd-quote-utils";
@@ -39,6 +40,11 @@ async function recordVariationAction(supabase, { variation, action, clientName, 
 
 export async function POST(request) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "respond");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const payload = await request.json();
     const accessCode = String(payload.code || "")
       .replace(/[^a-zA-Z0-9]/g, "")
@@ -234,6 +240,18 @@ export async function POST(request) {
     await sendVariationApprovedToCustomer({ variation, order: variation.pcd_orders });
     return Response.json({ ok: true, applied: true });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not record variation response." }, { status: 500 });
+    // OUR WORDING, NOT THE DATABASE'S. The real error goes to the log, where
+    // it is useful; the customer gets a sentence they can act on. Anything
+    // this route genuinely means them to read is returned further up with its
+    // own status, not thrown.
+    console.error("[variation-workflow/action]", error?.message || error);
+    return Response.json(
+      {
+        ok: false,
+        error:
+          "We could not record your response just now. Nothing has been lost. Please try again in a few minutes, or contact us and we will sort it out.",
+      },
+      { status: 500 }
+    );
   }
 }

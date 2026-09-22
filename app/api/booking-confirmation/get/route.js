@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
+import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
 import { bookingWhen, kindLabel, missingFor } from "../../../../lib/pcd-booking-confirmations";
 
 // WHAT THE CONFIRMATION PAGE IS ALLOWED TO SEE.
@@ -17,6 +18,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "lookup");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const { searchParams } = new URL(request.url);
     const code = String(searchParams.get("code") || "").trim();
     if (!code) return Response.json({ ok: false, error: "Missing link code." }, { status: 400 });

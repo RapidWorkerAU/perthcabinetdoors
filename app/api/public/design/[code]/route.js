@@ -3,6 +3,7 @@
 // admin code 404s. No auth beyond holding the code.
 
 import { createSupabaseAdminClient } from "../../../../../lib/supabase/admin";
+import { rateLimit, tooManyAttempts } from "../../../../../lib/pcd-rate-limit";
 import { resolvePublicProject, clampRoom, canEditPublicProject, VIEW_ONLY_REFUSAL } from "../../../../../lib/pcd-public-design";
 import { cleanDesignName, isUsableDesignName } from "../../../../../lib/pcd-design-name";
 
@@ -13,8 +14,13 @@ async function getCode(params) {
   return resolved?.code;
 }
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "lookup");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const code = await getCode(params);
     const supabase = createSupabaseAdminClient();
     const project = await resolvePublicProject(supabase, code);
@@ -33,6 +39,11 @@ export async function GET(_request, { params }) {
 
 export async function PATCH(request, { params }) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "lookup");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const code = await getCode(params);
     const body = await request.json();
     const supabase = createSupabaseAdminClient();

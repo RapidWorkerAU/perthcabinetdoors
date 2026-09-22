@@ -1,9 +1,11 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
+import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
 import { getDatabaseColourItems } from "../../../../lib/pcd-colour-library";
 import { prefillDetails } from "../../../../lib/pcd-contact-details";
 import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { quoteScheduleView } from "../../../../lib/pcd-quote-schedule";
 import { creditsHeldByQuote, creditSentence, depositAfterCredit, quoteCreditView } from "../../../../lib/pcd-customer-credits";
+import { publicQuote } from "../../../../lib/pcd-public-payload";
 
 // THE COLOUR'S PHOTO, RESOLVED HERE RATHER THAN IN THE BROWSER.
 //
@@ -54,6 +56,11 @@ function colourSrcForLine(line, index) {
 
 export async function GET(request) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "lookup");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const { searchParams } = new URL(request.url);
     const accessCode = String(searchParams.get("code") || "")
       .replace(/[^a-zA-Z0-9]/g, "")
@@ -179,21 +186,39 @@ export async function GET(request) {
         }
       : null;
 
+    // NAMED FIELDS, NOT THE WHOLE ROW.
+    //
+    // This used to spread `...quote` and `...line`, which sent the customer
+    // every column on both tables: what each item costs us, our markup on it,
+    // and the office's own note on the line. The note was the giveaway that it
+    // was an oversight rather than a decision, because there is a test keeping
+    // that same column off the PDF. See lib/pcd-public-payload.js.
     return Response.json({
       ok: true,
-      quote: {
-        ...quote,
-        pcd_quote_line_items: (quote.pcd_quote_line_items || []).map((line) => ({
-          ...line,
+      quote: publicQuote(quote, {
+        lineExtras: (line) => ({
           cabinet_config: configsByLineId.get(line.id) || null,
           colour_src: colourSrcForLine(line, colours),
-        })),
-      },
+        }),
+        attachments: quote.pcd_quote_attachments || [],
+      }),
       details: prefillDetails({ customer, quote }),
       schedule,
       credit,
     });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not load quote." }, { status: 500 });
+    // OUR WORDING, NOT THE DATABASE'S. The real error goes to the log, where
+    // it is useful; the customer gets a sentence they can act on. Anything
+    // this route genuinely means them to read is returned further up with its
+    // own status, not thrown.
+    console.error("[quote-workflow/get]", error?.message || error);
+    return Response.json(
+      {
+        ok: false,
+        error:
+          "We could not load this quote just now. Please refresh the page, or contact us and we will send it again.",
+      },
+      { status: 500 }
+    );
   }
 }

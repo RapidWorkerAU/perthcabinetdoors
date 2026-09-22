@@ -499,7 +499,7 @@ export default function QuoteApprovalClient() {
         setSchedule(payload.schedule || null);
         setCredit(payload.credit || null);
       } catch (error) {
-        setMessage(error?.message || "We could not load this quote.");
+        setMessage("We could not load this quote. Please check your connection and refresh the page.");
       } finally {
         setIsLoading(false);
       }
@@ -561,7 +561,7 @@ export default function QuoteApprovalClient() {
       setQuote((current) => ({ ...current, status: action }));
       setMessage(action === "approved" ? "Quote approved. Your order has been created." : "Quote rejected. Your response has been recorded.");
     } catch (error) {
-      setMessage(error?.message || "We could not record your response.");
+      setMessage("We could not record your response. Please check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }

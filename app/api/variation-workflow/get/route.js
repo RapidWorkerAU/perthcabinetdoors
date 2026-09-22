@@ -1,8 +1,15 @@
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
+import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
+import { publicVariation } from "../../../../lib/pcd-public-payload";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 
 export async function GET(request) {
   try {
+    // GUESSING AT AN ACCESS CODE HAS TO COST SOMETHING.
+    // See lib/pcd-rate-limit.js. Fails open and shouts if it cannot count.
+    const limited = await rateLimit(request, "lookup");
+    if (!limited.allowed) return tooManyAttempts(limited.retryAfterSeconds);
+
     const { searchParams } = new URL(request.url);
     const accessCode = String(searchParams.get("code") || "")
       .replace(/[^a-zA-Z0-9]/g, "")
@@ -57,8 +64,24 @@ export async function GET(request) {
       }
     }
 
-    return Response.json({ ok: true, variation });
+    // NAMED FIELDS, NOT THE WHOLE ROW. This used to return the variation
+    // whole, and its select pulls `pcd_orders(*)`, so every column of the
+    // ORDER went to whoever held a variation link, for a page that reads four
+    // of them. See lib/pcd-public-payload.js.
+    return Response.json({ ok: true, variation: publicVariation(variation) });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not load variation." }, { status: 500 });
+    // OUR WORDING, NOT THE DATABASE'S. The real error goes to the log, where
+    // it is useful; the customer gets a sentence they can act on. Anything
+    // this route genuinely means them to read is returned further up with its
+    // own status, not thrown.
+    console.error("[variation-workflow/get]", error?.message || error);
+    return Response.json(
+      {
+        ok: false,
+        error:
+          "We could not load this variation just now. Please refresh the page, or contact us and we will send it again.",
+      },
+      { status: 500 }
+    );
   }
 }
