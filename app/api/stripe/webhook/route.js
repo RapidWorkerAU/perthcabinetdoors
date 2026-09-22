@@ -2,7 +2,7 @@ import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { applyAcceptedVariation } from "../../../../lib/pcd-order-variations";
 import { sendPaymentReceivedSalesEmail } from "../../../../lib/pcd-payment-notifications";
 import { sendPaymentReceivedToCustomer } from "../../../../lib/pcd-customer-confirmations";
-import { fromCents, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
+import { fromCents, isSameSessionAgain, paymentHasSettled, siteUrl, verifyStripeWebhook } from "../../../../lib/pcd-stripe";
 import { syncDepositFields } from "../../../../lib/pcd-order-deposit";
 import { GATE_FLOWS, markCheckoutExpired } from "../../../../lib/pcd-deposit-gate";
 import { completeGateSession } from "../../../../lib/pcd-gate-complete";
@@ -32,6 +32,24 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
     .eq("order_id", orderId)
     .maybeSingle();
   if (existingPaymentError || !existingPayment) throw existingPaymentError || new Error("Payment not found.");
+
+  // THE SAME SESSION, ARRIVING AGAIN. NOT A SECOND PAYMENT.
+  //
+  // Two entirely normal things deliver this handler the same session twice, and
+  // both were being reported as the customer paying twice and needing a refund:
+  //
+  //   A payment method that settles later fires checkout.session.completed and
+  //   then checkout.session.async_payment_succeeded, for one payment. Klarna,
+  //   Zip and Pix are all switched on for this account.
+  //
+  //   Stripe redelivers any event whose response it did not get, which happens
+  //   whenever we are slow.
+  //
+  // Telling a duplicate from a redelivery needs nothing new: the session id is
+  // already written onto the row when the payment is marked paid. It just was
+  // not being compared. A refund alarm nobody can trust is worse than no alarm,
+  // because the real version of it below is genuinely valuable.
+  if (isSameSessionAgain(existingPayment, session)) return;
 
   // ALREADY PAID, AND MONEY HAS JUST ARRIVED ANYWAY.
   //
@@ -70,6 +88,40 @@ async function completeCheckoutSession(session, { baseUrl = "" } = {}) {
       },
       event_key: `payment:${paymentId}:duplicate:${session.id}`,
     });
+    return;
+  }
+
+  // THE MONEY HAS TO HAVE ARRIVED, NOT JUST BEEN PROMISED.
+  //
+  // checkout.session.completed used to mark the payment paid whatever
+  // session.payment_status said. For a card that is right, the money is already
+  // there. For a method that settles later it is a guess, and the guess was
+  // never revisited: the failure event is handled for site measures and for the
+  // deposit gate and NOT for an ordinary order payment, so a payment that
+  // bounced afterwards went on reading as paid, the deposit gate let the job
+  // through, and the first anybody knew was the bank reconciliation.
+  //
+  // Stripe says "paid", "unpaid" or "no_payment_required". Only the first and
+  // the last mean we have it. An "unpaid" session is recorded as pending and
+  // nothing else moves; async_payment_succeeded comes back later and this runs
+  // again, which is the point at which it becomes paid.
+  const settled = paymentHasSettled(session);
+
+  if (!settled) {
+    // request_status is deliberately left alone. It already says a checkout
+    // exists, which is still true, and there is no value in the set that means
+    // "on its way": the set is not_requested, requested, sent, checkout_created
+    // and paid. Inventing one here would put a word on the payment screens that
+    // nothing else knows how to read.
+    await supabase
+      .from("pcd_order_payments")
+      .update({
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent || null,
+        stripe_payment_status: session.payment_status || "unpaid",
+      })
+      .eq("id", paymentId)
+      .eq("order_id", orderId);
     return;
   }
 
@@ -222,6 +274,54 @@ export async function POST(request) {
         .update({ status: "expired", hold_expires_at: null, updated_at: new Date().toISOString() })
         .eq("stripe_checkout_session_id", session.id)
         .eq("status", "holding");
+    }
+
+    // A PAYMENT ON AN ORDINARY ORDER THAT DIED ON ITS WAY.
+    //
+    // This case had no handler at all. The failure event was caught for site
+    // measures and for the deposit gate and for nothing else, so a bounced
+    // payment on an ordinary order left no trace anywhere.
+    //
+    // The payment is no longer marked paid before the money lands, so there is
+    // nothing to undo. What was missing is that anybody is TOLD. A payment
+    // request that quietly stops progressing looks exactly like a customer who
+    // has not got round to it yet, and the difference matters: one needs
+    // chasing and the other needs a new link.
+    if (event.type === "checkout.session.async_payment_failed" && !isDepositGate && !isSiteMeasure) {
+      const supabase = createSupabaseAdminClient();
+      const paymentId = session?.metadata?.payment_id;
+      const orderId = session?.metadata?.order_id;
+      if (paymentId && orderId) {
+        await supabase
+          .from("pcd_order_payments")
+          .update({ stripe_payment_status: "failed", stripe_checkout_session_id: session.id })
+          .eq("id", paymentId)
+          .eq("order_id", orderId)
+          // Never touch one that is already settled. A failure arriving after a
+          // success is not a reason to unpay somebody.
+          .eq("is_paid", false);
+
+        console.error(
+          "[stripe-webhook] PAYMENT FAILED on " + paymentId + ": the customer started paying through session " +
+            session.id + " and the money did not arrive. They need a new payment link."
+        );
+
+        await logOrderActivity(supabase, {
+          order_id: orderId,
+          actor_type: "system",
+          action_type: "payment_failed",
+          title: "Payment did not go through",
+          description:
+            "The customer started paying with a method that settles later and it did not clear. " +
+            "Nothing has been received. Send them a fresh payment link.",
+          metadata: {
+            payment_id: paymentId,
+            stripe_checkout_session_id: session.id,
+            stripe_payment_intent_id: session.payment_intent || null,
+          },
+          event_key: `payment:${paymentId}:failed:${session.id}`,
+        });
+      }
     }
 
     if (event.type === "checkout.session.async_payment_failed" && isDepositGate) {

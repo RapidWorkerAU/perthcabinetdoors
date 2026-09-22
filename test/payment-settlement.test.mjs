@@ -223,7 +223,21 @@ test("a payment arriving on an already paid row is recorded, not swallowed", () 
 });
 
 test("a duplicate does not overwrite the payment that was already correct", () => {
-  const branch = WEBHOOK.slice(WEBHOOK.indexOf("if (existingPayment.is_paid)"), WEBHOOK.indexOf("const paidAt"));
+  // THE DUPLICATE BRANCH ALONE, not everything up to `const paidAt`.
+  //
+  // This used to read to `const paidAt`, which worked while nothing sat in
+  // between. The Pass 3 fix put something there: a session that completed with
+  // the money still on its way now records the Stripe ids and returns, without
+  // marking anything paid. That write is in a different branch and is nothing to
+  // do with duplicates, but the old boundary swept it in and failed this.
+  //
+  // The rule this file is protecting has not changed and still holds: a second
+  // payment is not a correction to a row that is already right.
+  const branch = WEBHOOK.slice(
+    WEBHOOK.indexOf("if (existingPayment.is_paid)"),
+    WEBHOOK.indexOf("const settled = paymentHasSettled(session)")
+  );
+  assert.ok(branch.length > 0, "the duplicate branch must still be findable");
   assert.doesNotMatch(branch, /\.update\(/, "the row is right; a second payment is not a correction to it");
 });
 
