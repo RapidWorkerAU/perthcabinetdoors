@@ -27,7 +27,19 @@ import { readFileSync } from "node:fs";
 import { fieldsForProductType, isCabinetType, PRODUCT_FIELDS } from "../lib/pcd-product-fields.js";
 import { calculateQuoteLine } from "../lib/pcd-quote-utils.js";
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+// LINE ENDINGS ARE NORMALISED, because several checks below match a run of
+// source across more than one line and write those breaks as \n.
+//
+// This repository is checked out with core.autocrlf=true, so git hands Windows
+// a working copy with \r\n in it. The file on this machine happened to be \n,
+// because of how it was last written, and the checks passed. On a fresh clone,
+// or after any checkout, the same file arrives as \r\n and a pattern written
+// with \n cannot match it: the test then fails claiming the code has moved,
+// when nothing has moved at all.
+//
+// Found on 22 September 2026, by checking out each commit of a batch to prove
+// they were independently sound. They were. This was not.
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 const EDITOR = read("app/admin/quotes/[id]/QuoteEditor.js");
 const CONFIGURATOR = read("components/admin/CabinetConfigurator.tsx");
