@@ -5,7 +5,7 @@ import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { defaultQuoteTermsFor } from "../../../../lib/pcd-quote-terms";
 import { sanitizeTermsHtml, toTermsHtml } from "../../../../lib/pcd-terms-html";
-import { applyQuoteCostDefaults, calculateQuoteTotals } from "../../../../lib/pcd-quote-utils";
+import { applyQuoteCostDefaults, calculateQuoteTotals, normaliseCurrencyCode, quoteCurrencyProblem } from "../../../../lib/pcd-quote-utils";
 import { scheduleDate } from "../../../../lib/pcd-order-schedule";
 import { suggestedScheduleProblems } from "../../../../lib/pcd-quote-schedule";
 import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
@@ -21,7 +21,10 @@ function makeAccessCode() {
 
 async function normalizeQuotePayload(supabase, payload = {}) {
   const businessDefaults = await getBusinessDefaults(supabase);
-  const quoteCurrency = payload.currency || businessDefaults.currency;
+  // Stored upper case and trimmed, so "aud" and " AUD " are the one value.
+  // An unusable code is NOT swapped for the default here: it is refused by the
+  // handler, because only the person who typed it knows what they meant.
+  const quoteCurrency = normaliseCurrencyCode(payload.currency) || payload.currency || businessDefaults.currency;
   const gstRate = payload.gst_rate ?? businessDefaults.gst_rate;
   // Delivery, consumables, door removal and the rest start at the configured
   // default and are then the quote's own to change. This has to happen BEFORE
@@ -134,6 +137,14 @@ export async function POST(request) {
   try {
     const payload = await request.json();
     const normalized = await normalizeQuotePayload(context.supabase, payload);
+
+    // A currency nothing can format reaches the customer as a number with no
+    // symbol beside it. Refused here for the same reason the dates are: this is
+    // the last point at which the person who typed it is still on the screen.
+    const currencyFault = quoteCurrencyProblem(normalized.quote);
+    if (currencyFault) {
+      return Response.json({ ok: false, error: currencyFault.message }, { status: 400 });
+    }
 
     // REFUSED HERE RATHER THAN ON THE ORDER IT BECOMES. This pair is copied
     // onto the order at acceptance, where a completion date before the start

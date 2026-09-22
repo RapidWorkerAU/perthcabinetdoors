@@ -26,7 +26,7 @@ import {
   supplierOffersEdges,
   supplierOffersProfiles,
 } from "../../../../lib/pcd-supplier-selection";
-import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, roundMoney } from "../../../../lib/pcd-quote-utils";
+import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, formatMoney, quoteCurrencyProblem, roundMoney } from "../../../../lib/pcd-quote-utils";
 import AddressFields from "../../../../components/admin/AddressFields";
 import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNote";
 import OverrideModal from "../../_components/OverrideModal";
@@ -1338,6 +1338,12 @@ export default function QuoteEditor({ quoteId }) {
       suggested_completion_date: form.suggested_completion_date,
     })[0] || null,
     [form.suggested_start_date, form.suggested_completion_date]
+  );
+  // The same function the save routes refuse with, so the box cannot say one
+  // thing and the server another. See quoteCurrencyProblem.
+  const currencyFault = useMemo(
+    () => quoteCurrencyProblem({ currency: form.currency }),
+    [form.currency]
   );
 
   const totals = useMemo(
@@ -3018,9 +3024,24 @@ export default function QuoteEditor({ quoteId }) {
                 Job / order reference
                 <input className={tw.fieldInput} value={form.project_name} onChange={e => updateForm("project_name", e.target.value)} />
               </label>
+              {/* SAID AS IT IS TYPED, not only refused on save.
+                  This box used to take anything at all, and anything that is
+                  not a real three letter code cannot be shown as money: the
+                  quote editor and the customer's own copy both went to an
+                  application error page over a typo here. The save refuses it
+                  now, but a refusal that arrives after the whole quote has been
+                  filled in is the wrong end of the job to find out. */}
               <label className={tw.fieldLabel}>
                 Currency
-                <input className={tw.fieldInput} value={form.currency} onChange={e => updateForm("currency", e.target.value)} />
+                <input
+                  className={tw.fieldInput}
+                  value={form.currency}
+                  onChange={e => updateForm("currency", e.target.value)}
+                  aria-invalid={Boolean(currencyFault)}
+                />
+                {currencyFault ? (
+                  <span className="mt-1 text-[12px] text-[#9e2717]">{currencyFault.message}</span>
+                ) : null}
               </label>
             </div>
             {/* WHEN THE JOB WOULD HAPPEN, SAID BEFORE THEY COMMIT.
@@ -4431,7 +4452,9 @@ export default function QuoteEditor({ quoteId }) {
         <div className="bg-[#edf4eb] border border-[#a8c5a0] rounded-[8px] p-4 mt-4">
           {[
             ["Subtotal ex GST", formatMoney(totals.subtotal_ex_gst, form.currency)],
-            [`GST (${Math.round((form.gst_rate || 0.1) * 100)}%)`, formatMoney(totals.gst_amount, form.currency)],
+            // The rate the total was worked out with, not a re-derivation of it. A
+            // legitimate 0 used to print as 10% here, because 0 is falsy.
+            [`GST (${Math.round(totals.gst_rate * 100)}%)`, formatMoney(totals.gst_amount, form.currency)],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between items-center py-[5px] border-b border-[#a8c5a0] text-[13px]">
               <span className="text-[#2d5e28]">{label}</span>

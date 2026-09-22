@@ -2,7 +2,7 @@ import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
-import { calculateQuoteTotals } from "../../../../../lib/pcd-quote-utils";
+import { calculateQuoteTotals, normaliseCurrencyCode, quoteCurrencyProblem } from "../../../../../lib/pcd-quote-utils";
 import { sanitizeTermsHtml, toTermsHtml } from "../../../../../lib/pcd-terms-html";
 import { cabinetConfigRow, dbNumber, isMissingSupplierNameSchemaError, quoteLineRow, withoutSupplierName } from "./_quote-line-save";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
@@ -99,7 +99,10 @@ function isMissingBoardOrderColumn(error) {
 async function normalizeQuotePayload(supabase, payload = {}) {
   const sourceLines = payload.lines || [];
   const businessDefaults = await getBusinessDefaults(supabase);
-  const quoteCurrency = payload.currency || businessDefaults.currency;
+  // Stored upper case and trimmed, so "aud" and " AUD " are the one value.
+  // An unusable code is NOT swapped for the default here: it is refused by the
+  // handler, because only the person who typed it knows what they meant.
+  const quoteCurrency = normaliseCurrencyCode(payload.currency) || payload.currency || businessDefaults.currency;
   const gstRate = payload.gst_rate ?? businessDefaults.gst_rate;
   const totals = calculateQuoteTotals(payload.lines || [], gstRate, {
     ...payload,
@@ -216,6 +219,13 @@ export async function PUT(request, { params }) {
     // onto the order at acceptance, where a completion date before the start
     // is already refused. Catching it on the quote means the customer is never
     // shown a schedule that runs backwards.
+    // A currency nothing can format reaches the customer as a number with no
+    // symbol beside it. Refused here for the same reason the dates are: this is
+    // the last point at which the person who typed it is still on the screen.
+    const currencyFault = quoteCurrencyProblem(normalized.quote);
+    if (currencyFault) {
+      return Response.json({ ok: false, error: currencyFault.message }, { status: 400 });
+    }
     const scheduleFault = suggestedScheduleProblems(normalized.quote)[0];
     if (scheduleFault) {
       return Response.json({ ok: false, error: scheduleFault.message }, { status: 400 });
@@ -380,6 +390,13 @@ export async function PATCH(request, { params }) {
     // The same refusal as the full save above. The editor reaches this route,
     // so leaving it out here would let a backwards schedule through the door
     // the editor actually uses.
+    // A currency nothing can format reaches the customer as a number with no
+    // symbol beside it. Refused here for the same reason the dates are: this is
+    // the last point at which the person who typed it is still on the screen.
+    const patchCurrencyFault = quoteCurrencyProblem(normalized.quote);
+    if (patchCurrencyFault) {
+      return Response.json({ ok: false, error: patchCurrencyFault.message }, { status: 400 });
+    }
     const patchScheduleFault = suggestedScheduleProblems(normalized.quote)[0];
     if (patchScheduleFault) {
       return Response.json({ ok: false, error: patchScheduleFault.message }, { status: 400 });

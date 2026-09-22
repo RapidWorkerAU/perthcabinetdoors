@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { createSupabaseBrowserClient } from '../../../lib/supabase/client'
 import { getAllowedAdminEmailClient } from '../../../lib/admin-access'
 import { DEFAULT_LAUNCH_SETTINGS } from '../../../lib/launch-settings'
-import { DEFAULT_BUSINESS_DEFAULTS } from '../../../lib/pcd-quote-utils'
+import { DEFAULT_BUSINESS_DEFAULTS, gstRateProblem, isCurrencyCode } from '../../../lib/pcd-quote-utils'
 import { cn } from '@/lib/utils'
 import { IconArrowLeft, IconChevronRight } from '@tabler/icons-react'
 import launchStyles from './launch-preview.module.css'
@@ -22,6 +22,10 @@ interface DefaultField {
   prefix?:    string
   suffix?:    string
   hint:       string
+  // Every field here was a number until the currency joined them. A text field
+  // is skipped by the numeric checks below, which would otherwise read "AUD" as
+  // a blank box and refuse to save the whole screen.
+  kind?:      'text'
 }
 
 const DEFAULTS_FIELDS: DefaultField[] = [
@@ -56,6 +60,13 @@ const DEFAULTS_FIELDS: DefaultField[] = [
     suffix: '%',
     step:   '1',
     hint:   'Applied to product cost on each line.',
+  },
+  {
+    group: 'Pricing',
+    key:   'currency',
+    label: 'Currency',
+    kind:  'text',
+    hint:  'The three letter code every quote is priced and shown in. AUD unless you sell somewhere else.',
   },
   {
     group: 'Pricing',
@@ -453,6 +464,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     // that field to the built-in constant without saying so.
     const blank = DEFAULTS_FIELDS.find(field => {
       const value = defaults[field.key]
+      if (field.kind === 'text') return value === '' || value === null || value === undefined
       return value === '' || value === null || value === undefined || Number.isNaN(Number(value))
     })
     if (blank) {
@@ -465,6 +477,31 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     )
     if (notPositive) {
       setDefaultsFeedback(`${notPositive.label} must be more than zero, or every quote prices its labour at nothing.`)
+      return
+    }
+
+    // THE GST RATE IS A DECIMAL, AND NEITHER END OF IT WAS CHECKED.
+    //
+    // Two ways this went wrong, both silent. A rate of 0 charged no GST on
+    // every quote in the system, and each one looked completely normal: nothing
+    // crashed and nothing was logged, so it would have surfaced at the tax
+    // return. And "10", typed by somebody reading the label as a percentage,
+    // is a thousand percent GST rather than ten.
+    //
+    // The currency is checked with the SAME function the quote save routes use,
+    // so a code this screen accepts cannot be one a quote then refuses.
+    if (!isCurrencyCode(defaults.currency)) {
+      setDefaultsFeedback(
+        `"${defaults.currency}" is not a currency code. Use the three letter code, for example AUD.`
+      )
+      return
+    }
+
+    // The SAME function the save route refuses on, so the screen cannot say one
+    // thing and the server another. See gstRateProblem.
+    const gstFault = gstRateProblem(defaults.gst_rate)
+    if (gstFault) {
+      setDefaultsFeedback(gstFault.message)
       return
     }
 
@@ -776,11 +813,17 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
                       {field.prefix ? <span className="text-[12px] text-[#8b8a81]">{field.prefix}</span> : null}
                       <input
                         className="h-[36px] w-[110px] rounded-[6px] border border-[#dbd8cc] bg-white px-3 text-right font-mono text-[13px] text-[#1a1a18] outline-none focus:border-[#6b9e61]"
-                        type="number"
-                        min="0"
-                        step={field.step}
+                        type={field.kind === 'text' ? 'text' : 'number'}
+                        {...(field.kind === 'text' ? {} : { min: '0', step: field.step })}
                         value={(defaults[field.key] as string | number) ?? ''}
-                        onChange={event => updateDefault(field.key, event.target.value === '' ? '' : Number(event.target.value))}
+                        onChange={event =>
+                          updateDefault(
+                            field.key,
+                            field.kind === 'text'
+                              ? event.target.value
+                              : event.target.value === '' ? '' : Number(event.target.value)
+                          )
+                        }
                       />
                       {field.suffix ? <span className="text-[12px] text-[#8b8a81]">{field.suffix}</span> : null}
                     </span>
