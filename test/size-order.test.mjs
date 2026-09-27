@@ -50,7 +50,8 @@ test("the quote request email heads its size column the way it fills it", () => 
 
 test("the cabinet schedule does too", () => {
   const source = read("lib/pcd-design-plan-pdf.js");
-  assert.match(source, /label: "H x W x D"/);
+  assert.match(source, /label: "Carcass H x W x D"/);
+  assert.match(source, /label: "Overall H x W x D"/);
   assert.match(source, /return `\$\{h\} x \$\{w\} x \$\{d\}`/);
 });
 

@@ -152,7 +152,10 @@ test("the design saves the edges and the boring, and refuses what is not real", 
 
 test("the design tool asks it in the three places decided", () => {
   const panel = readFileSync(new URL("../app/admin/design/_components/DesignRightPanel.js", import.meta.url), "utf8");
-  assert.match(panel, /value=\{draft\.banded_edges\}\s*\n\s*onChange=\{\(edges\) => setNow\("banded_edges", edges\)\}/, "the fronts");
+  // The fronts, in the door/drawer window: the doors and the drawer fronts
+  // each have their own, and the drawers follow the doors until set.
+  assert.match(panel, /label="Door edges" value=\{draft\.banded_edges\} onChange=\{\(edges\) => setNow\("banded_edges", edges\)\}/, "the doors");
+  assert.match(panel, /value=\{draft\.drawer_banded_edges \?\? draft\.banded_edges\} onChange=\{\(edges\) => setNow\("drawer_banded_edges", edges\)\}/, "the drawer fronts");
   assert.match(panel, /withPanelOption\(latestRef\.current, panelKey, \{ banded_edges: edges \}\)/, "each finishing panel");
   assert.match(panel, /<BandedEdgesField value=\{draft\.banded_edges\}/, "a standalone piece");
   assert.ok((panel.match(/Hinge hole type/g) || []).length >= 2, "the boring on a cabinet and a standalone door");

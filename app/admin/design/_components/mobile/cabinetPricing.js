@@ -4,8 +4,8 @@
 // pieces the left panel shows) and prices each piece with the SAME per-sqm
 // rates the quote import uses, so the estimate matches what actually gets
 // quoted:
-//   - carcass sides/top/bottom + back + finished panels + kickboard/filler
-//                                    -> cost_per_sqm_carcass
+//   - carcass sides/top/bottom + back + kickboard -> cost_per_sqm_carcass
+//   - finished panels and fillers    -> the finished-panel board rate
 //   - shelves                        -> cost_per_sqm_shelf (fallback carcass)
 //   - doors                          -> door_style.cost_per_sqm
 //   - drawer fronts                  -> drawer_style.cost_per_sqm
@@ -28,8 +28,11 @@ function rateFor(material, rates) {
       // Finished end/side/back/underside panels — their own finishing-panel
       // material (defaults to the door rate, then carcass).
       return rates.panel;
+    case "filler":
+      // On show at the front, so a finished-panel board unless it has its own.
+      return rates.filler;
     default:
-      // undefined (carcass sides/top/bottom), "back", "kickboard", "filler".
+      // undefined (carcass sides/top/bottom), "back", "kickboard".
       return rates.carcass;
   }
 }
@@ -68,6 +71,8 @@ function ratesFor(item) {
     // Finishing panels: own material rate, else the door rate (their default
     // match), else carcass.
     panel: Number(item?.finish_panel_style?.cost_per_sqm) || door || carcass,
+    filler: Number(item?.filler_panel_style?.cost_per_sqm)
+      || Number(item?.finish_panel_style?.cost_per_sqm) || door || carcass,
   };
 }
 

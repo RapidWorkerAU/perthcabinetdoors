@@ -137,3 +137,26 @@ test("the shop product page renders", async () => {
 
   assert.ok(html.length > 0, "rendered nothing at all");
 });
+
+// ── The design tool's cabinet panel ──────────────────────────────────────────
+//
+// The sidebar every cabinet is set up in. Rendered with a cabinet carrying the
+// pieces that most often move between its sections: fronts, finished ends, a
+// top panel, a kickboard set to run to the wall and a side filler, so a value
+// read before it is declared anywhere in that form fails here, not in the tool.
+
+test("the design tool's cabinet panel renders", async () => {
+  const { default: DesignRightPanel } = await import("../app/admin/design/_components/DesignRightPanel.js");
+  const room = { id: "r", name: "Kitchen", width_mm: 3000, depth_mm: 3000, height_mm: 2400 };
+  const board = { material: "decorative board", finish: "Matt", colour: "Oak", thickness_mm: 18 };
+  const item = {
+    id: "a", room_id: "r", item_type: "base_cabinet", wall: "top", x_mm: 50, y_mm: 0,
+    width_mm: 600, height_mm: 400, depth_mm: 560, qty: 1, label: "Bench",
+    material: "decorative board", finish: "Matt", colour: "White",
+    front_type: "drawers", drawer_config: { heights_mm: [400] }, drawer_style: board, door_style: board,
+    has_kickboard: true, has_top_panel: true, end_panel_right: true, side_filler_left: true,
+    panel_options: { kickboard: { extend_left: true }, top: { extend_left: true } },
+  };
+  const html = renderToString(createElement(DesignRightPanel, { item, allItems: [item], room, onItemChange: () => {} }));
+  assert.ok(html.length > 0, "rendered nothing at all");
+});

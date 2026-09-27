@@ -36,7 +36,8 @@ import { computeBottomPanelRun } from "../../../../lib/pcd-bottompanel-utils";
 import { computeTopPanelRun, hasTopPanel, overallHeightMm, topPanelAllowedFor, topSurfacePatch } from "../../../../lib/pcd-toppanel-utils";
 import { fillerPanelGapMm, computeFillerPanelRun, sideFillerGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { getAbsPos, itemDepthMm } from "./DesignCanvas";
-import { CABINET_MOUNT_MM, computeKickboardRun, hasKickboard, isCornerType } from "../../../../lib/pcd-kickboard-utils";
+import { CABINET_MOUNT_MM, computeKickboardRun, hasKickboard, isCornerType, kickboardIsInset } from "../../../../lib/pcd-kickboard-utils";
+import { SIDES, sideExtensionMeasuredMm, sideExtensionOn, sideExtensionTypedMm } from "../../../../lib/pcd-side-extension";
 import {
   DEFAULT_BENCHTOP_THICKNESS_MM,
   DEFAULT_BENCHTOP_OVERHANG_MM,
@@ -1192,16 +1193,39 @@ function DrawerBankFields({ cfg, onChangeNow, onChange, heightMm, part = null })
 // left to the quote editor. `simplified` (used in the cabinet Colours & finishes
 // section) hides the profile selects so it reads as a clean public-style colour
 // row; the project-defaults modal leaves it off to keep profile selection.
-export function FrontStyleFields({ label, style, onChange, matchOptions, colourImages, simplified = false }) {
-  const mat = style.material || "";
-  const thk = style.thickness_mm ? `${style.thickness_mm}mm` : "";
-  // The material picker stores lowercase values (e.g. "decorative board")
-  // but the profile lookup tables key off the Title Case labels the quote
-  // editor uses (e.g. "Decorative Board") — convert before looking up.
+// The ROUTED profile on a front: a real profile out of the library, which
+// reaches the quote and the cut list. Separate from the 3D shape, which only
+// changes the drawing. Offered only where the board and thickness have any.
+export function RoutedProfileFields({ style, onChange, labelPrefix = "" }) {
+  const mat = style?.material || "";
+  const thk = style?.thickness_mm ? `${style.thickness_mm}mm` : "";
   const matLabel = materialLabelForType(mat);
-  const profTypes = simplified ? [] : profileTypesForSelection(matLabel, thk);
-  const profNames = simplified ? [] : profileNamesForSelection(style.profile_type || "", matLabel, thk);
+  const profTypes = profileTypesForSelection(matLabel, thk);
+  const profNames = profileNamesForSelection(style?.profile_type || "", matLabel, thk);
+  if (!profTypes.length) return null;
+  return (
+    <>
+      <label className={styles.fieldLabel}>
+        {labelPrefix}Profile type
+        <select className={styles.fieldSelect} value={style?.profile_type || ""} onChange={(e) => onChange({ profile_type: e.target.value, profile: "" })}>
+          <option value="">None</option>
+          {profTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </label>
+      {profNames.length > 0 && (
+        <label className={styles.fieldLabel}>
+          {labelPrefix}Profile
+          <select className={styles.fieldSelect} value={style?.profile || ""} onChange={(e) => onChange({ profile: e.target.value })}>
+            <option value="">Select</option>
+            {profNames.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      )}
+    </>
+  );
+}
 
+export function FrontStyleFields({ label, style, onChange, matchOptions, colourImages, simplified = false }) {
   return (
     <>
       <ColourField
@@ -1220,26 +1244,7 @@ export function FrontStyleFields({ label, style, onChange, matchOptions, colourI
           })
         }
       />
-      {profTypes.length > 0 && (
-        <>
-          <label className={styles.fieldLabel}>
-            Profile type
-            <select className={styles.fieldSelect} value={style.profile_type || ""} onChange={(e) => onChange({ profile_type: e.target.value, profile: "" })}>
-              <option value="">None</option>
-              {profTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </label>
-          {profNames.length > 0 && (
-            <label className={styles.fieldLabel}>
-              Profile
-              <select className={styles.fieldSelect} value={style.profile || ""} onChange={(e) => onChange({ profile: e.target.value })}>
-                <option value="">Select</option>
-                {profNames.map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </label>
-          )}
-        </>
-      )}
+      {!simplified && <RoutedProfileFields style={style} onChange={onChange} />}
       {!simplified && (
       <label className={styles.fieldLabel}>
         3D front profile
@@ -1723,9 +1728,9 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   function renderFinishPanelMaterial() {
     return (
       <ColourField
-        label="Finishing panel"
+        label="Finished panels"
         value={draft.finish_panel_style || null}
-        matchHint="Matches the doors by default"
+        matchHint="Every finished panel and side filler on this cabinet follows this. Matches the doors by default."
         canReset
         matchOptions={matchOptions}
         thicknessDefault={18}
@@ -1738,7 +1743,12 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   // Optional per-piece finishing colour override (kickboard / filler /
   // underside / back). Blank means "match" the piece's default part; picking a
   // colour overrides it.
-  function renderOverridePicker(key, label, matchHint) {
+  //
+  // `thicknessField` names the board's own thickness field (kickboard, filler):
+  // picking a board here writes its thickness there too, so the drawing, the
+  // cut and the price all use one thickness. The Panels window edits the same
+  // field and keeps the picked board in step (see setBoardThickness).
+  function renderOverridePicker(key, label, matchHint, thicknessField = null) {
     return (
       <ColourField
         label={label}
@@ -1747,9 +1757,26 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
         canReset
         matchOptions={matchOptions}
         colourImages={colourImages}
-        onChange={(style) => setNow(key, style)}
+        onChange={(style) => {
+          const t = Number(style?.thickness_mm);
+          setMultiNow(thicknessField && t > 0 ? { [key]: style, [thicknessField]: t } : { [key]: style });
+        }}
       />
     );
+  }
+
+  // A kickboard or filler thickness typed in the Panels window. When a board
+  // has been picked for it, that board takes the new thickness as well, and its
+  // library row is dropped so it is matched again at the new thickness rather
+  // than priced as the old one.
+  function setBoardThickness(thicknessField, styleKey, value) {
+    const style = latestRef.current[styleKey];
+    const t = Number(value);
+    if (style && (style.material || style.colour) && t > 0) {
+      setMulti({ [thicknessField]: value, [styleKey]: { ...style, thickness_mm: t, colour_library_id: null } });
+    } else {
+      set(thicknessField, value);
+    }
   }
 
   // Applies the project's material defaults the first time a front type is
@@ -1815,6 +1842,15 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   const frontHasDoors   = draft.front_type === "doors" || (draft.front_type === "mixed" && sectionsAnyDoors);
   const frontHasDrawers = draft.front_type === "drawers" || (draft.front_type === "mixed" && sectionsAnyDrawers);
   const showFrontPanelMode = (frontHasDoors || frontHasDrawers) && (draft.end_panel_left || draft.end_panel_right);
+  // Any board that follows the Finished panels colour. Side fillers and a
+  // corner's finished backs count: they used to have no colour row at all
+  // unless an end panel or a straight cabinet's back happened to be on.
+  const hasAnyFinishedPanel = Boolean(
+    draft.end_panel_left || draft.end_panel_right || draft.has_back_panel ||
+    draft.back_panel_wall1 || draft.back_panel_wall2 || hasTopPanel(draft) ||
+    (draft.item_type === "wall_cabinet" && draft.has_bottom_panel) ||
+    draft.has_filler_panel || draft.side_filler_left || draft.side_filler_right
+  );
   // Count of enabled applied panels — the summary for the "Add-on panels" group.
   const addonsOnCount = [
     draft.has_kickboard, draft.has_filler_panel, draft.has_bottom_panel, draft.has_top_panel, draft.has_back_panel,
@@ -1987,19 +2023,89 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
 
   // ── The Doors & drawers window: the deep front-layout controls, broken into
   //    left-menu sub-parts so each shows on its own instead of one long list. ──
+  //
+  //    EVERYTHING ABOUT THE FRONTS lives in this window: layout, profile, which
+  //    edges are taped, hinges (boring, the hinge itself, drilling positions),
+  //    how the fronts meet the side panels, and handles. They used to be spread
+  //    over Colours & finishes, the Doors & drawers section and a Hardware
+  //    section, so a door was set up in four places.
+  const frontEdgesShown = (frontHasDoors && isTaped(doorStyle?.material)) || (frontHasDrawers && isTaped((drawerStyle?.material) || doorStyle?.material));
   const frontParts = (() => {
     const fp = [];
+    const shared = () => {
+      if (frontEdgesShown) fp.push({ id: "edges", label: "Edges" });
+      if (showFrontPanelMode) fp.push({ id: "fit", label: "Fit at side panels" });
+      fp.push({ id: "handles", label: "Handles" });
+    };
     if (draft.front_type === "doors") {
-      if (isCorner) { fp.push({ id: "corner", label: "Corner door" }, { id: "profile", label: "3D profile" }); return fp; }
-      fp.push({ id: "layout", label: "Doors" }, { id: "profile", label: "3D profile" }, { id: "drilling", label: "Hinge drilling" }, { id: "reveal", label: "Reveal & finger-pull" });
+      if (isCorner) { fp.push({ id: "corner", label: "Corner door" }, { id: "profile", label: "Profile" }); shared(); return fp; }
+      fp.push({ id: "layout", label: "Doors" }, { id: "profile", label: "Profile" }, { id: "drilling", label: "Hinges" }, { id: "reveal", label: "Reveal & finger-pull" });
+      shared();
     } else if (draft.front_type === "drawers" && !isCorner) {
-      fp.push({ id: "layout", label: "Drawers" }, { id: "profile", label: "3D profile" }, { id: "finger", label: "Finger-pull" }, { id: "runners", label: "Runners" });
+      fp.push({ id: "layout", label: "Drawers" }, { id: "profile", label: "Profile" }, { id: "finger", label: "Finger-pull" }, { id: "runners", label: "Runners" });
+      shared();
     } else if (draft.front_type === "mixed" && !isCorner) {
-      fp.push({ id: "profile", label: "3D profile" });
+      fp.push({ id: "profile", label: "Profile" });
+      if (frontHasDoors) fp.push({ id: "hinges", label: "Hinges" });
+      shared();
       sections.forEach((s, i) => fp.push({ id: `sec-${i}`, label: `Bay ${i + 1}` }));
     }
     return fp;
   })();
+
+  // Which boring and which hinge, for every door on this cabinet. Two machine
+  // setups, and a door bored for one will not take the other hinge.
+  const renderHingeSpec = () => (
+    <>
+      <label className={styles.fieldLabel}>Hinge hole type
+        <select className={styles.fieldSelect} value={draft.hole_type || ""} onChange={(e) => setNow("hole_type", e.target.value || null)}>
+          <option value="">Not recorded</option>
+          {HOLE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+        </select>
+      </label>
+      <HardwareField type="hinge" label="Hinge model (supply)" value={draft.hinge_model} onPick={({ name, cost }) => setMultiNow({ hinge_model: name, hinge_cost_ex_gst: cost })} />
+      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
+        The hinge is priced from the Hardware catalogue per hinge; drilling is charged separately. Leave as <em>Not supplied by us</em> to keep it off the quote.
+      </p>
+    </>
+  );
+
+  // Which edges get tape: the doors and the drawer fronts each have their own.
+  // Drawers follow the doors until they are given their own. Decorative board
+  // only; a drawer front with no board of its own takes the door board.
+  const renderFrontEdges = () => (
+    <div className={styles.fieldGroup}>
+      {frontHasDoors && isTaped(doorStyle?.material) && (
+        <BandedEdgesField label="Door edges" value={draft.banded_edges} onChange={(edges) => setNow("banded_edges", edges)} />
+      )}
+      {frontHasDrawers && isTaped((drawerStyle?.material) || doorStyle?.material) && (
+        <BandedEdgesField label="Drawer front edges" value={draft.drawer_banded_edges ?? draft.banded_edges} onChange={(edges) => setNow("drawer_banded_edges", edges)} />
+      )}
+    </div>
+  );
+
+  const renderFrontFit = () => (
+    <div className={styles.fieldGroup}>
+      <label className={styles.fieldLabel}>Front position at side panels
+        <select className={styles.fieldSelect} value={draft.front_panel_mode || "over_side_panels"} onChange={(e) => setNow("front_panel_mode", e.target.value)}>
+          <option value="over_side_panels">Fronts cover side-panel edges</option>
+          <option value="inset_between_side_panels">Fronts sit between side panels</option>
+        </select>
+      </label>
+      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+        Covering the side panels makes each front wider by the panel thickness; sitting between them keeps the fronts to the carcass.
+      </p>
+    </div>
+  );
+
+  const renderHandles = () => (
+    <div className={styles.fieldGroup}>
+      <HardwareField type="handle" label="Handle" value={draft.handle_name} onPick={({ name, cost }) => setMultiNow({ handle_name: name, handle_cost_ex_gst: cost })} />
+      <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+        One handle per door and drawer front, priced from the Hardware catalogue. Leave as <em>Not supplied by us</em> to keep it off the quote.
+      </p>
+    </div>
+  );
 
   const renderCornerDoorFields = () => (
     <div className={styles.fieldGroup}>
@@ -2211,11 +2317,13 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   const renderFrontProfileFields = () => (
     <div className={styles.fieldGroup}>
       <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-        These profiles change the 3D preview of the selected cabinet fronts.
+        The routed profile is the one that is made and quoted. The 3D shape only changes how the fronts look in the drawing.
       </p>
+      {frontHasDoors && <RoutedProfileFields style={doorStyle} onChange={updDoorStyle} labelPrefix="Door " />}
+      {frontHasDrawers && <RoutedProfileFields style={drawerStyle} onChange={updDrawerStyle} labelPrefix="Drawer " />}
       {frontHasDoors && (
         <label className={styles.fieldLabel}>
-          Door 3D profile
+          Door 3D shape
           <select
             className={styles.fieldSelect}
             value={normaliseFrontProfile(doorStyle.front_profile)}
@@ -2229,7 +2337,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
       )}
       {frontHasDrawers && (
         <label className={styles.fieldLabel}>
-          Drawer 3D profile
+          Drawer 3D shape
           <select
             className={styles.fieldSelect}
             value={normaliseFrontProfile(drawerStyle.front_profile)}
@@ -2249,9 +2357,20 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
       return <p style={{ fontSize: 12, color: "var(--dt-text-muted, #888780)" }}>No front on this cabinet — pick Doors, Drawers or Bays first.</p>;
     }
     if (partId === "profile") return renderFrontProfileFields();
-    if (draft.front_type === "doors" && isCorner) return renderCornerDoorFields();
+    if (partId === "edges") return renderFrontEdges();
+    if (partId === "fit") return renderFrontFit();
+    if (partId === "handles") return renderHandles();
+    if (partId === "hinges") return <div className={styles.fieldGroup}>{renderHingeSpec()}</div>;
+    if (draft.front_type === "doors" && isCorner) {
+      return <>{renderCornerDoorFields()}<div className={styles.fieldGroup}>{renderHingeSpec()}</div></>;
+    }
     if (draft.front_type === "doors") {
-      return <div className={styles.fieldGroup}><DoorBankFields cfg={doorCfg} onChangeNow={updDoorCfg} onChange={updDoorCfgDebounced} heightMm={doorHeightMm} part={partId} /></div>;
+      return (
+        <div className={styles.fieldGroup}>
+          {partId === "drilling" && renderHingeSpec()}
+          <DoorBankFields cfg={doorCfg} onChangeNow={updDoorCfg} onChange={updDoorCfgDebounced} heightMm={doorHeightMm} part={partId} />
+        </div>
+      );
     }
     if (draft.front_type === "drawers") {
       return <div className={styles.fieldGroup}><DrawerBankFields cfg={drawerCfg} onChangeNow={updDrawerCfg} onChange={updDrawerCfgDebounced} heightMm={draft.height_mm} part={partId} /></div>;
@@ -2291,6 +2410,49 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     );
   }
 
+  // Running a top or a kickboard past either end of the cabinet, to the wall
+  // or the next thing along: over a side filler, or under it. The length fills
+  // in from the side filler on that side, or the measured gap when there is no
+  // filler, and stays editable; clearing it goes back to the measured figure.
+  function renderSideExtensions(panelKey, what, liveItems) {
+    if (isCorner) return null;
+    const upd = (patch, now = true) => (now ? setNow : set)("panel_options", withPanelOption(latestRef.current, panelKey, patch));
+    const ctx = { room, items: liveItems };
+    return (
+      <>
+        <SectionDivider label="Run to the wall" />
+        {SIDES.map((side) => {
+          const on = sideExtensionOn(draft, panelKey, side);
+          const measured = sideExtensionMeasuredMm(draft, side, ctx);
+          const typed = sideExtensionTypedMm(draft, panelKey, side);
+          const hasFiller = Boolean(draft[`side_filler_${side}`]);
+          return (
+            <div key={side} className={styles.fieldGroup}>
+              <label className={styles.fieldCheckLabel}>
+                <input type="checkbox" checked={on} onChange={(e) => upd({ [`extend_${side}`]: e.target.checked })} />
+                Extend the {what} past the {side} end{hasFiller ? " over the side filler" : ""}
+              </label>
+              {on && (
+                <>
+                  <label className={styles.fieldLabel}>{side === "left" ? "Left" : "Right"} extension mm
+                    <input className={styles.fieldInput} type="number" min="1"
+                      value={typed ?? measured}
+                      onChange={(e) => upd({ [`extend_${side}_mm`]: e.target.value === "" ? null : Number(e.target.value) }, false)} />
+                  </label>
+                  <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+                    {measured > 0
+                      ? `${hasFiller ? "Side filler width" : "Measured gap to the wall or next item"}: ${measured}mm. Clear the field to go back to it.`
+                      : "Nothing is measurable on this side, so enter the length yourself."}
+                  </p>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </>
+    );
+  }
+
   const renderKickboardDetail = () => {
     if (!hasKickboard(draft)) return <PanelOffHint />;
     const isContinuous = (draft.kickboard_span ?? "continuous") === "continuous";
@@ -2307,7 +2469,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               <input className={styles.fieldInput} type="number" min="1" value={draft.kickboard_height_mm ?? 120} onChange={(e) => set("kickboard_height_mm", e.target.value)} />
             </label>
             <label className={styles.fieldLabel}>Thickness mm
-              <input className={styles.fieldInput} type="number" min="1" value={draft.kickboard_thickness_mm ?? 16} onChange={(e) => set("kickboard_thickness_mm", e.target.value)} />
+              <input className={styles.fieldInput} type="number" min="1" value={draft.kickboard_thickness_mm ?? 16} onChange={(e) => setBoardThickness("kickboard_thickness_mm", "kickboard_style", e.target.value)} />
             </label>
           </div>
         ) : (
@@ -2322,6 +2484,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
             <option value="individual">Individual (separate piece per cabinet)</option>
           </select>
         </label>
+        {!kickboardIsInset(draft) && renderSideExtensions("kickboard", "kickboard", liveItems)}
       </div>
     );
   };
@@ -2341,7 +2504,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               <input className={styles.fieldInput} type="number" min="1" value={draft.filler_panel_height_mm ?? fillerPanelGapMm(draft, room, allItems)} onChange={(e) => set("filler_panel_height_mm", e.target.value)} />
             </label>
             <label className={styles.fieldLabel}>Thickness mm
-              <input className={styles.fieldInput} type="number" min="1" value={draft.filler_panel_thickness_mm ?? 16} onChange={(e) => set("filler_panel_thickness_mm", e.target.value)} />
+              <input className={styles.fieldInput} type="number" min="1" value={draft.filler_panel_thickness_mm ?? 16} onChange={(e) => setBoardThickness("filler_panel_thickness_mm", "filler_panel_style", e.target.value)} />
             </label>
           </div>
         ) : (
@@ -2396,7 +2559,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
     if (!draft.has_top_panel) return <PanelOffHint />;
     const isContinuous = (draft.top_panel_span ?? "continuous") === "continuous";
     const liveItems = allItems ? allItems.map((i) => (i.id === draft.id ? { ...i, ...draft } : i)) : [draft];
-    const run = isContinuous ? computeTopPanelRun(draft, liveItems) : null;
+    const run = isContinuous ? computeTopPanelRun(draft, liveItems, { room }) : null;
     const isFirstInRun = !run || run.firstItemId === draft.id;
     const firstItem = run && !isFirstInRun ? liveItems.find((i) => i.id === run.firstItemId) : null;
     return (
@@ -2427,6 +2590,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
             Our own finished board on the carcass top, quoted as a panel. It takes the place of a benchtop on this cabinet.
           </p>
         )}
+        {renderSideExtensions("top", "top", liveItems)}
       </div>
     );
   };
@@ -2792,17 +2956,6 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               {frontHasDrawers && (
                 <FrontStyleFields label="Drawers" style={drawerStyle} onChange={updDrawerStyle} matchOptions={matchOptions} colourImages={colourImages} simplified />
               )}
-              {/* WHICH EDGES OF THE FRONTS GET TAPE. Doors and drawer fronts on
-                  this cabinet share it; all four until changed. Decorative
-                  board only: the drawers follow the door board when they have
-                  none of their own. */}
-              {(frontHasDoors || frontHasDrawers) && (isTaped(doorStyle?.material) || isTaped(drawerStyle?.material)) && (
-                <BandedEdgesField
-                  label={frontHasDoors && frontHasDrawers ? "Door & drawer front edges" : frontHasDoors ? "Door edges" : "Drawer front edges"}
-                  value={draft.banded_edges}
-                  onChange={(edges) => setNow("banded_edges", edges)}
-                />
-              )}
               {/* Shelves are colourable whenever there ARE any — the cabinet's
                   own, or shelves sitting inside an open bay of a mixed front. */}
               {(Number(draft.shelf_qty) > 0 || bayShelfCount(draft) > 0) && (
@@ -2869,24 +3022,25 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 );
               })()}
               {hasKickboard(draft) &&
-                renderOverridePicker("kickboard_style", "Kickboard", "Matches the carcass by default.")}
-              {draft.has_filler_panel &&
-                renderOverridePicker("filler_panel_style", "Filler", "Matches the doors on a doored cabinet, otherwise the carcass.")}
-              {draft.item_type === "wall_cabinet" && draft.has_bottom_panel &&
-                renderOverridePicker("bottom_panel_style", "Underside", "Matches the carcass by default.")}
-              {hasTopPanel(draft) &&
-                renderOverridePicker("top_panel_style", "Top panel", "Matches the finished side panels by default.")}
-              {draft.has_back_panel &&
-                renderOverridePicker("back_panel_style", "Back panel", "Matches the carcass by default.")}
-              {(draft.end_panel_left || draft.end_panel_right || draft.has_back_panel) && renderFinishPanelMaterial()}
-              {/* The two ends are separate boards. An exposed end on show and a
-                  plain end that dies into a run are regularly different, and
-                  they reach the quote as two lines, so they are chosen as two
-                  here rather than sharing the finishing panel above. */}
+                renderOverridePicker("kickboard_style", "Kickboard", "Matches the carcass by default.", "kickboard_thickness_mm")}
+              {/* THE FINISHED PANELS. One row every finished board on this
+                  cabinet follows (ends, back, top, underside, fillers), then a
+                  row per board for when one of them has to differ. Each of
+                  those says what it follows, and says it truthfully: the
+                  drawing and the quote read the same chain. */}
+              {hasAnyFinishedPanel && renderFinishPanelMaterial()}
               {draft.end_panel_left &&
-                renderOverridePicker("end_left_style", "Left end panel", "Matches the finishing panel.")}
+                renderOverridePicker("end_left_style", "Left end panel", "Matches the finished panels.")}
               {draft.end_panel_right &&
-                renderOverridePicker("end_right_style", "Right end panel", "Matches the finishing panel.")}
+                renderOverridePicker("end_right_style", "Right end panel", "Matches the finished panels.")}
+              {(draft.has_back_panel || draft.back_panel_wall1 || draft.back_panel_wall2) &&
+                renderOverridePicker("back_panel_style", isCorner ? "Finished backs" : "Back panel", "Matches the finished panels.")}
+              {hasTopPanel(draft) &&
+                renderOverridePicker("top_panel_style", "Top panel", "Matches the finished panels.")}
+              {draft.item_type === "wall_cabinet" && draft.has_bottom_panel &&
+                renderOverridePicker("bottom_panel_style", "Underside", "Matches the finished panels.")}
+              {draft.has_filler_panel &&
+                renderOverridePicker("filler_panel_style", "Filler", "Matches the finished panels.", "filler_panel_thickness_mm")}
 
               <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "6px 0 0", lineHeight: 1.4 }}>
                 Only pieces this cabinet actually has show up here. Turn panels on / off (and set their span &amp; sizes) in <strong>Panels &amp; finishing</strong>.
@@ -2912,56 +3066,14 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               ))}
             </div>
             {draft.front_type === "mixed" && !isCorner && renderBaySidebarList()}
-            {/* WHICH HINGE BORING, for every door on this cabinet. Two machine
-                setups, and a door bored for one will not take the other hinge. */}
-            {(frontHasDoors || isCorner) && (
-              <label className={styles.fieldLabel}>Hinge hole type
-                <select
-                  className={styles.fieldSelect}
-                  value={draft.hole_type || ""}
-                  onChange={(e) => setNow("hole_type", e.target.value || null)}
-                >
-                  <option value="">Not recorded</option>
-                  {HOLE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
-                </select>
-              </label>
-            )}
-            {showFrontPanelMode && (
-              <label className={styles.fieldLabel}>Front position at side panels
-                <select
-                  className={styles.fieldSelect}
-                  value={draft.front_panel_mode || "over_side_panels"}
-                  onChange={(e) => setNow("front_panel_mode", e.target.value)}
-                >
-                  <option value="over_side_panels">Fronts cover side-panel edges</option>
-                  <option value="inset_between_side_panels">Fronts sit between side panels</option>
-                </select>
-              </label>
-            )}
-            {((draft.front_type && draft.front_type !== "none") || isCorner) && (
+            {draft.front_type && draft.front_type !== "none" && (
               <button type="button" className={`${styles.btn} ${styles.btnSecondary}`} style={{ width: "100%", marginTop: 10, gap: 5 }} onClick={() => { setFrontPart(frontParts[0]?.id || null); setOpenWin("front"); }}>
-                {draft.front_type === "mixed" && !isCorner ? "Edit bay layout" : "Edit door / drawer layout"}
+                {draft.front_type === "mixed" && !isCorner ? "Edit bays, hinges, edges & handles" : "Edit doors, hinges, edges & handles"}
                 <IconArrowRight size={13} />
               </button>
             )}
           </div>
         </ConfigSection>
-
-        {/* Hardware — handles + hinge supply, priced from the Hardware catalogue.
-            Only where the cabinet actually has a front. */}
-        {((draft.front_type && draft.front_type !== "none") || isCornerType(draft)) && (
-        <ConfigSection title="Hardware" summary={draft.handle_name || draft.hinge_model ? "On" : "Off"} {...section("hardware")}>
-          <div className={styles.fieldGroup}>
-            <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: "0 0 4px", lineHeight: 1.4 }}>
-              Priced from the Hardware catalogue — a handle per door/drawer front, and hinge supply per hinge (drilling is charged separately). Leave as <em>Not supplied by us</em> to keep it off the quote.
-            </p>
-            <HardwareField type="handle" label="Handle" value={draft.handle_name} onPick={({ name, cost }) => setMultiNow({ handle_name: name, handle_cost_ex_gst: cost })} />
-            {draft.front_type !== "drawers" && (
-              <HardwareField type="hinge" label="Hinge model (supply)" value={draft.hinge_model} onPick={({ name, cost }) => setMultiNow({ hinge_model: name, hinge_cost_ex_gst: cost })} />
-            )}
-          </div>
-        </ConfigSection>
-        )}
 
         {/* ACCESSORIES — what is fitted INSIDE the cabinet: a hanging rail, a
             slide out bin, a light. Bought from the hardware library rather than

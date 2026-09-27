@@ -25,6 +25,7 @@ import {
 } from "../../../../lib/pcd-finishpanel-utils";
 import { rangehoodGeometry } from "../../../../lib/pcd-appliance-utils";
 import { topPanelThicknessMm, overallHeightMm } from "../../../../lib/pcd-toppanel-utils";
+import { sideExtensionsMm } from "../../../../lib/pcd-side-extension";
 import PinchZoom from "./PinchZoom";
 import dynamic from "next/dynamic";
 
@@ -241,6 +242,48 @@ function ElevDimLine({ x1, y1, x2, y2, label, horizontal }) {
       <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fontSize={10} fill="rgba(255,255,255,0.85)">
         {label}mm
       </text>
+    </g>
+  );
+}
+
+const HEIGHT_CHAIN_TYPES = new Set([
+  "base_cabinet", "wall_cabinet", "tall_cabinet", "corner_base_cabinet",
+  "corner_tall_cabinet", "blind_corner_cabinet", "bookcase",
+]);
+
+// ONE CABINET'S HEIGHTS, as a chain up its right-hand edge: kickboard (or a
+// finished underside), carcass, finished top, and the overall height beside
+// the top tick. The carcass figure is the space inside the box; the overall is
+// what it stands in the room at, so both are there to read.
+//
+// `ys` are svg y values, bottom up; `parts` are the mm between each pair.
+// A part too short to letter is still ticked, and its number is left off.
+function HeightChain({ x, ys, parts, overallMm, printMode }) {
+  const ink = printMode ? "#1f2937" : "rgba(255,255,255,0.6)";
+  const bg = printMode ? "#ffffff" : "rgba(15,20,30,0.85)";
+  const txt = printMode ? "#1f2937" : "rgba(255,255,255,0.9)";
+  const top = ys[ys.length - 1];
+  const bottom = ys[0];
+  const label = (y, text, key, bold = false) => {
+    const tw = String(text).length * 4.8 + 6;
+    return (
+      <g key={key}>
+        <rect x={x - 4 - tw} y={y - 6} width={tw} height={11} fill={bg} rx={1.5} />
+        <text x={x - 4 - tw / 2} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={8}
+          fontWeight={bold ? 700 : 400} fill={txt}>{text}</text>
+      </g>
+    );
+  };
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      <line x1={x} y1={bottom} x2={x} y2={top} stroke={ink} strokeWidth={0.8} />
+      {ys.map((y, i) => <line key={`t${i}`} x1={x - 3} y1={y + 3} x2={x + 3} y2={y - 3} stroke={ink} strokeWidth={0.9} />)}
+      {parts.map((mm, i) => {
+        const y0 = ys[i], y1 = ys[i + 1];
+        if (Math.abs(y0 - y1) < 13 || !(mm > 0)) return null;
+        return label((y0 + y1) / 2, Math.round(mm), `p${i}`);
+      })}
+      {parts.length > 1 && label(top + 8, `${Math.round(overallMm)} overall`, "all", true)}
     </g>
   );
 }
@@ -1571,10 +1614,13 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
               : 0;
             // A finished top sits on the carcass, so the filler starts above it.
             const topPanelMm = topPanelThicknessMm(item);
+            // A top or kickboard set to run past the cabinet to the wall.
+            const extCtx = { room, items };
+            const topExt = topPanelMm > 0 ? sideExtensionsMm(item, "top", extCtx) : { leftMm: 0, rightMm: 0 };
+            const kbExt = kbMm > 0 ? sideExtensionsMm(item, "kickboard", extCtx) : { leftMm: 0, rightMm: 0 };
             // Floor (or underside) to the top of everything, printed beside the
-            // carcass size once a finished top or underside adds to it: a 400
-            // carcass on a 120 kickboard with an 18 top is 538 overall.
-            const panelAddsHeight = topPanelMm > 0 || bottomPanelThicknessMm(item) > 0;
+            // carcass size whenever a kickboard, finished top or underside adds to
+            // it: a 400 carcass on a 120 kickboard with an 18 top is 538 overall.
             const overallHMm = overallHeightMm(item);
             // Line mode draws cabinets as ink outlines; colour modes keep the
             // per-type colour for the outlines, panels and label.
@@ -2258,7 +2304,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize={7} fill={fill} fillOpacity={0.55}
                     style={{ pointerEvents: "none" }}>
-                    {wMm}w × {hMm}h{panelAddsHeight ? ` · ${overallHMm} overall` : ""}
+                    {hMm}h × {wMm}w{overallHMm !== hMm ? ` · ${overallHMm}h overall` : ""}
                   </text>
                 )}
                 {item.shelf_qty > 0 && svgH > 52 && svgW > 32 && (
@@ -2333,15 +2379,15 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                 {kbMm > 0 && (
                   <>
                     <rect
-                      x={svgX} y={svgY + svgH}
-                      width={svgW} height={kbMm * scale}
+                      x={svgX - kbExt.leftMm * scale} y={svgY + svgH}
+                      width={svgW + (kbExt.leftMm + kbExt.rightMm) * scale} height={kbMm * scale}
                       fill="rgba(245,158,11,0.45)"
                       stroke="rgba(245,158,11,0.7)"
                       strokeWidth={0.5}
                       style={{ pointerEvents: "none" }}
                     />
                     {tileFillFor(item, "kickboard") && (
-                      <rect x={svgX} y={svgY + svgH} width={svgW} height={kbMm * scale}
+                      <rect x={svgX - kbExt.leftMm * scale} y={svgY + svgH} width={svgW + (kbExt.leftMm + kbExt.rightMm) * scale} height={kbMm * scale}
                         fill={tileFillFor(item, "kickboard")} fillOpacity={0.9}
                         style={{ pointerEvents: "none" }} />
                     )}
@@ -2535,9 +2581,13 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     finished side panels in elevation. */}
                 {topPanelMm > 0 && (() => {
                   const t = Math.max(topPanelMm * scale, 1.5);
+                  // Over the finished ends, and on to the wall where it is set
+                  // to run there. svg-left is the viewer's left in this view.
                   const { lowT, highT } = endPanelElevationSpanMm(item);
-                  const x = svgX - lowT * scale;
-                  const w = svgW + (lowT + highT) * scale;
+                  const lowAll = lowT + topExt.leftMm;
+                  const highAll = highT + topExt.rightMm;
+                  const x = svgX - lowAll * scale;
+                  const w = svgW + (lowAll + highAll) * scale;
                   const tile = tileFillFor(item, "top");
                   return (
                     <>
@@ -2557,6 +2607,20 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     label={wMm} horizontal
                   />
                 )}
+
+                {/* Height chain up the right-hand edge: kickboard or underside,
+                    carcass, finished top, and the overall. */}
+                {HEIGHT_CHAIN_TYPES.has(item.item_type) && svgW > 40 && svgH > 30 && (() => {
+                  const undersideMm = bottomPanelThicknessMm(item);
+                  const ys = [], parts = [];
+                  const botY = svgY + svgH;
+                  if (kbMm > 0) { ys.push(botY + kbMm * scale); parts.push(kbMm); }
+                  if (undersideMm > 0) { ys.push(botY + undersideMm * scale); parts.push(undersideMm); }
+                  ys.push(botY); parts.push(hMm);
+                  ys.push(svgY);
+                  if (topPanelMm > 0) { parts.push(topPanelMm); ys.push(svgY - topPanelMm * scale); }
+                  return <HeightChain x={svgX + svgW - 6} ys={ys} parts={parts} overallMm={overallHMm} printMode={printMode} />;
+                })()}
               </g>
             );
           })}

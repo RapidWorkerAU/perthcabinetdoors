@@ -18,7 +18,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 import {
-  MIN_GAP_MM, itemBaseMm, itemGaps, itemLevels, itemStops, wallCallouts,
+  MIN_GAP_MM, itemBaseMm, itemGaps, itemLevels, outlineHeights, itemStops, wallCallouts,
 } from "../lib/pcd-elevation-callouts.js";
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
@@ -163,12 +163,14 @@ test("the ladder does not print a rung for a drawer reveal", () => {
   assert.ok(ticks.length < 12, "a readable ladder, not one rung per reveal");
 });
 
-test("a cabinet with nothing in it is not annotated", () => {
+test("a cabinet with nothing in it gets its outline heights and no names", () => {
+  // The ladder always carries the floor, the carcass and the overall top, so
+  // the drawing says how tall the cabinet stands even when it is empty.
   const bare = wardrobe({ shelf_qty: 0, shelf_heights_mm: [], accessories: [] });
   assert.deepEqual(itemLevels(bare), []);
   assert.deepEqual(itemStops(bare), []);
   const { ticks, notes } = wallCallouts([bare]);
-  assert.equal(ticks.length, 0);
+  assert.deepEqual(ticks.map((t) => t.y), [...new Set(outlineHeights(bare))].sort((a, b) => b - a));
   assert.equal(notes.length, 0);
 });
 

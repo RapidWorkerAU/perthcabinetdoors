@@ -304,7 +304,7 @@ export function RoomCutList({ room, items = [] }) {
   const bpRuns = computeAllBackPanelRuns(roomItems);
   const fpRuns = computeAllFillerPanelRuns(roomItems);
   const upRuns = computeAllBottomPanelRuns(roomItems);
-  const tpRuns = computeAllTopPanelRuns(roomItems);
+  const tpRuns = computeAllTopPanelRuns(roomItems, room);
 
   const kbId = (run) => `kb-${room.id}-${run.wall}-${run.segments[0]?.item?.id}-${run.segments[0]?.leg}`;
   const bpId = (run) => `bp-${room.id}-${run.wall}-${run.segments[0]?.item?.id}`;

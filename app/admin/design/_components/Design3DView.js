@@ -43,6 +43,7 @@ import { backPanelSegment } from "../../../../lib/pcd-backpanel-utils";
 import { panelFrontProfile } from "../../../../lib/pcd-panel-options";
 import { rangehoodParts } from "../../../../lib/pcd-appliance-utils";
 import { topPanelSideExtensionMm, topPanelThicknessMm } from "../../../../lib/pcd-toppanel-utils";
+import { sideExtensionsAxisMm } from "../../../../lib/pcd-side-extension";
 import { shelfRailConfig, CLEAT_THICKNESS_MM } from "../../../../lib/pcd-shelf-rail-utils";
 // What is fitted inside a cabinet, and the shape of it. The elevation draws
 // from the same two modules, so the two views cannot disagree about a rail.
@@ -306,6 +307,15 @@ function FrustumMesh({ bottom, top, y0, y1, children }) {
 }
 
 // Extends a footprint frontward (away from the wall it backs onto) by `delta`.
+// Grows a rect along its wall's axis: `low` toward the smaller coordinate,
+// `high` toward the larger. For a top or kickboard that runs past the cabinet.
+function extendAlong(rect, wall, low, high) {
+  if (!low && !high) return rect;
+  return (wall === "top" || wall === "bottom")
+    ? { ...rect, x: rect.x - low, w: rect.w + low + high }
+    : { ...rect, y: rect.y - low, h: rect.h + low + high };
+}
+
 function extendFront(rect, wall, delta) {
   switch (wall) {
     case "top":    return { x: rect.x, y: rect.y, w: rect.w, h: rect.h + delta };
@@ -1210,7 +1220,7 @@ function SinkMesh({ cx, cz, topY, aw, ad, wall }) {
 // bookcase's plinth is INSET: the sides already run to the floor, so the board
 // is a rail spanning only the gap between them, from the floor up to the
 // raised bottom shelf — which is why it's drawn against the inner rect here.
-function KickboardMesh({ item, W, D }) {
+function KickboardMesh({ item, room, items, W, D }) {
   // A kickboard matches the carcass by default, or its own override; otherwise
   // the dark toe-kick colour.
   const src = usePanelSrc(item, "kickboard");
@@ -1225,7 +1235,13 @@ function KickboardMesh({ item, W, D }) {
         // Inset: a rail between the sides, set back, only a board thick — not a
         // filled block. Recess FIRST, then take the front edge, or the setback
         // would eat the board itself.
-        const recessed = insetFront(inset ? openInnerRect(leg.rect, leg.wall, carc, 0) : leg.rect, leg.wall, KICKBOARD_RECESS_MM);
+        // A plain kickboard can run on past either end to the wall, under a
+        // side filler. Corners and inset plinths never do (sideExtensionOn).
+        const ext = inset || isCornerType(item)
+          ? { lowMm: 0, highMm: 0 }
+          : sideExtensionsAxisMm(item, "kickboard", { room, items }, leg.wall);
+        const legRect = extendAlong(leg.rect, leg.wall, ext.lowMm, ext.highMm);
+        const recessed = insetFront(inset ? openInnerRect(legRect, leg.wall, carc, 0) : legRect, leg.wall, KICKBOARD_RECESS_MM);
         const footprint = inset
           ? frontEdgeRect(recessed, leg.wall, Math.max(Number(item.kickboard_thickness_mm) || 16, 6))
           : recessed;
@@ -1555,7 +1571,7 @@ function UndersidePanelMesh({ item, W, D }) {
 // Finished TOP panel — an applied board sitting on the carcass top, over a wall
 // cabinet or along a low base run. If the cabinet has finished side panels the
 // top footprint extends over them too, and over a finished back's edge.
-function TopPanelMesh({ item, W, D }) {
+function TopPanelMesh({ item, room, items, W, D }) {
   const src = usePanelSrc(item, "top");
   const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
   const t = topPanelThicknessMm(item);
@@ -1564,15 +1580,9 @@ function TopPanelMesh({ item, W, D }) {
   return (
     <>
       {cabinetLegs(item, W, D).map((leg, i) => {
-        const { lowT, highT } = topPanelSideExtensionMm(item, leg.wall);
-        const rect = { ...leg.rect };
-        if (leg.wall === "top" || leg.wall === "bottom") {
-          rect.x -= lowT;
-          rect.w += lowT + highT;
-        } else {
-          rect.y -= lowT;
-          rect.h += lowT + highT;
-        }
+        // Over any finished ends, and on to the wall where it is set to run there.
+        const { lowT, highT } = topPanelSideExtensionMm(item, leg.wall, { room, items });
+        const rect = extendAlong(leg.rect, leg.wall, lowT, highT);
         const topRect = extendBack(
           extendFront(rect, leg.wall, topPanelFrontOverhangMm(item)),
           leg.wall,
@@ -2695,12 +2705,12 @@ export default function Design3DView({ room, items, onClose, colourImages, showC
               ) : (
                 <>
                   <CabinetMesh item={item} W={W} D={D} roomHmm={H} elevationWall={elevationWall} />
-                  <KickboardMesh item={item} W={W} D={D} />
+                  <KickboardMesh item={item} room={room} items={placed} W={W} D={D} />
                   <FillerMesh item={item} room={room} items={placed} W={W} D={D} />
                   <EndPanelMesh item={item} room={room} W={W} D={D} />
                   <SideFillerMesh item={item} room={room} items={placed} W={W} D={D} />
                   <UndersidePanelMesh item={item} W={W} D={D} />
-                  <TopPanelMesh item={item} W={W} D={D} />
+                  <TopPanelMesh item={item} room={room} items={placed} W={W} D={D} />
                   <BackPanelMesh item={item} room={room} items={placed} W={W} D={D} />
                   <BenchtopMesh item={item} items={placed} W={W} D={D} />
                   <ShelfMesh item={item} W={W} D={D} />

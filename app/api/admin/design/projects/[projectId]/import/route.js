@@ -150,7 +150,7 @@ export async function POST(request, { params }) {
     // staging-table flow: review before committing.
     if (preview) {
       const gstRate = businessDefaults.gst_rate ?? GST_RATE;
-      const warnings = computeItemWarnings({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, isMadeToOrderBoard });
+      const warnings = computeItemWarnings({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, isMadeToOrderBoard });
       const { generated, missing: missingHardware } = withLibraryHardwareRatesForGenerated(
         generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items }),
         hardwareRows || []
@@ -250,7 +250,7 @@ export async function POST(request, { params }) {
         });
       }
 
-      warnings.push(...computeItemWarnings({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, isMadeToOrderBoard }));
+      warnings.push(...computeItemWarnings({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, isMadeToOrderBoard }));
       if (warnings.length) {
         return Response.json({ ok: true, needsConfirmation: true, warnings });
       }

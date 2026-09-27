@@ -77,10 +77,12 @@ test("finishing pieces match their default part, override wins", () => {
     ...carc, front_type: "doors",
     door_style: { material: "board", finish: "matt", colour: "Oak" },
   };
-  // Kickboard and back default to the carcass. Neither is a finished face: a
-  // kickboard is its own board and a back is inside the cabinet.
+  // The kickboard defaults to the carcass: it is its own board, not a
+  // finished face. A finished back IS one (it is the exposed back of an island
+  // or peninsula), so it follows the finished panels and then the doors, the
+  // same board the quote cuts it from.
   assert.equal(slotColourFields(doorItem, "kickboard").colour, "White");
-  assert.equal(slotColourFields(doorItem, "back").colour, "White");
+  assert.equal(slotColourFields(doorItem, "back").colour, "Oak");
   // A finished underside IS visible finishing board, so it follows the doors.
   // This expectation said "White" and was left behind when slotColourFields
   // was changed to treat the underside as a finished face.
