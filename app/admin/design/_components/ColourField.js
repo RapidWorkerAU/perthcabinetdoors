@@ -111,7 +111,16 @@ export default function ColourField({
           // Merge the picked colour INTO the existing style so sibling fields
           // (profile on a door style, etc.) are preserved — exactly as the old
           // draft-merge did.
-          onPick={(picked) => { onChange(hasColour(picked) ? { ...(value || {}), ...picked } : null); setOpen(false); }}
+          // The picked board's supplier and library row replace the old ones
+          // outright. An older style can carry its supplier as supplier_name,
+          // which the quote reads first, so that is cleared or the previous
+          // board's supplier would ride along on the new colour.
+          onPick={(picked) => {
+            onChange(hasColour(picked)
+              ? { ...(value || {}), ...picked, supplier: picked.supplier || null, supplier_name: null, colour_library_id: picked.colour_library_id || null }
+              : null);
+            setOpen(false);
+          }}
           onClose={() => setOpen(false)}
         />
       )}

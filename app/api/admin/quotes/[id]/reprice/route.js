@@ -88,6 +88,7 @@ export async function POST(request, { params }) {
     const lines = await loadQuoteLinesWithCabinets(context.supabase, quoteId);
 
     const resolveBoard = await createBoardCostResolver(context.supabase);
+    const suppliersFilled = [];
 
     // The other option libraries, read once each. Only the ones this quote
     // actually has lines for, so a quote of nothing but doors does not fetch
@@ -182,6 +183,31 @@ export async function POST(request, { params }) {
         skipped += 1;
         continue;
       }
+
+      // WHOSE BOARD, even when there is no price to take. A board line with no
+      // supplier gets it from the library whenever the library is sure whose
+      // board it is, priced or not, and whether or not the rate is a manual
+      // override: a supplier is not a price. Lines imported before the design
+      // import learned to do this are mended by pressing Reprice.
+      if (!String(line.supplier_name || "").trim()) {
+        const source = resolveBoard.source({
+          colourLibraryId: line.unit_cost_source_id || null,
+          material: line.material,
+          thickness: line.thickness,
+          finish: line.finish,
+          colour: line.colour,
+        });
+        if (source?.supplier) {
+          const { error: supplierError } = await context.supabase
+            .from("pcd_quote_line_items").update({ supplier_name: source.supplier }).eq("id", line.id);
+          if (supplierError && !isMissingSupplierNameSchemaError(supplierError)) throw supplierError;
+          if (!supplierError) {
+            line.supplier_name = source.supplier;
+            suppliersFilled.push({ id: line.id, product_name: line.product_name || line.product_type || "Line", colour: line.colour || "", supplier: source.supplier });
+          }
+        }
+      }
+
       if (!includeManual && isManualOverride(line)) {
         skipped += 1;
         continue;
@@ -262,7 +288,7 @@ export async function POST(request, { params }) {
 
     const quote = await recalculateQuoteTotals(context.supabase, quoteId, businessDefaults);
 
-    if (changed.length || unmatched.length || madeToOrder.length || cabinetsToReconfigure.length) {
+    if (changed.length || unmatched.length || madeToOrder.length || cabinetsToReconfigure.length || suppliersFilled.length) {
       await logOrderActivity(context.supabase, {
         quote_id: quoteId,
         actor_type: "admin",
@@ -271,6 +297,7 @@ export async function POST(request, { params }) {
         description: [
           `${changed.length} line${changed.length === 1 ? "" : "s"} repriced`,
           cabinetsToReconfigure.length ? `${cabinetsToReconfigure.length} cabinet board rate(s) refreshed` : "",
+          suppliersFilled.length ? `${suppliersFilled.length} supplier${suppliersFilled.length === 1 ? "" : "s"} filled in` : "",
           madeToOrder.length ? `${madeToOrder.length} made to order` : "",
           `${unmatched.length} could not be matched`,
         ].filter(Boolean).join(", "),
@@ -279,6 +306,7 @@ export async function POST(request, { params }) {
           cabinets_to_reconfigure: cabinetsToReconfigure,
           unmatched,
           made_to_order: madeToOrder,
+          suppliers_filled: suppliersFilled,
           skipped,
           by_library: byLibrary,
           include_manual: includeManual,
@@ -294,6 +322,8 @@ export async function POST(request, { params }) {
       cabinetCount: cabinetsToReconfigure.length,
       unmatchedCount: unmatched.length,
       madeToOrderCount: madeToOrder.length,
+      suppliersFilledCount: suppliersFilled.length,
+      suppliersFilled,
       skippedCount: skipped,
       changed,
       cabinetsToReconfigure,

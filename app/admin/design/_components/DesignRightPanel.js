@@ -1241,6 +1241,14 @@ export function FrontStyleFields({ label, style, onChange, matchOptions, colourI
             colour: s?.colour || "",
             thickness_mm: s?.thickness_mm || style.thickness_mm || 18,
             cost_per_sqm: s?.cost_per_sqm ?? style.cost_per_sqm ?? 0,
+            // Whose board, and which library row. These were left off, so every
+            // door and drawer front reached the quote with no supplier, and
+            // because the style is merged over the old one, a recoloured front
+            // could keep the previous board's supplier. Always written, null
+            // rather than left behind.
+            supplier: s?.supplier || s?.supplier_name || null,
+            supplier_name: null,
+            colour_library_id: s?.colour_library_id || null,
           })
         }
       />

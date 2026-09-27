@@ -1684,16 +1684,21 @@ export default function QuoteEditor({ quoteId }) {
         ? ` ${payload.madeToOrderCount} ${payload.madeToOrderCount === 1 ? "line is" : "lines are"} made to order, priced from the supplier's quote.`
         : "";
 
+      // Suppliers filled in from the library on lines that had none.
+      const supplierNote = payload.suppliersFilledCount
+        ? ` Supplier filled in on ${payload.suppliersFilledCount} line${payload.suppliersFilledCount === 1 ? "" : "s"} from the colour library.`
+        : "";
+
       if (!payload.changedCount && !payload.cabinetCount && !payload.unmatchedCount && !payload.madeToOrderCount) {
-        toast({ title: "Every line already matches the option libraries." });
+        toast({ title: supplierNote ? supplierNote.trim() : "Every line already matches the option libraries." });
       } else if (payload.unmatchedCount) {
         const reasons = [...new Set((payload.unmatched || []).map((line) => line.message))];
         toast({
-          title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced. ${payload.unmatchedCount} could not be priced: ${reasons.join(" ")}${cabinetNote}${mtoNote}`,
+          title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced. ${payload.unmatchedCount} could not be priced: ${reasons.join(" ")}${cabinetNote}${mtoNote}${supplierNote}`,
           variant: "error",
         });
       } else {
-        toast({ title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced from the option libraries${fromNote}.${cabinetNote}${mtoNote}` });
+        toast({ title: `${payload.changedCount} line${payload.changedCount === 1 ? "" : "s"} repriced from the option libraries${fromNote}.${cabinetNote}${mtoNote}${supplierNote}` });
       }
     } catch (error) {
       toast({ title: error?.message || "Could not reprice this quote.", variant: "error" });
