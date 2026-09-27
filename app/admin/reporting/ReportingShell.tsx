@@ -24,6 +24,7 @@ export const REPORTS: SecondaryLink[] = [
   { href: '/admin/reporting/customer-updates', label: 'Weekly customer updates' },
   { href: '/admin/reporting/materials', label: 'Colours and materials' },
   { href: '/admin/reporting/leads', label: 'Lead conversion' },
+  { href: '/admin/reporting/issues', label: 'Order issues' },
 ]
 
 export default function ReportingShell({ children }: { children: React.ReactNode }) {

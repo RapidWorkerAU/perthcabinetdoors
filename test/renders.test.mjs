@@ -160,3 +160,20 @@ test("the design tool's cabinet panel renders", async () => {
   const html = renderToString(createElement(DesignRightPanel, { item, allItems: [item], room, onItemChange: () => {} }));
   assert.ok(html.length > 0, "rendered nothing at all");
 });
+
+// ── The order issues report ──────────────────────────────────────────────────
+
+test("the order issues report renders", async () => {
+  const { default: IssuesClient } = await import("../app/admin/reporting/issues/IssuesClient.tsx");
+  const issues = [
+    { id: "a", order_id: "o1", kind: "wrong_size", detail: "Cut short", stage_at_report: null, owner: "us", blocks: "panel", extra_cost_ex_gst: 120, raised_by: null, raised_at: "2026-09-10T01:00:00Z", resolved_at: null, resolution: null, created_at: "2026-09-10T01:00:00Z", panel_label: "Door 1" },
+    { id: "b", order_id: "o1", kind: "other", detail: "Scratched", stage_at_report: "Cut", owner: "supplier", blocks: "order", extra_cost_ex_gst: 0, raised_by: null, raised_at: "2026-08-01T01:00:00Z", resolved_at: "2026-08-05T01:00:00Z", resolution: "Replaced", created_at: "2026-08-01T01:00:00Z", panel_label: null },
+  ];
+  const html = renderToString(createElement(IssuesClient, {
+    loadFailed: false, issues, today: "2026-09-27",
+    orders: [{ id: "o1", order_number: "1042", name: "Smith Kitchen", customer_name: "J Smith", status: "active" }],
+    agents: [], kinds: [],
+  }));
+  assert.ok(html.includes("Order issues"), "rendered without its title");
+  assert.ok(html.includes("No cost recorded"), "the uncosted figure is missing");
+});

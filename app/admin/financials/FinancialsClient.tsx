@@ -20,6 +20,10 @@ import {
 import CashReceivedPanel from './CashReceivedPanel'
 import { cn } from '@/lib/utils'
 import { tableStyles as t } from '@/components/ui/table-styles'
+import {
+  CARD, TH, TD, NUM, FOOT, money2, dateLabel, RailRow, RailDivider,
+  ReportHeader, CustomRange, HowWorkedOut,
+} from '../reporting/_components/ReportParts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -102,36 +106,13 @@ type LedgerRow = {
 
 // ─── Small pieces ────────────────────────────────────────────────────────────
 
-const CARD = 'bg-white border border-[#dbd8cc] rounded-[10px]'
-// The ledger takes its look from the shared table tokens. It stays unpaginated
-// because the totals row adds up every row shown, and a total under one page of
-// many reads as the whole period. Figures never wrap, so a column lines up.
-const TH = t.th
-const TD = cn(t.td, 'whitespace-nowrap')
-const NUM = t.num
-// The totals row: a cell like the rest, with its line above rather than below.
-const FOOT = cn(t.td, 'whitespace-nowrap border-b-0 border-t border-[#dbd8cc] font-semibold')
-
-function dateLabel(value: string | null): string {
-  if (!value) return '·'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '·'
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' })
-}
+// The card, the ledger cells, the rail and the period control come from
+// ../reporting/_components/ReportParts, shared with every other money report.
+// The ledger stays unpaginated because the totals row adds up every row shown,
+// and a total under one page of many reads as the whole period.
 
 function titleCase(s: string): string {
   return String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
-// Cents, unlike the headline figures. A total is read for its size; a row is
-// read to be matched against an invoice, and $255 does not match $255.75.
-function money2(value: number): string {
-  return Number(value || 0).toLocaleString('en-AU', {
-    style: 'currency',
-    currency: 'AUD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
 }
 
 const STATUS_CHIP: Record<string, string> = {
@@ -148,60 +129,6 @@ function StatusChip({ status }: { status: string }) {
     <span className={`inline-flex items-center px-2 py-[1px] rounded-full text-[10px] font-semibold border ${STATUS_CHIP[status] || STATUS_CHIP.complete}`}>
       {titleCase(status)}
     </span>
-  )
-}
-
-function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      className={`min-h-[40px] px-3 text-[13px] md:min-h-0 md:h-[26px] md:px-[10px] md:text-[11px] font-medium rounded-[6px] border transition-colors ${
-        on ? 'bg-[#1c2b1e] text-white border-[#1c2b1e]' : 'bg-white text-[#5a5a52] border-[#dbd8cc] hover:border-[#6b9e61]'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
-// One line of the rail. Clicking a figure that has a table behind it switches
-// the table to it, so the summary and the list are never showing two different
-// things without the person having asked for that.
-function RailRow({ label, value, sub, strong, onClick, active }: {
-  label: string
-  value: string
-  sub?: string
-  strong?: boolean
-  onClick?: () => void
-  active?: boolean
-}) {
-  const body = (
-    <>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[11px] text-[#8b8a81]">{label}</span>
-        {active && <span className="text-[9px] font-semibold uppercase tracking-[0.06em] text-[#6b9e61]">Listed</span>}
-      </div>
-      <div className={`${NUM} ${strong ? 'text-[17px] text-[#1a1a18]' : 'text-[14px] text-[#5a5a52]'} font-medium mt-[2px]`}>
-        {value}
-      </div>
-      {sub && <div className="text-[10px] text-[#8b8a81] mt-[2px] leading-[1.4]">{sub}</div>}
-    </>
-  )
-
-  if (!onClick) return <div className="px-3 py-[9px] border-b border-[#edf4eb] last:border-b-0">{body}</div>
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full text-left px-3 py-[9px] border-b border-[#edf4eb] last:border-b-0 transition-colors ${
-        active ? 'bg-[#f5fff5]' : 'hover:bg-[#faf9f5]'
-      }`}
-    >
-      {body}
-    </button>
   )
 }
 
@@ -337,12 +264,12 @@ export default function FinancialsClient({
 
       {/* Page header. The period control sits with the title because it governs
           everything on the page except the owed figure, which says so itself. */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-[20px] font-bold text-[#1a1a18]">Financials</h1>
-          <p className="text-[12px] text-[#8b8a81] mt-[2px]">
-            {view === 'work' ? 'Every job, and what it is worth.' : 'Every dollar that reached the account.'}
-          </p>
+      <ReportHeader
+        title="Financials"
+        subtitle={view === 'work' ? 'Every job, and what it is worth.' : 'Every dollar that reached the account.'}
+        periodId={periodId}
+        onPeriod={setPeriodId}
+      >
           <div className="inline-flex rounded-[7px] border border-[#dbd8cc] overflow-hidden mt-2">
             <button
               type="button"
@@ -365,31 +292,10 @@ export default function FinancialsClient({
               Money in
             </button>
           </div>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {PERIODS.map(p => (
-            <Pill key={p.id} on={periodId === p.id} onClick={() => setPeriodId(p.id)}>{p.label}</Pill>
-          ))}
-        </div>
-      </div>
+      </ReportHeader>
 
       {periodId === 'custom' && (
-        <div className={`${CARD} p-3 mb-4 flex items-center gap-2 flex-wrap`}>
-          <span className="text-[11px] text-[#8b8a81]">From</span>
-          <input
-            type="date"
-            value={customFrom}
-            onChange={e => setCustomFrom(e.target.value)}
-            className="h-[40px] px-3 text-[16px] md:h-[28px] md:px-2 md:text-[11px] border border-[#dbd8cc] rounded-[6px] text-[#1a1a18]"
-          />
-          <span className="text-[11px] text-[#8b8a81]">to</span>
-          <input
-            type="date"
-            value={customTo}
-            onChange={e => setCustomTo(e.target.value)}
-            className="h-[40px] px-3 text-[16px] md:h-[28px] md:px-2 md:text-[11px] border border-[#dbd8cc] rounded-[6px] text-[#1a1a18]"
-          />
-        </div>
+        <CustomRange from={customFrom} to={customTo} onFrom={setCustomFrom} onTo={setCustomTo} />
       )}
 
       {loadFailed && (
@@ -442,7 +348,7 @@ export default function FinancialsClient({
                 ? `ex GST · ${profitWon.unknownCount} with no cost split, left out`
                 : 'ex GST · markup plus labour'}
             />
-            <div className="h-[5px] bg-[#faf9f5] border-y border-[#edf4eb]" />
+            <RailDivider />
             <RailRow
               label="Unaccepted quotes"
               value={money(sumAmounts(pipeline))}
@@ -704,11 +610,7 @@ export default function FinancialsClient({
 
       {/* How the figures are worked out. Last, and quiet, because it is read
           once and then trusted, not scanned daily. */}
-      <details className={`${CARD} mt-4`}>
-        <summary className="px-4 py-3 text-[12px] font-semibold text-[#1a1a18] cursor-pointer select-none">
-          How these figures are worked out
-        </summary>
-        <ul className="px-4 pb-3 flex flex-col gap-2 text-[11.5px] text-[#5a5a52] leading-[1.5]">
+      <HowWorkedOut>
           <li><b className="text-[#1a1a18]">Confirmed orders</b> are dated from acceptance, falling back to when the order was raised for older ones. Cancelled orders, and orders still waiting on their deposit, are left out.</li>
           <li><b className="text-[#1a1a18]">Unaccepted quotes</b> are quotes sent or viewed that have not become an order, dated from when they were sent.</li>
           <li><b className="text-[#1a1a18]">Profit</b> is markup plus labour, ex GST, from the quote. An order with no quote behind it counts as unknown, never as zero.</li>
@@ -717,8 +619,7 @@ export default function FinancialsClient({
           <li><b className="text-[#1a1a18]">Owed to us</b> is every unpaid payment on an order that is not cancelled, aged from the day it was requested. It ignores the period, because it is what is owed today.</li>
           <li><b className="text-[#1a1a18]">Money in</b> is a different question and a different answer. It counts a payment on the day it was banked, whatever happened to the job afterwards, so a deposit that cleared and a job that was later cancelled both stay on it. Refunds are their own rows on the day they went back out. It will not match the work figures for the same period, and it is not meant to.</li>
           <li><b className="text-[#1a1a18]">The financial year</b> runs July to June.</li>
-        </ul>
-      </details>
+      </HowWorkedOut>
     </div>
   )
 }

@@ -21,9 +21,13 @@ import { readFileSync } from "node:fs";
 const CALENDAR = readFileSync(new URL("../app/admin/calendar/CalendarManager.tsx", import.meta.url), "utf8");
 const FINANCIALS = readFileSync(new URL("../app/admin/financials/FinancialsClient.tsx", import.meta.url), "utf8");
 const CASH = readFileSync(new URL("../app/admin/financials/CashReceivedPanel.tsx", import.meta.url), "utf8");
-// Both halves of the financials screen. These rules are about the screen, not
-// about which file a tab or a search box happens to live in.
-const FINANCIALS_ALL = FINANCIALS + CASH;
+// The period pills, the custom range boxes and the tabs every money report
+// shares, which the financials screen imports rather than writes out.
+const REPORT_PARTS = readFileSync(new URL("../app/admin/reporting/_components/ReportParts.tsx", import.meta.url), "utf8");
+// Both halves of the financials screen and the parts it is built from. These
+// rules are about the screen, not about which file a tab or a search box
+// happens to live in.
+const FINANCIALS_ALL = FINANCIALS + CASH + REPORT_PARTS;
 
 // ── Nothing runs out of its box ─────────────────────────────────────────────
 
@@ -91,7 +95,7 @@ test("everything on a phone is big enough to hit", () => {
 
 test("the period pills are tappable on a phone", () => {
   // Seven of them, and they steer the whole page.
-  assert.match(FINANCIALS, /min-h-\[40px\] px-3 text-\[13px\] md:min-h-0 md:h-\[26px\]/, "40px on a phone, 26 on a desktop");
+  assert.match(FINANCIALS_ALL, /min-h-\[40px\] px-3 text-\[13px\] md:min-h-0 md:h-\[26px\]/, "40px on a phone, 26 on a desktop");
 });
 
 test("every tab on the financials screen is tappable on a phone", () => {

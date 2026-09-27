@@ -44,6 +44,7 @@ import {
 import { settlementMethodLabel } from '../../../lib/pcd-payment-settlement'
 import { cn } from '@/lib/utils'
 import { tableStyles as t } from '@/components/ui/table-styles'
+import { CARD, TH, TD, NUM, FOOT, money2, dateLabel, monthLabel } from '../reporting/_components/ReportParts'
 
 type Payment = {
   id: string
@@ -78,33 +79,8 @@ interface Props {
   confirmedTotal: number
 }
 
-const CARD = 'bg-white border border-[#dbd8cc] rounded-[10px]'
-// The same ledger look as the Work tab, from the shared table tokens, and
+// The same ledger look as the Work tab, from the shared report pieces, and
 // unpaginated for the same reason: the totals row adds up every row shown.
-const TH = t.th
-const TD = cn(t.td, 'whitespace-nowrap')
-const NUM = t.num
-// The totals row: a cell like the rest, with its line above rather than below.
-const FOOT = cn(t.td, 'whitespace-nowrap border-b-0 border-t border-[#dbd8cc] font-semibold')
-
-function money2(value: number): string {
-  return Number(value || 0).toLocaleString('en-AU', {
-    style: 'currency', currency: 'AUD', minimumFractionDigits: 2, maximumFractionDigits: 2,
-  })
-}
-
-function dateLabel(value: string | null): string {
-  if (!value) return '·'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '·'
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' })
-}
-
-function monthLabel(key: string): string {
-  const d = new Date(key + '-01T00:00:00')
-  if (Number.isNaN(d.getTime())) return key
-  return d.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
-}
 
 // How the money arrived, in the words the rest of the admin uses for it. Stripe
 // and unrecorded are not settlement methods, they are the two states a payment
