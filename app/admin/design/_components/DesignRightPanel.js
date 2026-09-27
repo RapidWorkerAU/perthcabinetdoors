@@ -33,7 +33,7 @@ import { kickboardAllowedFor } from "../../../../lib/pcd-ikea-presets";
 import { carcassColumnsFromStyle, shelfColumnsFromStyle } from "../../../../lib/pcd-design-carcass-style";
 import { computeBackPanelRun } from "../../../../lib/pcd-backpanel-utils";
 import { computeBottomPanelRun } from "../../../../lib/pcd-bottompanel-utils";
-import { computeTopPanelRun } from "../../../../lib/pcd-toppanel-utils";
+import { computeTopPanelRun, hasTopPanel, overallHeightMm, topPanelAllowedFor, topSurfacePatch } from "../../../../lib/pcd-toppanel-utils";
 import { fillerPanelGapMm, computeFillerPanelRun, sideFillerGapMm } from "../../../../lib/pcd-fillerpanel-utils";
 import { getAbsPos, itemDepthMm } from "./DesignCanvas";
 import { CABINET_MOUNT_MM, computeKickboardRun, hasKickboard, isCornerType } from "../../../../lib/pcd-kickboard-utils";
@@ -1612,7 +1612,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
       : draft.end_panel_right ? "right end" : "",
     draft.has_back_panel || draft.back_panel_wall1 || draft.back_panel_wall2 ? "finished back" : "",
     draft.has_bottom_panel ? "underside" : "",
-    draft.has_top_panel ? "top" : "",
+    hasTopPanel(draft) ? "top" : "",
   ].filter(Boolean).join(" · ") || "none";
 
   summary.benchtop = draft.has_benchtop
@@ -2422,6 +2422,11 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
             Top panel width includes the finished side panel thickness on any selected side.
           </p>
         )}
+        {draft.item_type !== "wall_cabinet" && (
+          <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+            Our own finished board on the carcass top, quoted as a panel. It takes the place of a benchtop on this cabinet.
+          </p>
+        )}
       </div>
     );
   };
@@ -2510,8 +2515,12 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
   if (draft.item_type === "wall_cabinet" || draft.item_type === "tall_cabinet" || draft.item_type === "corner_tall_cabinet") {
     panelGroups.push({ id: "filler", label: "Filler panel", toggles: [{ key: "has_filler_panel", label: "Include filler panel (to ceiling)" }] });
   }
-  if (draft.item_type === "wall_cabinet") {
+  // A wall cabinet's finished top, or the finished surface of a low run built
+  // from white carcasses. On a low cabinet it replaces the benchtop.
+  if (topPanelAllowedFor(draft)) {
     panelGroups.push({ id: "top-panel", label: "Top panel", toggles: [{ key: "has_top_panel", label: "Finished top panel" }] });
+  }
+  if (draft.item_type === "wall_cabinet") {
     panelGroups.push({ id: "underside", label: "Underside panel", toggles: [{ key: "has_bottom_panel", label: "Finished underside panel" }] });
     panelGroups.push({ id: "side-panels", label: "Side panels", toggles: [
       { key: "end_panel_left", label: "Left side panel" },
@@ -2641,6 +2650,15 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                   <input className={styles.fieldInput} type="number" min="1" value={draft.qty ?? ""} onChange={(e) => set("qty", e.target.value)} />
                 </label>
               </div>
+              {(hasTopPanel(draft) || (draft.item_type === "wall_cabinet" && draft.has_bottom_panel)) && (
+                <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+                  Overall height {overallHeightMm(draft)}mm: the {draft.height_mm || 720} carcass plus the {[
+                    hasKickboard(draft) ? "kickboard" : "",
+                    hasTopPanel(draft) ? "finished top" : "",
+                    draft.item_type === "wall_cabinet" && draft.has_bottom_panel ? "finished underside" : "",
+                  ].filter(Boolean).join(" and ")}.
+                </p>
+              )}
               {isBlindCorner && (
                 <>
                   <SectionDivider label="Blind Zone" />
@@ -2856,7 +2874,7 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
                 renderOverridePicker("filler_panel_style", "Filler", "Matches the doors on a doored cabinet, otherwise the carcass.")}
               {draft.item_type === "wall_cabinet" && draft.has_bottom_panel &&
                 renderOverridePicker("bottom_panel_style", "Underside", "Matches the carcass by default.")}
-              {draft.item_type === "wall_cabinet" && draft.has_top_panel &&
+              {hasTopPanel(draft) &&
                 renderOverridePicker("top_panel_style", "Top panel", "Matches the finished side panels by default.")}
               {draft.has_back_panel &&
                 renderOverridePicker("back_panel_style", "Back panel", "Matches the carcass by default.")}
@@ -3109,9 +3127,14 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               </p>
               <label className={styles.fieldCheckLabel}>
                 <input type="checkbox" checked={draft.has_benchtop ?? false}
-                  onChange={(e) => setNow("has_benchtop", e.target.checked)} />
+                  onChange={(e) => setMultiNow(topSurfacePatch("has_benchtop", e.target.checked))} />
                 Show a benchtop on this cabinet
               </label>
+              {hasTopPanel(draft) && !draft.has_benchtop && (
+                <p style={{ fontSize: 10, color: "var(--dt-text-muted, #888780)", margin: 0, lineHeight: 1.4 }}>
+                  This cabinet has a finished top panel. Turning the benchtop on turns the top panel off.
+                </p>
+              )}
 
               {draft.has_benchtop && (
                 <>
@@ -3180,7 +3203,8 @@ function CabinetConfigForm({ item, allItems, room, materialDefaults, onItemChang
               <div key={g.id} style={{ marginTop: 2 }}>
                 {panelGroups.length > 1 && <SectionDivider label={g.label} />}
                 {g.toggles.map((tg) => (
-                  <Toggle key={tg.key} theme="light" label={tg.label} checked={!!draft[tg.key]} disabled={tg.disabled} onChange={(v) => setNow(tg.key, v)} />
+                  <Toggle key={tg.key} theme="light" label={tg.label} checked={!!draft[tg.key]} disabled={tg.disabled}
+                    onChange={(v) => (tg.key === "has_top_panel" ? setMultiNow(topSurfacePatch(tg.key, v)) : setNow(tg.key, v))} />
                 ))}
               </div>
             ))}

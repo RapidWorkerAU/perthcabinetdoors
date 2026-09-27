@@ -24,7 +24,7 @@ import {
   finishPanelVerticalSpanMm,
 } from "../../../../lib/pcd-finishpanel-utils";
 import { rangehoodGeometry } from "../../../../lib/pcd-appliance-utils";
-import { topPanelThicknessMm } from "../../../../lib/pcd-toppanel-utils";
+import { topPanelThicknessMm, overallHeightMm } from "../../../../lib/pcd-toppanel-utils";
 import PinchZoom from "./PinchZoom";
 import dynamic from "next/dynamic";
 
@@ -774,7 +774,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   // The STORED mount height. This seeds the drag (startMount) and is what
   // gets written back on drop, so it must stay kickboard-free — folding the
   // offset in here would persist it into mount_height_mm and compound on
-  // every drag. Use dispWithKickboard() for anything that measures.
+  // every drag. Use dispOccupied() for anything that measures.
   function getDisp(item) {
     const lp = localPos[item.id] || {};
     const baseX = getWallPos(item);
@@ -784,12 +784,28 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
     };
   }
 
-  // The same item's VISIBLE carcass bottom — what every snap, collision and
-  // dimension should compare against, since a kickboard really does lift the
-  // carcass. Read-only: never write this back to the item.
-  function dispWithKickboard(item) {
+  // The same item's VISIBLE bottom and full OCCUPIED height — what every snap,
+  // collision and dimension should compare against. A kickboard really does
+  // lift the carcass, a finished underside hangs below it and a finished top
+  // sits on it, so a 400 base on a 120 kickboard with an 18 top occupies 120 to
+  // 538. Read-only: never write this back to the item.
+  function dispOccupied(item) {
     const disp = getDisp(item);
-    return { ...disp, mount_height_mm: disp.mount_height_mm + kickboardOffsetMm(item) };
+    return {
+      ...disp,
+      mount_height_mm: disp.mount_height_mm + vOffsetMm(item),
+      height_mm: occupiedHeightMm(item),
+    };
+  }
+
+  // Stored mount height to visible bottom: up by the kickboard, down by a
+  // finished underside.
+  function vOffsetMm(item) {
+    return kickboardOffsetMm(item) - bottomPanelThicknessMm(item);
+  }
+
+  function occupiedHeightMm(item) {
+    return (item.height_mm || 720) + topPanelThicknessMm(item) + bottomPanelThicknessMm(item);
   }
 
   // An item's full OCCUPIED span along this wall — carcass plus any applied
@@ -863,7 +879,9 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       // view's axis, so it must not be written back from here.
       verticalOnly: projectedAlongWall,
       width_mm:   item.width_mm  || 600,
-      height_mm:  item.height_mm || 720,
+      // Occupied, not carcass: a finished top or underside is part of what
+      // has to fit under the ceiling and what a neighbour snaps to.
+      height_mm:  occupiedHeightMm(item),
       startPtX:   pt.x,
       startPtY:   pt.y,
       startXmm:   dis.x_mm,
@@ -872,7 +890,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       // kickboard) since they're what gets written back on drop. These two
       // shift the item into the visible, panel-inclusive space that
       // neighbours are measured in, for the snap and collision maths only.
-      kbOff:      kickboardOffsetMm(item),
+      vOff:       vOffsetMm(item),
       lowT,
       spanW:      (item.width_mm || 600) + lowT + highT,
     });
@@ -957,19 +975,21 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
       if (VERTICAL_DRAG_TYPES.has(drag.item_type)) {
         // The ceiling clamp is on the item's visible top, which its own
-        // kickboard raises — otherwise a kickboarded panel drags through it.
-        newMount = Math.max(0, Math.min(roomHeightMm - drag.height_mm - drag.kbOff, drag.startMount - dyMm));
+        // kickboard and finished top raise — otherwise a kickboarded panel
+        // drags through it. The floor clamp is on its visible bottom, which a
+        // finished underside lowers.
+        newMount = Math.max(Math.max(0, -drag.vOff), Math.min(roomHeightMm - drag.height_mm - drag.vOff, drag.startMount - dyMm));
       }
 
       // All same-wall items for snap candidates, positioned at their visible
-      // carcass bottoms and full occupied widths so snapping aligns to real
-      // edges — including the outer face of any applied end panel.
+      // bottoms with their full occupied widths and heights so snapping aligns
+      // to real edges — the outer face of any applied end panel, and the top
+      // of a finished top panel rather than the carcass under it.
       const allWallOthers = wallItems
         .filter((i) => i.id !== drag.itemId)
         .map((i) => ({
-          ...dispWithKickboard(i),
+          ...dispOccupied(i),
           ...occupiedWallSpan(i),
-          height_mm: i.height_mm || 720,
         }));
 
       // Snap and collide in VISIBLE space on both axes — neighbours sit at
@@ -977,8 +997,8 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       // has to be measured the same way or it lands against the wrong faces.
       // Convert straight back afterwards: only the stored (kickboard-free,
       // carcass-edge) values are ever written out.
-      const snapped = applyEdgeSnap(newX - drag.lowT, newMount + drag.kbOff, drag.spanW, drag.height_mm, allWallOthers, drag.item_type, wallWidthMm, roomHeightMm);
-      newMount = snapped.mount_height_mm - drag.kbOff;
+      const snapped = applyEdgeSnap(newX - drag.lowT, newMount + drag.vOff, drag.spanW, drag.height_mm, allWallOthers, drag.item_type, wallWidthMm, roomHeightMm);
+      newMount = snapped.mount_height_mm - drag.vOff;
       if (!drag.verticalOnly) newX = snapped.x_mm + drag.lowT;
       // A height-only drag shows no sideways guide — nothing is moving there.
       const snapX = drag.verticalOnly ? null : snapped.snapX;
@@ -986,7 +1006,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
       if (!drag.verticalOnly) {
         // Collision resolution — recompute height-filtered obstacles after snap (mount may have changed)
-        const vLo = newMount + drag.kbOff, vHi = vLo + drag.height_mm;
+        const vLo = newMount + drag.vOff, vHi = vLo + drag.height_mm;
         const obstacles = allWallOthers
           .filter((i) => i.mount_height_mm < vHi && i.mount_height_mm + i.height_mm > vLo);
 
@@ -1084,10 +1104,10 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
 
   // ---- Derived for gap overlays --------------------------------------------
   const draggingItem  = drag?.type === "item" ? wallItems.find((i) => i.id === drag.itemId) : null;
-  const dragDisp      = draggingItem ? dispWithKickboard(draggingItem) : null;
+  const dragDisp      = draggingItem ? dispOccupied(draggingItem) : null;
   const draggingMount = dragDisp?.mount_height_mm ?? 0;
   const vLoDrag       = draggingMount;
-  const vHiDrag       = draggingMount + (draggingItem?.height_mm || 720);
+  const vHiDrag       = draggingMount + (dragDisp?.height_mm || 720);
   // All other cabinets on this wall, unfiltered — used for the vertical
   // (mount-height) gap, which is filtered by X-range overlap instead (see
   // computeYGaps), not by mount-height overlap. Positioned at their visible
@@ -1097,7 +1117,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
   const allDragOthers = drag?.type === "item"
     ? wallItems
         .filter((i) => i.id !== drag.itemId)
-        .map((i) => ({ ...dispWithKickboard(i), ...occupiedWallSpan(i), height_mm: i.height_mm || 720, item_type: i.item_type, has_benchtop: i.has_benchtop }))
+        .map((i) => ({ ...dispOccupied(i), ...occupiedWallSpan(i), item_type: i.item_type, has_benchtop: i.has_benchtop }))
     : [];
   // Same list, but restricted to cabinets that share the dragged item's
   // mount-height range — the only ones it could actually interact/collide
@@ -1152,6 +1172,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
       registerSrc(resolveColourSrc(colourImages, item, "endpanel_left"));
       registerSrc(resolveColourSrc(colourImages, item, "endpanel_right"));
       registerSrc(resolveColourSrc(colourImages, item, "benchtop"));
+      registerSrc(resolveColourSrc(colourImages, item, "top"));
     }
   }
   const tileFillFor = (item, slot) => {
@@ -1548,6 +1569,13 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const fillerMm = ((item.item_type === "wall_cabinet" || item.item_type === "tall_cabinet" || item.item_type === "corner_tall_cabinet") && item.has_filler_panel)
               ? (item.filler_panel_height_mm ?? fillerPanelGapMm(item, room, items))
               : 0;
+            // A finished top sits on the carcass, so the filler starts above it.
+            const topPanelMm = topPanelThicknessMm(item);
+            // Floor (or underside) to the top of everything, printed beside the
+            // carcass size once a finished top or underside adds to it: a 400
+            // carcass on a 120 kickboard with an 18 top is 538 overall.
+            const panelAddsHeight = topPanelMm > 0 || bottomPanelThicknessMm(item) > 0;
+            const overallHMm = overallHeightMm(item);
             // Line mode draws cabinets as ink outlines; colour modes keep the
             // per-type colour for the outlines, panels and label.
             const fill   = lineOnly ? "#26313f" : (item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
@@ -2230,7 +2258,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize={7} fill={fill} fillOpacity={0.55}
                     style={{ pointerEvents: "none" }}>
-                    {wMm}w × {hMm}h
+                    {wMm}w × {hMm}h{panelAddsHeight ? ` · ${overallHMm} overall` : ""}
                   </text>
                 )}
                 {item.shelf_qty > 0 && svgH > 52 && svgW > 32 && (
@@ -2378,7 +2406,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                 {fillerMm > 0 && (
                   <>
                     <rect
-                      x={svgX} y={svgY - fillerMm * scale}
+                      x={svgX} y={svgY - (fillerMm + topPanelMm) * scale}
                       width={svgW} height={fillerMm * scale}
                       fill="rgba(245,158,11,0.45)"
                       stroke="rgba(245,158,11,0.7)"
@@ -2386,7 +2414,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                       style={{ pointerEvents: "none" }}
                     />
                     {tileFillFor(item, "filler") && (
-                      <rect x={svgX} y={svgY - fillerMm * scale} width={svgW} height={fillerMm * scale}
+                      <rect x={svgX} y={svgY - (fillerMm + topPanelMm) * scale} width={svgW} height={fillerMm * scale}
                         fill={tileFillFor(item, "filler")} fillOpacity={0.9}
                         style={{ pointerEvents: "none" }} />
                     )}
@@ -2502,21 +2530,22 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
                   );
                 })()}
 
-                {/* Top panel — wall cabinets only. Sits ABOVE the carcass and
-                    extends over any finished side panels in elevation. */}
-                {topPanelThicknessMm(item) > 0 && (() => {
-                  const t = Math.max(topPanelThicknessMm(item) * scale, 1.5);
+                {/* Top panel — a wall cabinet's top or a low run's finished
+                    surface. Sits ABOVE the carcass and extends over any
+                    finished side panels in elevation. */}
+                {topPanelMm > 0 && (() => {
+                  const t = Math.max(topPanelMm * scale, 1.5);
                   const { lowT, highT } = endPanelElevationSpanMm(item);
+                  const x = svgX - lowT * scale;
+                  const w = svgW + (lowT + highT) * scale;
+                  const tile = tileFillFor(item, "top");
                   return (
-                    <rect
-                      x={svgX - lowT * scale}
-                      y={svgY - t}
-                      width={svgW + (lowT + highT) * scale}
-                      height={t}
-                      fill="#a855f7"
-                      fillOpacity={0.9}
-                      style={{ pointerEvents: "none" }}
-                    />
+                    <>
+                      <rect x={x} y={svgY - t} width={w} height={t}
+                        fill="#a855f7" fillOpacity={0.9} style={{ pointerEvents: "none" }} />
+                      {tile && <rect x={x} y={svgY - t} width={w} height={t}
+                        fill={tile} fillOpacity={0.95} style={{ pointerEvents: "none" }} />}
+                    </>
                   );
                 })()}
 
@@ -2541,7 +2570,7 @@ export default function FrontElevationView({ wall: initialWall, room, items, onC
             const span = occupiedWallSpan(draggingItem);
             const xMm  = span.x_mm;
             const wMm  = span.width_mm;
-            const hMm  = draggingItem.height_mm || 720;
+            const hMm  = dragDisp.height_mm;
             const mountMm = draggingMount;
 
             const { gapLeftWall, gapRightWall, gapLeftNeighbor, gapRightNeighbor, leftBound, rightBound } =

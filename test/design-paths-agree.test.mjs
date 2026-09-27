@@ -109,6 +109,7 @@ const CASES = [
   { label: "corner cabinet, diagonal", item: cabinet({ item_type: "corner_base_cabinet", corner_style: "diagonal", secondary_width_mm: 900, secondary_wall: "left", door_config: { columns: 1, rows: 1 } }) },
   { label: "cabinet with finished end panels", item: cabinet({ end_panel_left: true, end_panel_right: true }) },
   { label: "cabinet with a finished back, top and underside", item: cabinet({ item_type: "wall_cabinet", has_back_panel: true, has_top_panel: true, has_bottom_panel: true, has_kickboard: false }) },
+  { label: "low cabinet with a finished top panel", item: cabinet({ item_type: "base_cabinet", height_mm: 400, has_kickboard: true, has_top_panel: true, has_benchtop: false, end_panel_left: true }) },
   { label: "cabinet with a kickboard", item: cabinet({ has_kickboard: true, kickboard_height_mm: 150, kickboard_thickness_mm: 16, kickboard_style: style }) },
   { label: "cabinet with a filler panel", item: cabinet({ has_filler_panel: true, filler_panel_height_mm: 200, filler_panel_thickness_mm: 16 }) },
   { label: "standalone panel", item: { id: "item-1", room_id: ROOM.id, item_type: "panel", label: "End panel", wall: "top", qty: 1, width_mm: 18, height_mm: 900, depth_mm: 600, panel_thickness_mm: 18, material: "decorative board", finish: "Matt", colour: "Carcass", door_style: style } },

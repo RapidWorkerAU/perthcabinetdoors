@@ -35,6 +35,7 @@ import AddItemRail from "../../../components/AddItemRail";
 import { resolveColourSrc, slotColourFields } from "../../../lib/pcd-colour-images";
 import { materialLabelForType } from "../../../lib/pcd-colour-library";
 import { CABINET_MOUNT_MM, hasKickboard } from "../../../lib/pcd-kickboard-utils";
+import { topPanelAllowedFor, topSurfacePatch } from "../../../lib/pcd-toppanel-utils";
 import { bayShelfCount, applianceBayHeightMm, bayIsPinned, bayPercentOfCabinet, withResolvedBayHeights } from "../../../lib/pcd-door-utils";
 import { applianceKindDefaults } from "../../../lib/pcd-appliance-utils";
 import { carcassIsConfigurable, hasBenchtopOption, BENCHTOP_NOT_SUPPLIED, BENCHTOP_NOT_SUPPLIED_SHORT, PUBLIC_CARCASS_THICKNESS_MM, PUBLIC_SHELF_THICKNESS_MM } from "../../../lib/pcd-public-parts";
@@ -182,7 +183,7 @@ function targetsFor(item) {
     ...(carcassIsConfigurable(item) || isBookcase(item) ? [{ key: "body", label: isBookcase(item) ? "Bookcase" : "Board" }] : []),
     ...(hasKickboard(item) ? [{ key: "kickboard", label: "Kickboard" }] : []),
     ...(hasFinishPanels(item) ? [{ key: "panels", label: "Panels" }] : []),
-    ...(HAS_BENCHTOP.has(item.item_type) ? [{ key: "benchtop", label: "Benchtop (drawing only)" }] : []),
+    ...(HAS_BENCHTOP.has(item.item_type) && item.has_benchtop ? [{ key: "benchtop", label: "Benchtop (drawing only)" }] : []),
   ];
 }
 
@@ -2369,7 +2370,13 @@ function ItemPanel({ item, items = [], room = null, onUpdate, onDuplicate, onDel
           {(item.item_type === "base_cabinet" || item.item_type === "tall_cabinet") && (
             <Toggle label="Finished back panel" checked={item.has_back_panel} onChange={(v) => set({ has_back_panel: v })} />
           )}
-          {wall && <Toggle label="Top panel" checked={item.has_top_panel} onChange={(v) => set({ has_top_panel: v })} />}
+          {/* On a base cabinet the top panel is our own finished board in place
+              of the drawn benchtop. There is no benchtop switch here, so turning
+              the panel off puts the benchtop back. */}
+          {topPanelAllowedFor(item) && (
+            <Toggle label={wall ? "Top panel" : "Finished top panel (instead of a benchtop)"} checked={item.has_top_panel}
+              onChange={(v) => set(v ? topSurfacePatch("has_top_panel", true) : { has_top_panel: false, ...(hasBenchtopOption(item) ? { has_benchtop: true } : {}) })} />
+          )}
           {wall && <Toggle label="Underside panel" checked={item.has_bottom_panel} onChange={(v) => set({ has_bottom_panel: v })} />}
           {FILLER_PANEL_TYPES.has(item.item_type) && <Toggle label="Top filler panel" checked={item.has_filler_panel} onChange={(v) => set({ has_filler_panel: v })} />}
           {anyFinishPanel && (floor || wall) && (

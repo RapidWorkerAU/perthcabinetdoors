@@ -59,7 +59,7 @@ import {
   benchtopRunWaterfallEnds,
 } from "../../../../lib/pcd-benchtop-utils";
 import { fillerPanelGapMm, sideFillerWidthMm } from "../../../../lib/pcd-fillerpanel-utils";
-import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, openBaySections, bayShelfHeightsMm, cabinetShelfHeightsMm, frontPanelMode, frontPanelThicknessMm, FRONT_PANEL_MODE_INSET, FRONT_PANEL_MODE_OVER } from "../../../../lib/pcd-door-utils";
+import { doorRowGapMm, drawerGapMm, frontRevealMm, frontWidthMm, bayTypeForRow, openBaySections, bayShelfHeightsMm, cabinetShelfHeightsMm, frontPanelMode, frontPanelThicknessMm, topPanelFrontOverhangMm, FRONT_PANEL_MODE_INSET, FRONT_PANEL_MODE_OVER } from "../../../../lib/pcd-door-utils";
 
 const M = 1000; // mm → metres
 
@@ -1263,7 +1263,8 @@ function FillerMesh({ item, room, items, W, D }) {
   const heightMm = item.filler_panel_height_mm ?? fillerPanelGapMm(item, room, items);
   if (!heightMm || heightMm <= 0) return null;
   const t = Number(item.filler_panel_thickness_mm) || 16;
-  const [, topMm] = cabinetVerticalSpanMm(item);
+  // Starts on a finished top panel, not the carcass under it.
+  const topMm = cabinetVerticalSpanMm(item)[1] + topPanelThicknessMm(item);
   return (
     <>
       {cabinetLegs(item, W, D).map((leg, i) => {
@@ -1551,12 +1552,12 @@ function UndersidePanelMesh({ item, W, D }) {
   );
 }
 
-// Finished TOP panel — an applied board sitting over a wall cabinet. If the
-// cabinet has finished side panels, the top footprint extends over them too.
+// Finished TOP panel — an applied board sitting on the carcass top, over a wall
+// cabinet or along a low base run. If the cabinet has finished side panels the
+// top footprint extends over them too, and over a finished back's edge.
 function TopPanelMesh({ item, W, D }) {
   const src = usePanelSrc(item, "top");
   const color = useMonoColor(item.colour_hex || ITEM_COLORS[item.item_type] || "#888");
-  if (!item.has_top_panel || item.item_type !== "wall_cabinet") return null;
   const t = topPanelThicknessMm(item);
   if (t <= 0) return null;
   const [, topMm] = cabinetVerticalSpanMm(item);
@@ -1572,8 +1573,11 @@ function TopPanelMesh({ item, W, D }) {
           rect.y -= lowT;
           rect.h += lowT + highT;
         }
-        const hasFront = ["doors", "drawers", "mixed"].includes(item.front_type || "none");
-        const topRect = extendFront(rect, leg.wall, hasFront ? frontPanelThicknessMm(item) : 0);
+        const topRect = extendBack(
+          extendFront(rect, leg.wall, topPanelFrontOverhangMm(item)),
+          leg.wall,
+          endPanelBackExtensionMm(item),
+        );
         const box = boxFromRect(topRect, topMm, topMm + t);
         return (
           <mesh key={i} position={box.position}>
