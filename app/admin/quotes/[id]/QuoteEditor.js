@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import TermsEditor from "../../_components/TermsEditor";
 import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-html";
-import { IconArrowLeft, IconCheck, IconChevronRight, IconCopy, IconEdit, IconExternalLink, IconMessage, IconRuler, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
+import { IconArrowLeft, IconCheck, IconChevronRight, IconCopy, IconEdit, IconExternalLink, IconInfoCircle, IconMessage, IconRuler, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
 import { checkSize } from "../../../../lib/pcd-size-limits";
@@ -72,6 +72,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import AdminLoading from "@/components/admin/AdminLoading";
 import { tableStyles } from "@/components/ui/table-styles";
+import { isThermoLine, priceThermoLine, withThermoPrice } from "../../../../lib/pcd-thermo-pricing";
 import { cn } from "@/lib/utils";
 import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
@@ -776,7 +777,88 @@ function calculatedUnitCostFromLine(line) {
   return roundMoney(area * rate);
 }
 
-function applyCalculatedUnitCost(line, { forceAuto = false } = {}) {
+// What the rate card says about a thermolaminate line: what it was charged as,
+// or why it could not be priced. { text, warn }, or null for any other line.
+// A line that cannot be priced says so rather than sitting at $0 looking like a
+// price; warn marks the ones that need somebody to look.
+function thermoCostNoteText(line, card, error) {
+  if (!isThermoLine(line)) return null;
+  if (!card) return { text: error || "Waiting for the thermolaminate rate card to price this line.", warn: true };
+  const result = priceThermoLine(line, card);
+  if (!result.ok) return { text: result.reason, warn: true };
+  const cost = Number(line.product_unit_cost_ex_gst) || 0;
+  const charged = `charged as ${result.chargedHeight} x ${result.chargedWidth}${result.surcharge ? ", full width surcharge" : ""}`;
+  if (!(cost > 0)) {
+    return { text: `Not priced yet. Rate card says $${result.unitCost.toFixed(2)} (${charged}). Edit the line or press Reprice.`, warn: true };
+  }
+  if (line.unit_cost_mode === "manual") {
+    return { text: `Typed cost. Rate card says $${result.unitCost.toFixed(2)}, ${charged}.`, warn: false };
+  }
+  return { text: `Priced from the thermolaminate rate card, ${charged}.`, warn: false };
+}
+
+// A small information icon beside a thermolaminate line's unit cost, with the
+// rate card's note on hover (or on tap, where there is no hover). Kept out of
+// the cell itself so the column stays one clean price per line. Amber when the
+// line needs looking at.
+//
+// Portalled to the body and fixed, for the same reason as LineNoteButton: the
+// table scrolls sideways and its sticky cells paint over anything inside a row.
+const THERMO_INFO_WIDTH = 260;
+function ThermoCostNote({ line, card, error }) {
+  const [anchor, setAnchor] = useState(null);
+  const note = thermoCostNoteText(line, card, error);
+  if (!note) return null;
+
+  function show(event) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom > 120;
+    setAnchor({
+      left: Math.max(12, Math.min(rect.left, window.innerWidth - THERMO_INFO_WIDTH - 12)),
+      top: below ? rect.bottom + 6 : undefined,
+      bottom: below ? undefined : window.innerHeight - rect.top + 6,
+    });
+  }
+  const hide = () => setAnchor(null);
+
+  return (
+    <span className="inline-flex flex-shrink-0" onMouseEnter={show} onMouseLeave={hide}>
+      <button
+        type="button"
+        aria-label={note.text}
+        onFocus={show}
+        onBlur={hide}
+        onClick={(event) => (anchor ? hide() : show(event))}
+        className={`inline-flex h-[16px] w-[16px] items-center justify-center rounded-full border-0 bg-transparent p-0 ${note.warn ? "text-[#b7791f] hover:text-[#8a6d0b]" : "text-[#b3b1a8] hover:text-[#5a5a52]"}`}
+      >
+        <IconInfoCircle size={13} />
+      </button>
+      {anchor && typeof document !== "undefined"
+        ? createPortal(
+          <span
+            role="tooltip"
+            className="pointer-events-none fixed z-[60] rounded-[6px] bg-[#1a1a18] px-3 py-[8px] text-[11px] leading-[1.45] text-white shadow-[0_8px_24px_rgba(26,26,24,0.28)]"
+            style={{ width: THERMO_INFO_WIDTH, left: anchor.left, top: anchor.top, bottom: anchor.bottom }}
+          >
+            {note.text}
+          </span>,
+          document.body
+        )
+        : null}
+    </span>
+  );
+}
+
+// A THERMOLAMINATE LINE PRICES FROM THE RATE CARD, not a rate per m2: Polytec
+// makes it to order and charges per piece. Same automatic and manual behaviour
+// as a board line, so a typed cost still wins and Reset still offers the
+// calculated one. With no card loaded (or none readable) it is left alone, and
+// the line says why rather than pricing from anywhere else.
+function applyCalculatedUnitCost(line, { forceAuto = false, thermoCard = null } = {}) {
+  if (isThermoLine(line)) {
+    if (!thermoCard) return line;
+    return withThermoPrice(line, thermoCard, { forceAuto });
+  }
   const calculated = calculatedUnitCostFromLine(line);
   const hasAutoSource = Number(line?.unit_cost_per_sqm_ex_gst || 0) > 0;
   const next = {
@@ -1240,6 +1322,11 @@ export default function QuoteEditor({ quoteId }) {
   const { toast } = useToast();
   const [publishEmail, setPublishEmail] = useState(null);
   const [businessDefaults, setBusinessDefaults] = useState(DEFAULT_BUSINESS_DEFAULTS);
+  // The thermolaminate rate card from Settings. Null until it loads, and while
+  // it cannot be read thermolaminate lines are not priced automatically.
+  const [thermoCard, setThermoCard] = useState(null);
+  const [thermoCardError, setThermoCardError] = useState("");
+  const priceLine = (line, options = {}) => applyCalculatedUnitCost(line, { ...options, thermoCard });
   // Which calculated field the cursor is in, so it can hold an empty box while
   // somebody is clearing it. See showsTyped.
   const [focusedField, setFocusedField] = useState("");
@@ -1737,6 +1824,7 @@ export default function QuoteEditor({ quoteId }) {
     loadQuote();
     loadCustomers();
     loadBusinessDefaults();
+    loadThermoCard();
     loadColourSwatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteId]);
@@ -1866,6 +1954,21 @@ export default function QuoteEditor({ quoteId }) {
   // them, so a failed load meant the editor quietly priced the job at the
   // built-in 40% and $85/hr while showing no sign anything was wrong. Say so
   // instead: the numbers on screen are not the configured ones.
+  async function loadThermoCard() {
+    try {
+      const response = await fetch("/api/admin/thermo-pricing", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok || !payload.card) {
+        setThermoCardError(payload?.error || "Could not load the thermolaminate rate card.");
+        return;
+      }
+      setThermoCard(payload.card);
+      setThermoCardError("");
+    } catch (error) {
+      setThermoCardError(error?.message || "Could not load the thermolaminate rate card.");
+    }
+  }
+
   async function loadBusinessDefaults() {
     try {
       const response = await fetch("/api/admin/business-defaults", { cache: "no-store" });
@@ -1937,7 +2040,7 @@ export default function QuoteEditor({ quoteId }) {
       };
     }
     if (field === "width_mm" || field === "height_mm") {
-      return applyCalculatedUnitCost(next);
+      return priceLine(next);
     }
     return next;
   }
@@ -2089,10 +2192,12 @@ export default function QuoteEditor({ quoteId }) {
       profile_type: profileModal.profile_type,
       profile: profileModal.profile,
     };
+    // A new profile is a new price, the same as picking a new colour: the line
+    // goes back to automatic.
     if (profileModal.lineIndex === editableLineIndex) {
-      setEditableLineDraft((current) => ({ ...(current || form.lines[profileModal.lineIndex] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)), ...patch }));
+      setEditableLineDraft((current) => priceLine({ ...(current || form.lines[profileModal.lineIndex] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)), ...patch }, { forceAuto: true }));
     } else {
-      updateSavedLine(profileModal.lineIndex, (line) => ({ ...line, ...patch }));
+      updateSavedLine(profileModal.lineIndex, (line) => priceLine({ ...line, ...patch }, { forceAuto: true }));
     }
     setProfileModal(null);
   }
@@ -2237,7 +2342,7 @@ export default function QuoteEditor({ quoteId }) {
         next.unit_cost_source_id = item.id;
         next.unit_cost_source_label = item.name || "";
         next.unit_cost_per_sqm_ex_gst = rate;
-        return applyCalculatedUnitCost(next, { forceAuto: rate > 0 });
+        return priceLine(next, { forceAuto: rate > 0 });
       }
     }
 
@@ -2259,6 +2364,18 @@ export default function QuoteEditor({ quoteId }) {
       if (patch.material !== "Thermolaminate") {
         next.profile_type = "";
         next.profile = "";
+      }
+      // OUR THERMOLAMINATE MARGIN, in the markup field where it can be changed.
+      // Switching a line to thermolaminate takes it; switching away puts back
+      // the usual markup, but only if nobody changed it from the thermo one.
+      const thermoMargin = thermoCard ? Number(thermoCard.margin_percent) : null;
+      if (thermoMargin !== null && Number.isFinite(thermoMargin)) {
+        if (patch.material === "Thermolaminate" && line.material !== "Thermolaminate") {
+          next.markup_percent = thermoMargin;
+        } else if (patch.material !== "Thermolaminate" && line.material === "Thermolaminate" && Number(line.markup_percent) === thermoMargin) {
+          // Blank until the defaults have loaded, which reads as "the default".
+          next.markup_percent = defaultsLoaded ? businessDefaults.markup_percent : "";
+        }
       }
     }
 
@@ -2305,6 +2422,12 @@ export default function QuoteEditor({ quoteId }) {
       }
     }
 
+    if (Object.prototype.hasOwnProperty.call(patch, "unit_cost_per_sqm_ex_gst") && isThermoLine(next)) {
+      // Picking a thermolaminate colour: made to order, so no rate per m2, but
+      // the rate card prices it. A new colour is a new price: automatic again.
+      return priceLine(next, { forceAuto: true });
+    }
+
     if (Object.prototype.hasOwnProperty.call(patch, "unit_cost_per_sqm_ex_gst")) {
       const hasAutoCost = Number(patch.unit_cost_per_sqm_ex_gst || 0) > 0;
       next.unit_cost_mode = hasAutoCost ? "auto" : "manual";
@@ -2314,7 +2437,7 @@ export default function QuoteEditor({ quoteId }) {
         next.calculated_unit_cost_ex_gst = 0;
         return next;
       }
-      return applyCalculatedUnitCost(next, { forceAuto: true });
+      return priceLine(next, { forceAuto: true });
     }
 
     if (Object.prototype.hasOwnProperty.call(patch, "profile_type")) {
@@ -2334,7 +2457,7 @@ export default function QuoteEditor({ quoteId }) {
       next.hinge_qty = "";
     }
 
-    return applyCalculatedUnitCost(next);
+    return priceLine(next);
   }
 
   function updateProductLine(index, patch) {
@@ -2346,7 +2469,7 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   function resetLineUnitCost(index) {
-    const reset = (line) => applyCalculatedUnitCost({ ...line, unit_cost_mode: "auto" }, { forceAuto: true });
+    const reset = (line) => priceLine({ ...line, unit_cost_mode: "auto" }, { forceAuto: true });
     if (index === editableLineIndex) {
       setEditableLineDraft((current) => reset(current || form.lines[index] || emptyLineWithDefaults(businessDefaults, defaultsLoaded)));
       return;
@@ -3748,16 +3871,19 @@ export default function QuoteEditor({ quoteId }) {
                         <td className={td}>
                           {isEditable && !cabinetOwnsBoard ? (
                             <div>
-                              <div className="flex h-[22px] items-center overflow-hidden rounded-[3px] border border-[#a8c5a0] bg-white focus-within:border-[#6b9e61]">
-                                <span className="flex h-full items-center border-r border-[#a8c5a0] bg-[#f5f8f4] px-[5px] text-[10px] text-[#8b8a81]">$</span>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  placeholder="0.00"
-                                  value={line.product_unit_cost_ex_gst}
-                                  onChange={e => updateLine(index, 'product_unit_cost_ex_gst', e.target.value)}
-                                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-[5px] text-[10px] font-mono text-[#1a1a18] focus:outline-none"
-                                />
+                              <div className="flex items-center gap-[4px]">
+                                <div className="flex h-[22px] min-w-0 flex-1 items-center overflow-hidden rounded-[3px] border border-[#a8c5a0] bg-white focus-within:border-[#6b9e61]">
+                                  <span className="flex h-full items-center border-r border-[#a8c5a0] bg-[#f5f8f4] px-[5px] text-[10px] text-[#8b8a81]">$</span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0.00"
+                                    value={line.product_unit_cost_ex_gst}
+                                    onChange={e => updateLine(index, 'product_unit_cost_ex_gst', e.target.value)}
+                                    className="h-full min-w-0 flex-1 border-0 bg-transparent px-[5px] text-[10px] font-mono text-[#1a1a18] focus:outline-none"
+                                  />
+                                </div>
+                                <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} />
                               </div>
                               {canResetUnitCost && (
                                 <button type="button" onClick={() => resetLineUnitCost(index)} className="mt-[3px] block text-[10px] font-medium text-[#2d5e28] hover:underline">
@@ -3766,7 +3892,10 @@ export default function QuoteEditor({ quoteId }) {
                               )}
                             </div>
                           ) : (
-                            <span className="text-[11px] text-[#1a1a18] font-mono block leading-[1.25]">{formatMoney(line.product_unit_cost_ex_gst || calculated.product_unit_cost_ex_gst || 0, form.currency)}</span>
+                            <span className="inline-flex items-center gap-[4px]">
+                              <span className="text-[11px] text-[#1a1a18] font-mono leading-[1.25]">{formatMoney(line.product_unit_cost_ex_gst || calculated.product_unit_cost_ex_gst || 0, form.currency)}</span>
+                              <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} />
+                            </span>
                           )}
                         </td>
 
@@ -5592,11 +5721,14 @@ export default function QuoteEditor({ quoteId }) {
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white">
-                          <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 font-mono">$</span>
-                          <input type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst}
-                            onChange={e => updateLine(idx, 'product_unit_cost_ex_gst', e.target.value)}
-                            className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none" />
+                        <div className="flex items-center gap-2">
+                          <div className="flex min-w-0 flex-1 items-center h-[44px] border border-[#a8c5a0] rounded-[6px] overflow-hidden bg-white">
+                            <span className="px-3 h-full flex items-center text-[12px] text-[#8b8a81] bg-[#f5f8f4] border-r border-[#a8c5a0] flex-shrink-0 font-mono">$</span>
+                            <input type="text" inputMode="decimal" placeholder="0.00" value={line.product_unit_cost_ex_gst}
+                              onChange={e => updateLine(idx, 'product_unit_cost_ex_gst', e.target.value)}
+                              className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none" />
+                          </div>
+                          <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} />
                         </div>
                         {canResetUnitCost && (
                           <button type="button" onClick={() => resetLineUnitCost(idx)} className="text-[11px] text-[#6b9e61] hover:underline mt-[3px] block">

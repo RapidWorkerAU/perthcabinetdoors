@@ -13,6 +13,7 @@ import QuoteTermsManager from './QuoteTermsManager'
 import EmailSignatureCard from './EmailSignatureCard'
 import BookingSettingsCard from './BookingSettingsCard'
 import ListsManager from './ListsManager'
+import ThermoPricingCard from './ThermoPricingCard'
 
 interface DefaultField {
   key:        string
@@ -324,7 +325,7 @@ const primaryBtn = 'h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-mediu
 const secondaryBtn = 'h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors'
 const fieldLabelClass = 'flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]'
 
-type Tab = 'profile' | 'launch' | 'defaults' | 'lists' | 'bookings'
+type Tab = 'profile' | 'launch' | 'defaults' | 'thermo' | 'lists' | 'bookings'
 
 export default function AccountSettingsForm({ currentEmail }: { currentEmail?: string }) {
   const [activeTab,        setActiveTab]        = useState<Tab>('profile')
@@ -555,6 +556,9 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     { key: 'profile',  label: 'My Profile',        description: 'Name, email and password',                              icon: accountInitials },
     { key: 'launch',   label: 'Website Overlay',    description: 'Password gate, copy and countdown',                    icon: 'WO' },
     { key: 'defaults', label: 'Business Defaults',  description: 'GST, markup, labour and hardware costs',               icon: 'BD' },
+    // Beside Business Defaults because it is the same kind of setting: it
+    // decides what a thermolaminate line costs on every quote.
+    { key: 'thermo',   label: 'Thermolaminate Pricing', description: 'Polytec rate card and our margin',                icon: 'TP' },
     // Last, because it is the one you visit rarely and on purpose. Business
     // Defaults changes what every quote costs; this changes what a dropdown
     // offers.
@@ -878,6 +882,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
   const tabContent =
     activeTab === 'profile'  ? profileContent  :
     activeTab === 'launch'   ? launchContent   :
+    activeTab === 'thermo'   ? <ThermoPricingCard /> :
     activeTab === 'lists'    ? <ListsManager /> :
     activeTab === 'bookings' ? <BookingSettingsCard /> :
     defaultsContent

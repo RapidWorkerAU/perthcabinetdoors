@@ -55,6 +55,9 @@ import {
   withoutSupplierName,
 } from "../_quote-line-save";
 
+import { isThermoLine, priceThermoLine, withThermoPrice } from "../../../../../../lib/pcd-thermo-pricing";
+import { getThermoRateCard } from "../../../../../../lib/pcd-thermo-pricing-store";
+
 const CABINET_PRODUCT_TYPE = "base_cabinet";
 
 // A price somebody typed OVER the automatic one, which a reprice leaves alone
@@ -89,6 +92,8 @@ export async function POST(request, { params }) {
 
     const resolveBoard = await createBoardCostResolver(context.supabase);
     const suppliersFilled = [];
+    // Thermolaminate is priced from the rate card, not the colour library.
+    const { card: thermoCard, error: thermoCardError } = await getThermoRateCard(context.supabase);
 
     // The other option libraries, read once each. Only the ones this quote
     // actually has lines for, so a quote of nothing but doors does not fetch
@@ -210,6 +215,40 @@ export async function POST(request, { params }) {
 
       if (!includeManual && isManualOverride(line)) {
         skipped += 1;
+        continue;
+      }
+
+      // ── THERMOLAMINATE, from the rate card ──────────────────────────────
+      if (isThermoLine(line)) {
+        const entry = { id: line.id, product_name: line.product_name || line.product_type || "Line", colour: line.colour || "" };
+        if (!thermoCard) {
+          madeToOrder.push({ ...entry, reason: "made_to_order", message: thermoCardError || "The thermolaminate rate card could not be read." });
+          continue;
+        }
+        const result = priceThermoLine(line, thermoCard);
+        if (!result.ok) {
+          madeToOrder.push({ ...entry, reason: "made_to_order", message: result.reason });
+          continue;
+        }
+        const beforeCost = Number(line.product_unit_cost_ex_gst || 0);
+        const next = withThermoPrice(line, thermoCard, { forceAuto: true });
+        if (roundMoney(beforeCost) === roundMoney(result.unitCost) && line.unit_cost_mode === "auto") {
+          skipped += 1;
+          continue;
+        }
+        const calculated = calculateQuoteLine(next, businessDefaults);
+        const row = quoteLineRow(
+          { ...calculated, design_item_id: line.design_item_id, design_project_id: line.design_project_id },
+          quoteId,
+          line.sort_order || 0
+        );
+        let thermoError = (await context.supabase.from("pcd_quote_line_items").update(row).eq("id", line.id)).error;
+        if (thermoError && isMissingSupplierNameSchemaError(thermoError)) {
+          thermoError = (await context.supabase.from("pcd_quote_line_items").update(withoutSupplierName(row, thermoError)).eq("id", line.id)).error;
+        }
+        if (thermoError) throw thermoError;
+        byLibrary.board += 1;
+        changed.push({ ...entry, from_rate: roundMoney(beforeCost), to_rate: roundMoney(result.unitCost), library: "Thermolaminate rate card" });
         continue;
       }
 

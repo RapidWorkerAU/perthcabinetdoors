@@ -8,6 +8,7 @@ import { withLibraryBoardRatesForAll } from "../../../../../../../lib/pcd-design
 // library the day the quote is staged, not from a copy taken when it was drawn.
 import { withLibraryHardwareRatesForGenerated } from "../../../../../../../lib/pcd-design-hardware-rates";
 import { mergeIdenticalLines } from "../../../../../../../lib/pcd-import-utils";
+import { getThermoRateCard } from "../../../../../../../lib/pcd-thermo-pricing-store";
 import { assertQuoteEditable } from "../../../../../../../lib/pcd-quote-lock";
 // The design-to-pieces translation itself. Shared with the public request
 // path so a customer's design and one of ours produce the same pieces.
@@ -138,6 +139,9 @@ export async function POST(request, { params }) {
     // from the same settings, or the numbers someone approves are not the
     // numbers that get saved.
     const businessDefaults = await getBusinessDefaults(context.supabase);
+    // The thermolaminate rate card, once. Unreadable means thermolaminate
+    // lines come in unpriced, as they always did, never priced from elsewhere.
+    const { card: thermoCard } = await getThermoRateCard(context.supabase);
 
     // The hardware library, once, for the accessories fitted inside cabinets.
     // A library that cannot be read leaves them at no price and says so in the
@@ -166,7 +170,7 @@ export async function POST(request, { params }) {
       const byRoom = new Map(); // roomName → Map(itemId → { itemId, label, isCabinet, lines })
       for (const { line, itemId, part } of mergeIdenticalLines(generated)) {
         const src = mergedById.get(itemId);
-        const priced = calculateQuoteLine(withCalculatedUnitCost({ ...line }), businessDefaults);
+        const priced = calculateQuoteLine(withCalculatedUnitCost({ ...line }, { thermoCard }), businessDefaults);
         pricedLines.push(priced);
         const roomName = roomNameById.get(src?.room_id) || "Unassigned";
         if (!byRoom.has(roomName)) byRoom.set(roomName, new Map());
@@ -321,7 +325,7 @@ export async function POST(request, { params }) {
         // swept once its item is deleted, and the project tag is what scopes
         // the sweep away from other projects' and hand-added lines.
         const taggedLine = { ...line, design_item_id: itemId, design_project_id: projectId };
-        await saveQuoteLine(context.supabase, quoteId, withCalculatedUnitCost(taggedLine), { sortOrder });
+        await saveQuoteLine(context.supabase, quoteId, withCalculatedUnitCost(taggedLine, { thermoCard }), { sortOrder });
         sortOrder += 1;
         results.created += 1;
       } catch (err) {
