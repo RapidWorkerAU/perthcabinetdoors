@@ -2,7 +2,7 @@ import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicArrowIcon from "@/components/public/PublicArrowIcon";
 import PublicFooter from "@/components/public/PublicFooter";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 import PublicSiteNav from "../PublicSiteNav";
 import styles from "../journey.module.css";
 
@@ -76,7 +76,8 @@ const REASSURANCE = [
   ["Quotes are free", "On-site measure and design input is $100, deducted from your order."],
 ];
 
-export default function StartPage() {
+export default async function StartPage() {
+  const shopOpen = (await readPublicSiteSettings()).shop_open;
   return (
     <>
       <PublicSiteNav active="start" variant="solid" />
@@ -140,10 +141,10 @@ export default function StartPage() {
 
               So it is a closing line rather than a panel. Nothing is added to
               the page, which is why nothing can look tacked onto it. */}
-          {SHOP_ENABLED ? (
+          {shopOpen ? (
             <p className={styles.shopLine}>
-              <strong>Already know your sizes?</strong> Plain flat doors, drawer fronts and panels in Polytec
-              decorative board are priced on this site.{" "}
+              <strong>Already know your sizes?</strong> Doors, drawer fronts and panels in Polytec decorative
+              board and most Polytec thermolaminate profiles are priced on this site.{" "}
               <Link href="/products">Buy them now without a quote</Link>.
             </p>
           ) : null}

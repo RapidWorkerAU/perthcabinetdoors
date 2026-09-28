@@ -11,16 +11,20 @@
 // The figures are the server's, asked again every time the cart opens, so a
 // rate that changed since a line went in is shown before anything is paid.
 
+import { SiteNotice, useLeadTimeWords } from "@/components/public/SiteMessages";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useQuoteDraftCount } from "@/lib/pcd-quote-draft";
-import { cartPieceCount, describeProblems, money, shopLineSpec, shopLineTitle } from "@/lib/pcd-shop";
+import { useRouter } from "next/navigation";
+import { readQuoteDraft, useQuoteDraftCount, writeQuoteLines } from "@/lib/pcd-quote-draft";
+import { cartPieceCount, describeProblems, money, shopLineSpec, shopLineTitle, shopLineToQuoteLine } from "@/lib/pcd-shop";
 import { rememberCartPrices, removeCartLine, setCartLineQty, useShopCart } from "@/lib/pcd-shop-cart";
 import styles from "../contact/contact.module.css";
 
 /** What the server needs of a cart line. */
 export function linesForServer(lines = []) {
-  return lines.map(({ price, colour, finish, colourSrc, material, supplierName, type, hingeQtyTouched, hingeName, ...rest }) => rest);
+  // The material goes, because it decides which board and which price. The
+  // colour, finish and tile are read back off the library row on the server.
+  return lines.map(({ price, colour, finish, colourSrc, supplierName, type, hingeQtyTouched, hingeName, ...rest }) => rest);
 }
 
 /**
@@ -91,7 +95,18 @@ export default function CartClient() {
 }
 
 function Cart({ lines }) {
+  const router = useRouter();
+  // An order goes out together, so it is promised its slowest piece.
+  const leadTime = useLeadTimeWords({ lines });
   const listCount = useQuoteDraftCount();
+
+  // A line that could be paid for when it went in and now cannot, because it
+  // has to be priced by hand. It goes to the quote list whole and leaves here.
+  function moveToList(line) {
+    writeQuoteLines([...readQuoteDraft().lines, shopLineToQuoteLine(line, { hingeName: line.hingeName || "" })]);
+    removeCartLine(line.id);
+    router.push("/request-quote/list");
+  }
   const { price, loading, error } = useCartPrice(lines);
   const pieces = cartPieceCount(lines);
   const byId = new Map((price?.lines || []).map((entry) => [entry.id, entry]));
@@ -139,7 +154,14 @@ function Cart({ lines }) {
                         <span className={styles.cartSpecLabel}>{label}</span> {value}
                       </p>
                     ))}
-                    {priced && !priced.ok ? (
+                    {priced && !priced.ok && priced.handPriced ? (
+                      <p className={styles.cartLineProblem}>
+                        {priced.reason} It cannot be paid for online now.{" "}
+                        <button type="button" className={styles.listEditLink} onClick={() => moveToList(line)}>
+                          Move it to my quote list
+                        </button>
+                      </p>
+                    ) : priced && !priced.ok ? (
                       <p className={styles.cartLineProblem}>
                         This needs changing before it can be paid for: {describeProblems(priced.problems)}.
                       </p>
@@ -197,6 +219,7 @@ function Cart({ lines }) {
             <span className={styles.sectionLabel}>Order summary</span>
           </div>
           <div className={styles.cartSideBody}>
+            <SiteNotice placement="shop" />
             <div className={styles.cartRow}>
               <span>
                 {pieces} {pieces === 1 ? "piece" : "pieces"}, ex GST
@@ -228,7 +251,7 @@ function Cart({ lines }) {
                 {loading ? "Working out your total..." : "Checkout"}
               </span>
             )}
-            <p className={styles.cartSideFoot}>Made in Perth &middot; about 10 working days &middot; delivered Perth metro</p>
+            <p className={styles.cartSideFoot}>Made in Perth &middot; about {leadTime} &middot; delivered Perth metro</p>
           </div>
         </aside>
       </div>

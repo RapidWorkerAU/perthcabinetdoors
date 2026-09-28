@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 import { createBoardCostResolver } from "../../../lib/pcd-board-cost";
 import { describeGaps, unreadyLines } from "../../../lib/pcd-quote-ready";
+import { getProfileLibraryRows } from "../../../lib/pcd-profile-library";
 import { IncompleteQuoteRequestError, insertQuoteRequest, sendQuoteRequestEmails } from "../../../lib/pcd-quote-request";
 import { createSupplierGuard, firstSupplierConflict } from "../../../lib/pcd-supplier-guard";
 import { customerNoticeFor, reportSendFailures } from "../../../lib/pcd-notify";
@@ -90,7 +91,14 @@ export async function POST(request) {
     // the customer to ask what the form had already asked them. The rule is the
     // same one the form applies in the browser, out of one module, so the two
     // cannot drift apart. See lib/pcd-quote-ready.js.
-    const notReady = unreadyLines(payload.lines, (line, index) => line.productType || `Line ${index + 1}`);
+    //
+    // The profile library says what each brand makes, so a thermolaminate line
+    // is refused without the front profile and edge its brand offers. A
+    // library that cannot be read comes back empty and asks for nothing extra.
+    const profileRows = await getProfileLibraryRows(supabase);
+    const notReady = unreadyLines(payload.lines, (line, index) => line.productType || `Line ${index + 1}`, {
+      profileRows,
+    });
     if (notReady.length) {
       const first = notReady[0];
       return Response.json(

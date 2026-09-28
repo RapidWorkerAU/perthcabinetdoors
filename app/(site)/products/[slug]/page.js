@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import PublicFooter from "@/components/public/PublicFooter";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { shopAccess } from "@/lib/pcd-shop-access";
 import { shopProduct } from "@/lib/pcd-shop";
 import { loadShopCatalogue, publicShopCatalogue } from "@/lib/pcd-shop-pricing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import PublicSiteNav from "../../PublicSiteNav";
+import ShopClosed, { ShopPreviewBar } from "../../ShopClosed";
 import styles from "../../contact/contact.module.css";
 import ShopProductClient from "./ShopProductClient";
 
@@ -37,7 +38,8 @@ export async function generateMetadata({ params }) {
 }
 
 export default async function ShopProductPage({ params }) {
-  if (!SHOP_ENABLED) notFound();
+  const access = await shopAccess();
+  if (!access.allowed) return <ShopClosed />;
   const { slug } = await params;
   if (OLD_SLUGS[slug]) permanentRedirect(OLD_SLUGS[slug]);
   const product = shopProduct(slug);
@@ -50,6 +52,7 @@ export default async function ShopProductPage({ params }) {
 
   return (
     <>
+      {access.staff ? <ShopPreviewBar /> : null}
       <PublicSiteNav active="shop" variant="solid" />
       {/* The page leaves room at the bottom for the price bar, which is fixed
           to the window rather than to this column. */}

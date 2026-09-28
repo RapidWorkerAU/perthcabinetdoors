@@ -11,7 +11,7 @@ import { fieldsForProductType } from "@/lib/pcd-product-fields";
 import { asksFor, quoteItemTypes, stepsForLine } from "@/lib/pcd-quote-steps";
 import DoorDrawing from "@/components/public/DoorDrawing";
 import { materialsForProductType } from "@/lib/pcd-materials";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { useShopOpen } from "@/components/public/SiteSettingsProvider";
 // THE ONE CONFIGURATOR. The questions the shop's product pages ask are these
 // same components, so a colour, a size, an edge or a hinge is asked the same
 // way whichever path somebody is on. See app/(site)/_builder.
@@ -21,6 +21,8 @@ import SizeFields from "../_builder/SizeFields";
 import BandedEdgesField from "../_builder/BandedEdgesField";
 import HingeFields from "../_builder/HingeFields";
 import QtyStepper from "../_builder/QtyStepper";
+import ImageSelect from "../_builder/ImageSelect";
+import FrontProfileFields from "../_builder/FrontProfileFields";
 import { cupsForDrawing } from "../_builder/builder-utils";
 import SupplierSelect from "./SupplierSelect";
 import {
@@ -188,80 +190,6 @@ function profileImageSrc(profileType, profileName) {
 // edge beside it was fine.
 function edgeImageSrc(edgeName) {
   return edgeName ? sharedEdgeImageSrc(edgeName) : "";
-}
-
-function ImageSelect({ disabled = false, placeholder, value, options, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState({});
-  const wrapRef = useRef(null);
-  const selected = options.find((option) => option.value === value) || null;
-
-  useEffect(() => {
-    if (!open || !wrapRef.current) return;
-
-    function positionMenu() {
-      const rect = wrapRef.current.getBoundingClientRect();
-      const viewportPadding = 12;
-      const preferredWidth = Math.max(rect.width, 320);
-      const width = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2);
-      const left = Math.min(
-        Math.max(rect.left, viewportPadding),
-        window.innerWidth - width - viewportPadding,
-      );
-      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
-      const spaceAbove = rect.top - viewportPadding;
-      const openAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
-      const availableHeight = openAbove ? spaceAbove : spaceBelow;
-      const maxHeight = Math.max(160, Math.min(420, availableHeight - 4));
-
-      setMenuStyle({
-        left: `${left}px`,
-        maxHeight: `${maxHeight}px`,
-        top: `${openAbove ? rect.top - maxHeight - 4 : rect.bottom + 4}px`,
-        width: `${width}px`,
-      });
-    }
-
-    positionMenu();
-    window.addEventListener("resize", positionMenu);
-    window.addEventListener("scroll", positionMenu, true);
-
-    return () => {
-      window.removeEventListener("resize", positionMenu);
-      window.removeEventListener("scroll", positionMenu, true);
-    };
-  }, [open]);
-
-  function choose(option) {
-    onChange(option.value);
-    setOpen(false);
-  }
-
-  return (
-    <div className={styles.imageSelect} ref={wrapRef}>
-      <button
-        className={styles.imageSelectControl}
-        disabled={disabled}
-        type="button"
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        onClick={() => !disabled && setOpen((current) => !current)}
-      >
-        <span>{selected?.label || placeholder}</span>
-      </button>
-      {open && !disabled ? (
-        <div className={styles.imageSelectMenu} style={menuStyle}>
-          {options.length ? options.map((option) => (
-            <button className={styles.imageSelectOption} key={option.value} type="button" onMouseDown={() => choose(option)}>
-              {option.image ? <img alt="" src={option.image} onError={(event) => { event.currentTarget.parentElement?.classList.add(styles.imageSelectOptionNoImage); event.currentTarget.remove(); }} /> : null}
-              <span>{option.label}</span>
-            </button>
-          )) : (
-            <div className={styles.colourEmpty}>No options available</div>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 /**
@@ -527,6 +455,7 @@ function ColourControls({ item, onChange, invalid = false }) {
 }
 
 export default function RequestQuoteFormClient() {
+  const shopOpen = useShopOpen();
   const [items, setItems] = useState(() => [emptyItem("item-1")]);
   const [editingId, setEditingId] = useState("item-1");
   // What each row is still missing, keyed by row id. Set when someone tries to
@@ -546,6 +475,13 @@ export default function RequestQuoteFormClient() {
   // row, and it carries a status so an empty list can be told apart from a
   // failed read. See lib/use-profile-library.js.
   const profileLibrary = useProfileLibrary();
+  // What each brand makes, for the completeness check: a thermolaminate line
+  // needs the profile and edge its brand offers. Null until the library has
+  // loaded, which asks for nothing extra rather than blocking a save.
+  const libraryRows = useMemo(
+    () => (profileLibrary.isReady ? asSelectionRows(profileLibrary.profiles) : null),
+    [profileLibrary.isReady, profileLibrary.profiles]
+  );
 
   const savedCount = items.filter((item) => item.saved).length;
   const editingItem = items.find((item) => item.id === editingId) || null;
@@ -838,7 +774,7 @@ export default function RequestQuoteFormClient() {
 
   function saveItem(id) {
     const item = items.find((candidate) => candidate.id === id);
-    const gaps = lineGaps(item);
+    const gaps = lineGaps(item, { profileRows: libraryRows });
     if (gaps.length) {
       setLineErrors((current) => ({ ...current, [id]: gaps }));
       return;
@@ -934,7 +870,7 @@ export default function RequestQuoteFormClient() {
         // After a failed save, the specific fields that are short, from the
         // same rule that stopped the save. Marking the row without marking the
         // field leaves someone hunting for which one.
-        const flagged = new Set(lineErrors[editingItem.id] ? missingFields(editingItem) : []);
+        const flagged = new Set(lineErrors[editingItem.id] ? missingFields(editingItem, { profileRows: libraryRows }) : []);
         const flag = (field, base) => `${base}${flagged.has(field) ? ` ${styles.fieldInputError}` : ""}`;
         // The thickness rules run in OPPOSITE directions between the ranges, so
         // they are read off each library row rather than inferred from the brand:
@@ -1043,7 +979,7 @@ export default function RequestQuoteFormClient() {
                     quicker than waiting for us. Said here, where somebody has
                     just picked the one material the shop sells, and linked
                     across rather than added to this list. */}
-                {SHOP_ENABLED &&
+                {shopOpen &&
                 editingItem.material === "Decorative Board" &&
                 ["Door", "Drawer front", "Panel"].includes(editingItem.type) ? (
                   <div className={styles.shopNudge}>
@@ -1114,34 +1050,16 @@ export default function RequestQuoteFormClient() {
 
           if (key === "frontProfile") {
             return (
-              <div className={styles.stepStack}>
-                <div className={styles.stepWide}>
-                  <span className={styles.fieldLabel}>Profile family</span>
-                  <Tabs
-                    options={profileTypes}
-                    value={editingItem.profileType}
-                    cols={Math.min(4, profileTypes.length)}
-                    onChoose={(value) => updateItem(editingItem.id, { profileType: value, profile: "" })}
-                  />
-                </div>
-                <div className={styles.stepWide}>
-                  <span className={styles.fieldLabel}>
-                    {editingItem.profileType ? `${editingItem.profileType} profiles` : "Profile"}
-                  </span>
-                  {editingItem.profileType ? (
-                    <ImageSelect
-                      value={editingItem.profile}
-                      placeholder="Select a profile"
-                      options={profileNames.map((profile) => ({
-                        value: profile.name,
-                        label: profile.name,
-                        image: profile.image || profileImageSrc(editingItem.profileType, profile.name),
-                      }))}
-                      onChange={(value) => updateItem(editingItem.id, { profile: value })}
-                    />
-                  ) : <span className={styles.notApplicable}>Pick a profile type first</span>}
-                </div>
-              </div>
+              <FrontProfileFields
+                families={profileTypes}
+                profileType={editingItem.profileType}
+                profile={editingItem.profile}
+                profiles={profileNames.map((profile) => ({
+                  name: profile.name,
+                  image: profile.image || profileImageSrc(editingItem.profileType, profile.name),
+                }))}
+                onChange={(patch) => updateItem(editingItem.id, patch)}
+              />
             );
           }
 
@@ -1265,7 +1183,7 @@ export default function RequestQuoteFormClient() {
         const readiness = (() => {
           const unmakeable = sizeProblems(editingItem);
           if (unmakeable.length) return unmakeable[0];
-          const gaps = lineGaps(editingItem);
+          const gaps = lineGaps(editingItem, { profileRows: libraryRows });
           const drilling = hingeProblems({
             hinge_holes: editingItem.type === "Door" && editingItem.preDrill,
             hinge_qty: editingItem.hingeQty,

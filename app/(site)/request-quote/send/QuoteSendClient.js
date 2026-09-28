@@ -21,6 +21,7 @@ import { lineOneLiner } from "@/lib/pcd-quote-line-text";
 import { detailProblems, quoteRequestPayload } from "@/lib/pcd-quote-request-payload";
 import { describeGaps, lineGaps } from "@/lib/pcd-quote-ready";
 import { sizeProblems } from "@/lib/pcd-size-limits";
+import { asSelectionRows, useProfileLibrary } from "@/lib/use-profile-library";
 import styles from "../../contact/contact.module.css";
 
 export default function QuoteSendClient() {
@@ -38,6 +39,13 @@ export default function QuoteSendClient() {
 }
 
 export function SendForm({ draft }) {
+  // What each brand makes, so a thermolaminate line is asked for the profile
+  // and edge its brand offers. See lineGaps.
+  const profileLibrary = useProfileLibrary();
+  const libraryRows = useMemo(
+    () => (profileLibrary.isReady ? asSelectionRows(profileLibrary.profiles) : null),
+    [profileLibrary.isReady, profileLibrary.profiles]
+  );
   const router = useRouter();
   const lines = draft.lines;
 
@@ -66,9 +74,9 @@ export function SendForm({ draft }) {
   const unready = useMemo(
     () =>
       lines
-        .map((line) => ({ line, gaps: lineGaps(line), problems: sizeProblems(line) }))
+        .map((line) => ({ line, gaps: lineGaps(line, { profileRows: libraryRows }), problems: sizeProblems(line) }))
         .filter((entry) => entry.gaps.length || entry.problems.length),
-    [lines]
+    [lines, libraryRows]
   );
 
   function set(field, value) {

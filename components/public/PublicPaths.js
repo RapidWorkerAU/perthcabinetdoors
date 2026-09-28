@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { useShopOpen } from "./SiteSettingsProvider";
 import styles from "./public-paths.module.css";
 
 // THE THREE WAYS TO BUY FROM US, WRITTEN ONCE.
@@ -24,7 +26,7 @@ import styles from "./public-paths.module.css";
 //
 // ── THE SHOP CAN BE SWITCHED OFF ─────────────────────────────────────────────
 //
-// SHOP_ENABLED is false on the live site, and while it is, /products is a 404.
+// While the shop is closed in Settings, /products shows the closed page.
 // So the shop card is dropped rather than rendered as a link to a page that is
 // not there, and the grid narrows to the paths that are actually offered. A
 // page asking for the shop path while the shop is closed gets two cards, not a
@@ -83,12 +85,13 @@ export default function PublicPaths({
   onDark = false,
   className = "",
 }) {
+  const shopOpen = useShopOpen();
   const shown = paths
     .map((key) => ({ key, path: PATHS[key] }))
     // A path that does not exist is a typo, and drawing nothing for it is
     // better than drawing a blank card.
     .filter((entry) => Boolean(entry.path))
-    .filter((entry) => entry.key !== "shop" || SHOP_ENABLED);
+    .filter((entry) => entry.key !== "shop" || shopOpen);
 
   if (!shown.length) return null;
 

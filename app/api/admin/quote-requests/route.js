@@ -5,7 +5,7 @@ import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { addressColumns } from "../../../../lib/pcd-contact-details";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { createBoardCostResolver } from "../../../../lib/pcd-board-cost";
-import { priceThermoLine, withThermoPrice } from "../../../../lib/pcd-thermo-pricing";
+import { withThermoRateCard } from "../../../../lib/pcd-thermo-pricing";
 import { getThermoRateCard } from "../../../../lib/pcd-thermo-pricing-store";
 import { convertedQuoteLine, madeToOrderSummary, projectNameFromRequest, unpricedSummary } from "../../../../lib/pcd-quote-request-convert";
 import { createHardwareResolver } from "../../../../lib/pcd-hardware-line";
@@ -151,16 +151,7 @@ export async function POST(request) {
       const { card: thermoCard } = await getThermoRateCard(context.supabase);
       const entries = requestLines
         .map((line) => convertedQuoteLine(line, { resolveBoard, resolveHardware, quoteRequest, businessDefaults }))
-        .map((entry) => {
-          if (!thermoCard || entry.skipped) return entry;
-          const result = priceThermoLine(entry.line, thermoCard);
-          if (!result.applies) return entry;
-          if (!result.ok) return { ...entry, match: { ok: false, reason: "made_to_order", message: result.reason } };
-          // The markup on a freshly converted line is the business default, not
-          // anybody's decision, so the thermolaminate margin replaces it.
-          const line = { ...withThermoPrice(entry.line, thermoCard, { forceAuto: true }), markup_percent: thermoCard.margin_percent };
-          return { ...entry, line, match: { ok: true, reason: "thermo_rate_card" } };
-        });
+        .map((entry) => withThermoRateCard(entry, thermoCard));
       unpriced = unpricedSummary(entries);
       madeToOrder = madeToOrderSummary(entries);
 

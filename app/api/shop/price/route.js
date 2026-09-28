@@ -4,7 +4,7 @@
 // server: what comes back is marked-up prices for whole pieces and nothing a
 // customer could divide back into our formula. See lib/pcd-shop-pricing.js.
 
-import { SHOP_ENABLED } from "../../../../lib/pcd-site-flags";
+import { shopAccess, shopClosedResponse } from "../../../../lib/pcd-shop-access";
 import { priceShopCart, publicCartPrice } from "../../../../lib/pcd-shop-pricing";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { priceRequestSchema } from "../_shop-request";
@@ -12,7 +12,8 @@ import { priceRequestSchema } from "../_shop-request";
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
-  if (!SHOP_ENABLED) return Response.json({ ok: false, error: "The shop is not open yet." }, { status: 404 });
+  // Closed in Settings: nobody but signed-in staff is priced or charged.
+  if (!(await shopAccess()).allowed) return shopClosedResponse();
 
   let body;
   try {

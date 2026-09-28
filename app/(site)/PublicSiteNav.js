@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import PublicItemsPanel from "@/components/public/PublicItemsPanel";
 import { useQuoteDraftCount } from "@/lib/pcd-quote-draft";
 import { useCartCount } from "@/lib/pcd-shop-cart";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { useShopOpen } from "@/components/public/SiteSettingsProvider";
 import { BUSINESS_PHONE, BUSINESS_PHONE_TEL } from "@/lib/pcd-business-identity";
 
 // THE PUBLIC HEADER.
@@ -103,7 +103,8 @@ export default function PublicSiteNav({ active = "", variant = "solid" }) {
     };
   }, [menuOpen]);
 
-  const links = NAV_LINKS.filter((link) => !link.shopOnly || SHOP_ENABLED);
+  const shopOpen = useShopOpen();
+  const links = NAV_LINKS.filter((link) => !link.shopOnly || shopOpen);
 
   return (
     <nav className={`public-site-nav public-site-nav-${variant}`} aria-label="Primary">
@@ -202,6 +203,7 @@ export default function PublicSiteNav({ active = "", variant = "solid" }) {
 function MobileItemsLinks({ onNavigate }) {
   const quoteCount = useQuoteDraftCount();
   const cartCount = useCartCount();
+  const shopOpen = useShopOpen();
 
   return (
     <>
@@ -210,7 +212,7 @@ function MobileItemsLinks({ onNavigate }) {
           To be quoted <b>{quoteCount}</b>
         </Link>
       ) : null}
-      {SHOP_ENABLED && cartCount ? (
+      {shopOpen && cartCount ? (
         <Link href="/cart" className="public-site-mobile-menu-cart" onClick={onNavigate}>
           Cart <b>{cartCount}</b>
         </Link>

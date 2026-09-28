@@ -14,16 +14,20 @@
 // the server (lib/pcd-shop-pricing.js) from the quote's own arithmetic, so no
 // rate is ever in this page.
 
+import { SiteNotice, useLeadTimeWords } from "@/components/public/SiteMessages";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import DoorDrawing from "@/components/public/DoorDrawing";
 import { hingeCount } from "@/lib/pcd-hinges";
+import { isThermoMade } from "@/lib/pcd-thermo-pricing";
 import { readQuoteDraft, writeQuoteLines } from "@/lib/pcd-quote-draft";
 import {
-  SHOP_BRAND,
   SHOP_MATERIAL,
+  SHOP_MATERIALS,
   SHOP_PANEL_USES,
+  SHOP_THERMO_THICKNESSES,
+  isThermoShopLine,
   boringForHinge,
   describeProblems,
   hingeLabel,
@@ -33,6 +37,7 @@ import {
   shopLineProblems,
   shopLineSpec,
   shopLineTitle,
+  shopLineToQuoteLine,
   shopSizeProblems,
 } from "@/lib/pcd-shop";
 import { readShopCart, saveCartLine, useShopCart } from "@/lib/pcd-shop-cart";
@@ -43,6 +48,8 @@ import SizeFields from "../../_builder/SizeFields";
 import BandedEdgesField from "../../_builder/BandedEdgesField";
 import HingeFields from "../../_builder/HingeFields";
 import QtyStepper from "../../_builder/QtyStepper";
+import ImageSelect from "../../_builder/ImageSelect";
+import FrontProfileFields from "../../_builder/FrontProfileFields";
 import { cupsForDrawing } from "../../_builder/builder-utils";
 
 const FINISH_FIRST = "Matt";
@@ -71,7 +78,7 @@ function colourGroups(colours) {
 
 /** The line as the server wants it: no price snapshot, no display-only fields. */
 function lineForPricing(line) {
-  const { price, colour, finish, colourSrc, material, supplierName, type, hingeQtyTouched, ...rest } = line;
+  const { price, colour, finish, colourSrc, supplierName, type, hingeQtyTouched, ...rest } = line;
   return rest;
 }
 
@@ -87,6 +94,9 @@ export default function ShopProductClient({ product, catalogue }) {
   const [price, setPrice] = useState(null);
   const [pricing, setPricing] = useState(false);
   const [priceError, setPriceError] = useState("");
+  // A complete line the server will not price online: the customer's reason,
+  // and the line goes on the quote list rather than in the cart.
+  const [handReason, setHandReason] = useState("");
   const [flash, setFlash] = useState(null);
   const [tried, setTried] = useState(false);
 
@@ -104,30 +114,112 @@ export default function ShopProductClient({ product, catalogue }) {
     }
   }, [cart.ready, product]);
 
-  const groups = useMemo(() => colourGroups(catalogue.colours), [catalogue.colours]);
-  const colourRows = catalogue.colours.filter((row) => row.finish === line.finish && row.colour === line.colour);
-  const thicknesses = [...new Set(colourRows.map((row) => row.thickness))].sort();
+  const thermo = isThermoShopLine(line);
+  // The lead time for the board being set up: thermolaminate can take longer.
+  const leadTime = useLeadTimeWords({ thermo });
+  const profiles = catalogue.profiles || [];
+  const edges = catalogue.edges || [];
+  // What Polytec does not make at all in a finish. Never offered, which is a
+  // different thing from made but priced by hand.
+  const notMade = catalogue.thermoNotMade || {};
+  // THE COLOURS OF THE BOARD THEY CHOSE, and only those. A colour name can be in
+  // both ranges and still be two different boards.
+  const materialColours = useMemo(
+    () => catalogue.colours.filter((row) => (row.material || SHOP_MATERIAL) === line.material),
+    [catalogue.colours, line.material]
+  );
+  const groups = useMemo(() => colourGroups(materialColours), [materialColours]);
+  const colourRows = materialColours.filter((row) => row.finish === line.finish && row.colour === line.colour);
+  // A thermolaminate front can be asked for in either thickness whatever the
+  // colour row says, because 21mm is priced by hand. See SHOP_THERMO_THICKNESSES.
+  const thicknesses = thermo ? SHOP_THERMO_THICKNESSES : [...new Set(colourRows.map((row) => row.thickness))].sort();
   const colourRow = catalogue.colours.find((row) => row.id === line.colourLibraryId) || null;
   const hinge = catalogue.hinges.find((entry) => entry.id === line.hingeHardwareId) || null;
   const chosenTile = groups.find((group) => group.label === line.finish)?.colours.find((colour) => colour.name === line.colour);
-  const unpriced = Boolean(chosenTile && !chosenTile.priced) || Boolean(colourRow && !colourRow.priced);
-  const problems = shopLineProblems(line, { limit: catalogue.limit, colour: colourRow, hinge });
-  const sizeErrors = shopSizeProblems(line, catalogue.limit);
+  // Decorative board only. Whether a thermolaminate front has an online price
+  // is the server's answer, not the tile's: see handReason.
+  const unpriced = !thermo && (Boolean(chosenTile && !chosenTile.priced) || Boolean(colourRow && !colourRow.priced));
+  const problems = shopLineProblems(line, { limit: catalogue.limit, colour: colourRow, hinge, profiles, edges, notMade });
+  // Everything but a price: what a line has to have before it can go on a
+  // quote list from here.
+  const stillToAnswer = problems.filter((problem) => problem !== "a colour we hold a price on");
+
+  // The profiles made at the thickness chosen, family by family, in the order
+  // the library keeps them.
+  const madeAt = thermo && String(line.thickness).startsWith("21") ? "available21mm" : "available18mm";
+  const offeredProfiles = profiles.filter((row) => row[madeAt] !== false);
+  const allFamilies = [...new Set(offeredProfiles.map((row) => row.category))];
+  const profileFamilies = allFamilies.filter((family) => !line.finish || isThermoMade(notMade, line.finish, family));
+  const missingFamilies = allFamilies.filter((family) => !profileFamilies.includes(family));
+  const familyProfiles = offeredProfiles.filter((row) => row.category === line.profileType);
+  const profileRow = profiles.find((row) => row.name === line.profile && row.category === line.profileType) || null;
+  // A thermolaminate size outside the priced range is not wrong, only priced by
+  // hand, so it is never marked as an error under the box.
+  const sizeErrors = thermo ? {} : shopSizeProblems(line, catalogue.limit);
+  const thermoLimit = catalogue.thermoLimit || null;
 
   function update(patch) {
     setFlash(null);
     setLine((current) => {
       const next = { ...current, ...patch };
 
+      // A NEW BOARD IS A NEW SET OF ANSWERS. The colours, the thickness and the
+      // routed face all belong to the board, so none of them carries across.
+      if ("material" in patch && patch.material !== current.material) {
+        Object.assign(next, {
+          finish: "",
+          colour: "",
+          colourLibraryId: "",
+          colourSrc: "",
+          thickness: "",
+          profileType: "",
+          profile: "",
+          edgeMould: "",
+          bandedEdges: null,
+        });
+      }
+      const wrapped = isThermoShopLine(next);
+
       // A colour is a finish and a name; the board behind it is that and a
       // thickness. Resolved together, so the line always names one real row.
+      // A thermolaminate front keeps its thickness either way and names the
+      // row of its colour, preferring one at that thickness.
       if ("colour" in patch || "finish" in patch || "thickness" in patch) {
-        const rows = catalogue.colours.filter((row) => row.finish === next.finish && row.colour === next.colour);
-        const offered = [...new Set(rows.map((row) => row.thickness))];
-        if (!offered.includes(next.thickness)) next.thickness = offered.length === 1 ? offered[0] : "";
-        const row = rows.find((entry) => entry.thickness === next.thickness);
-        next.colourLibraryId = row?.id || "";
-        next.colourSrc = row?.src || rows[0]?.src || "";
+        const rows = catalogue.colours.filter(
+          (row) => (row.material || SHOP_MATERIAL) === next.material && row.finish === next.finish && row.colour === next.colour
+        );
+        if (wrapped) {
+          const row = rows.find((entry) => entry.thickness === next.thickness) || rows[0];
+          next.colourLibraryId = row?.id || "";
+          next.colourSrc = row?.src || "";
+        } else {
+          const offered = [...new Set(rows.map((row) => row.thickness))];
+          if (!offered.includes(next.thickness)) next.thickness = offered.length === 1 ? offered[0] : "";
+          const row = rows.find((entry) => entry.thickness === next.thickness);
+          next.colourLibraryId = row?.id || "";
+          next.colourSrc = row?.src || rows[0]?.src || "";
+        }
+      }
+
+      // A FINISH POLYTEC DOES NOT MAKE THAT FAMILY IN takes the family away.
+      // Choosing Gloss after a Detailed profile clears the profile rather than
+      // leaving a front that cannot be made.
+      if (wrapped && ("finish" in patch || "colour" in patch) && next.profileType && next.finish) {
+        if (!isThermoMade(notMade, next.finish, next.profileType)) {
+          next.profileType = "";
+          next.profile = "";
+        }
+      }
+
+      // A PROFILE ONLY MADE 21MM THICK IS NOT AN 18MM ANSWER. Changing the
+      // thickness clears a profile that is not made at the new one.
+      if (wrapped && "thickness" in patch && next.profile) {
+        const at = String(next.thickness).startsWith("21") ? "available21mm" : "available18mm";
+        const row = profiles.find((entry) => entry.name === next.profile && entry.category === next.profileType);
+        if (!row || row[at] === false) {
+          next.profile = "";
+          if (!profiles.some((entry) => entry.category === next.profileType && entry[at] !== false)) next.profileType = "";
+        }
       }
 
       // How many hinges follows the height until somebody chooses.
@@ -154,6 +246,7 @@ export default function ShopProductClient({ product, catalogue }) {
     if (!pricingKey) {
       setPrice(null);
       setPriceError("");
+      setHandReason("");
       setPricing(false);
       return undefined;
     }
@@ -170,11 +263,16 @@ export default function ShopProductClient({ product, catalogue }) {
         if (cancelled) return;
         const entry = payload?.lines?.[0];
         if (!response.ok || !payload.ok || !entry) throw new Error(payload?.error || "We could not price that just now.");
+        // THE SERVER DECIDES CART OR QUOTE LIST. A complete line it will not
+        // price online comes back handPriced with the reason, and the page
+        // offers the quote list instead of the cart.
         setPrice(entry.ok ? entry : null);
-        setPriceError(entry.ok ? "" : `Still needs ${describeProblems(entry.problems)}.`);
+        setHandReason(!entry.ok && entry.handPriced ? entry.reason || "This one is priced by hand." : "");
+        setPriceError(entry.ok || entry.handPriced ? "" : `Still needs ${describeProblems(entry.problems)}.`);
       } catch (error) {
         if (!cancelled) {
           setPrice(null);
+          setHandReason("");
           setPriceError(error.message || "We could not price that just now.");
         }
       } finally {
@@ -190,7 +288,7 @@ export default function ShopProductClient({ product, catalogue }) {
 
   function addToCart() {
     setTried(true);
-    if (problems.length || !price || pricing) return;
+    if (problems.length || !price || pricing || handReason) return;
     // The hinge's name travels with the line, so the cart can say which hinge
     // without a second read of the catalogue.
     const replaced = saveCartLine({ ...line, price, hingeName: line.supplyHinges && hinge ? hingeLabel(hinge) : "" });
@@ -202,61 +300,92 @@ export default function ShopProductClient({ product, catalogue }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // A colour we hold no live price on. Everything they set up here goes
-  // across to a quote list, sizes and hinge positions and all, rather than
-  // being retyped into another form.
+  // A line we cannot price online: a decorative colour we hold no live price
+  // on, or a thermolaminate front the rate card will not price. Everything
+  // they set up here goes across to a quote list, sizes, profile and hinge
+  // positions and all, rather than being retyped into another form.
   function moveToQuoteList() {
-    const moved = {
-      id: `shop-${Date.now().toString(36)}`,
-      type: product.type,
-      panelUse: line.panelUse || "",
-      material: SHOP_MATERIAL,
-      supplierName: SHOP_BRAND,
-      thickness: line.thickness,
-      finish: line.finish,
-      colour: line.colour,
-      colourSrc: line.colourSrc,
-      colourLibraryId: line.colourLibraryId,
-      height: line.height,
-      width: line.width,
-      qty: line.qty,
-      bandedEdges: line.bandedEdges,
-      preDrill: product.type === "Door" && line.preDrill,
-      holeType: line.holeType,
-      hingeQty: line.hingeQty,
-      hingeSide: line.hingeSide,
-      hingeFromBottomMm: line.hingeFromBottomMm,
-      hingeFromTopMm: line.hingeFromTopMm,
-      hingeMiddlesMm: line.hingeMiddlesMm,
-      hingeMiddlesTouched: line.hingeMiddlesTouched,
-      edgeMould: "",
-      profileType: "",
-      profile: "",
-      cabinetBrand: "",
-      hardwareId: "",
-      hardwareName: "",
-      note: [
-        "Set up on the shop.",
-        line.supplyHinges && hinge ? `Would like ${hingeLabel(hinge)} hinges supplied.` : "",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    };
+    // Complete or not at all. Every button that calls this is only offered
+    // for a finished line; this is the backstop.
+    if (stillToAnswer.length) return;
+    const moved = shopLineToQuoteLine(line, { hingeName: line.supplyHinges && hinge ? hingeLabel(hinge) : "" });
     writeQuoteLines([...readQuoteDraft().lines, moved]);
     router.push("/request-quote/list");
   }
 
+  // The quote builder's order: the board, its colour and thickness, the routed
+  // face and its edge, then the size. Banding is a decorative board question
+  // only, because a wrapped front has no edge to tape.
   const steps = [
+    { key: "material", title: "Material" },
     product.type === "Panel" ? { key: "panelUse", title: "What kind of panel" } : null,
     { key: "colour", title: "Colour and finish" },
     { key: "thickness", title: "Thickness" },
+    thermo ? { key: "frontProfile", title: "Front profile" } : null,
+    thermo ? { key: "edgeMould", title: "Edge profile" } : null,
     { key: "size", title: "Size" },
-    { key: "edges", title: "Which edges are banded" },
+    thermo ? null : { key: "edges", title: "Which edges are banded" },
     product.type === "Door" ? { key: "hinges", title: "Hinges" } : null,
     { key: "qty", title: "How many" },
   ].filter(Boolean);
 
   function stepBody(key) {
+    if (key === "material") {
+      return (
+        <>
+          <Tabs
+            options={SHOP_MATERIALS}
+            value={line.material}
+            cols={SHOP_MATERIALS.length}
+            invalid={tried && !line.material}
+            onChoose={(material) => update({ material })}
+          />
+          <p className={styles.fieldHint}>
+            {thermo
+              ? "A profile routed into the face, then a vinyl skin pressed over it and round all four edges. Shaker and heritage styles."
+              : "Flat, cut from one board and edged. A clean, modern front."}
+          </p>
+        </>
+      );
+    }
+
+    if (key === "frontProfile") {
+      if (!profiles.length) {
+        return <span className={styles.notApplicable}>Profiles cannot be shown just now. Try again shortly.</span>;
+      }
+      return (
+        <FrontProfileFields
+          families={profileFamilies}
+          profileType={line.profileType}
+          profile={line.profile}
+          profiles={familyProfiles}
+          onChange={update}
+          hint={
+            missingFamilies.length
+              ? `${missingFamilies.join(" and ")} profiles are not made in ${line.finish}.`
+              : null
+          }
+        />
+      );
+    }
+
+    if (key === "edgeMould") {
+      if (!edges.length) {
+        return <span className={styles.notApplicable}>Edge profiles cannot be shown just now. Try again shortly.</span>;
+      }
+      return (
+        <div className={styles.field}>
+          <ImageSelect
+            value={line.edgeMould}
+            placeholder="Select an edge"
+            options={edges.map((edge) => ({ value: edge.name, label: edge.name, image: edge.image }))}
+            onChange={(edgeMould) => update({ edgeMould })}
+          />
+          <p className={styles.fieldHint}>The shape the wrap is pressed round on the outside edge. It does not change the price.</p>
+        </div>
+      );
+    }
+
     if (key === "panelUse") {
       return (
         <>
@@ -295,7 +424,11 @@ export default function ShopProductClient({ product, catalogue }) {
             invalid={tried && !line.thickness}
             onChoose={(thickness) => update({ thickness })}
           />
-          {thicknesses.length === 1 ? (
+          {thermo ? (
+            <p className={styles.fieldHint}>
+              18mm suits almost every cabinet. 21mm is for the deeper profiles and is priced by hand.
+            </p>
+          ) : thicknesses.length === 1 ? (
             <p className={styles.fieldHint}>
               {line.colour} {line.finish} comes in {thicknesses[0]} only.
             </p>
@@ -309,17 +442,29 @@ export default function ShopProductClient({ product, catalogue }) {
         <>
           <SizeFields
             item={line}
-            limit={catalogue.limit}
-            range={{
-              height: `${catalogue.limit.minHeightMm} to ${catalogue.limit.maxHeightMm}`,
-              width: `${catalogue.limit.minWidthMm} to ${catalogue.limit.maxWidthMm}`,
-            }}
+            limit={thermo ? null : catalogue.limit}
+            range={
+              thermo
+                ? thermoLimit
+                  ? {
+                      height: `priced online ${thermoLimit.minMm} to ${thermoLimit.maxHeightMm}`,
+                      width: `priced online ${thermoLimit.minMm} to ${thermoLimit.maxWidthMm}`,
+                    }
+                  : null
+                : {
+                    height: `${catalogue.limit.minHeightMm} to ${catalogue.limit.maxHeightMm}`,
+                    width: `${catalogue.limit.minWidthMm} to ${catalogue.limit.maxWidthMm}`,
+                  }
+            }
             errors={sizeErrors}
             invalid={{ height: tried && !line.height, width: tried && !line.width }}
             onChange={update}
           />
           {!sizeErrors.height && !sizeErrors.width ? (
-            <p className={styles.fieldHint}>Height first. Measure the door you have, not the hole it sits in.</p>
+            <p className={styles.fieldHint}>
+              Height first. Measure the door you have, not the hole it sits in.
+              {thermo ? " Any other size is fine: we price it by hand." : ""}
+            </p>
           ) : null}
         </>
       );
@@ -431,6 +576,10 @@ export default function ShopProductClient({ product, catalogue }) {
   // priced, because a price we have not got is not one we can add.
   const waiting = !problems.length && (!price || pricing);
   const buttonLabel = editing ? "Update this line" : "Add to cart";
+  // Complete, and the server says it has no online price: the quote list's
+  // card and button in place of the cart's. Only while nothing has changed
+  // since it said so.
+  const byHand = !problems.length && !pricing && Boolean(handReason);
 
   return (
     <div className={styles.quoteFormTable}>
@@ -460,10 +609,12 @@ export default function ShopProductClient({ product, catalogue }) {
             id={`shop-${product.slug}`}
             heightMm={line.height}
             widthMm={line.width}
-            material={SHOP_MATERIAL}
+            material={line.material || SHOP_MATERIAL}
             colourTile={line.colourSrc}
             colourName={line.colour}
-            bandedEdges={line.bandedEdges}
+            profile={thermo ? line.profile : ""}
+            profileImage={thermo ? profileRow?.image || "" : ""}
+            bandedEdges={thermo ? null : line.bandedEdges}
             hingeHoles={product.type === "Door" && line.preDrill}
             hingeCount={hingeCount(line.hingeQty)}
             cupsMm={cupsForDrawing(line)}
@@ -477,18 +628,46 @@ export default function ShopProductClient({ product, catalogue }) {
             <span className={styles.sectionLabel}>{editing ? "Changing a cart line" : "Made to measure"}</span>
             <h2>{product.name}</h2>
             <p className={styles.builderLede}>
-              Polytec decorative board, cut and edged to the millimetre. The price updates as you answer.
+              {thermo
+                ? "Polytec thermolaminate, routed and wrapped to the millimetre."
+                : "Polytec decorative board, cut and edged to the millimetre."}{" "}
+              The price updates as you answer.
             </p>
           </div>
 
-          {unpriced ? (
+          {byHand ? (
+            <div className={styles.shopUnpriced}>
+              <strong>This one is priced by hand</strong>
+              <p>
+                {handReason} Add it to your quote list and everything you have set up here goes across, sizes,
+                profile and hinge positions and all.
+              </p>
+              <button type="button" className={styles.shopUnpricedBtn} onClick={moveToQuoteList}>
+                Move this to my quote list
+              </button>
+            </div>
+          ) : unpriced ? (
             <div className={styles.shopUnpriced}>
               <strong>{line.colour} is quote only</strong>
               <p>
                 We have not got a live price on this colour yet. Set it up here and we will carry the whole thing across
                 to a quote list, sizes and hinge positions and all, and price it by hand.
               </p>
-              <button type="button" className={styles.shopUnpricedBtn} onClick={moveToQuoteList}>
+              {/* ONLY ONCE IT IS SET UP, the same as Add to cart. A half
+                  answered line on a quote list is one somebody has to ring
+                  about. The price is the only thing it may be missing. */}
+              {stillToAnswer.length ? (
+                <p className={styles.shopReady}>Still needs {describeProblems(stillToAnswer)} before it can go on your list.</p>
+              ) : null}
+              <button
+                type="button"
+                className={styles.shopUnpricedBtn}
+                disabled={stillToAnswer.length > 0}
+                onClick={() => {
+                  setTried(true);
+                  if (!stillToAnswer.length) moveToQuoteList();
+                }}
+              >
                 Move this to my quote list
               </button>
             </div>
@@ -505,6 +684,9 @@ export default function ShopProductClient({ product, catalogue }) {
               </section>
             ))}
           </div>
+
+          {/* Beside the price, before anyone reaches checkout, when Settings says so. */}
+          <SiteNotice placement="shop" />
 
           {/* WHAT THEY HAVE CHOSEN, THEN WHAT IT COSTS. One card: the spec
               first, so the price lines under it can be short. The quote
@@ -548,22 +730,40 @@ export default function ShopProductClient({ product, catalogue }) {
               </div>
             ) : null}
 
-            <div className={styles.shopPrice}>
-              <div className={styles.shopPriceHead}>
-                <span>Total inc GST</span>
-                {price ? (
-                  <strong>{money(price.totalIncGst)}</strong>
-                ) : (
-                  <em className={styles.shopPriceWaiting}>{pricing ? "Working it out..." : "Appears as you answer"}</em>
-                )}
+            {byHand ? (
+              // THE QUOTE BUILDER'S OWN CARD, because this piece is now a quote
+              // list item and should read exactly as one does there.
+              <div className={styles.specPrice}>
+                <div className={styles.specPriceHead}>
+                  <span>Total inc GST</span>
+                  <strong>Priced by hand</strong>
+                </div>
+                <p>{handReason} We work it out and email you, usually the same day.</p>
+                <div className={styles.builderFooter}>
+                  <button className={styles.saveRowBtn} type="button" onClick={moveToQuoteList}>
+                    Add to my list
+                  </button>
+                </div>
+                <p className={styles.specFoot}>Nothing is charged until you accept the quote</p>
               </div>
-              {price && price.qty > 1 ? <p className={styles.shopPriceEach}>{money(price.unitIncGst)} each inc GST</p> : null}
-              {readiness ? <p className={styles.shopReady}>{readiness}</p> : null}
-              <button type="button" className={styles.shopAddBtn} disabled={waiting} onClick={addToCart}>
-                {buttonLabel}
-              </button>
-              <p className={styles.shopPriceFoot}>Made in Perth &middot; about 10 working days &middot; delivered Perth metro</p>
-            </div>
+            ) : (
+              <div className={styles.shopPrice}>
+                <div className={styles.shopPriceHead}>
+                  <span>Total inc GST</span>
+                  {price ? (
+                    <strong>{money(price.totalIncGst)}</strong>
+                  ) : (
+                    <em className={styles.shopPriceWaiting}>{pricing ? "Working it out..." : "Appears as you answer"}</em>
+                  )}
+                </div>
+                {price && price.qty > 1 ? <p className={styles.shopPriceEach}>{money(price.unitIncGst)} each inc GST</p> : null}
+                {readiness ? <p className={styles.shopReady}>{readiness}</p> : null}
+                <button type="button" className={styles.shopAddBtn} disabled={waiting} onClick={addToCart}>
+                  {buttonLabel}
+                </button>
+                <p className={styles.shopPriceFoot}>Made in Perth &middot; about {leadTime} &middot; delivered Perth metro</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -572,13 +772,27 @@ export default function ShopProductClient({ product, catalogue }) {
           never more than a glance away, however far down the questions go. */}
       <div className={styles.shopBar}>
         <div className={styles.shopBarInner}>
-          <div className={styles.shopBarPrice}>
-            <span>{price ? `${price.qty} x ${money(price.unitIncGst)} each inc GST` : "Price appears as you answer"}</span>
-            <strong>{price ? money(price.totalIncGst) : " "}</strong>
-          </div>
-          <button type="button" className={styles.shopBarBtn} disabled={waiting} onClick={addToCart}>
-            {buttonLabel}
-          </button>
+          {byHand ? (
+            <>
+              <div className={styles.shopBarPrice}>
+                <span>Nothing to pay now</span>
+                <strong>Priced by hand</strong>
+              </div>
+              <button type="button" className={styles.shopBarBtn} onClick={moveToQuoteList}>
+                Add to my list
+              </button>
+            </>
+          ) : (
+            <>
+              <div className={styles.shopBarPrice}>
+                <span>{price ? `${price.qty} x ${money(price.unitIncGst)} each inc GST` : "Price appears as you answer"}</span>
+                <strong>{price ? money(price.totalIncGst) : " "}</strong>
+              </div>
+              <button type="button" className={styles.shopBarBtn} disabled={waiting} onClick={addToCart}>
+                {buttonLabel}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

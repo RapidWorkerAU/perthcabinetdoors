@@ -7,12 +7,14 @@ import PublicFooter from "@/components/public/PublicFooter";
 import PublicSection from "@/components/public/PublicSection";
 import Link from "next/link";
 import { loadColourBand, spreadAcross } from "@/lib/pcd-colour-band";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { leadTimeRangeWords } from "@/lib/pcd-site-settings";
+import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 
 // TWO WAYS TO ORDER, AND THE SITE KEEPS THEM APART FROM HERE ON.
 //
-// The fork, in plain words: buy a flat decorative board front outright, or put
-// anything at all on a quote list. Green for the one with a price, amber for
+// The fork, in plain words: buy outright anything the site can price, which is
+// Polytec decorative board and most Polytec thermolaminate, or put anything at
+// all on a quote list. Green for the one with a price, amber for
 // the one without, the same two colours as the Cart and My list buttons in the
 // bar above. See the "Two Paths, One Website" plan.
 //
@@ -23,56 +25,61 @@ import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
 //
 // Each path shows its own basket, and those tiles are EXAMPLES and say so. See
 // .landing-ways in frontend.css for the rest of the reasoning.
-const ROUTES = [
-  {
-    tone: "buy",
-    tag: "Buy online",
-    title: "Standard doors and panels",
-    blurb:
-      "Polytec decorative board, 16mm and 18mm, cut to your sizes. Priced to the cent as you set it up, and paid for on the site.",
-    points: [
-      "See the price change as you size it",
-      "Pay on the site, made in about ten working days",
-      "Flat rate delivery anywhere in the Perth metro",
-    ],
-    href: "/products",
-    label: "Shop doors online",
-    basket: {
-      title: "Cart",
-      state: "Priced",
-      lines: [
-        ["2 x Flat door", "Coastal Oak Woodmatt, 717 x 450 mm", "$186.40", "linear-gradient(150deg,#cdb392,#a3835f)"],
-        ["1 x Flat panel", "Crisp White Legato, 2055 x 650 mm", "$142.10", "linear-gradient(150deg,#f4f2ec,#ddd8cd)"],
-        ["1 x Drawer front", "Notaio Walnut Woodmatt, 200 x 600 mm", "$44.30", "linear-gradient(150deg,#6b4c39,#43301f)"],
+//
+// Built for each request, because the buy path quotes the lead time set in
+// Settings.
+function routesFor({ leadTime }) {
+  return [
+    {
+      tone: "buy",
+      tag: "Buy online",
+      title: "Doors, drawer fronts and panels",
+      blurb:
+        "Flat in Polytec decorative board, or routed and wrapped in Polytec thermolaminate, made to your sizes. Priced to the cent as you set it up, and paid for on the site.",
+      points: [
+        "See the price change as you size it",
+        `Pay on the site, made in about ${leadTime}`,
+        "Flat rate delivery anywhere in the Perth metro",
       ],
-      foot: "Subtotal $372.80 inc GST. Delivery added at checkout.",
+      href: "/products",
+      label: "Shop doors online",
+      basket: {
+        title: "Cart",
+        state: "Priced",
+        lines: [
+          ["2 x Bathurst door", "Classic White Matt thermolaminate, 717 x 450 mm", "$250.21", "linear-gradient(150deg,#f6f4ef,#e3ded2)"],
+          ["1 x Panel", "Crisp White Legato, 2055 x 650 mm", "$142.10", "linear-gradient(150deg,#f4f2ec,#ddd8cd)"],
+          ["1 x Drawer front", "Notaio Walnut Woodmatt, 200 x 600 mm", "$44.30", "linear-gradient(150deg,#6b4c39,#43301f)"],
+        ],
+        foot: "Subtotal $436.61 inc GST. Delivery added at checkout.",
+      },
     },
-  },
-  {
-    tone: "quote",
-    tag: "Get a quote",
-    title: "Everything else we make",
-    blurb:
-      "Thermolaminate, compact laminate, benchtops, whole kitchens. Anything with a profile pressed into it or a shape to it.",
-    points: [
-      "Build a list of what you need, no prices yet",
-      "Priced by hand, back to you within 1 to 3 business days",
-      "Nothing is charged until you accept the quote",
-    ],
-    href: "/request-quote",
-    label: "Start a quote request",
-    basket: {
-      title: "Quote list",
-      state: "To be quoted",
-      lines: [
-        ["6 x Door, shaker", "Classic White thermolaminate, 720 x 450 mm", null, "linear-gradient(150deg,#f6f4ef,#e3ded2)"],
-        ["1 x Benchtop", "Char Oak Ravine compact laminate", null, "linear-gradient(150deg,#4b3d33,#2c2421)"],
-        ["1 x New cabinet", "900 wide pantry, to suit the run", null, "linear-gradient(150deg,#a8a49c,#7d7a72)"],
+    {
+      tone: "quote",
+      tag: "Get a quote",
+      title: "Everything else we make",
+      blurb:
+        "21mm and fluted thermolaminate, compact laminate, benchtops, whole kitchens. Anything the site cannot put a price on.",
+      points: [
+        "Build a list of what you need, no prices yet",
+        "Priced by hand, back to you within 1 to 3 business days",
+        "Nothing is charged until you accept the quote",
       ],
-      foot: "No prices anywhere. Worked out by hand and emailed to you.",
+      href: "/request-quote",
+      label: "Start a quote request",
+      basket: {
+        title: "Quote list",
+        state: "To be quoted",
+        lines: [
+          ["6 x Door, Hampshire", "Classic White 21mm thermolaminate, 720 x 450 mm", null, "linear-gradient(150deg,#f6f4ef,#e3ded2)"],
+          ["1 x Benchtop", "Char Oak Ravine compact laminate", null, "linear-gradient(150deg,#4b3d33,#2c2421)"],
+          ["1 x New cabinet", "900 wide pantry, to suit the run", null, "linear-gradient(150deg,#a8a49c,#7d7a72)"],
+        ],
+        foot: "No prices anywhere. Worked out by hand and emailed to you.",
+      },
     },
-  },
-];
+  ];
+}
 
 export const metadata = {
   title: "Perth Cabinet Doors | Custom Cabinet Doors, Panels & Drawer Fronts - Perth WA",
@@ -95,6 +102,9 @@ export default async function HomePage() {
   // 24 TILES SPREAD ACROSS THE WHOLE LIBRARY, not the first 24, which would be
   // 24 shades of oak. See lib/pcd-colour-band.js.
   const bandColours = spreadAcross(await loadColourBand(), 24);
+  const siteSettings = await readPublicSiteSettings();
+  const shopOpen = siteSettings.shop_open;
+  const routes = routesFor({ leadTime: leadTimeRangeWords(siteSettings) });
 
   return (
     <main className="landing-page">
@@ -174,7 +184,7 @@ export default async function HomePage() {
           and far enough below the hero that the page is not making the same
           offer twice in one screen. With the shop closed there is only one way
           to order, so it is not a fork and does not pretend to be one. */}
-      {SHOP_ENABLED ? (
+      {shopOpen ? (
         <section className="landing-ground-dark" aria-labelledby="two-ways">
           <div className="landing-section landing-dark-inner">
             <p className="landing-label">Two ways to order</p>
@@ -182,12 +192,12 @@ export default async function HomePage() {
               Buy it now, or <em>have it quoted</em>
             </h2>
             <p className="landing-lead">
-              Which one you are on comes down to a single question: is the front flat, in a Polytec decorative
-              board colour? If it is, the price is on the screen. If it is anything else, we work it out by
-              hand.
+              Which one you are on comes down to a single question: can the site put a price on it? Polytec
+              decorative board and most Polytec thermolaminate profiles are priced on the screen. Anything else
+              we work out by hand.
             </p>
             <div className="landing-ways">
-              {ROUTES.map((route) => (
+              {routes.map((route) => (
                 <article className={`landing-way landing-way-${route.tone}`} key={route.tone}>
                   <p className="landing-way-tag">{route.tag}</p>
                   <h3>{route.title}</h3>
@@ -237,17 +247,17 @@ export default async function HomePage() {
           flips. With the shop closed nothing dark sits above this, so it takes
           the dark green back. */}
       <section
-        className={SHOP_ENABLED ? "landing-ground-mint" : "landing-ground-dark"}
+        className={shopOpen ? "landing-ground-mint" : "landing-ground-dark"}
         id="how-it-works"
       >
         {/* landing-dark-inner is what makes the heading cream, so it only goes
             on when the ground is actually dark. */}
-        <div className={`landing-section${SHOP_ENABLED ? "" : " landing-dark-inner"}`}>
+        <div className={`landing-section${shopOpen ? "" : " landing-dark-inner"}`}>
           <p className="landing-label">Simple Process</p>
           <h2>
             From Measurement to <em>Your Front Door</em> in Four Steps
           </h2>
-          <div className={`landing-steps${SHOP_ENABLED ? " landing-steps-light" : ""}`}>
+          <div className={`landing-steps${shopOpen ? " landing-steps-light" : ""}`}>
             <article>
               <p>Step 01</p>
               <h3>Measure Your Openings</h3>

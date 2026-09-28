@@ -853,3 +853,56 @@ test("a line that is not drilled carries no cup positions", () => {
   assert.equal(row.hinge_from_bottom_mm, null);
   assert.deepEqual(row.hinge_middles_mm, []);
 });
+
+// ── A THERMOLAMINATE LINE NEEDS ITS PROFILE AND EDGE (28 September 2026) ────
+//
+// A thermolaminate door could be sent for a quote with no profile at all, and a
+// profile is most of what one costs. Only what the brand makes is asked for,
+// read off the profile library: Polytec makes both, Laminex makes no edges.
+
+test("a thermolaminate line is not ready without the profile and edge its brand makes", async () => {
+  const { lineGaps } = await import("../lib/pcd-quote-ready.js");
+  const rows = [
+    { kind: "door", supplier_name: "Polytec", category: "Soft", name: "Bathurst" },
+    { kind: "edge", supplier_name: "Polytec", category: "Thermolaminate", name: "EM2 Thumb Mould" },
+    { kind: "door", supplier_name: "Laminex", category: "Shaker", name: "Shaker" },
+  ];
+  const base = { productType: "Door", material: "Thermolaminate", thickness: "18mm", colour: "Classic White", width: 450, height: 720 };
+  const fields = (line, options) => lineGaps(line, options).map((gap) => gap.field);
+
+  assert.deepEqual(fields({ ...base, supplierName: "Polytec" }, { profileRows: rows }), ["profile", "edgeMould"]);
+  assert.deepEqual(
+    fields({ ...base, supplierName: "Polytec", profileType: "Soft", profile: "Bathurst", edgeMould: "EM2 Thumb Mould" }, { profileRows: rows }),
+    []
+  );
+  assert.deepEqual(fields({ ...base, supplierName: "Laminex" }, { profileRows: rows }), ["profile"], "Laminex makes no edges");
+  assert.deepEqual(fields({ ...base, supplierName: "Laminex", profileType: "Shaker", profile: "Shaker" }, { profileRows: rows }), []);
+  assert.deepEqual(fields({ ...base, supplierName: "Polytec" }), [], "no library, nothing extra asked");
+  assert.deepEqual(fields({ ...base, supplierName: "Polytec" }, { profileRows: rows, requireSize: false }), [], "a design planner's line keeps what it drew");
+  assert.deepEqual(
+    fields({ ...base, material: "Decorative Board", supplierName: "Polytec" }, { profileRows: rows }),
+    [],
+    "decorative board has no routed face"
+  );
+  // Order lines and request rows name the fields the database's way.
+  assert.deepEqual(
+    fields({ product_type: "Door", material: "Thermolaminate", thickness: "18mm", colour: "White", width_mm: 450, height_mm: 720, supplier_name: "Polytec", profile_type: "Soft", profile: "Bathurst", edge_mould: "EM2 Thumb Mould" }, { profileRows: rows }),
+    []
+  );
+});
+
+test("the form, the send page and the request API all ask the profile library", () => {
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  const form = read("app/(site)/request-quote/RequestQuoteFormClient.js");
+  assert.ok(form.includes("lineGaps(item, { profileRows: libraryRows })"), "saving a row");
+  assert.ok(form.includes("lineGaps(editingItem, { profileRows: libraryRows })"), "the sentence under the button");
+  assert.ok(read("app/(site)/request-quote/send/QuoteSendClient.js").includes("lineGaps(line, { profileRows: libraryRows })"), "sending the list");
+  assert.ok(read("app/api/quote-requests/route.js").includes("profileRows,\n    });") || read("app/api/quote-requests/route.js").includes("profileRows,\r\n    });"), "the server");
+});
+
+test("a shop line goes to the quote list only once it is set up", () => {
+  const shop = readFileSync(new URL("../app/(site)/products/[slug]/ShopProductClient.js", import.meta.url), "utf8");
+  assert.ok(shop.includes('const stillToAnswer = problems.filter((problem) => problem !== "a colour we hold a price on");'));
+  assert.ok(shop.includes("if (stillToAnswer.length) return;"), "the move itself refuses a half answered line");
+  assert.ok(shop.includes("disabled={stillToAnswer.length > 0}"), "and the button says so");
+});

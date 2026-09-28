@@ -6,7 +6,7 @@ import { draftItemCount, useQuoteDraft } from "@/lib/pcd-quote-draft";
 import { lineSpecLine, lineTitle } from "@/lib/pcd-quote-line-text";
 import { cartPieceCount, money, shopLineTitle } from "@/lib/pcd-shop";
 import { useShopCart } from "@/lib/pcd-shop-cart";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { useShopOpen } from "./SiteSettingsProvider";
 import styles from "./public-items-panel.module.css";
 
 // ONE BASKET IN THE BAR, TWO INSIDE IT.
@@ -74,13 +74,14 @@ function cartTotal(lines) {
 
 export default function PublicItemsPanel({ className = "" }) {
   const draft = useQuoteDraft();
+  const shopOpen = useShopOpen();
   const cart = useShopCart();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("");
   const wrapRef = useRef(null);
 
   const quoteLines = draft.ready ? draft.lines : [];
-  const cartLines = SHOP_ENABLED && cart.ready ? cart.lines : [];
+  const cartLines = shopOpen && cart.ready ? cart.lines : [];
   const quoteCount = draftItemCount(quoteLines);
   const cartCount = cartPieceCount(cartLines);
   const total = quoteCount + cartCount;
@@ -132,7 +133,7 @@ export default function PublicItemsPanel({ className = "" }) {
 
       {open ? (
         <div className={styles.panel}>
-          {SHOP_ENABLED ? (
+          {shopOpen ? (
             <div className={styles.tabs} role="tablist">
               <button
                 type="button"

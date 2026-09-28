@@ -15,6 +15,7 @@
 // which prices the cart again and refuses to charge a figure other than the one
 // on screen, then hands over to Stripe.
 
+import { SiteNotice } from "@/components/public/SiteMessages";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SALES_EMAIL } from "@/lib/pcd-business-identity";
@@ -236,6 +237,8 @@ function Checkout({ cart }) {
               <span>Total inc GST</span>
               <strong>{price ? money(price.totals.totalIncGst) : "..."}</strong>
             </div>
+            {/* Lead times, holiday closures: whatever Settings says right now. */}
+            <SiteNotice placement="checkout" />
             {error ? <p className={styles.fieldError}>{error}</p> : null}
             <button className={styles.cartPayBtn} type="submit" disabled={paying || loading || !price?.ready || outsideMetro}>
               {paying ? "Taking you to payment..." : price ? `Pay ${money(price.totals.totalIncGst)}` : "Pay"}

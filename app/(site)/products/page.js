@@ -1,13 +1,14 @@
 import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import PublicFooter from "@/components/public/PublicFooter";
 import Image from "next/image";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { shopAccess } from "@/lib/pcd-shop-access";
+import { leadTimeRangeWords } from "@/lib/pcd-site-settings";
 import { SHOP_PRODUCTS } from "@/lib/pcd-shop";
 import { loadShopCatalogue } from "@/lib/pcd-shop-pricing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import PublicSiteNav from "../PublicSiteNav";
+import ShopClosed, { ShopPreviewBar } from "../ShopClosed";
 import styles from "../contact/contact.module.css";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Shop Cabinet Doors Online | Perth Cabinet Doors",
   description:
-    "Buy made to measure Polytec decorative board doors, drawer fronts and panels online. Priced as you size them, made in Perth and delivered across the Perth metro area.",
+    "Buy made to measure Polytec decorative board and thermolaminate doors, drawer fronts and panels online. Priced as you size them, made in Perth and delivered across the Perth metro area.",
   // In the sitemap whenever the shop is open, so it carries a canonical. It
   // leaves the sitemap with the flag; the canonical is harmless either way.
   // See lib/pcd-seo.js.
@@ -23,16 +24,17 @@ export const metadata = {
     path: "/products",
     title: "Shop Cabinet Doors Online | Perth Cabinet Doors",
     description:
-      "Buy made to measure Polytec decorative board doors, drawer fronts and panels online. Priced as you size them, made in Perth and delivered across the Perth metro area.",
+      "Buy made to measure Polytec decorative board and thermolaminate doors, drawer fronts and panels online. Priced as you size them, made in Perth and delivered across the Perth metro area.",
   }),
 };
 
 // THE SHOP. Everything on it can be bought today, and it says so. It also names
 // what is NOT here, with a link straight across to the quote form, because
-// somebody hunting for thermolaminate should find that sentence rather than an
-// empty page. See the "Two Paths, One Website" plan.
+// somebody hunting for a benchtop or a 21mm front should find that sentence
+// rather than an empty page. See the "Two Paths, One Website" plan.
 export default async function ShopPage() {
-  if (!SHOP_ENABLED) notFound();
+  const access = await shopAccess();
+  if (!access.allowed) return <ShopClosed />;
 
   // THE COLOUR TILES THAT USED TO BE THE CARD ART HAVE GONE WITH IT. Each card
   // now shows its own photograph, named on the product, so there is nothing
@@ -51,6 +53,7 @@ export default async function ShopPage() {
 
   return (
     <>
+      {access.staff ? <ShopPreviewBar /> : null}
       <PublicSiteNav active="shop" variant="solid" />
       <main className={styles.page}>
         <section className={styles.pageHeader}>
@@ -67,11 +70,11 @@ export default async function ShopPage() {
                 replacement door could not be sent to the one page on this site
                 that would sell them one. */}
             <p>
-              Polytec decorative board doors, drawer fronts and panels, cut to your sizes and edged in our Perth
-              workshop. They fit IKEA Metod, Pax and Besta cabinets, Kaboodle cabinets from Bunnings, and any
+              Doors, drawer fronts and panels made to your sizes, flat in Polytec decorative board or with a
+              routed profile in Polytec thermolaminate. They fit IKEA Metod, Pax and Besta cabinets, Kaboodle cabinets from Bunnings, and any
               cabinet with a standard concealed hinge.
-              {pricedCount ? ` ${pricedCount} colours with a live price.` : ""} You see the finished price,
-              edging and all, before anything goes in the cart.
+              {pricedCount ? ` ${pricedCount} colours with a live price.` : ""} You see the finished price before
+              anything goes in the cart.
             </p>
           </div>
         </section>
@@ -116,7 +119,7 @@ export default async function ShopPage() {
 
           {/* NAMING WHAT IS NOT HERE is what stops the confusion. */}
           <div className={styles.shopElsewhere}>
-            <strong>After thermolaminate, compact laminate, a benchtop or a whole kitchen?</strong>
+            <strong>After a 21mm or fluted front, compact laminate, a benchtop or a whole kitchen?</strong>
             <p>
               They are not in the shop because we price them by hand. Put them on a quote list instead and we will come
               back to you within 1 to 3 business days.
@@ -129,7 +132,7 @@ export default async function ShopPage() {
           <div className={styles.shopFacts}>
             <div>
               <strong>Made in Perth</strong>
-              <span>Cut and edged in our own workshop, usually on its way within ten working days.</span>
+              <span>Made to order for you, usually on its way within {leadTimeRangeWords(access.settings)}.</span>
             </div>
             <div>
               <strong>Delivered, Perth metro</strong>

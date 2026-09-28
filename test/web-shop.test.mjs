@@ -114,7 +114,7 @@ test("a door is priced exactly as a quote prices it, worked through by hand", ()
   // $28.88 of hardware, x1.75 = $50.54. The drilling is a rate a hole rather
   // than a cost with a margin on it, so 4 holes at $5 stays $20.
   assert.deepEqual(priced.parts, [
-    ["Flat door, cut and edged", 80.62],
+    ["Door, cut and edged", 80.62],
     ["Hinge holes, 4", 20],
     ["Hinges, 4", 50.54],
   ]);
@@ -363,13 +363,17 @@ test("the shop asks through the quote builder's own pieces", () => {
   assert.ok(!builder.includes("colourComboButton"), "the colour search box is gone: finish then tiles, on both");
 });
 
-test("the shop is off on the live site until it is turned on", () => {
-  assert.match(read("lib/pcd-site-flags.js"), /export const SHOP_ENABLED = process\.env\.NODE_ENV !== "production";/);
+// Since 28 September 2026 the switch is in Settings, not the code. See
+// test/site-settings.test.mjs for what closed means.
+test("the shop is opened and closed in Settings, and closed shows the closed page", () => {
+  assert.ok(!read("lib/pcd-site-flags.js").includes("export const SHOP_ENABLED"), "no switch left in the code");
   for (const page of ["app/(site)/products/page.js", "app/(site)/products/[slug]/page.js", "app/(site)/cart/page.js", "app/(site)/checkout/page.js"]) {
-    assert.match(read(page), /if \(!SHOP_ENABLED\) notFound\(\);/, page);
+    const source = read(page);
+    assert.ok(source.includes("const access = await shopAccess();\n  if (!access.allowed) return <ShopClosed />;"), `${page} shows the closed page`);
+    assert.ok(source.includes("{access.staff ? <ShopPreviewBar /> : null}"), `${page} tells staff it is a preview`);
   }
   for (const route of ["app/api/shop/price/route.js", "app/api/shop/checkout/route.js"]) {
-    assert.match(read(route), /if \(!SHOP_ENABLED\) return Response\.json/, route);
+    assert.ok(read(route).includes("if (!(await shopAccess()).allowed) return shopClosedResponse();"), `${route} refuses while closed`);
   }
-  assert.match(read("app/(site)/page.js"), /\{SHOP_ENABLED \? \(/, "the home page offers it only when it is open");
+  assert.ok(read("app/(site)/page.js").includes("{shopOpen ? ("), "the home page offers it only when it is open");
 });

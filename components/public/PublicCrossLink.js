@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { useShopOpen } from "./SiteSettingsProvider";
 import styles from "./public-cross-link.module.css";
 
 // "YOU MIGHT BE ON THE WRONG PAGE", SAID WHERE THEY ALREADY ARE.
@@ -14,9 +16,9 @@ import styles from "./public-cross-link.module.css";
 // the header is a form, so there is nothing on it for a search engine or an
 // assistant to understand. Two true question and answer pairs give it some.
 //
-// THE SHOP ONE HIDES ITSELF while SHOP_ENABLED is false, because /products is a
-// 404 until the shop opens. Pass shop to get that behaviour; everything else
-// always renders.
+// THE SHOP ONE HIDES ITSELF while the shop is closed in Settings, because
+// /products only shows the closed page until it opens. Pass shop to get that
+// behaviour; everything else always renders.
 
 // `bare` drops the strip's own border and ground, for when it is grouped inside
 // a container that already draws those. See .stripBare.
@@ -34,7 +36,8 @@ export default function PublicCrossLink({
   onDark = false,
   className = "",
 }) {
-  if (shop && !SHOP_ENABLED) return null;
+  const shopOpen = useShopOpen();
+  if (shop && !shopOpen) return null;
 
   const classes = [
     styles.strip,

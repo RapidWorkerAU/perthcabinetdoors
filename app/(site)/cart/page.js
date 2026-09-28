@@ -1,9 +1,9 @@
 import { PRIVATE_PAGE_METADATA } from "@/lib/pcd-seo";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import PublicFooter from "@/components/public/PublicFooter";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { shopAccess } from "@/lib/pcd-shop-access";
 import PublicSiteNav from "../PublicSiteNav";
+import ShopClosed, { ShopPreviewBar } from "../ShopClosed";
 import styles from "../contact/contact.module.css";
 import CartClient from "./CartClient";
 
@@ -15,10 +15,12 @@ export const metadata = {
   title: "Your Cart | Perth Cabinet Doors",
 };
 
-export default function CartPage() {
-  if (!SHOP_ENABLED) notFound();
+export default async function CartPage() {
+  const access = await shopAccess();
+  if (!access.allowed) return <ShopClosed />;
   return (
     <>
+      {access.staff ? <ShopPreviewBar /> : null}
       <PublicSiteNav active="shop" variant="solid" />
       <main className={styles.page}>
         <section className={styles.pageHeader}>

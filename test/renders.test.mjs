@@ -177,3 +177,35 @@ test("the order issues report renders", async () => {
   assert.ok(html.includes("Order issues"), "rendered without its title");
   assert.ok(html.includes("No cost recorded"), "the uncosted figure is missing");
 });
+
+// THE WEBSITE'S MESSAGES, rendered for real inside the settings they read.
+// The banner scrolls two copies of the text; the notices show only their own
+// place's message; nothing renders for an empty or out of date message.
+test("the banner and the notices render from the settings", async () => {
+  const { default: SiteSettingsProvider } = await import("../components/public/SiteSettingsProvider.js");
+  const { SiteBanner, SiteNotice } = await import("../components/public/SiteMessages.js");
+  const { normalizeSiteSettings } = await import("../lib/pcd-site-settings.js");
+  const settings = normalizeSiteSettings({
+    shop_open: true,
+    messages: {
+      banner: { text: "Spring sale: 10% off all doors <b>" },
+      checkout: { text: "Orders are taking twelve working days this month." },
+      quote: { text: "Old news", ends_on: "2020-01-01" },
+    },
+  });
+  const html = renderToString(
+    createElement(
+      SiteSettingsProvider,
+      { settings },
+      createElement(SiteBanner),
+      createElement(SiteNotice, { placement: "checkout" }),
+      createElement(SiteNotice, { placement: "quote" }),
+      createElement(SiteNotice, { placement: "shop" })
+    )
+  );
+  assert.equal(html.split("Spring sale: 10% off all doors &lt;b&gt;").length - 1, 2, "two copies, and typed markup shows as words");
+  assert.ok(html.includes("Orders are taking twelve working days this month."));
+  assert.ok(!html.includes("Old news"), "an ended message is gone");
+  assert.equal(html.split('role="note"').length - 1, 1, "only the checkout notice has anything to say");
+  assert.ok(renderToString(createElement(SiteBanner)) === "", "no settings, no banner");
+});

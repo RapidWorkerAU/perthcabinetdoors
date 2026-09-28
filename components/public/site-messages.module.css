@@ -1,0 +1,84 @@
+/* THE SCROLLING BANNER AND THE NOTICE BOX, set in Settings > Shop and Site
+   Messages. The site's own sage and dark green: the banner is the one filled
+   strip above the nav, so it reads as news rather than as part of the nav. */
+
+.banner {
+  background: #a8c5a0;
+  color: #07130a;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.bannerTrack {
+  display: flex;
+  width: max-content;
+  animation: bannerScroll var(--banner-seconds, 30s) linear infinite;
+}
+
+.banner:hover .bannerTrack,
+.banner:focus-within .bannerTrack {
+  animation-play-state: paused;
+}
+
+.bannerItem {
+  flex: 0 0 auto;
+  padding: 10px 48px;
+  white-space: nowrap;
+}
+
+/* Two copies of the text run end to end, so moving by half the track brings
+   the second copy exactly where the first began and the loop has no seam. */
+@keyframes bannerScroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* STILL, FOR ANYONE WHO HAS ASKED FOR LESS MOVEMENT. The words are what
+   matters, so they sit centred and wrap instead of travelling. */
+@media (prefers-reduced-motion: reduce) {
+  .bannerTrack {
+    animation: none;
+    width: auto;
+    justify-content: center;
+  }
+  .bannerItem {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.4;
+    padding: 9px 16px;
+  }
+  .bannerItem + .bannerItem {
+    display: none;
+  }
+}
+
+.notice {
+  background: #edf4eb;
+  border: 1px solid #a8c5a0;
+  border-radius: 2px;
+  color: #2d5e28;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+}
+
+.notice strong {
+  color: #1c2b1e;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}

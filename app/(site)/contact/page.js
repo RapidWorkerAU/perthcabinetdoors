@@ -1,7 +1,7 @@
 import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 import PublicSiteNav from "../PublicSiteNav";
 import ContactFormClient from "./ContactFormClient";
 import ContactInfoSide from "./ContactInfoSide";
@@ -22,7 +22,8 @@ export const metadata = {
   }),
 };
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const shopOpen = (await readPublicSiteSettings()).shop_open;
   return (
     <>
       <PublicSiteNav active="contact" variant="solid" />
@@ -53,7 +54,7 @@ export default function ContactPage() {
             about the business that is true read on its own. */}
         <section className={styles.chooserWrap}>
           <p className={styles.chooserLabel}>What would you like to do?</p>
-          <div className={`${styles.chooser} ${SHOP_ENABLED ? styles.chooserThree : ""}`}>
+          <div className={`${styles.chooser} ${shopOpen ? styles.chooserThree : ""}`}>
             <div className={`${styles.chooserCard} ${styles.active}`}>
               <div className={styles.chooserIndicator}><span /></div>
               <div className={`${styles.chooserTag} ${styles.chooserTagGeneral}`}>I am not sure yet</div>
@@ -65,15 +66,15 @@ export default function ContactPage() {
               <div className={styles.chooserIndicator}><span /></div>
               <div className={styles.chooserTag}>I know what I need</div>
               <div className={styles.chooserCardTitle}>Request a Quote</div>
-              <div className={styles.chooserCardDesc}>Profiled and thermolaminated fronts, benchtops, new cabinets and installation are priced by hand. Build a list and we answer within 1 to 3 business days.</div>
+              <div className={styles.chooserCardDesc}>{shopOpen ? "Anything the shop cannot price, benchtops, new cabinets and installation are priced by hand." : "Doors, panels, benchtops, new cabinets and installation are priced by hand."} Build a list and we answer within 1 to 3 business days.</div>
             </Link>
 
-            {SHOP_ENABLED ? (
+            {shopOpen ? (
               <Link className={styles.chooserCard} href="/products">
                 <div className={styles.chooserIndicator}><span /></div>
                 <div className={`${styles.chooserTag} ${styles.chooserTagShop}`}>I have my sizes</div>
-                <div className={styles.chooserCardTitle}>Buy Flat Fronts Online</div>
-                <div className={styles.chooserCardDesc}>Flat doors, drawer fronts and panels in Polytec decorative board are priced on the site. Enter the size, see the finished price, and pay by card.</div>
+                <div className={styles.chooserCardTitle}>Buy Fronts Online</div>
+                <div className={styles.chooserCardDesc}>Doors, drawer fronts and panels in Polytec decorative board and most Polytec thermolaminate profiles are priced on the site. Enter the size, see the finished price, and pay by card.</div>
               </Link>
             ) : null}
           </div>

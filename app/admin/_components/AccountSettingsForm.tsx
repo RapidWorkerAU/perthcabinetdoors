@@ -14,6 +14,7 @@ import EmailSignatureCard from './EmailSignatureCard'
 import BookingSettingsCard from './BookingSettingsCard'
 import ListsManager from './ListsManager'
 import ThermoPricingCard from './ThermoPricingCard'
+import SiteSettingsCard from './SiteSettingsCard'
 
 interface DefaultField {
   key:        string
@@ -325,7 +326,7 @@ const primaryBtn = 'h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-mediu
 const secondaryBtn = 'h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors'
 const fieldLabelClass = 'flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]'
 
-type Tab = 'profile' | 'launch' | 'defaults' | 'thermo' | 'lists' | 'bookings'
+type Tab = 'profile' | 'launch' | 'site' | 'defaults' | 'thermo' | 'lists' | 'bookings'
 
 export default function AccountSettingsForm({ currentEmail }: { currentEmail?: string }) {
   const [activeTab,        setActiveTab]        = useState<Tab>('profile')
@@ -555,6 +556,10 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
   const TAB_ITEMS: { key: Tab; label: string; description: string; icon: string }[] = [
     { key: 'profile',  label: 'My Profile',        description: 'Name, email and password',                              icon: accountInitials },
     { key: 'launch',   label: 'Website Overlay',    description: 'Password gate, copy and countdown',                    icon: 'WO' },
+    // Beside the overlay because both decide what the public website shows:
+    // whether the shop is open, the lead time it quotes, and the banner and
+    // notices customers read.
+    { key: 'site',     label: 'Shop and Site Messages', description: 'Open or close the shop, lead time, banner and notices', icon: 'SS' },
     { key: 'defaults', label: 'Business Defaults',  description: 'GST, markup, labour and hardware costs',               icon: 'BD' },
     // Beside Business Defaults because it is the same kind of setting: it
     // decides what a thermolaminate line costs on every quote.
@@ -882,6 +887,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
   const tabContent =
     activeTab === 'profile'  ? profileContent  :
     activeTab === 'launch'   ? launchContent   :
+    activeTab === 'site'     ? <SiteSettingsCard /> :
     activeTab === 'thermo'   ? <ThermoPricingCard /> :
     activeTab === 'lists'    ? <ListsManager /> :
     activeTab === 'bookings' ? <BookingSettingsCard /> :

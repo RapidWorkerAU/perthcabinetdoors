@@ -1,4 +1,5 @@
 import { canonical, publicPages } from "@/lib/pcd-seo";
+import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 
 // THE LIST OF PAGES WORTH CRAWLING, BUILT FROM THE ONE LIST OF THEM.
 //
@@ -11,11 +12,14 @@ import { canonical, publicPages } from "@/lib/pcd-seo";
 // up one is worse than none: a crawler that is told every page changed today,
 // every day, learns to disregard the field.
 
-export const dynamic = "force-static";
+// Built again at most once an hour, because whether the shop is in it follows
+// the switch in Settings.
+export const revalidate = 3600;
 
-export default function sitemap() {
+export default async function sitemap() {
   const lastModified = new Date();
-  return publicPages().map((page) => ({
+  const { shop_open: shopOpen } = await readPublicSiteSettings();
+  return publicPages({ shopOpen }).map((page) => ({
     url: canonical(page.path),
     lastModified,
     changeFrequency: page.changeFrequency,

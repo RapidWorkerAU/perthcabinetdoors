@@ -2,7 +2,8 @@ import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicCrossLink from "@/components/public/PublicCrossLink";
 import PublicFooter from "@/components/public/PublicFooter";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { SiteNotice } from "@/components/public/SiteMessages";
+import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 import { evenColumns } from "@/lib/pcd-grid-columns";
 import PublicSiteNav from "../PublicSiteNav";
 import styles from "../contact/contact.module.css";
@@ -44,28 +45,32 @@ export const metadata = {
 //
 // The shop pair drops out entirely while the shop is closed, because /products
 // is a 404 until it opens. Filtered here rather than left to the component so
-// the container knows how many columns it is drawing.
-const ELSEWHERE = [
-  {
-    question: "Do you need measurements to ask for a quote?",
-    answer:
-      "No. This form asks for sizes, colours and finishes, but if you do not have them yet, use the enquiry form instead: send a photo and a question and we will work the details out with you. It reaches the same team.",
-    cta: "Ask a question instead",
-    href: "/contact",
-  },
-  SHOP_ENABLED
-    ? {
-        shop: true,
-        question: "Are plain flat doors priced on the site?",
-        answer:
-          "Yes. Flat, unprofiled doors, drawer fronts and panels in Polytec decorative board are priced in the shop as you enter the size, so there is nothing to wait for. Everything else is priced by hand here.",
-        cta: "See prices in the shop",
-        href: "/products",
-      }
-    : null,
-].filter(Boolean);
+// the container knows how many columns it is drawing. Built for each request,
+// because whether the shop is open is set in Settings.
+function elsewhereFor({ shopOpen }) {
+  return [
+    {
+      question: "Do you need measurements to ask for a quote?",
+      answer:
+        "No. This form asks for sizes, colours and finishes, but if you do not have them yet, use the enquiry form instead: send a photo and a question and we will work the details out with you. It reaches the same team.",
+      cta: "Ask a question instead",
+      href: "/contact",
+    },
+    shopOpen
+      ? {
+          shop: true,
+          question: "Are doors priced on the site?",
+          answer:
+            "Yes. Doors, drawer fronts and panels in Polytec decorative board, and in most Polytec thermolaminate profiles, are priced in the shop as you enter the size, so there is nothing to wait for. Everything else is priced by hand here.",
+          cta: "See prices in the shop",
+          href: "/products",
+        }
+      : null,
+  ].filter(Boolean);
+}
 
-export default function RequestQuotePage() {
+export default async function RequestQuotePage() {
+  const ELSEWHERE = elsewhereFor({ shopOpen: (await readPublicSiteSettings()).shop_open });
   return (
     <>
       <PublicSiteNav active="contact" variant="solid" />
@@ -81,6 +86,8 @@ export default function RequestQuotePage() {
         </section>
 
         <section className={styles.quoteTablePageWrap}>
+          {/* How long quotes are taking right now, when Settings says so. */}
+          <SiteNotice placement="quote" />
           <RequestQuoteFormClient />
         </section>
 

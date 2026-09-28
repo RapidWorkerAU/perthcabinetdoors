@@ -8,14 +8,15 @@
 // Website" plan.
 
 import Link from "next/link";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { useShopOpen } from "@/components/public/SiteSettingsProvider";
 import { cartPieceCount, money } from "@/lib/pcd-shop";
 import { useShopCart } from "@/lib/pcd-shop-cart";
 import styles from "../contact/contact.module.css";
 
 export default function CrossToCart() {
   const cart = useShopCart();
-  if (!SHOP_ENABLED || !cart.ready || !cart.lines.length) return null;
+  const shopOpen = useShopOpen();
+  if (!shopOpen || !cart.ready || !cart.lines.length) return null;
   const pieces = cartPieceCount(cart.lines);
   // The last figure the server gave each line. A first look, not a promise:
   // the cart asks again when it opens.

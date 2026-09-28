@@ -3,7 +3,8 @@ import JsonLd from "@/components/public/JsonLd";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
 import PublicPaths from "@/components/public/PublicPaths";
-import { SHOP_ENABLED } from "@/lib/pcd-site-flags";
+import { leadTimeRangeWords } from "@/lib/pcd-site-settings";
+import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 import { loadColourBand, spreadAcross } from "@/lib/pcd-colour-band";
 import { evenColumns } from "@/lib/pcd-grid-columns";
 import PublicSiteNav from "../PublicSiteNav";
@@ -302,61 +303,68 @@ const HINGES = [
 // types them, and the first sentence of each answer is the whole answer. An
 // assistant quoting one of these in isolation should still be quoting something
 // true and complete.
-const FAQ = [
-  [
-    "Do you make doors that fit IKEA Metod cabinets?",
-    "Yes. Perth Cabinet Doors makes doors, drawer fronts, end panels, kicks and fillers for IKEA Metod cabinets, in the standard Metod sizes and in custom sizes where an opening is not standard. Each piece is cut, edged and bored in our workshop in Perth and hangs on the concealed hinges already fitted to the cabinet.",
-  ],
-  [
-    "Can I use your doors on Kaboodle cabinets from Bunnings?",
-    "Yes. Kaboodle base and wall cabinets are both 720mm high and therefore share a single door height of 717mm, which Perth Cabinet Doors makes in every Kaboodle cabinet width. We also make the 2055mm pantry doors, the drawer panel sets and the end and filler panels.",
-  ],
-  [
-    "How much do replacement IKEA and Kaboodle fronts cost?",
-    SHOP_ENABLED
-      ? "It depends on the finish. Flat decorative board fronts are priced on this site as you enter the size, so the figure is on screen before you commit. Profiled and thermolaminated fronts are quoted by hand, because a routed profile costs more than the board it is cut from in a way a square metre rate cannot describe. Either way there is no charge to find out."
-      : "It depends on the finish, the size and how many pieces there are, so Perth Cabinet Doors prices every list by hand rather than publishing a rate that would be wrong for most jobs. Build a list of what you need and a price comes back within 1 to 3 business days, with no charge and no obligation. Installation is quoted with the fronts, as one price.",
-  ],
-  [
-    "Is it cheaper than buying the fronts from IKEA or Bunnings?",
-    "It depends on the finish. A plain flat door from Perth Cabinet Doors is comparable to the range's own basic front. On better finishes the difference is larger: a thermolaminated or profiled door from us is often less than the equivalent Kaboodle door, drawer panel or end panel, in a considerably wider choice of colour. Send us the list and we will price it against what you are comparing it to.",
-  ],
-  [
-    "Do you make custom sizes?",
-    "Yes. Custom sizes are the majority of what Perth Cabinet Doors makes. Any opening that is not a standard catalogue size is cut to your measurement, including wider fillers where a cabinet has been removed. There is no minimum order, so a single door is an order we will take.",
-  ],
-  [
-    "Can you install them?",
-    "Yes. Perth Cabinet Doors installs across the Perth metro area, and installation is quoted with the fronts as one price. We also supply only, to homeowners and to trades, which is how a large share of these orders are filled.",
-  ],
-  [
-    "How does ordering replacement fronts work?",
-    "Count the doors, drawer fronts, panels and kicks you need. A standard cabinet determines its own front size; a non-standard opening needs a measurement or a photo. Choose a colour and profile, get the price, and every piece is then cut, edged and bored in our own Perth workshop before it is delivered at a flat rate across Perth metro or installed by our team.",
-  ],
-  [
-    "Do you sell the cabinets themselves?",
-    <>
-      Perth Cabinet Doors does not sell flat-pack carcasses. We make the fronts and panels that go on them.
-      Where a cabinet is needed in a size the range does not offer, we build cabinets to size in the same
-      finish, quoted alongside the fronts. Doing a whole room? Lay it out in our{" "}
-      <Link href="/design">free 3D planner</Link> and send it through, and we quote the standard units and the
-      pieces we build to suit as one job.
-    </>,
-  ],
-  [
-    "What if my cabinets are not IKEA or Kaboodle?",
-    "Everything described here applies to any cabinet fitted with a standard concealed hinge. Send the sizes, or photographs with rough dimensions, and we will confirm what fits.",
-  ],
-  [
-    "How long does it take?",
-    SHOP_ENABLED
-      ? "Flat fronts ordered through the shop are usually dispatched within ten working days. Quoted work is priced within 1 to 3 business days, and build time is typically two to three weeks from approval, depending on the finish."
-      : "Quoted work is priced within 1 to 3 business days, and build time is typically two to three weeks from approval, depending on the finish.",
-  ],
-];
+//
+// Built for each request, because two answers depend on whether the shop is
+// open and how long the workshop is taking, both of which are set in Settings.
+function faqFor({ shopOpen, leadTime }) {
+  return [
+    [
+      "Do you make doors that fit IKEA Metod cabinets?",
+      "Yes. Perth Cabinet Doors makes doors, drawer fronts, end panels, kicks and fillers for IKEA Metod cabinets, in the standard Metod sizes and in custom sizes where an opening is not standard. Each piece is cut, edged and bored in our workshop in Perth and hangs on the concealed hinges already fitted to the cabinet.",
+    ],
+    [
+      "Can I use your doors on Kaboodle cabinets from Bunnings?",
+      "Yes. Kaboodle base and wall cabinets are both 720mm high and therefore share a single door height of 717mm, which Perth Cabinet Doors makes in every Kaboodle cabinet width. We also make the 2055mm pantry doors, the drawer panel sets and the end and filler panels.",
+    ],
+    [
+      "How much do replacement IKEA and Kaboodle fronts cost?",
+      shopOpen
+        ? "It depends on the finish. Flat decorative board fronts and most Polytec thermolaminate profiles are priced on this site as you enter the size, so the figure is on screen before you commit. Anything the site cannot price, such as a 21mm or fluted front, is quoted by hand instead. Either way there is no charge to find out."
+        : "It depends on the finish, the size and how many pieces there are, so Perth Cabinet Doors prices every list by hand rather than publishing a rate that would be wrong for most jobs. Build a list of what you need and a price comes back within 1 to 3 business days, with no charge and no obligation. Installation is quoted with the fronts, as one price.",
+    ],
+    [
+      "Is it cheaper than buying the fronts from IKEA or Bunnings?",
+      "It depends on the finish. A plain flat door from Perth Cabinet Doors is comparable to the range's own basic front. On better finishes the difference is larger: a thermolaminated or profiled door from us is often less than the equivalent Kaboodle door, drawer panel or end panel, in a considerably wider choice of colour. Send us the list and we will price it against what you are comparing it to.",
+    ],
+    [
+      "Do you make custom sizes?",
+      "Yes. Custom sizes are the majority of what Perth Cabinet Doors makes. Any opening that is not a standard catalogue size is cut to your measurement, including wider fillers where a cabinet has been removed. There is no minimum order, so a single door is an order we will take.",
+    ],
+    [
+      "Can you install them?",
+      "Yes. Perth Cabinet Doors installs across the Perth metro area, and installation is quoted with the fronts as one price. We also supply only, to homeowners and to trades, which is how a large share of these orders are filled.",
+    ],
+    [
+      "How does ordering replacement fronts work?",
+      "Count the doors, drawer fronts, panels and kicks you need. A standard cabinet determines its own front size; a non-standard opening needs a measurement or a photo. Choose a colour and profile, get the price, and every piece is then cut, edged and bored in our own Perth workshop before it is delivered at a flat rate across Perth metro or installed by our team.",
+    ],
+    [
+      "Do you sell the cabinets themselves?",
+      <>
+        Perth Cabinet Doors does not sell flat-pack carcasses. We make the fronts and panels that go on them.
+        Where a cabinet is needed in a size the range does not offer, we build cabinets to size in the same
+        finish, quoted alongside the fronts. Doing a whole room? Lay it out in our{" "}
+        <Link href="/design">free 3D planner</Link> and send it through, and we quote the standard units and the
+        pieces we build to suit as one job.
+      </>,
+    ],
+    [
+      "What if my cabinets are not IKEA or Kaboodle?",
+      "Everything described here applies to any cabinet fitted with a standard concealed hinge. Send the sizes, or photographs with rough dimensions, and we will confirm what fits.",
+    ],
+    [
+      "How long does it take?",
+      shopOpen
+        ? `Fronts ordered through the shop are usually dispatched within ${leadTime}. Quoted work is priced within 1 to 3 business days, and build time is typically two to three weeks from approval, depending on the finish.`
+        : "Quoted work is priced within 1 to 3 business days, and build time is typically two to three weeks from approval, depending on the finish.",
+    ],
+  ];
+}
 
 export default async function IkeaKaboodlePage() {
   const colours = await loadColourBand();
+  const siteSettings = await readPublicSiteSettings();
+  const FAQ = faqFor({ shopOpen: siteSettings.shop_open, leadTime: leadTimeRangeWords(siteSettings) });
 
   // EIGHT BOARDS, SAMPLED ACROSS THE LIBRARY, one per piece card. Taking the
   // first eight would be eight shades of oak, which says the opposite of what

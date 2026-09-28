@@ -7,6 +7,8 @@ import { completeGateSession } from "@/lib/pcd-gate-complete";
 import { hingeCustomerLines } from "@/lib/pcd-hinges";
 import { bandedEdgesText } from "@/lib/pcd-line-details";
 import { money } from "@/lib/pcd-shop";
+import { leadTimeDaysForLines, leadTimeWords } from "@/lib/pcd-site-settings";
+import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 import { retrieveCheckoutSession, siteUrl } from "@/lib/pcd-stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import PublicSiteNav from "../../PublicSiteNav";
@@ -77,6 +79,7 @@ async function loadOrder(sessionId) {
 }
 
 export default async function OrderConfirmedPage({ searchParams }) {
+  const siteSettings = await readPublicSiteSettings();
   const params = await searchParams;
   const sessionId = params?.session_id || "";
   let result = null;
@@ -143,7 +146,7 @@ export default async function OrderConfirmedPage({ searchParams }) {
                     <span>2</span>
                     <div>
                       <strong>It goes on the bench</strong>
-                      <p>About ten working days. We will email you if anything about it needs a word first.</p>
+                      <p>About {leadTimeWords(leadTimeDaysForLines(siteSettings, result?.lines || []))}. We will email you if anything about it needs a word first.</p>
                     </div>
                   </li>
                   <li>
