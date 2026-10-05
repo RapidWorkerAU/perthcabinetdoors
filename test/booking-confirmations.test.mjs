@@ -31,6 +31,7 @@ import {
   ASK_WINDOW_HOURS,
   TOO_LATE_HOURS,
   andList,
+  bookingDayFromAnswer,
   bookingWhen,
   confirmSummary,
   confirmUrl,
@@ -285,4 +286,30 @@ test("every state the calendar can show is allowed by the constraint", () => {
 
 test("the link column is unique, so two bookings cannot share one", () => {
   assert.match(MIGRATION, /create unique index if not exists pcd_calendar_events_confirm_token_key/);
+});
+
+// ANSWERED LATE. Asked on Monday about Tuesday, answered on Tuesday morning:
+// the notice to sales has to say today, not tomorrow.
+test("the day word is counted from when the customer answered", () => {
+  // Tuesday 6 October, 9:30 am in Perth.
+  const row = { starts_at: "2026-10-06T01:30:00Z" };
+
+  // Monday afternoon in Perth: the day before.
+  assert.deepEqual(bookingDayFromAnswer(row, "2026-10-05T07:00:00Z"), { phrase: "tomorrow", past: false });
+  // 7 am Tuesday in Perth is still Monday in UTC. It must read as today.
+  assert.deepEqual(bookingDayFromAnswer(row, "2026-10-05T23:00:00Z"), { phrase: "today", past: false });
+  // Wednesday: the booking has gone.
+  const late = bookingDayFromAnswer(row, "2026-10-07T02:00:00Z");
+  assert.equal(late.past, true);
+  assert.match(late.phrase, /6 Oct/);
+  // Asked early, answered days ahead.
+  const early = bookingDayFromAnswer(row, "2026-10-03T02:00:00Z");
+  assert.equal(early.past, false);
+  assert.match(early.phrase, /6 Oct/);
+});
+
+test("the answer notice to sales no longer says tomorrow regardless", () => {
+  const source = readFileSync(new URL("../lib/pcd-booking-confirmation-emails.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /declined"\} for tomorrow/);
+  assert.match(source, /bookingDayFromAnswer\(row, row\.confirm_answered_at/);
 });

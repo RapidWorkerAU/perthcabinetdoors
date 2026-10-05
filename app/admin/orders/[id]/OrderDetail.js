@@ -14,7 +14,14 @@ import {
   ORDER_PRODUCTION_STAGES,
   ORDER_STATUSES,
 } from "../../../../lib/pcd-quote-utils";
-import { canRefreshPaymentRequest, canRequestPayment, hasPaymentRequest } from "../../../../lib/pcd-payment-requests";
+import {
+  canCancelPaymentRequest,
+  canRefreshPaymentRequest,
+  canRequestPayment,
+  defaultCancelLinkMessage,
+  defaultCancelLinkSubject,
+  hasPaymentRequest,
+} from "../../../../lib/pcd-payment-requests";
 import { canSettleOutsideLink, canUndoSettlement } from "../../../../lib/pcd-payment-settlement";
 import SettlePaymentModal from "../../_components/SettlePaymentModal";
 import RefundModal from "../../_components/RefundModal";
@@ -577,6 +584,9 @@ export default function OrderDetail({ orderId }) {
   const [colourSupplierMap, setColourSupplierMap] = useState({});
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentRequestModal, setPaymentRequestModal] = useState(null);
+  // Cancelling a link is two steps: choose whether the customer is told, then,
+  // if they are, the email window. step is "choose" or "email".
+  const [cancelLinkModal, setCancelLinkModal] = useState(null);
   const [panelNotesModal, setPanelNotesModal] = useState(null);
 
   // On mobile, open the section menu first rather than dropping straight into
@@ -1253,6 +1263,47 @@ export default function OrderDetail({ orderId }) {
       });
     } catch (error) {
       toast({ title: error?.message || "Could not request payment.", variant: "error" });
+    } finally {
+      setSavingPaymentId("");
+    }
+  }
+
+  function openCancelLink(payment) {
+    setCancelLinkModal({
+      payment,
+      step: "choose",
+      subject: defaultCancelLinkSubject(order),
+      message: defaultCancelLinkMessage(order, payment),
+    });
+  }
+
+  async function cancelPaymentLink(payment, { notify, subject, message }) {
+    if (!order || !payment?.id) return;
+    setSavingPaymentId(payment.id);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/payments/${payment.id}/cancel-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notify, subject, message }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        toast({ title: payload.error || "Could not cancel the payment link.", variant: "error" });
+        return;
+      }
+      setCancelLinkModal(null);
+      setOrder((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          pcd_order_payments: (current.pcd_order_payments || []).map((item) =>
+            item.id === payment.id ? payload.payment : item
+          ),
+        };
+      });
+      toast({ title: payload.message, variant: notify && !payload.emailSent ? "error" : "success" });
+    } catch (error) {
+      toast({ title: error?.message || "Could not cancel the payment link.", variant: "error" });
     } finally {
       setSavingPaymentId("");
     }
@@ -3022,6 +3073,7 @@ export default function OrderDetail({ orderId }) {
                     const canEditFinancialFields = canEditPaymentFinancialFields(payment);
                     const canDelete = canDeletePaymentLine(payment);
                     const canRefresh = canRefreshPaymentLine(payment);
+                    const canCancelLink = canCancelPaymentRequest(payment);
                     return (
                       <tr key={payment.id}>
                         <td className={tw.td}>
@@ -3134,6 +3186,17 @@ export default function OrderDetail({ orderId }) {
                                 Refresh link
                               </button>
                             )}
+                            {canCancelLink && (
+                              <button
+                                type="button"
+                                className={tw.smBtn}
+                                disabled={isSaving}
+                                onClick={() => openCancelLink(payment)}
+                                title="Stop this link working so the line can be changed or removed"
+                              >
+                                Cancel link
+                              </button>
+                            )}
                             {canUndoSettlement(payment) && (
                               <button
                                 type="button"
@@ -3219,6 +3282,7 @@ export default function OrderDetail({ orderId }) {
               const canEditFinancialFields = canEditPaymentFinancialFields(payment);
               const canDelete = canDeletePaymentLine(payment);
               const canRefresh = canRefreshPaymentLine(payment);
+              const canCancelLink = canCancelPaymentRequest(payment);
               return (
                 <article key={payment.id} className="bg-white border border-[#dbd8cc] rounded-[8px] p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
@@ -3275,6 +3339,9 @@ export default function OrderDetail({ orderId }) {
                     ) : null}
                     {canRefresh && (
                       <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => requestPayment(payment)}>Refresh link</button>
+                    )}
+                    {canCancelLink && (
+                      <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => openCancelLink(payment)}>Cancel link</button>
                     )}
                     {canUndoSettlement(payment) && (
                       <button type="button" className={tw.smBtn} disabled={isSaving} onClick={() => undoSettlement(payment)}>Undo</button>
@@ -3580,6 +3647,126 @@ export default function OrderDetail({ orderId }) {
             <span>Add a customer email to this order before sending a payment request.</span>
           </div>
         ) : null}
+      </Modal>
+    );
+  }
+
+  // CANCEL A PAYMENT LINK. First the choice of telling the customer, then the
+  // usual email window with the cancellation wording ready to edit.
+  function renderCancelLinkModal() {
+    if (!cancelLinkModal) return null;
+    const { payment, step, message, subject } = cancelLinkModal;
+    const hasEmail = !!order.customer_email;
+    const isSending = savingPaymentId === payment.id;
+    const close = () => !isSending && setCancelLinkModal(null);
+    const secondaryBtn = "h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors";
+    const primaryBtn = "h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-medium rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors";
+    const amountRow = (
+      <div className={`${styles.fieldWide} flex items-center justify-between px-3 py-2 bg-[#f5f8f4] border border-[#dbd8cc] rounded-[6px]`}>
+        <span className="text-[12px] text-[#5a5a52]">{titleCaseStatus(payment.payment_type)}</span>
+        <strong className="text-[13px] font-mono text-[#1a1a18]">{formatMoney(Number(payment.amount || 0), order.currency || "AUD")}</strong>
+      </div>
+    );
+
+    if (step === "choose") {
+      return (
+        <Modal
+          open={true}
+          onClose={close}
+          title="Cancel payment link"
+          subtitle="The link stops working straight away"
+          size="md"
+          footer={
+            <>
+              <button type="button" className={secondaryBtn} onClick={close} disabled={isSending}>Keep the link</button>
+              <button
+                type="button"
+                className={secondaryBtn}
+                disabled={isSending}
+                onClick={() => cancelPaymentLink(payment, { notify: false })}
+              >
+                {isSending ? "Cancelling…" : "Cancel without emailing"}
+              </button>
+              <button
+                type="button"
+                className={primaryBtn}
+                disabled={!hasEmail || isSending}
+                onClick={() => setCancelLinkModal((current) => ({ ...current, step: "email" }))}
+              >
+                Cancel and email customer
+              </button>
+            </>
+          }
+        >
+          <div className={styles.customerModalGrid}>
+            {amountRow}
+            <p className={`${styles.fieldWide} text-[13px] leading-[1.5] text-[#5a5a52]`}>
+              The customer will no longer be able to pay this link. The payment line goes back to unsent, so you can change
+              its amount or delete it, then send a new link.
+            </p>
+          </div>
+          {!hasEmail ? (
+            <div className="mx-1 mt-3 px-3 py-2 bg-[#fffbeb] border border-[#fcd34d] rounded-[6px] text-[12px] text-[#92400e] flex items-center gap-2">
+              <span>⚠</span>
+              <span>This order has no customer email, so the customer cannot be emailed about it.</span>
+            </div>
+          ) : null}
+        </Modal>
+      );
+    }
+
+    return (
+      <Modal
+        open={true}
+        onClose={close}
+        title="Email customer"
+        subtitle="Cancel payment link"
+        size="lg"
+        footer={
+          <>
+            <button
+              type="button"
+              className={secondaryBtn}
+              onClick={() => setCancelLinkModal((current) => ({ ...current, step: "choose" }))}
+              disabled={isSending}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className={primaryBtn}
+              disabled={!hasEmail || isSending || !message.trim()}
+              onClick={() => cancelPaymentLink(payment, { notify: true, subject, message })}
+            >
+              {isSending ? "Sending…" : "Cancel link and send"}
+            </button>
+          </>
+        }
+      >
+        <div className={styles.customerModalGrid}>
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            To
+            <input className={styles.fieldInput} value={order.customer_email || ""} disabled />
+          </label>
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            Subject
+            <input
+              className={styles.fieldInput}
+              value={subject}
+              onChange={(event) => setCancelLinkModal((current) => ({ ...current, subject: event.target.value }))}
+            />
+          </label>
+          {amountRow}
+          <label className={`${styles.fieldLabel} ${styles.fieldWide}`}>
+            Email message
+            <textarea
+              className={`${styles.textareaInput} ${styles.quoteEmailTextarea}`}
+              style={{ minHeight: "220px" }}
+              value={message}
+              onChange={(event) => setCancelLinkModal((current) => ({ ...current, message: event.target.value }))}
+            />
+          </label>
+        </div>
       </Modal>
     );
   }
@@ -4370,6 +4557,7 @@ export default function OrderDetail({ orderId }) {
 
       {renderPaymentModal()}
       {renderPaymentRequestModal()}
+      {renderCancelLinkModal()}
       {renderRefundEmailModal()}
 
       <RefundModal
