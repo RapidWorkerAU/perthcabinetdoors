@@ -75,7 +75,8 @@ test("the allowed changes are exactly the ones agreed", () => {
     "supplier_status",
     "target_completion_date",
   ]);
-  assert.deepEqual(CHANGE_FIELDS.order_status.values.map((v) => v.value), ["active", "on_hold"], "never complete, cancel or archive");
+  // Complete added 2026-10-06. Cancel and archive stay with a person.
+  assert.deepEqual(CHANGE_FIELDS.order_status.values.map((v) => v.value), ["active", "on_hold", "complete"], "never cancel or archive");
   assert.deepEqual(CHANGEABLE_ORDER_STATUSES, ["pending_deposit", "active", "on_hold"]);
   assert.equal(CHANGE_FIELDS.supplier_name, undefined, "a supplier's name is never Alfred's to change");
 });
@@ -83,7 +84,9 @@ test("the allowed changes are exactly the ones agreed", () => {
 test("a value must be one the order page offers", () => {
   assert.equal(valueProblem("supplier_status", "Ordered"), "");
   assert.match(valueProblem("supplier_status", "Shipped"), /^Pick one of: Not Ordered/);
-  assert.match(valueProblem("order_status", "complete"), /Active, On hold/);
+  assert.equal(valueProblem("order_status", "complete"), "");
+  assert.match(valueProblem("order_status", "cancelled"), /Active, On hold, Complete/);
+  assert.match(valueProblem("order_status", "archived"), /Pick one of/);
   assert.equal(valueProblem("supplier_eta", "2026-10-20"), "");
   assert.equal(valueProblem("supplier_eta", "next Tuesday"), "Pick a date.");
   assert.equal(valueProblem("note", "  "), "Write the note.");
@@ -189,4 +192,25 @@ test("the change buttons are built from the database, never from the model", () 
   const route = read("app/api/admin/alfred/ask/route.js");
   assert.ok(route.includes("const built = await changeCard(supabase, reply.proposal);"));
   assert.ok(route.includes("delete reply.proposal;"));
+});
+
+test("completing shows what is owing and unfinished first, as figures", async () => {
+  const supabase = fakeSupabase({ pcd_orders: [{ ...order, total_inc_gst: 4200 }], pcd_order_payments: [{ order_id: "o1", amount: 2100, is_paid: true }] });
+  const preview = await previewChange(supabase, { field: "order_status", recordId: "o1", value: "complete" });
+  assert.deepEqual(preview.rows.map((r) => [r.from, r.to]), [["Active", "Complete"]]);
+  assert.equal(preview.notes[0], "$2,100.00 is still owing on this order.");
+  assert.match(preview.notes[1], /^3 of 3 panels are not yet marked made, checked or installed\.$/);
+  assert.match(preview.notes[2], /Google review request/);
+  for (const note of preview.notes) assert.doesNotMatch(note, /should|ready to|safe to/i, "figures, never a verdict");
+  await assert.rejects(
+    previewChange(fakeSupabase({ pcd_orders: [{ ...order, status: "pending_deposit" }] }), { field: "order_status", recordId: "o1", value: "complete" }),
+    /awaiting its deposit/
+  );
+});
+
+test("completing through Alfred lines up the review request exactly as the order page does", () => {
+  const changes = read("lib/pcd-alfred-changes.js");
+  assert.ok(changes.includes('await reviewRequestOnTimeline(supabase, order.id, saved.beforeOrder, saved.updates, { actorType: "alfred", approvedBy });'));
+  assert.ok(read("app/api/admin/orders/[id]/route.js").includes('reviewRequestOnTimeline(context.supabase, id, beforeOrder, updates, { actorType: "admin" })'));
+  assert.match(read("lib/pcd-order-header-save.js"), /action_type: isComplete \? "review_request_lined_up" : "review_request_taken_down"/);
 });

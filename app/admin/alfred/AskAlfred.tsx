@@ -664,6 +664,13 @@ function ChangeCard({ turn, onChange, asApprover }: { turn: Turn; onChange: (p: 
       ) : preview ? (
         <>
           <div className="px-3 pt-2 text-[12.5px] font-medium">{preview.nothing ? 'Nothing needs changing: everything picked already holds that value.' : preview.summary}</div>
+          {preview.notes?.length ? (
+            <ul className="mx-3 mt-2 flex list-none flex-col gap-[3px] rounded-[6px] border border-[#e8d68f] bg-[#fffdf0] px-3 py-2 text-[12px] text-[#5f4b08]">
+              {preview.notes.map((n: string) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : null}
           {preview.rows?.length ? (
             <div className="max-h-[280px] overflow-auto px-3 py-2">
               <table className="w-full text-[12px]">

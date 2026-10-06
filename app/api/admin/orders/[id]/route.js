@@ -1,7 +1,6 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
-import { logOrderActivity } from "../../../../../lib/pcd-activity-log";
-import { saveOrderHeader } from "../../../../../lib/pcd-order-header-save";
-import { linedUpWords, reviewRequestForOrder } from "../../../../../lib/pcd-review-request-run";
+import { reviewRequestOnTimeline, saveOrderHeader } from "../../../../../lib/pcd-order-header-save";
+import { reviewRequestForOrder } from "../../../../../lib/pcd-review-request-run";
 import { lastContactForOrders, updateClock, UPDATE_STATUSES } from "../../../../../lib/pcd-alfred-updates";
 import { getAlfredSettings } from "../../../../../lib/pcd-alfred-settings";
 
@@ -196,35 +195,10 @@ export async function PATCH(request, { params }) {
 
     let order = await loadOrder(context.supabase, id);
 
-    // THE REVIEW REQUEST, SAID ON THE TIMELINE. Marking it Complete lines one
-    // up; moving it away before it went takes it down again. Nothing is sent
-    // from here. See lib/pcd-review-requests.js.
-    const wasComplete = beforeOrder?.status === "complete";
-    const isComplete = updates.status === "complete";
-    if (updates.status && wasComplete !== isComplete && !order.review_request_sent_at) {
-      let words = "";
-      if (isComplete) {
-        words = linedUpWords(order.review_request);
-      } else {
-        const before = await reviewRequestForOrder(context.supabase, {
-          ...beforeOrder,
-          pcd_order_payments: order.pcd_order_payments,
-        });
-        if (["waiting", "due", "owing", "no_email"].includes(before?.key)) {
-          words = "Google review request taken down, because the order is no longer Complete.";
-        }
-      }
-      if (words) {
-        await logOrderActivity(context.supabase, {
-          order_id: id,
-          quote_id: beforeOrder?.quote_id || null,
-          actor_type: "admin",
-          action_type: isComplete ? "review_request_lined_up" : "review_request_taken_down",
-          title: isComplete ? "Google review request lined up" : "Google review request taken down",
-          description: words,
-        });
-        order = await loadOrder(context.supabase, id);
-      }
+    // The Google review request, said on the timeline when it moves to or from
+    // Complete. Shared with Alfred: lib/pcd-order-header-save.js.
+    if (await reviewRequestOnTimeline(context.supabase, id, beforeOrder, updates, { actorType: "admin" })) {
+      order = await loadOrder(context.supabase, id);
     }
 
     return Response.json({ ok: true, order });
