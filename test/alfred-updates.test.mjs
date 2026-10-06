@@ -99,7 +99,9 @@ test("an approved update starts its own conversation", () => {
 test("the board, the order page and the orders list all show it", () => {
   assert.match(read("lib/pcd-board.js"), /key: "posted"/);
   assert.match(read("lib/pcd-board-load.ts"), /ordersAgainstTheGap/);
-  assert.match(read("app/admin/orders/[id]/OrderDetail.js"), /<AlfredPostedPanel/);
+  // Not on the order page itself (Ashleigh, 2026-10-06): the Alfred page and
+  // the board's Keep them posted column carry it, so it is not said three times.
+  assert.doesNotMatch(read("app/admin/orders/[id]/OrderDetail.js"), /AlfredPostedPanel/);
   assert.match(read("app/admin/orders/OrdersManager.tsx"), /<AlfredDot/);
 });
 

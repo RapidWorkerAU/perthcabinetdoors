@@ -1,24 +1,6 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { reviewRequestOnTimeline, saveOrderHeader } from "../../../../../lib/pcd-order-header-save";
 import { reviewRequestForOrder } from "../../../../../lib/pcd-review-request-run";
-import { lastContactForOrders, updateClock, UPDATE_STATUSES } from "../../../../../lib/pcd-alfred-updates";
-import { getAlfredSettings } from "../../../../../lib/pcd-alfred-settings";
-
-async function alfredPostedFor(supabase, order) {
-  try {
-    if (!UPDATE_STATUSES.includes(order.status) || !order.customer_id) return null;
-    const { settings } = await getAlfredSettings(supabase);
-    const last = await lastContactForOrders(supabase, [order]);
-    const clock = updateClock(order, last.get(order.id), settings.update_gap_days);
-    const [{ data: draft }, { data: question }] = await Promise.all([
-      supabase.from("pcd_alfred_drafts").select("id").eq("order_id", order.id).eq("kind", "update").eq("status", "waiting").limit(1).maybeSingle(),
-      supabase.from("pcd_alfred_questions").select("id, question").eq("order_id", order.id).eq("status", "open").limit(1).maybeSingle(),
-    ]);
-    return { ...clock, gap: settings.update_gap_days, enabled: settings.enabled && settings.jobs.updates, draftId: draft?.id || null, question: question || null };
-  } catch {
-    return null;
-  }
-}
 
 async function orderIdFromParams(params) {
   const resolved = await params;
@@ -147,9 +129,6 @@ async function loadOrder(supabase, id) {
   // daily job sends by. Null on a database without the migration.
   data.review_request = await reviewRequestForOrder(supabase, data);
 
-  // Where this order stands against the longest gap between updates, and any
-  // of Alfred's work waiting on it. Null on a database without his tables.
-  data.alfred_posted = await alfredPostedFor(supabase, data);
 
   return data;
 }

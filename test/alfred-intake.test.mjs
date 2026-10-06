@@ -96,7 +96,9 @@ test("Alfred's line note finds its line by id, then by place", () => {
 
 test("the quote, the lists and the hourly pass all know about it", () => {
   assert.match(read("app/admin/quotes/[id]/QuoteEditor.js"), /<AlfredLineNote index=\{index\}/);
-  assert.match(read("app/admin/quotes/[id]/QuoteEditor.js"), /Drafted by Alfred from the quote request\./);
+  // No banner on the quote (Ashleigh, 2026-10-06): the Alfred page carries it.
+  // The bow tie on each line stays, because that is the note for that line.
+  assert.doesNotMatch(read("app/admin/quotes/[id]/QuoteEditor.js"), /Drafted by Alfred from the quote request/);
   assert.match(read("app/api/admin/quotes/[id]/route.js"), /alfred: alfred \|\| null/);
   for (const list of ["app/admin/quotes/QuotesTable.tsx", "app/admin/enquiries/EnquiriesManager.tsx", "app/admin/quote-requests/QuoteRequestsManager.tsx"]) {
     assert.match(read(list), /<AlfredDot/, list);

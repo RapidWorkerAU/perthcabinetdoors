@@ -73,7 +73,6 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import AdminLoading from "@/components/admin/AdminLoading";
 import AlfredLineNote, { alfredNoteFor } from "@/components/admin/AlfredLineNote";
-import { AlfredMark } from "@/components/admin/AlfredMark";
 import { tableStyles } from "@/components/ui/table-styles";
 import { isThermoLine, priceThermoLine, withThermoPrice } from "../../../../lib/pcd-thermo-pricing";
 import { cn } from "@/lib/utils";
@@ -4957,21 +4956,6 @@ export default function QuoteEditor({ quoteId }) {
               ) : null}
             </>
           )}
-        </div>
-      ) : null}
-      {alfredDraft?.status === "waiting" ? (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[6px] border border-[#ecc4a5] bg-[#fbefe6] px-3 py-2 text-[12px] leading-[1.5] text-[#9a4a14]">
-          <AlfredMark title="Drafted by Alfred" />
-          <span>
-            <strong className="font-semibold">Drafted by Alfred from the quote request.</strong> Nothing has been sent.
-            {(alfredDraft.line_notes || []).length
-              ? ` ${alfredDraft.line_notes.length} line${alfredDraft.line_notes.length === 1 ? " has" : "s have"} a note behind the bow tie.`
-              : " Every line was priced from the libraries."}{" "}
-            Check it and send it the normal way.
-          </span>
-          <Link href={`/admin/alfred/waiting?draft=${alfredDraft.id}`} className="ml-auto font-semibold underline">
-            Open on the Alfred page
-          </Link>
         </div>
       ) : null}
       {renderActiveSection()}

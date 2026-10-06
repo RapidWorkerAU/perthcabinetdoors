@@ -38,7 +38,6 @@ import {
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import AdminLoading from "@/components/admin/AdminLoading";
 import ReviewRequestPanel from "./ReviewRequestPanel";
-import AlfredPostedPanel from "./AlfredPostedPanel";
 import { AlfredApproval, AlfredMark } from "@/components/admin/AlfredMark";
 import { baseFor, ORDER_FIELDS } from "../../../../lib/pcd-save-clash";
 import { panelNumberKey } from "../../../../lib/pcd-order-panel-numbers";
@@ -1758,8 +1757,6 @@ export default function OrderDetail({ orderId }) {
                 onChanged={refreshOrder}
                 toast={toast}
               />
-              {/* How long since we last told them anything, and Alfred's update. */}
-              <AlfredPostedPanel posted={order.alfred_posted} customerName={order.customer_name} />
               {/* Archiving used to be a field in here, sitting between the job
                   name and the schedule as though it were another detail to fill
                   in. It is an action on the whole order, so it lives with the
