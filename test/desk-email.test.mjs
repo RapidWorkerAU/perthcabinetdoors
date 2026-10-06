@@ -65,25 +65,27 @@ test("it is the shell itself, not a copy that happens to match", () => {
 // Saying so, and saying that a plain reply reaches us, stops it reading as a
 // machine that cannot be answered.
 
-test("it says where it came from and that a reply reaches us", () => {
+// Once, in the footer, like every other email we send. A second paragraph
+// saying the same thing used to sit above it.
+test("it says once that a reply reaches us", () => {
   const reply = desk();
-  assert.match(reply, /order system, which is why it does not look like our usual emails/);
-  assert.match(reply, /reply to this message as normal and it comes straight back to our team/);
+  assert.equal(reply.split("comes straight back to our team").length - 1, 1);
+  assert.doesNotMatch(reply, /usual emails/);
 });
 
 // Plenty of people read the plain-text copy, and it must not be the one version
 // that fails to explain itself.
 test("the plain-text copy says it too", () => {
   const text = deskReplyEmailText({ bodyText: "Hi Sarah,", signatureText: "Ashleigh" });
-  assert.match(text, /order system, which is why it does not look like our usual emails/);
-  assert.match(text, /comes straight back to our team/);
+  assert.equal(text.split("comes straight back to our team").length - 1, 1);
+  assert.doesNotMatch(text, /usual emails/);
 });
 
-// Quiet, and after the message. It answers a question somebody might have; it is
-// not something to read before what they were actually sent.
-test("the note is below the message, not above it", () => {
+// After the message, in the footer. Not something to read before what they
+// were actually sent.
+test("the reply line is below the message, not above it", () => {
   const reply = desk();
-  assert.ok(reply.indexOf("The quote still stands") < reply.indexOf("order system, which is why"));
+  assert.ok(reply.indexOf("The quote still stands") < reply.indexOf("comes straight back to our team"));
 });
 
 // ── WHAT THE HEADER SAYS ───────────────────────────────────────────────────
