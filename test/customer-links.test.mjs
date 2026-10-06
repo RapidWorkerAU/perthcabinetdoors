@@ -161,7 +161,8 @@ test("a reply goes to whoever is in that conversation, not to the main contact",
   // The desk shows one person, so the record in the url is the primary. Sending
   // to its address would answer the wrong person when the partner wrote in.
   const { readFileSync } = await import("node:fs");
-  const reply = readFileSync(new URL("../app/api/admin/customer-desk/[customerId]/reply/route.js", import.meta.url), "utf8");
+  // The send moved into lib/pcd-desk-reply.js, shared with Alfred's approve step.
+  const reply = readFileSync(new URL("../lib/pcd-desk-reply.js", import.meta.url), "utf8");
   assert.match(reply, /let replyTo = customer\.email/);
   assert.match(reply, /if \(ticket\?\.customer_id && ticket\.customer_id !== customerId\)/);
   assert.match(reply, /to: replyTo,/);

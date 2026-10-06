@@ -1,7 +1,25 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
-import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
-import { ORDER_STATUSES } from "../../../../../lib/pcd-quote-utils";
-import { scheduleProblems } from "../../../../../lib/pcd-order-schedule";
+import { logOrderActivity } from "../../../../../lib/pcd-activity-log";
+import { saveOrderHeader } from "../../../../../lib/pcd-order-header-save";
+import { linedUpWords, reviewRequestForOrder } from "../../../../../lib/pcd-review-request-run";
+import { lastContactForOrders, updateClock, UPDATE_STATUSES } from "../../../../../lib/pcd-alfred-updates";
+import { getAlfredSettings } from "../../../../../lib/pcd-alfred-settings";
+
+async function alfredPostedFor(supabase, order) {
+  try {
+    if (!UPDATE_STATUSES.includes(order.status) || !order.customer_id) return null;
+    const { settings } = await getAlfredSettings(supabase);
+    const last = await lastContactForOrders(supabase, [order]);
+    const clock = updateClock(order, last.get(order.id), settings.update_gap_days);
+    const [{ data: draft }, { data: question }] = await Promise.all([
+      supabase.from("pcd_alfred_drafts").select("id").eq("order_id", order.id).eq("kind", "update").eq("status", "waiting").limit(1).maybeSingle(),
+      supabase.from("pcd_alfred_questions").select("id, question").eq("order_id", order.id).eq("status", "open").limit(1).maybeSingle(),
+    ]);
+    return { ...clock, gap: settings.update_gap_days, enabled: settings.enabled && settings.jobs.updates, draftId: draft?.id || null, question: question || null };
+  } catch {
+    return null;
+  }
+}
 
 async function orderIdFromParams(params) {
   const resolved = await params;
@@ -126,6 +144,14 @@ async function loadOrder(supabase, id) {
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
+  // Where the Google review request is up to, worked out by the same rules the
+  // daily job sends by. Null on a database without the migration.
+  data.review_request = await reviewRequestForOrder(supabase, data);
+
+  // Where this order stands against the longest gap between updates, and any
+  // of Alfred's work waiting on it. Null on a database without his tables.
+  data.alfred_posted = await alfredPostedFor(supabase, data);
+
   return data;
 }
 
@@ -155,95 +181,52 @@ export async function PATCH(request, { params }) {
   try {
     const id = await orderIdFromParams(params);
     const payload = await request.json();
-    const updates = {};
+    // The save itself is lib/pcd-order-header-save.js, shared with Alfred.
+    let saved;
+    try {
+      saved = await saveOrderHeader(context.supabase, id, payload, { actorType: "admin" });
+    } catch (error) {
+      if (!error?.status) throw error;
+      return Response.json(
+        { ok: false, error: error.message, ...(error.clashes ? { clash: true, clashes: error.clashes } : {}) },
+        { status: error.status }
+      );
+    }
+    const { beforeOrder, updates } = saved;
 
-    if (Object.prototype.hasOwnProperty.call(payload, "status")) {
-      if (!ORDER_STATUSES.includes(payload.status)) {
-        return Response.json({ ok: false, error: "Invalid order status." }, { status: 400 });
+    let order = await loadOrder(context.supabase, id);
+
+    // THE REVIEW REQUEST, SAID ON THE TIMELINE. Marking it Complete lines one
+    // up; moving it away before it went takes it down again. Nothing is sent
+    // from here. See lib/pcd-review-requests.js.
+    const wasComplete = beforeOrder?.status === "complete";
+    const isComplete = updates.status === "complete";
+    if (updates.status && wasComplete !== isComplete && !order.review_request_sent_at) {
+      let words = "";
+      if (isComplete) {
+        words = linedUpWords(order.review_request);
+      } else {
+        const before = await reviewRequestForOrder(context.supabase, {
+          ...beforeOrder,
+          pcd_order_payments: order.pcd_order_payments,
+        });
+        if (["waiting", "due", "owing", "no_email"].includes(before?.key)) {
+          words = "Google review request taken down, because the order is no longer Complete.";
+        }
       }
-      updates.status = payload.status;
-    }
-
-    [
-      "name",
-      "customer_name",
-      "customer_email",
-      "customer_phone",
-      "site_address",
-      "site_street",
-      "site_suburb",
-      "site_postcode",
-      "deposit_required",
-      "deposit_amount",
-      "deposit_paid",
-      "deposit_paid_at",
-      "scheduled_start_date",
-      "target_completion_date",
-      "customer_comms",
-      "internal_notes",
-    ].forEach((field) => {
-      if (Object.prototype.hasOwnProperty.call(payload, field)) {
-        updates[field] = payload[field] === "" ? null : payload[field];
+      if (words) {
+        await logOrderActivity(context.supabase, {
+          order_id: id,
+          quote_id: beforeOrder?.quote_id || null,
+          actor_type: "admin",
+          action_type: isComplete ? "review_request_lined_up" : "review_request_taken_down",
+          title: isComplete ? "Google review request lined up" : "Google review request taken down",
+          description: words,
+        });
+        order = await loadOrder(context.supabase, id);
       }
-    });
-
-    if (!Object.keys(updates).length) {
-      return Response.json({ ok: false, error: "No order updates supplied." }, { status: 400 });
     }
 
-    const { data: beforeOrder } = await context.supabase
-      .from("pcd_orders")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-
-    // BOTH DATES ARE TYPED, so the pair has to be checked against each other
-    // rather than one worked out from the other. Checked against what the order
-    // WILL hold, not only against what was sent, so moving the start date past
-    // a completion date already stored is caught the same as sending both.
-    const schedule = scheduleProblems({ ...(beforeOrder || {}), ...updates });
-    if (schedule.length) {
-      return Response.json({ ok: false, error: schedule[0].message }, { status: 400 });
-    }
-
-    const { data, error } = await context.supabase
-      .from("pcd_orders")
-      .update(updates)
-      .eq("id", id)
-      .select("id")
-      .maybeSingle();
-
-    if (error || !data) throw error || new Error("Order not found.");
-
-    const changes = describeChanges(beforeOrder || {}, updates, {
-      customer_name: "Customer",
-      customer_email: "Email",
-      customer_phone: "Phone",
-      site_address: "Site address",
-      site_street: "Street address",
-      site_suburb: "Suburb",
-      site_postcode: "Postcode",
-      deposit_required: "Deposit required",
-      deposit_amount: "Deposit amount",
-      deposit_paid: "Deposit paid",
-      deposit_paid_at: "Deposit paid at",
-      scheduled_start_date: "Scheduled start",
-      target_completion_date: "Estimated completion",
-      internal_notes: "Internal notes",
-    });
-    if (changes.length) {
-      await logOrderActivity(context.supabase, {
-        order_id: id,
-        quote_id: beforeOrder?.quote_id || null,
-        actor_type: "admin",
-        action_type: "order_updated",
-        title: "Order updated",
-        description: changes.join("; "),
-        metadata: { changes },
-      });
-    }
-
-    const order = await loadOrder(context.supabase, id);
     return Response.json({ ok: true, order });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not update order." }, { status: 500 });

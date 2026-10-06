@@ -362,7 +362,7 @@ test("moving a thermolaminate line to the quote list keeps everything they set u
 // ── One way of doing it ─────────────────────────────────────────────────────
 
 test("a quote request and the shop price thermolaminate through one helper", () => {
-  assert.match(read("app/api/admin/quote-requests/route.js"), /withThermoRateCard\(entry, thermoCard\)/);
+  assert.match(read("lib/pcd-quote-request-conversion.js"), /withThermoRateCard\(entry, thermoCard\)/);
   assert.match(read("lib/pcd-shop-pricing.js"), /withThermoRateCard\(converted, catalogue\.thermoCard\)/);
 });
 

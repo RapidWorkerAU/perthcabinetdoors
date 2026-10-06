@@ -125,7 +125,7 @@ test("archived can be filtered by but not set from the status dropdown", () => {
 
   // Choosing it from a dropdown could not record what it was archived FROM,
   // which is the half that makes restore exact.
-  const route = read("app/api/admin/orders/[id]/route.js");
+  const route = read("lib/pcd-order-header-save.js");
   assert.ok(route.includes("ORDER_STATUSES.includes(payload.status)"), "the status route still refuses it");
 });
 

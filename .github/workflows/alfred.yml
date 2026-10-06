@@ -1,0 +1,56 @@
+name: Alfred
+
+# ALFRED'S PASSES. Nothing here emails a customer: every draft waits on the
+# Alfred page for a person to approve.
+#
+#   hourly, 8am to 5pm Perth, Monday to Saturday
+#     read the mailbox, then draft replies to customers waiting on us
+#   6:30am Perth, Monday to Saturday
+#     order updates that are due, then the morning summary
+#     (Vercel's own cron runs this too; running twice is harmless)
+#
+# Its own file so it can run hourly without making the other scheduled jobs run
+# hourly too. It shares their concurrency group, because it reads the same
+# mailbox and two reads at once would trip over each other.
+#
+# Switched off in Settings > Alfred, the hourly pass still reads the mailbox
+# (which keeps the board fresh) and drafts nothing.
+#
+# Needs the same two repository secrets as scheduled-sync.yml: SITE_URL and
+# CRON_SECRET.
+
+on:
+  schedule:
+    # UTC. Perth is UTC+8 all year with no daylight saving.
+    - cron: "0 0-9 * * 1-6"
+    # 22:30 UTC Sunday to Friday is 6:30am Perth Monday to Saturday.
+    - cron: "30 22 * * 0-5"
+  workflow_dispatch:
+
+concurrency:
+  group: scheduled-sync
+  cancel-in-progress: false
+
+jobs:
+  alfred:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Order updates and the morning summary
+        if: github.event.schedule == '30 22 * * 0-5'
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 300 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/alfred-morning"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: Read the mailbox and draft replies
+        if: github.event.schedule != '30 22 * * 0-5'
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 300 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/alfred"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

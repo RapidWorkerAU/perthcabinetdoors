@@ -16,6 +16,7 @@ import {
   recalculateQuoteTotals,
   withoutSupplierName,
 } from "../_quote-line-save";
+import { createLineGate, settleImportedCabinet, settleImportedLine } from "../../../../../../lib/pcd-line-gate";
 
 // READING A COMPLETED ORDER FORM ONTO A QUOTE.
 //
@@ -161,8 +162,22 @@ export async function POST(request, { params }) {
     // Rates are deliberately left at zero here, exactly as they are for every
     // other line on this form. What a board costs is a fact about today's
     // colour library, and this file is a record of what somebody wants.
+    // EVERY BOARD THROUGH THE LINE GATE. A spreadsheet can say anything, so a
+    // material, thickness, brand or colour the library does not have is taken
+    // off the line, kept in its internal note, and reported below rather than
+    // written as a board that does not exist. See lib/pcd-line-gate.js.
+    const gate = await createLineGate(context.supabase);
+    const settled = [];
     const prepared = parsed.lines
       .map(lineForQuote)
+      .map((line, index) => {
+        const result = settleImportedLine(gate, line);
+        result.notes.forEach((note) => settled.push(`Row ${index + 1}: ${note}`));
+        if (!result.line.cabinet_config) return result.line;
+        const cabinet = settleImportedCabinet(gate, result.line.cabinet_config);
+        cabinet.notes.forEach((note) => settled.push(`Row ${index + 1}: ${note}`));
+        return { ...result.line, cabinet_config: cabinet.config };
+      })
       .map((line) => (line.source_tab === "carcasses" ? withCalculatedCabinetCost(line) : line));
 
     const rows = prepared.map((line, index) =>
@@ -236,7 +251,7 @@ export async function POST(request, { params }) {
       cabinets: configs.length,
       tabs: parsed.tabs,
       replaced: read.mode === "replace",
-      warnings: parsed.warnings,
+      warnings: [...(parsed.warnings || []), ...settled],
     });
   } catch (error) {
     // The lock throws with a 409 on it. Flattening every error to a 500 would

@@ -86,6 +86,20 @@ jobs:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
+      # Both passes, as a backstop to the 9am Vercel pass. The job itself only
+      # sends between 8am and 6pm Perth time, so the 6am pass does nothing and
+      # the 2pm pass picks up whatever the morning missed. Every send is claimed
+      # on the order first, so the two schedulers can never both email somebody.
+      - name: Send Google review requests
+        if: always()
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 120 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$SITE_URL/api/cron/review-requests"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
       # Only on the late pass. A day is folded once it is over, so twice a day
       # would be the same work done twice for no benefit. It runs regardless of
       # everything above it because counting visits has nothing to do with mail,

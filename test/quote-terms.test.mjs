@@ -156,7 +156,7 @@ test("every path that makes a quote uses the library, not the old single box", (
   // none: the same button would produce different documents.
   for (const path of [
     "app/api/admin/quotes/route.js",
-    "app/api/admin/quote-requests/route.js",
+    "lib/pcd-quote-request-conversion.js",
     "app/api/admin/quotes/[id]/duplicate/route.js",
   ]) {
     const src = read(path);

@@ -33,6 +33,7 @@ test("every page in the sitemap sets its own canonical", () => {
     "/contact": "app/(site)/contact/page.js",
     "/request-quote": "app/(site)/request-quote/page.js",
     "/products": "app/(site)/products/page.js",
+    "/privacy": "app/(site)/privacy/page.js",
   };
 
   for (const page of publicPages()) {

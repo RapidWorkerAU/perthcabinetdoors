@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlfredDot } from '@/components/admin/AlfredMark'
 import { useRouter } from 'next/navigation'
 import * as Popover from '@radix-ui/react-popover'
 import { formatMoney, ORDER_FILTER_STATUSES } from '../../../lib/pcd-quote-utils'
@@ -226,6 +227,8 @@ export default function OrdersManager() {
   const [openIssues,     setOpenIssues]     = useState<Record<string, number>>({})
   const [paymentsByOrder, setPaymentsByOrder] = useState<Record<string, Payment[]>>({})
   const [installBooked,  setInstallBooked]  = useState<Record<string, boolean>>({})
+  // Orders with Alfred's draft or question waiting, for the copper dot.
+  const [alfredWaiting,  setAlfredWaiting]  = useState<Record<string, boolean>>({})
   const [loaded,         setLoaded]         = useState({ issues: false, payments: false, installs: false })
 
   const statusCounts = useMemo(() => {
@@ -279,6 +282,7 @@ export default function OrdersManager() {
       setOpenIssues(payload.openIssues || {})
       setPaymentsByOrder(payload.paymentsByOrder || {})
       setInstallBooked(payload.installBooked || {})
+      setAlfredWaiting(payload.alfredWaiting || {})
       setLoaded({ issues: false, payments: false, installs: false, ...(payload.loaded || {}) })
       if (payload.error) toast({ title: payload.error, variant: 'error' })
     } catch (err: unknown) {
@@ -308,6 +312,7 @@ export default function OrdersManager() {
               aria-label="New order"
             />
           )}
+          {alfredWaiting[order.id] ? <AlfredDot title="Alfred has a draft or question waiting on this order" /> : null}
           {order.order_number}
         </span>
       ),

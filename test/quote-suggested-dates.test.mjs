@@ -153,7 +153,7 @@ test("a start date already passed is still copied, and said out loud on the orde
 test("changing the dates on the order is an order update, and one a weekly update can carry", () => {
   const WEEKLY = read("lib/pcd-weekly-updates.js");
   const WORDING = read("lib/pcd-update-wording.js");
-  const ORDER_ROUTE = read("app/api/admin/orders/[id]/route.js");
+  const ORDER_ROUTE = read("lib/pcd-order-header-save.js");
   assert.match(ORDER_ROUTE, /scheduled_start_date: "Scheduled start"/, "the change is described");
   assert.match(ORDER_ROUTE, /action_type: "order_updated"/, "and logged as an order update");
   assert.match(WEEKLY, /Scheduled start changed from/, "the report reads it back");

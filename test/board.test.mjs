@@ -46,7 +46,7 @@ const TODAY = "2026-08-19";
 // ── the columns ────────────────────────────────────────────────────────────
 
 test("nine columns, each with a label, a clock and a source", () => {
-  assert.equal(COLUMNS.length, 9);
+  assert.equal(COLUMNS.length, 10);
   COLUMNS.forEach((c) => {
     assert.ok(c.key && c.label && c.clock && c.source, `incomplete column: ${c.key}`);
     assert.ok(c.note && c.note.length > 15, `column ${c.key} does not explain itself`);
@@ -549,7 +549,7 @@ test("empty columns go to the end, in their declared order among themselves", ()
   const empty = cols.filter((col) => !col.cards.length).map((col) => col.key);
   assert.deepEqual(cols.map((col) => col.key), filled.concat(empty), "every filled column comes first");
   assert.deepEqual(filled, ["plan", "chase"], "and the filled ones stay in declared order");
-  assert.deepEqual(empty, ["issue", "reply", "price", "depo", "materials", "late", "balance"]);
+  assert.deepEqual(empty, ["issue", "reply", "price", "depo", "materials", "late", "posted", "balance"]);
 });
 
 // A column does not move just because its count changed.

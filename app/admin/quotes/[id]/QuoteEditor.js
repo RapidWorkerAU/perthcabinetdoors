@@ -7,6 +7,7 @@ import TermsEditor from "../../_components/TermsEditor";
 import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-html";
 import { IconArrowLeft, IconCheck, IconChevronRight, IconCopy, IconEdit, IconExternalLink, IconInfoCircle, IconMessage, IconRuler, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
+import { baseFor, QUOTE_HEADER_FIELDS, QUOTE_LINE_FIELDS } from "../../../../lib/pcd-save-clash";
 import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
 import { checkSize } from "../../../../lib/pcd-size-limits";
 import { hardwareTypeLabel } from "../../../../lib/pcd-hardware-types";
@@ -71,6 +72,8 @@ import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import AdminLoading from "@/components/admin/AdminLoading";
+import AlfredLineNote, { alfredNoteFor } from "@/components/admin/AlfredLineNote";
+import { AlfredMark } from "@/components/admin/AlfredMark";
 import { tableStyles } from "@/components/ui/table-styles";
 import { isThermoLine, priceThermoLine, withThermoPrice } from "../../../../lib/pcd-thermo-pricing";
 import { cn } from "@/lib/utils";
@@ -1278,6 +1281,19 @@ export default function QuoteEditor({ quoteId }) {
   const shouldScrollQuoteItemsToBottomRef = useRef(false);
   const [activeSection, setActiveSection] = useState("details");
   const [form, setForm] = useState(emptyForm);
+  // WHAT THE SERVER LAST SAID, kept apart from the form, which holds what is
+  // being typed. Sent with each save as the base, so the server can tell a
+  // field somebody else changed from one this screen changed, and never write
+  // a stale copy over their work. See lib/pcd-save-clash.js.
+  const serverQuoteRef = useRef(null);
+  const serverLinesRef = useRef(new Map());
+  function rememberServer(quote) {
+    if (!quote) return;
+    serverQuoteRef.current = { ...(serverQuoteRef.current || {}), ...quote };
+    if (Array.isArray(quote.pcd_quote_line_items)) {
+      serverLinesRef.current = new Map(quote.pcd_quote_line_items.map((line) => [line.id, line]));
+    }
+  }
   const [customerForm, setCustomerForm] = useState(emptyCustomerForm);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [customers, setCustomers] = useState([]);
@@ -1626,6 +1642,9 @@ export default function QuoteEditor({ quoteId }) {
     return value;
   }
 
+  // Alfred's draft behind this quote, when he made it from a request.
+  const [alfredDraft, setAlfredDraft] = useState(null);
+
   async function loadQuote() {
     setIsLoading(true);
     setLoadError("");
@@ -1638,7 +1657,10 @@ export default function QuoteEditor({ quoteId }) {
         toast({ title: message, variant: "error" });
         return;
       }
+      serverQuoteRef.current = null;
+      rememberServer(payload.quote);
       setForm(formFromQuote(payload.quote));
+      setAlfredDraft(payload.alfred || null);
       loadCredits(payload.quote?.customer_id);
       setEditableLineIndex(null);
       setEditableLineDraft(null);
@@ -2718,7 +2740,10 @@ export default function QuoteEditor({ quoteId }) {
       const response = await fetch(endpoint, {
         method: nextLine.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ line: nextLine, sort_order: index }),
+        body: JSON.stringify({
+          line: nextLine.id ? { ...nextLine, base: baseFor(serverLinesRef.current.get(nextLine.id), QUOTE_LINE_FIELDS) } : nextLine,
+          sort_order: index,
+        }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -2726,6 +2751,8 @@ export default function QuoteEditor({ quoteId }) {
         return false;
       }
 
+      if (payload.line?.id) serverLinesRef.current.set(payload.line.id, payload.line);
+      rememberServer(payload.quote);
       const savedLine = lineFromQuoteLine(payload.line);
       setForm((current) => {
         const lines = current.lines.map((line, lineIndex) => (lineIndex === index ? savedLine : line));
@@ -2805,6 +2832,7 @@ export default function QuoteEditor({ quoteId }) {
           ...nextForm,
           ...addressColumns(addressFromRecord(nextForm)),
           manual_labour_hours: String(nextForm.labour_hours ?? "").trim() === "" ? null : Number(nextForm.labour_hours),
+          base: baseFor(serverQuoteRef.current, QUOTE_HEADER_FIELDS),
         }),
       });
       const payload = await response.json();
@@ -2812,6 +2840,7 @@ export default function QuoteEditor({ quoteId }) {
         toast({ title: payload.error || "Could not save quote.", variant: "error" });
         return false;
       }
+      rememberServer(payload.quote);
       setForm((current) => mergeQuoteIntoForm(current, payload.quote));
       // The save is what attaches an available credit, so the card is only
       // right once this has come back. See refreshQuoteCredits.
@@ -4122,6 +4151,7 @@ export default function QuoteEditor({ quoteId }) {
                                 disabled={isLineSaving || savingLineIndex !== null}
                                 onOpen={() => runLineAction(() => openLineNoteModal(index))}
                               />
+                              {alfredDraft ? <AlfredLineNote index={index} note={alfredNoteFor(alfredDraft.line_notes, line, index)} /> : null}
                               <button
                                 type="button"
                                 onClick={() => runLineAction(() => duplicateLine(index))}
@@ -4203,6 +4233,7 @@ export default function QuoteEditor({ quoteId }) {
                       disabled={isLineSaving || savingLineIndex !== null}
                       onOpen={() => runLineAction(() => openLineNoteModal(index))}
                     />
+                    {alfredDraft ? <AlfredLineNote index={index} note={alfredNoteFor(alfredDraft.line_notes, line, index)} /> : null}
                     <ActionMenu label={`Open actions for quote line ${index + 1}`} size="xs" disabled={isLineSaving || savingLineIndex !== null}>
                       <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => runLineAction(() => editLine(index))}>
                         Edit
@@ -4926,6 +4957,21 @@ export default function QuoteEditor({ quoteId }) {
               ) : null}
             </>
           )}
+        </div>
+      ) : null}
+      {alfredDraft?.status === "waiting" ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[6px] border border-[#ecc4a5] bg-[#fbefe6] px-3 py-2 text-[12px] leading-[1.5] text-[#9a4a14]">
+          <AlfredMark title="Drafted by Alfred" />
+          <span>
+            <strong className="font-semibold">Drafted by Alfred from the quote request.</strong> Nothing has been sent.
+            {(alfredDraft.line_notes || []).length
+              ? ` ${alfredDraft.line_notes.length} line${alfredDraft.line_notes.length === 1 ? " has" : "s have"} a note behind the bow tie.`
+              : " Every line was priced from the libraries."}{" "}
+            Check it and send it the normal way.
+          </span>
+          <Link href={`/admin/alfred/waiting?draft=${alfredDraft.id}`} className="ml-auto font-semibold underline">
+            Open on the Alfred page
+          </Link>
         </div>
       ) : null}
       {renderActiveSection()}

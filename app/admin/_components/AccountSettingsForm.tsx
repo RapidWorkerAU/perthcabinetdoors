@@ -11,7 +11,10 @@ import { IconArrowLeft, IconChevronRight } from '@tabler/icons-react'
 import launchStyles from './launch-preview.module.css'
 import QuoteTermsManager from './QuoteTermsManager'
 import EmailSignatureCard from './EmailSignatureCard'
+import ReviewRequestCard from './ReviewRequestCard'
+import { reviewSettingsProblem } from '../../../lib/pcd-review-requests'
 import BookingSettingsCard from './BookingSettingsCard'
+import AlfredSettingsCard from './AlfredSettingsCard'
 import ListsManager from './ListsManager'
 import ThermoPricingCard from './ThermoPricingCard'
 import SiteSettingsCard from './SiteSettingsCard'
@@ -326,10 +329,15 @@ const primaryBtn = 'h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-mediu
 const secondaryBtn = 'h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors'
 const fieldLabelClass = 'flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]'
 
-type Tab = 'profile' | 'launch' | 'site' | 'defaults' | 'thermo' | 'lists' | 'bookings'
+type Tab = 'profile' | 'launch' | 'site' | 'defaults' | 'thermo' | 'lists' | 'bookings' | 'alfred'
 
 export default function AccountSettingsForm({ currentEmail }: { currentEmail?: string }) {
   const [activeTab,        setActiveTab]        = useState<Tab>('profile')
+  // Opened on a tab by ?tab=, so the Alfred page can link straight to his.
+  useEffect(() => {
+    const asked = new URLSearchParams(window.location.search).get('tab')
+    if (asked === 'alfred') setActiveTab('alfred')
+  }, [])
   const [mobileView,       setMobileView]       = useState<'list' | 'detail'>('list')
   const [email,            setEmail]            = useState(currentEmail || '')
   const [newPassword,      setNewPassword]      = useState('')
@@ -507,6 +515,14 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
       return
     }
 
+    // The same check the save route refuses on. Switching review requests on
+    // with no link or no wording would send a thank you with nothing to press.
+    const reviewFault = reviewSettingsProblem(defaults)
+    if (reviewFault) {
+      setDefaultsFeedback(reviewFault)
+      return
+    }
+
     setDefaultsBusy(true)
     try {
       const res     = await fetch('/api/admin/business-defaults', {
@@ -574,6 +590,9 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     // It is also the only screen here that can take the website offline, which
     // is not something to meet while looking for a markup.
     { key: 'bookings', label: 'Site Measures',      description: 'Days, windows and the fee for online bookings',       icon: 'SM' },
+    // Last: the assistant that prepares work for approval. Its own tab because
+    // it is the one place his switch and limits live.
+    { key: 'alfred',   label: 'Alfred',             description: 'The assistant: switch, jobs and limits',              icon: 'AL' },
   ]
 
   // Profile tab content
@@ -853,6 +872,10 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
               terms because both are wording that goes out to customers. */}
           <EmailSignatureCard />
 
+          {/* Wording that goes to customers too, so it sits with the terms and
+              the signature. Saved by Save defaults, with the rest. */}
+          <ReviewRequestCard defaults={defaults} updateDefault={updateDefault} />
+
           <div className="overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white">
             <div className="border-b border-[#edf4eb] bg-[#f5f8f4] px-4 py-[10px]">
               <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5a5a52]">Variation terms</p>
@@ -891,6 +914,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     activeTab === 'thermo'   ? <ThermoPricingCard /> :
     activeTab === 'lists'    ? <ListsManager /> :
     activeTab === 'bookings' ? <BookingSettingsCard /> :
+    activeTab === 'alfred'   ? <AlfredSettingsCard /> :
     defaultsContent
 
   const launchPreviewModal =

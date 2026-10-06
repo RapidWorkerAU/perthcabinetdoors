@@ -1,7 +1,8 @@
 ﻿import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
+import { clashMessage, keepTheirs, QUOTE_LINE_FIELDS, saveClashes } from "../../../../../lib/pcd-save-clash";
 import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, edgingLinealMetres, edgingTotals, GST_RATE, inheritWhenZero, roundMoney } from "../../../../../lib/pcd-quote-utils";
 import { isEdgeProfileSelectionAvailable, savedProfileChecks } from "../../../../../lib/quote-form-data";
-import { createSupplierGuard } from "../../../../../lib/pcd-supplier-guard";
+import { createLineGate, passCabinetThroughGate, passLineThroughGate } from "../../../../../lib/pcd-line-gate";
 import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 import { normaliseHingeSide, readMiddles } from "../../../../../lib/pcd-hinges";
 import { EDGE_FINISHES, GRAIN_DIRECTIONS, HOLE_TYPES, SUPPLIED_BY, bandedEdgeList, edgeFinishFromBanded, oneOf, panelUseFor } from "../../../../../lib/pcd-line-details";
@@ -520,17 +521,40 @@ export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id
   // quote line goes through it, including any route added later.
   await assertQuoteEditable(supabase, quoteId);
 
-  // ONE BRAND PER LINE, for the same reason and in the same place. A door is
-  // one brand's colour on that brand's profile, and the mix is not visible in
-  // the finished quote: it shows a colour and a profile, both real, and only
-  // the factory finds out they cannot be put together. The editor narrows its
-  // dropdowns by the brand; this catches the paths that are not the editor.
-  // See lib/pcd-supplier-guard.js.
-  const problems = (await createSupplierGuard(supabase))(line || {});
-  if (problems.length) {
-    const refusal = new Error(problems[0]);
-    refusal.status = 400;
-    throw refusal;
+  // A BOARD ON THE LINE MUST BE A BOARD IN THE LIBRARY, and one brand's. The
+  // editor narrows its dropdowns so a person can only pick a real board; this
+  // is the same narrowing on the server, for every path that is not a person
+  // clicking. Checked against what the line held before, so an old line is
+  // only checked on what changed. See lib/pcd-line-gate.js.
+  const before = lineId
+    ? (await supabase.from("pcd_quote_line_items").select("*").eq("id", lineId).eq("quote_id", quoteId).maybeSingle()).data || null
+    : null;
+  // NOBODY ELSE'S CHANGE IS UNDONE: a field changed on this line since the
+  // screen loaded it, that this save would set back, refuses with a 409 naming
+  // it. The base travels with the line and is taken off it here.
+  // See lib/pcd-save-clash.js.
+  const { base: lineBase, ...incomingLine } = line || {};
+  line = incomingLine;
+  if (before && lineBase) {
+    const clashes = saveClashes(before, lineBase, line, QUOTE_LINE_FIELDS);
+    if (clashes.length) {
+      const refusal = new Error(clashMessage(clashes, "this line"));
+      refusal.status = 409;
+      throw refusal;
+    }
+    // Fields this screen did not change but somebody else did keep their value.
+    line = keepTheirs(before, lineBase, line, QUOTE_LINE_FIELDS);
+  }
+
+  const gate = await createLineGate(supabase);
+  line = passLineThroughGate(gate, line || {}, before);
+  // A cabinet's carcass and shelves are boards too. Same rule, judged against
+  // the configuration as it is saved now.
+  if (line.product_type === "base_cabinet" && line.cabinet_config) {
+    const beforeConfig = lineId
+      ? (await supabase.from("pcd_cabinet_configs").select("*").eq("line_item_id", lineId).maybeSingle()).data || null
+      : null;
+    line = { ...line, cabinet_config: passCabinetThroughGate(gate, line.cabinet_config, beforeConfig) };
   }
 
   await loadQuote(supabase, quoteId);

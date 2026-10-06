@@ -186,7 +186,7 @@ test("the preview and the send are the same template", () => {
   assert.match(card, /subject: "Re: Your quote/, "and the preview shows a subject, since the header uses one");
 
   const route = readFileSync(
-    new URL("../app/api/admin/customer-desk/[customerId]/reply/route.js", import.meta.url),
+    new URL("../lib/pcd-desk-reply.js", import.meta.url),
     "utf8"
   );
   assert.match(route, /deskReplyEmailHtml\(\{ bodyHtml: written, signatureHtml, reference, subject \}\)/);

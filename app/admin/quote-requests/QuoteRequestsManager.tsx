@@ -15,6 +15,7 @@ import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { useFocusedRow } from '../_utils/useFocusedRow'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
+import { AlfredDot } from '@/components/admin/AlfredMark'
 import OrderFormActions from '../_components/OrderFormActions'
 import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
 import { LIST_PAGE_SIZE, tableStyles } from '@/components/ui/table-styles'
@@ -316,6 +317,7 @@ export default function QuoteRequestsManager() {
   const router = useRouter()
 
   const [quoteRequests,            setQuoteRequests]            = React.useState<QuoteRequest[]>([])
+  const [alfredWaiting,            setAlfredWaiting]            = React.useState<Record<string, boolean>>({})
   const [previewRequest,           setPreviewRequest]           = React.useState<QuoteRequest | null>(null)
   const { toast } = useToast()
   const [isLoading,                setIsLoading]                = React.useState(true)
@@ -348,6 +350,7 @@ export default function QuoteRequestsManager() {
       const res     = await fetch('/api/admin/quote-requests', { cache: 'no-store' })
       const payload = await res.json()
       setQuoteRequests(payload.quoteRequests || [])
+      setAlfredWaiting(payload.alfredWaiting || {})
       if (payload.error) toast({ title: payload.error, variant: 'error' })
     } finally {
       setIsLoading(false)
@@ -407,6 +410,25 @@ export default function QuoteRequestsManager() {
           title: `${payload.madeToOrderCount} line${payload.madeToOrderCount === 1 ? ' is' : 's are'} made to order. Price ${payload.madeToOrderCount === 1 ? 'it' : 'them'} from the supplier's quote.`,
         })
       }
+      // A board the colour library does not have was taken off its line rather
+      // than written as one that does not exist. The words it said are in the
+      // line's internal note. See lib/pcd-line-gate.js.
+      const notInLibrary: string[] = payload.notInLibrary || []
+      if (notInLibrary.length) {
+        toast({
+          title: `${notInLibrary.length} line${notInLibrary.length === 1 ? ' had a board' : 's had boards'} not in the colour library. Pick ${notInLibrary.length === 1 ? 'it' : 'them'} again on the quote.`,
+          description: notInLibrary[0],
+          variant: 'error',
+        })
+      }
+      const incomplete: string[] = payload.incomplete || []
+      if (incomplete.length) {
+        toast({
+          title: `${incomplete.length} line${incomplete.length === 1 ? ' is' : 's are'} missing details. Fill ${incomplete.length === 1 ? 'it' : 'them'} in on the quote.`,
+          description: incomplete[0],
+          variant: 'error',
+        })
+      }
       router.push(`/admin/quotes/${payload.quoteId}`)
     } else {
       toast({ title: payload.error || 'Could not convert quote request.', variant: 'error' })
@@ -434,7 +456,17 @@ export default function QuoteRequestsManager() {
   }
 
   const columns: AdminDataTableColumn<QuoteRequest>[] = [
-    { id: 'customer', header: 'Customer', className: 'font-medium', cell: request => request.customer_name || '-' },
+    {
+      id: 'customer',
+      header: 'Customer',
+      className: 'font-medium',
+      cell: request => (
+        <>
+          {alfredWaiting[request.id] ? <AlfredDot title="Alfred drafted a quote from this request" /> : null}
+          {request.customer_name || '-'}
+        </>
+      ),
+    },
     { id: 'suburb',   header: 'Suburb',   cell: request => request.delivery_suburb || '-' },
     { id: 'source',   header: 'Source',   cell: request => formatAdminLabel(request.source || '-') },
     {

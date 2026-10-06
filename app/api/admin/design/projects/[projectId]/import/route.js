@@ -1,5 +1,6 @@
 import { requireAdminApiContext } from "../../../../../../../lib/admin-api";
 import { saveQuoteLine, deleteQuoteLine } from "../../../../quotes/[id]/_quote-line-save";
+import { createLineGate, settleImportedCabinet, settleImportedLine } from "../../../../../../../lib/pcd-line-gate";
 import { calculateQuoteLine, calculateQuoteTotals, GST_RATE } from "../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../lib/pcd-business-defaults";
 import { getDatabaseColourRows, isMadeToOrder, normaliseColourMaterialKey } from "../../../../../../../lib/pcd-colour-library";
@@ -319,7 +320,18 @@ export async function POST(request, { params }) {
     );
 
     const mergedById = new Map(importableItems.map((i) => [i.id, i]));
-    for (const { line, itemId } of mergeIdenticalLines(generated)) {
+    // EVERY BOARD THROUGH THE LINE GATE before it is saved. A board the library
+    // does not have is taken off the line and kept in its note, so the piece
+    // still arrives and is visibly incomplete, rather than the whole item
+    // failing. Reported beside the other results. See lib/pcd-line-gate.js.
+    const gate = await createLineGate(context.supabase);
+    results.notInLibrary = [];
+    for (const { line: generatedLine, itemId } of mergeIdenticalLines(generated)) {
+      const settled = settleImportedLine(gate, generatedLine);
+      const cabinet = settleImportedCabinet(gate, settled.line.cabinet_config);
+      settled.notes.push(...cabinet.notes);
+      const line = cabinet.config ? { ...settled.line, cabinet_config: cabinet.config } : settled.line;
+      settled.notes.forEach((note) => results.notInLibrary.push(`Item "${mergedById.get(itemId)?.label || itemId}": ${note}`));
       try {
         // design_project_id as well as the item: the item tag alone can't be
         // swept once its item is deleted, and the project tag is what scopes

@@ -1,5 +1,6 @@
 ﻿import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../lib/admin-api";
+import { alfredWaitingBy } from "../../../../lib/pcd-alfred-dots";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
@@ -10,6 +11,7 @@ import { scheduleDate } from "../../../../lib/pcd-order-schedule";
 import { suggestedScheduleProblems } from "../../../../lib/pcd-quote-schedule";
 import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
 import { isMissingSupplierNameSchemaError, withoutSupplierName } from "./[id]/_quote-line-save";
+import { createLineGate, passLineThroughGate } from "../../../../lib/pcd-line-gate";
 
 function makeQuoteNumber() {
   return `PCD-Q-${new Date().getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -116,7 +118,7 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return Response.json({ ok: true, quotes: data || [] });
+    return Response.json({ ok: true, quotes: data || [], alfredWaiting: await alfredWaitingBy(context.supabase, "quote_id") });
   } catch (error) {
     return Response.json(
       {
@@ -153,6 +155,14 @@ export async function POST(request) {
     const scheduleFault = suggestedScheduleProblems(normalized.quote)[0];
     if (scheduleFault) {
       return Response.json({ ok: false, error: scheduleFault.message }, { status: 400 });
+    }
+
+    // EVERY LINE THROUGH THE LINE GATE before the quote exists, so a refused
+    // line never leaves half a quote behind. A new quote has no saved lines, so
+    // every line is checked in full. See lib/pcd-line-gate.js.
+    if (normalized.lines.length) {
+      const gate = await createLineGate(context.supabase);
+      normalized.lines = normalized.lines.map((line, index) => passLineThroughGate(gate, line, null, { label: `Line ${index + 1}` }));
     }
 
     const { data: quote, error: quoteError } = await context.supabase
@@ -207,7 +217,7 @@ export async function POST(request) {
   } catch (error) {
     return Response.json(
       { ok: false, error: error?.message || "Could not save quote." },
-      { status: 500 }
+      { status: error?.status || 500 }
     );
   }
 }

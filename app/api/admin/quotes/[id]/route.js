@@ -1,4 +1,5 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
+import { clashResponse, keepTheirs, QUOTE_HEADER_FIELDS, saveClashes } from "../../../../../lib/pcd-save-clash";
 import { describeChanges, logOrderActivity } from "../../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../../lib/pcd-customer-utils";
@@ -9,6 +10,7 @@ import { assertQuoteEditable } from "../../../../../lib/pcd-quote-lock";
 import { scheduleDate } from "../../../../../lib/pcd-order-schedule";
 import { suggestedScheduleProblems } from "../../../../../lib/pcd-quote-schedule";
 import { refreshQuoteCredits } from "../../../../../lib/pcd-customer-credits";
+import { createLineGate, passCabinetThroughGate, passLineThroughGate } from "../../../../../lib/pcd-line-gate";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -196,7 +198,18 @@ export async function GET(_request, { params }) {
   try {
     const id = await quoteIdFromParams(params);
     const quote = await loadQuoteWithRelations(context.supabase, id);
-    return Response.json({ ok: true, quote });
+    // Alfred's draft behind this quote, if he made it: the banner and the bow
+    // tie on each line he left a note on. Kept beside the quote, not on it, so
+    // it never travels back in a save.
+    const { data: alfred } = await context.supabase
+      .from("pcd_alfred_drafts")
+      .select("id, status, decided_by, line_notes, quote_request_id, created_at")
+      .eq("quote_id", id)
+      .eq("kind", "quote")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return Response.json({ ok: true, quote, alfred: alfred || null });
   } catch (error) {
     return Response.json(
       { ok: false, error: error?.message || "Could not load quote." },
@@ -231,11 +244,36 @@ export async function PUT(request, { params }) {
       return Response.json({ ok: false, error: scheduleFault.message }, { status: 400 });
     }
 
+    // EVERY LINE THROUGH THE LINE GATE, before anything is written. This path
+    // saves the whole quote at once and used to skip the brand check entirely.
+    // Checked against each line as it is saved now, so only what changed is
+    // judged. A refusal names the line. See lib/pcd-line-gate.js.
+    {
+      const { data: savedNow } = await context.supabase.from("pcd_quote_line_items").select("*").eq("quote_id", id);
+      const beforeById = new Map((savedNow || []).map((line) => [line.id, line]));
+      const gate = await createLineGate(context.supabase);
+      const lineIds = (savedNow || []).map((line) => line.id);
+      const { data: configsNow } = lineIds.length
+        ? await context.supabase.from("pcd_cabinet_configs").select("*").in("line_item_id", lineIds)
+        : { data: [] };
+      const configBefore = new Map((configsNow || []).map((config) => [config.line_item_id, config]));
+      normalized.lines = normalized.lines.map((line, index) => {
+        const label = `Line ${index + 1}`;
+        const checked = passLineThroughGate(gate, line, (line.id && beforeById.get(line.id)) || null, { label });
+        if (checked.product_type !== "base_cabinet" || !checked.cabinet_config) return checked;
+        return { ...checked, cabinet_config: passCabinetThroughGate(gate, checked.cabinet_config, (line.id && configBefore.get(line.id)) || null, { label }) };
+      });
+    }
+
     const { data: beforeQuote } = await context.supabase
       .from("pcd_quotes")
       .select("*")
       .eq("id", id)
       .maybeSingle();
+
+    // The same clash check as the editor's save. See lib/pcd-save-clash.js.
+    const putClash = clashResponse(saveClashes(beforeQuote || {}, payload.base, payload, QUOTE_HEADER_FIELDS), "this quote");
+    if (putClash) return putClash;
 
     // board_order_settings arrived after this route shipped (migration
     // 202609071900). A database that has not had it run answers PGRST204
@@ -356,7 +394,7 @@ export async function PUT(request, { params }) {
 
     return Response.json({ ok: true, quote: savedQuote });
   } catch (error) {
-    return Response.json({ ok: false, error: error?.message || "Could not update quote." }, { status: 500 });
+    return Response.json({ ok: false, error: error?.message || "Could not update quote." }, { status: error?.status || 500 });
   }
 }
 
@@ -381,9 +419,16 @@ export async function PATCH(request, { params }) {
     if (linesLoadError) throw linesLoadError;
     if (!beforeQuote) return Response.json({ ok: false, error: "Quote not found." }, { status: 404 });
 
+    // NOBODY ELSE'S CHANGE IS UNDONE. A field somebody changed since this
+    // screen loaded, that this save would set back, refuses the save and names
+    // the field. See lib/pcd-save-clash.js.
+    const headerClash = clashResponse(saveClashes(beforeQuote, payload.base, payload, QUOTE_HEADER_FIELDS), "this quote");
+    if (headerClash) return headerClash;
+
     const normalized = await normalizeQuotePayload(context.supabase, {
       ...beforeQuote,
-      ...payload,
+      // Fields this screen did not change but somebody else did keep their value.
+      ...keepTheirs(beforeQuote, payload.base, payload, QUOTE_HEADER_FIELDS),
       lines: existingLines || [],
     });
 

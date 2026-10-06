@@ -1,6 +1,7 @@
 import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { getBusinessDefaults, upsertBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { gstRateProblem } from "../../../../lib/pcd-quote-utils";
+import { reviewSettingsProblem } from "../../../../lib/pcd-review-requests";
 
 export async function GET() {
   const context = await requireAdminApiContext();
@@ -29,6 +30,12 @@ export async function PUT(request) {
     const gstFault = gstRateProblem(sent.gst_rate);
     if (gstFault) {
       return Response.json({ ok: false, error: gstFault.message }, { status: 400 });
+    }
+
+    // Same rule as the screen. See reviewSettingsProblem.
+    const reviewFault = reviewSettingsProblem(sent);
+    if (reviewFault) {
+      return Response.json({ ok: false, error: reviewFault }, { status: 400 });
     }
 
     const defaults = await upsertBusinessDefaults(context.supabase, sent);

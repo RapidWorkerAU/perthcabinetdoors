@@ -58,14 +58,20 @@ const EXEMPT = {
     "The override is the sanctioned way past the lock, with a reason recorded and a new access code issued. See the override tests in document-lock.",
 
   // ── Not what was agreed, only how it is going ──────────────────────────────
-  "[id]/items/[itemId]/route.js":
+  // These two are the shared saves the order page's routes and Alfred both
+  // call (moved out of [id]/items/[itemId]/route.js and [id]/route.js).
+  "lib/pcd-order-item-save.js":
     "Production tracking only: status, production stage, supplier reference, ordered and ETA dates, board flags and notes. No size, board, profile or price. A locked order still has to be moved through the workshop.",
   "[id]/route.js":
+    "Marks the order as seen (admin_viewed_at) when it is opened. Its field saves are lib/pcd-order-header-save.js, excused below on their own.",
+  "lib/pcd-order-header-save.js":
     "Contact details, the site address, the deposit fields and the order status. None of it changes what is being made or what the lines come to.",
   "[id]/cutting-plan/route.js":
     "Cutting plan settings on the order. It decides how the boards are cut, not what was agreed to be made.",
   "[id]/tax-invoice/send/route.js":
     "Records that an invoice was sent. It writes when, not what.",
+  "[id]/review-request/route.js":
+    "Records whether the Google review thank you email has gone or been skipped. No line, price, date or address is touched.",
 };
 
 function routeFiles(dir, found = []) {
@@ -77,9 +83,13 @@ function routeFiles(dir, found = []) {
   return found;
 }
 
-const writers = routeFiles(ORDERS)
-  .map((file) => ({ file, key: file.slice(ORDERS.length + 1).split(/[\\/]/).join("/"), source: readFileSync(file, "utf8") }))
-  .filter((route) => WRITES.test(route.source));
+// The shared saves the order routes call, held to the same rule as a route.
+const SHARED_SAVES = ["lib/pcd-order-item-save.js", "lib/pcd-order-header-save.js"];
+
+const writers = [
+  ...routeFiles(ORDERS).map((file) => ({ file, key: file.slice(ORDERS.length + 1).split(/[\\/]/).join("/"), source: readFileSync(file, "utf8") })),
+  ...SHARED_SAVES.map((key) => ({ file: key, key, source: readFileSync(new URL(`../${key}`, import.meta.url), "utf8") })),
+].filter((route) => WRITES.test(route.source));
 
 test("the walk finds the routes it is supposed to be checking", () => {
   // Without this, a change to the pattern above could quietly make this whole

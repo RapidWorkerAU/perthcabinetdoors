@@ -14,6 +14,8 @@ export default function PublicFooter({ className, separator = "dot" }: PublicFoo
         <a href="tel:0437750990">0437 750 990</a>
         {divider}
         <a href="mailto:sales@perthcabinetdoors.com.au">sales@perthcabinetdoors.com.au</a>
+        {divider}
+        <a href="/privacy">Privacy</a>
       </p>
     </footer>
   );

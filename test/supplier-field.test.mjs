@@ -151,7 +151,7 @@ test("every route that retries a bulk write says which column failed", () => {
   // Passing the row alone falls back to dropping all eleven, which is the
   // behaviour this fixes. Each of these has an error in hand, so each passes it.
   for (const path of [
-    "../app/api/admin/quote-requests/route.js",
+    "../lib/pcd-quote-request-conversion.js",
     "../app/api/admin/quotes/route.js",
     "../app/api/admin/quotes/[id]/duplicate/route.js",
     "../app/api/admin/quotes/[id]/import-order-form/route.js",

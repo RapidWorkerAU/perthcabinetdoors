@@ -32,6 +32,8 @@ export interface SecondaryLink {
   label: string
   /** Listed and marked rather than hidden, so the shape of what is coming shows. */
   soon?: boolean
+  /** Things waiting behind this row, shown as a small count. Hidden at 0. */
+  count?: number
 }
 
 const ROW =
@@ -83,6 +85,13 @@ export default function SecondarySidebar({
                 className={cn(ROW, isActive(item.href) ? ACTIVE : IDLE)}
               >
                 <span className="truncate">{item.label}</span>
+                {item.count ? (
+                  <span className="ml-auto pl-2">
+                    <span className="inline-flex min-w-[18px] justify-center rounded-[9px] bg-[#edf4eb] px-[6px] text-[10px] font-semibold leading-[18px] text-[#2d5e28]">
+                      {item.count > 99 ? '99+' : item.count}
+                    </span>
+                  </span>
+                ) : null}
               </Link>
             ),
           )}
@@ -104,6 +113,7 @@ export default function SecondarySidebar({
               )}
             >
               {item.label}
+              {item.count ? ` (${item.count})` : ''}
             </Link>
           ))}
         </nav>

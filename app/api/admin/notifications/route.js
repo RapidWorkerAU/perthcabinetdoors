@@ -27,9 +27,24 @@ export async function GET() {
       countRows(context.supabase, "pcd_orders", { admin_viewed_at: null }),
     ]);
 
+    // Alfred's count is everything waiting on a person: drafts and questions.
+    // Counted on its own, so a database without his tables yet costs his badge
+    // and nothing else.
+    let alfred = 0;
+    try {
+      const [drafts, questions] = await Promise.all([
+        countRows(context.supabase, "pcd_alfred_drafts", { status: "waiting" }),
+        countRows(context.supabase, "pcd_alfred_questions", { status: "open" }),
+      ]);
+      alfred = (drafts || 0) + (questions || 0);
+    } catch {
+      alfred = 0;
+    }
+
     return Response.json({
       ok: true,
       notifications: {
+        "/admin/alfred": alfred,
         "/admin/enquiries": newEnquiries,
         "/admin/quote-requests": newQuoteRequests,
         "/admin/orders": newOrders,

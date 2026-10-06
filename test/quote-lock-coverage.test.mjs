@@ -85,10 +85,9 @@ const EXEMPT = new Map([
     "app/api/admin/quotes/[id]/duplicate/route.js",
     "writes the lines of the NEW quote it just created, never the one it copied from",
   ],
-  [
-    "app/api/admin/quote-requests/route.js",
-    "builds a brand new quote out of a request, so there is no order it could be behind",
-  ],
+  // The quote request conversion moved to lib/pcd-quote-request-conversion.js,
+  // shared with Alfred. It builds a brand new quote, so there is no order it
+  // could be behind, and the route no longer writes lines itself.
   ["app/api/admin/quotes/route.js", "creates quotes"],
   ["app/api/admin/quotes/[id]/_quote-line-save.js", "is the saver, and is checked directly above"],
 ]);

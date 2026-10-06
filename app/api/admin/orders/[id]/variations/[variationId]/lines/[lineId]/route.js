@@ -11,7 +11,7 @@ import {
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../../../lib/pcd-business-defaults";
 import { normaliseHingeSide, readMiddles } from "../../../../../../../../../lib/pcd-hinges";
-import { createSupplierGuard } from "../../../../../../../../../lib/pcd-supplier-guard";
+import { createLineGate } from "../../../../../../../../../lib/pcd-line-gate";
 import { LINE_ANSWER_KEYS, validatedLineAnswers } from "../../../../../../../../../lib/pcd-line-details";
 import { lineAnswers } from "../../../../../../../../../lib/pcd-order-from-quote";
 
@@ -191,6 +191,32 @@ function jobCostUpdates(payload, before, order) {
   updates.description = cleanText(payload.description) || type.label;
   updates.line_total_ex_gst = variationLineDelta({ ...before, ...updates });
   return updates;
+}
+
+// THE GATE SETTLED THE BOARD, SO THE PRICE FOLLOWS IT.
+//
+// The line is priced before the line gate runs, from the board the browser
+// sent. When the gate repoints that board to the library row the words really
+// name, or clears it because no such board exists, the price has to be worked
+// out again from what is actually on the line: otherwise the line is saved
+// pointing at one board and priced for another. A board the gate cleared
+// leaves the line unpriced, to be priced by hand, never at the old rate.
+//
+// Returns the input to price the line again from, or null when the gate left
+// the board alone.
+async function settledPricingInput(supabase, payload, beforeGate, afterGate) {
+  if ((afterGate.unit_cost_source_id || null) === (beforeGate.unit_cost_source_id || null)) return null;
+  const changed = Object.fromEntries(Object.entries(afterGate).filter(([key, value]) => beforeGate[key] !== value));
+  const source = afterGate.unit_cost_source_id ? await boardPricingSource(supabase, afterGate.unit_cost_source_id) : null;
+  return {
+    source,
+    input: {
+      ...payload,
+      ...changed,
+      unit_cost_source_id: afterGate.unit_cost_source_id || null,
+      ...(source ? {} : { unit_cost_per_sqm_ex_gst: 0, cost_per_board_ex_gst: 0 }),
+    },
+  };
 }
 
 function updatesFromPayload(payload, before, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null, order = null) {
@@ -382,8 +408,16 @@ export async function PATCH(request, { params }) {
     // ONE BRAND PER LINE. Against the line as it will be, not the fields that
     // arrived: changing only the profile still has to agree with the colour
     // already sitting on the line. See lib/pcd-supplier-guard.js.
-    const problems = (await createSupplierGuard(context.supabase))({ ...before, ...updates });
+    // And the line gate: a board on the line must be a board in the library.
+    // Judged against the line as saved, so only what changed counts.
+    const { problems, patch } = (await createLineGate(context.supabase))({ ...before, ...updates }, before);
     if (problems.length) return Response.json({ ok: false, error: problems[0] }, { status: 400 });
+    const beforeGate = { ...updates };
+    Object.assign(updates, patch);
+    const settled = await settledPricingInput(context.supabase, payload, beforeGate, updates);
+    if (settled) {
+      Object.assign(updates, updatesFromPayload(settled.input, before, sourceLine, businessDefaults, settled.source, order), patch);
+    }
 
     let { data: line, error } = await context.supabase
       .from("pcd_order_variation_lines")

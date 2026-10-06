@@ -11,7 +11,7 @@ import {
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, roundMoney, toNumber } from "../../../../../../../../lib/pcd-quote-utils";
 import { getBusinessDefaults } from "../../../../../../../../lib/pcd-business-defaults";
 import { normaliseHingeSide, readMiddles } from "../../../../../../../../lib/pcd-hinges";
-import { createSupplierGuard } from "../../../../../../../../lib/pcd-supplier-guard";
+import { createLineGate } from "../../../../../../../../lib/pcd-line-gate";
 import { LINE_ANSWER_KEYS, validatedLineAnswers } from "../../../../../../../../lib/pcd-line-details";
 import { lineAnswers } from "../../../../../../../../lib/pcd-order-from-quote";
 
@@ -356,9 +356,41 @@ function withoutFallbackColumns(row, error) {
  * supplierConflicts is silent about what is not filled in, so they pass
  * without a special case.
  */
-async function refuseMixedBrands(supabase, row) {
-  const problems = (await createSupplierGuard(supabase))(row);
-  if (!problems.length) return null;
+// THE GATE SETTLED THE BOARD, SO THE PRICE FOLLOWS IT.
+//
+// The line is priced before the line gate runs, from the board the browser
+// sent. When the gate repoints that board to the library row the words really
+// name, or clears it because no such board exists, the price has to be worked
+// out again from what is actually on the line: otherwise the line is saved
+// pointing at one board and priced for another. A board the gate cleared
+// leaves the line unpriced, to be priced by hand, never at the old rate.
+//
+// Returns the input to price the line again from, or null when the gate left
+// the board alone.
+async function settledPricingInput(supabase, payload, beforeGate, afterGate) {
+  if ((afterGate.unit_cost_source_id || null) === (beforeGate.unit_cost_source_id || null)) return null;
+  const changed = Object.fromEntries(Object.entries(afterGate).filter(([key, value]) => beforeGate[key] !== value));
+  const source = afterGate.unit_cost_source_id ? await boardPricingSource(supabase, afterGate.unit_cost_source_id) : null;
+  return {
+    source,
+    input: {
+      ...payload,
+      ...changed,
+      unit_cost_source_id: afterGate.unit_cost_source_id || null,
+      ...(source ? {} : { unit_cost_per_sqm_ex_gst: 0, cost_per_board_ex_gst: 0 }),
+    },
+  };
+}
+
+async function refuseMixedBrands(supabase, row, before = null) {
+  // The line gate: one brand per line, and a board on the line must be a board
+  // in the library. Judged against the order line it changes, so a change that
+  // leaves an old board alone is not refused over it. See lib/pcd-line-gate.js.
+  const { problems, patch } = (await createLineGate(supabase))(row, before);
+  if (!problems.length) {
+    Object.assign(row, patch);
+    return null;
+  }
   return Response.json({ ok: false, error: problems[0] }, { status: 400 });
 }
 
@@ -392,8 +424,16 @@ export async function POST(request, { params }) {
       ...linePayload(payload, sourceLine, businessDefaults, pricingSource, order),
     };
 
-    const mixed = await refuseMixedBrands(context.supabase, row);
+    const beforeGate = { ...row };
+    const mixed = await refuseMixedBrands(context.supabase, row, sourceLine || null);
     if (mixed) return mixed;
+    const settled = await settledPricingInput(context.supabase, payload, beforeGate, row);
+    if (settled) {
+      const gated = { ...row };
+      Object.assign(row, linePayload(settled.input, sourceLine, businessDefaults, settled.source, order));
+      // The gate's own words stand: only the price is worked out again.
+      for (const key of Object.keys(gated)) if (gated[key] !== beforeGate[key]) row[key] = gated[key];
+    }
 
     let { data: line, error } = await context.supabase
       .from("pcd_order_variation_lines")

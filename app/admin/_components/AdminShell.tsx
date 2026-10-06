@@ -11,6 +11,7 @@ import {
   IconCalendar, IconChartBar,
 } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
+import { IconBowTie } from '@/components/admin/AlfredMark'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { Avatar } from '@/components/ui/Avatar'
 import { ToastProvider } from '@/components/ui/Toast'
@@ -77,6 +78,9 @@ const NAV_GROUPS: NavGroup[] = [
       // where everybody has to be are both the question of what is happening
       // now. Neither route moved, so `covers` keeps this row lit on both.
       { label: 'Work Management', href: '/admin/board', icon: IconLayoutColumns, covers: ['/admin/calendar'] },
+      // ALFRED SITS WITH THE DAY TO DAY WORK because what he prepares is the
+      // day's work, waiting for a yes. His count is drafts and questions.
+      { label: 'Alfred', href: '/admin/alfred', icon: IconBowTie },
       { label: 'Customers', href: '/admin/customers', icon: IconUsers },
     ],
   },
@@ -142,6 +146,7 @@ const BOTTOM_MORE: NavItem[] = [
   // and the rail is a list of parts of the business rather than of screens.
   // Neither route moved, so `covers` keeps this row lit on both.
   { label: 'Work Management', href: '/admin/board', icon: IconLayoutColumns, covers: ['/admin/calendar'] },
+  { label: 'Alfred',          href: '/admin/alfred',         icon: IconBowTie      },
   // FINANCIALS LIVES HERE NOW. It is a report, and it was its own row next
   // to Reporting, which meant two rows for one idea. Its route did not move,
   // so `covers` keeps this row lit while you are on it.
@@ -170,6 +175,7 @@ const PAGE_TITLES: Record<string, string> = {
   // The board had no entry at all, so the busiest screen in the admin has
   // always breadcrumbed as "Admin".
   '/admin/board':          'The Board',
+  '/admin/alfred':         'Alfred',
   '/admin/calendar':       'Calendar',
   '/admin/customers':      'Customers',
   '/admin/enquiries':      'Enquiries',

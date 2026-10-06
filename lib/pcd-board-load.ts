@@ -5,6 +5,8 @@ import { issueKindLabel } from './pcd-order-issues'
 import { outstandingOnOrder } from './pcd-board-money'
 import { nothingHasMoved, orderPanels, panelAtStartOfList } from './pcd-order-stage'
 import { createSupabaseAdminClient } from './supabase/admin'
+import { ordersAgainstTheGap } from './pcd-alfred-updates'
+import { getAlfredSettings } from './pcd-alfred-settings'
 
 // EVERYTHING WAITING ON US, READ ONCE.
 //
@@ -687,8 +689,29 @@ export async function loadBoard(supabase: Supabase) {
     panelLabel: i.panel_label || 'a panel',
   }))
 
+  // ORDERS DUE AN UPDATE, judged by the same rule Alfred drafts from, so the
+  // card and the draft can never disagree about who is due.
+  let posted: Record<string, unknown>[] = []
+  try {
+    const { settings: alfredSettings } = await getAlfredSettings(supabase)
+    posted = (await ordersAgainstTheGap(supabase, alfredSettings))
+      .filter((e) => e.due)
+      .map((e) => ({
+        orderId: e.order.id,
+        orderNumber: e.order.order_number,
+        customerId: e.order.customer_id,
+        customerName: e.customerName,
+        daysSince: e.daysSince,
+        gap: alfredSettings.update_gap_days,
+        lastContactAt: e.lastContactAt,
+      }))
+  } catch {
+    failed.add('updates')
+  }
+
   const built = buildBoard(
     {
+      posted,
       issues: issueRows,
       enquiries: openEnquiries,
       tickets: openTickets,
@@ -729,6 +752,25 @@ export async function loadBoard(supabase: Supabase) {
   // somebody set a reply aside and take the quote chase with it, leaving the
   // quote waiting with nothing anywhere saying so. See collapseReplies.
   const cards = collapseReplies(standing)
+
+  // ALFRED'S DRAFT RIDES ON THE REPLY CARD. One list of what needs doing, so a
+  // drafted reply is shown on the card for that customer rather than as a card
+  // of its own. Read on its own, so a database without his tables still loads
+  // the board.
+  try {
+    const { data: drafts } = await supabase
+      .from('pcd_alfred_drafts')
+      .select('id, kind, customer_id, order_id')
+      .eq('status', 'waiting')
+    const replyByCustomer = new Map((drafts || []).filter(d => d.kind === 'reply').map(d => [d.customer_id as string, d.id as string]))
+    const updateByOrder = new Map((drafts || []).filter(d => d.kind === 'update').map(d => [d.order_id as string, d.id as string]))
+    for (const c of cards as Array<Record<string, unknown>>) {
+      if (c.cat === 'reply' && c.customerId && replyByCustomer.has(c.customerId as string)) c.alfredDraftId = replyByCustomer.get(c.customerId as string)
+      if (c.cat === 'posted' && c.subjectId && updateByOrder.has(c.subjectId as string)) c.alfredDraftId = updateByOrder.get(c.subjectId as string)
+    }
+  } catch {
+    /* the board without Alfred's drafts on it */
+  }
 
   return { cards, setAsideCount, failed: Array.from(failed), today }
 }

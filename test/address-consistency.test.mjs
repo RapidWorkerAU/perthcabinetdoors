@@ -205,7 +205,7 @@ test("the request-quote form still asks for a suburb and nothing more", () => {
 });
 
 test("converting a request puts the suburb in the suburb column", () => {
-  const src = read("app/api/admin/quote-requests/route.js");
+  const src = read("lib/pcd-quote-request-conversion.js");
   assert.match(src, /addressColumns\(\{ suburb: quoteRequest\.delivery_suburb \}\)/);
   assert.ok(
     !/site_address: quoteRequest\.delivery_suburb/.test(src),

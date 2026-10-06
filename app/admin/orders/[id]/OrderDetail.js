@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { panelKeyFor } from "../../../../lib/pcd-order-panel-keys";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { addressColumns, addressFromRecord } from "../../../../lib/pcd-contact-details";
@@ -36,6 +37,10 @@ import {
 } from "../../../../lib/pcd-refunds";
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import AdminLoading from "@/components/admin/AdminLoading";
+import ReviewRequestPanel from "./ReviewRequestPanel";
+import AlfredPostedPanel from "./AlfredPostedPanel";
+import { AlfredApproval, AlfredMark } from "@/components/admin/AlfredMark";
+import { baseFor, ORDER_FIELDS } from "../../../../lib/pcd-save-clash";
 import { panelNumberKey } from "../../../../lib/pcd-order-panel-numbers";
 import { groupProductionRows } from "../../../../lib/pcd-production-groups";
 import { lineNotes, lineNotesText } from "../../../../lib/pcd-line-notes";
@@ -180,7 +185,24 @@ function titleCaseStatus(status) {
 function activityActorLabel(actor) {
   if (actor === "customer") return "Customer";
   if (actor === "admin") return "Admin";
+  if (actor === "alfred") return "Alfred";
   return "System";
+}
+
+// WHO DID IT, as the pill the timeline shows. Alfred is the copper bow tie; an
+// email he wrote that a person approved shows both, with whether it was edited.
+function ActivityActor({ entry, pillClass }) {
+  if (entry.actor_type === "alfred") {
+    const approvedBy = entry.metadata?.approved_by;
+    return approvedBy ? <AlfredApproval approvedBy={approvedBy} edited={Boolean(entry.metadata?.edited)} /> : <AlfredMark title="Alfred" />;
+  }
+  const tone =
+    entry.actor_type === "admin"
+      ? "bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]"
+      : entry.actor_type === "customer"
+      ? "bg-[#eff6ff] text-[#1e5fa8] border-[#93c5fd]"
+      : "bg-[#f5f5f4] text-[#8b8a81] border-[#dbd8cc]";
+  return <span className={`${pillClass} ${tone}`}>{activityActorLabel(entry.actor_type)}</span>;
 }
 
 function activityDescriptionLabel(label) {
@@ -335,9 +357,8 @@ function cabinetCutLabel(item, itemIndex, copyIndex, totalCopies) {
   return `${orderNumber}. ${baseLabel}${copyLabel}`;
 }
 
-function panelKeyFor(...parts) {
-  return parts.map((part) => String(part ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item").join(":");
-}
+// panelKeyFor lives in lib/pcd-order-panel-keys.js, shared with Alfred, so a
+// change he makes lands on the panel this page shows.
 
 function cutMaterialDisplay(item, piece) {
   return piece?.material || [item?.material, item?.finish, item?.colour].filter(Boolean).join(" - ") || "-";
@@ -563,6 +584,9 @@ export default function OrderDetail({ orderId }) {
    // and must build its payload from the current item, not from a snapshot taken
    // when somebody touched a field.
   const orderRef = useRef(null);
+  // The order as the server last returned it, apart from what is being typed.
+  // Sent as the base with each save. See lib/pcd-save-clash.js.
+  const serverOrderRef = useRef(null);
   const planQueueRef = useRef({});
   const planInflightRef = useRef({});
   const planTimersRef = useRef({});
@@ -916,11 +940,27 @@ export default function OrderDetail({ orderId }) {
         toast({ title: payload.error || "Could not load order.", variant: "error" });
         return;
       }
+      serverOrderRef.current = payload.order;
       setOrder(payload.order);
     } catch (error) {
       toast({ title: error?.message || "Could not load order.", variant: "error" });
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  // The same read without the loading screen, for a small change that should
+  // not blank the whole page while it comes back.
+  async function refreshOrder() {
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" });
+      const payload = await response.json();
+      if (response.ok && payload.ok) {
+        serverOrderRef.current = payload.order;
+        setOrder(payload.order);
+      }
+    } catch {
+      // The action itself has already told them how it went.
     }
   }
 
@@ -992,13 +1032,14 @@ export default function OrderDetail({ orderId }) {
       const response = await fetch(`/api/admin/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
+        body: JSON.stringify({ ...fields, base: baseFor(serverOrderRef.current, ORDER_FIELDS) }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
         toast({ title: payload.error || "Could not update order.", variant: "error" });
         return;
       }
+      serverOrderRef.current = payload.order;
       setOrder(payload.order);
       toast({ title: "Order updated.", variant: "success" });
     } catch (error) {
@@ -1491,13 +1532,15 @@ export default function OrderDetail({ orderId }) {
       return;
     }
 
-    const merged = mergePlanning(panelPlanning(item), taken.inflight);
 
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/items/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ panel_planning: merged }),
+        // Only the panels that changed. The server merges them onto the plan
+        // as it is saved now, so two people planning different panels on the
+        // same line cannot wipe each other's work.
+        body: JSON.stringify({ panel_planning_changes: taken.inflight }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not save that line.");
@@ -1706,6 +1749,17 @@ export default function OrderDetail({ orderId }) {
                   {order.status === "archived" && <option value="archived">Archived</option>}
                 </select>
               </label>
+              {/* The Google review request this status lines up. Full width,
+                  straight under the dropdown that set it off. */}
+              <ReviewRequestPanel
+                orderId={orderId}
+                status={order.status}
+                request={order.review_request}
+                onChanged={refreshOrder}
+                toast={toast}
+              />
+              {/* How long since we last told them anything, and Alfred's update. */}
+              <AlfredPostedPanel posted={order.alfred_posted} customerName={order.customer_name} />
               {/* Archiving used to be a field in here, sitting between the job
                   name and the schedule as though it were another detail to fill
                   in. It is an action on the whole order, so it lives with the
@@ -4147,15 +4201,7 @@ export default function OrderDetail({ orderId }) {
                     ) : null}
                   </td>
                   <td className={tw.td}>
-                    <span className={`${tw.pill} ${
-                      entry.actor_type === 'admin'
-                        ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
-                        : entry.actor_type === 'customer'
-                        ? 'bg-[#eff6ff] text-[#1e5fa8] border-[#93c5fd]'
-                        : 'bg-[#f5f5f4] text-[#8b8a81] border-[#dbd8cc]'
-                    }`}>
-                      {activityActorLabel(entry.actor_type)}
-                    </span>
+                    <ActivityActor entry={entry} pillClass={tw.pill} />
                   </td>
                   <td className={tw.tdLast}>
                     <span className="inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc] whitespace-nowrap">
@@ -4191,15 +4237,7 @@ export default function OrderDetail({ orderId }) {
                 </p>
               )}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`${tw.pill} ${
-                  entry.actor_type === 'admin'
-                    ? 'bg-[#edf4eb] text-[#2d5e28] border-[#a8c5a0]'
-                    : entry.actor_type === 'customer'
-                    ? 'bg-[#eff6ff] text-[#1e5fa8] border-[#93c5fd]'
-                    : 'bg-[#f5f5f4] text-[#8b8a81] border-[#dbd8cc]'
-                }`}>
-                  {activityActorLabel(entry.actor_type)}
-                </span>
+                <ActivityActor entry={entry} pillClass={tw.pill} />
                 <span className="inline-flex items-center px-2 py-[2px] rounded-full text-[10px] font-medium border bg-[#f5f5f4] text-[#5a5a52] border-[#dbd8cc]">
                   {titleCaseStatus(entry.action_type)}
                 </span>

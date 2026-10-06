@@ -15,6 +15,7 @@ import { StatusFilterBar, type StatusFilterOption } from '@/components/ui/Status
 import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
+import { AlfredDot } from '@/components/admin/AlfredMark'
 import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
 import { tableStyles } from '@/components/ui/table-styles'
 import { cn } from '@/lib/utils'
@@ -66,6 +67,7 @@ export default function QuotesTable() {
   const router = useRouter()
   const { toast } = useToast()
   const [quotes,            setQuotes]            = useState<Quote[]>([])
+  const [alfredWaiting,     setAlfredWaiting]     = useState<Record<string, boolean>>({})
   const [isLoading,         setIsLoading]         = useState(true)
   const [isCreating,        setIsCreating]        = useState(false)
   const [duplicatingQuoteId, setDuplicatingQuoteId] = useState('')
@@ -109,6 +111,7 @@ export default function QuotesTable() {
       const payload  = await response.json()
       setSetupRequired(!!payload.setupRequired)
       setQuotes(payload.quotes || [])
+      setAlfredWaiting(payload.alfredWaiting || {})
       if (payload.error) toast({ title: payload.error, variant: 'error' })
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : 'Could not load quotes.', variant: 'error' })
@@ -185,7 +188,17 @@ export default function QuotesTable() {
   }
 
   const columns: AdminDataTableColumn<Quote>[] = [
-    { id: 'quote', header: 'Quote', className: 'font-medium', cell: quote => quote.quote_number },
+    {
+      id: 'quote',
+      header: 'Quote',
+      className: 'font-medium',
+      cell: quote => (
+        <>
+          {alfredWaiting[quote.id] ? <AlfredDot title="Drafted by Alfred, waiting to be checked" /> : null}
+          {quote.quote_number}
+        </>
+      ),
+    },
     {
       id: 'access_code',
       header: 'Access code',

@@ -25,6 +25,9 @@ export const REPORTS: SecondaryLink[] = [
   { href: '/admin/reporting/materials', label: 'Colours and materials' },
   { href: '/admin/reporting/leads', label: 'Lead conversion' },
   { href: '/admin/reporting/issues', label: 'Order issues' },
+  // Boards on live quotes and orders that are not in the colour library, saved
+  // before the line gate. Last, because it is a fix-up list, not a report.
+  { href: '/admin/reporting/data-checks', label: 'Data checks' },
 ]
 
 export default function ReportingShell({ children }: { children: React.ReactNode }) {

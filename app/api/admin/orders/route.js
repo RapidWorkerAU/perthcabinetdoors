@@ -78,9 +78,27 @@ export async function GET() {
       (paymentsByOrder[key] = paymentsByOrder[key] || []).push(payment);
     });
 
+    // Orders with something of Alfred's waiting on a person, for the copper
+    // dot. Read on its own, so a database without his tables still lists.
+    const alfredWaiting = {};
+    if (orderIds.length) {
+      try {
+        const [drafts, questions] = await Promise.all([
+          context.supabase.from("pcd_alfred_drafts").select("order_id").eq("status", "waiting").in("order_id", orderIds),
+          context.supabase.from("pcd_alfred_questions").select("order_id").eq("status", "open").in("order_id", orderIds),
+        ]);
+        [...(drafts.data || []), ...(questions.data || [])].forEach((row) => {
+          if (row.order_id) alfredWaiting[row.order_id] = true;
+        });
+      } catch {
+        /* no dots */
+      }
+    }
+
     return Response.json({
       ok: true,
       orders,
+      alfredWaiting,
       openIssues,
       paymentsByOrder,
       installBooked,

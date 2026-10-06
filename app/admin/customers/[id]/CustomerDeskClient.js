@@ -14,10 +14,22 @@
 import PushDetailsModal from "../../_components/PushDetailsModal";
 import CustomerCreditsCard from "./CustomerCreditsCard";
 import CustomerPaymentsCard from "./CustomerPaymentsCard";
-import { useCallback, useMemo, useState } from "react";
+import CustomerReviewCard from "./CustomerReviewCard";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
 import TermsEditor from "../../_components/TermsEditor";
+import { AlfredApproval, AlfredMark, ALFRED } from "@/components/admin/AlfredMark";
+import { termsHtmlToPlainText, toTermsHtml } from "../../../../lib/pcd-terms-html";
+
+const APPROVER_KEY = "pcd.alfred.approver";
+function readApprover() {
+  try {
+    return window.localStorage.getItem(APPROVER_KEY) || "";
+  } catch {
+    return "";
+  }
+}
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import { customerFieldLabel } from "../../../../lib/pcd-customer-utils";
@@ -71,6 +83,11 @@ export default function CustomerDeskClient({ customerId, initial }) {
   const [selectedId, setSelectedId] = useState(initial.entries[0]?.id || null);
   const [mode, setMode] = useState("reply");
   const [draft, setDraft] = useState("");
+  // WHICH OF ALFRED'S DRAFTS IS IN THE REPLY BOX, if one is. Sending then goes
+  // through his approve step, so the email records who approved it.
+  const [alfredLoaded, setAlfredLoaded] = useState("");
+  const [approver, setApprover] = useState("");
+  useEffect(() => { setApprover(readApprover()); }, []);
   // Starting something new rather than answering what is on screen. A message
   // about a different job should not be filed under whatever was last spoken
   // about, so this opens its own conversation with its own subject.
@@ -108,6 +125,41 @@ export default function CustomerDeskClient({ customerId, initial }) {
   // before this existed renders rather than throwing. See pcd-customer-payments.
   const payments = desk.payments || [];
   const selected = entries.find((entry) => entry.id === selectedId) || entries[0] || null;
+
+  // Alfred's draft for the conversation on screen: the one answering this
+  // message, or failing that the one on this thread.
+  const alfredDrafts = desk.alfredDrafts || [];
+  const alfredDraft =
+    (selected && alfredDrafts.find((d) => d.message_id === selected.id)) ||
+    (selected?.ticket_id && alfredDrafts.find((d) => d.ticket_id === selected.ticket_id)) ||
+    null;
+  const usingAlfred = Boolean(alfredDraft && alfredLoaded === alfredDraft.id && mode === "reply" && !composingNew);
+
+  // The draft fills the reply box when its conversation is opened, unless
+  // somebody has already started typing. Only a draft that was actually put in
+  // the box counts as loaded: if the person's own words were kept, Send stays
+  // an ordinary reply and never goes out as Alfred's approved draft.
+  //
+  // Alfred's words left untouched in the box are taken out again when the
+  // conversation changes, so one conversation's draft can never be sent on
+  // another as a person's reply.
+  const alfredHtmlRef = useRef("");
+  useEffect(() => {
+    const leftOver = alfredHtmlRef.current && draft === alfredHtmlRef.current;
+    if (leftOver && (!alfredDraft || alfredLoaded !== alfredDraft.id)) {
+      setDraft("");
+      setAlfredLoaded("");
+      alfredHtmlRef.current = "";
+    }
+    if (!alfredDraft || composingNew || mode !== "reply") return;
+    if (alfredLoaded === alfredDraft.id) return;
+    if (!leftOver && draft.replace(/<[^>]*>/g, "").trim()) return;
+    const html = toTermsHtml(alfredDraft.body_text || "");
+    alfredHtmlRef.current = html;
+    setDraft(html);
+    setAlfredLoaded(alfredDraft.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alfredDraft?.id, composingNew, mode]);
 
   // Giving a linked contact its own record back. Nothing was moved when they
   // were linked, so this is only deleting the link: every quote, order and
@@ -206,6 +258,7 @@ export default function CustomerDeskClient({ customerId, initial }) {
       toast({ title: mode === "note" ? "Write the note first." : "Write a reply first.", variant: "error" });
       return;
     }
+    if (usingAlfred) return approveAlfred();
     setBusy(true);
     try {
       const res = await fetch(`/api/admin/customer-desk/${customerId}/reply`, {
@@ -235,6 +288,53 @@ export default function CustomerDeskClient({ customerId, initial }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Sending Alfred's draft: through his approve step, with the name of who is
+  // approving, so the timeline says who let it go and whether it was changed.
+  async function approveAlfred() {
+    const by = approver || readApprover();
+    if (!by) {
+      toast({ title: "Choose who is approving first, beside Alfred's note above the reply box.", variant: "error" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/alfred/drafts/${alfredDraft.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Untouched, Alfred's own text goes back exactly as he wrote it, so it is
+        // not recorded as edited. Edited, the paragraph breaks are kept: each
+        // closing paragraph becomes a blank line, the way the draft was written.
+        body: JSON.stringify({
+          action: "approve",
+          approvedBy: by,
+          bodyText: draft === alfredHtmlRef.current ? alfredDraft.body_text : termsHtmlToPlainText(draft.replace(/<\/p>\s*/gi, "</p>\n")),
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.ok) {
+        toast({ title: payload.error || "Could not send.", variant: "error" });
+        if (res.status === 409) await refresh();
+        return;
+      }
+      setDraft("");
+      setAlfredLoaded("");
+      alfredHtmlRef.current = "";
+      await refresh();
+      toast({ title: "Reply sent.", description: `Written by Alfred, approved by ${by}${payload.edited ? ", edited before sending" : ""}.`, variant: "success" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function chooseApprover(name) {
+    try {
+      window.localStorage.setItem(APPROVER_KEY, name);
+    } catch {
+      /* applies for this visit */
+    }
+    setApprover(name);
   }
 
   async function resolveChange(id, action) {
@@ -670,6 +770,8 @@ export default function CustomerDeskClient({ customerId, initial }) {
                       The customer never sees this
                     </span>
                   ) : null}
+                  {selected.alfred_draft_id ? <AlfredApproval approvedBy={selected.approved_by} edited={selected.edited_before_send} /> : null}
+                  {selected.alfred ? <AlfredMark title="Alfred" /> : null}
                   {selected.quote_id ? (
                     <Link
                       href={`/admin/quotes/${selected.quote_id}`}
@@ -761,6 +863,31 @@ export default function CustomerDeskClient({ customerId, initial }) {
                   </span>
                 </div>
 
+                {usingAlfred ? (
+                  <div
+                    className="mb-2.5 flex flex-wrap items-center gap-2 rounded-[7px] border px-3 py-2 text-[12px] font-semibold"
+                    style={{ borderColor: ALFRED.border, background: ALFRED.bg, color: ALFRED.ink }}
+                  >
+                    <AlfredMark title="Drafted by Alfred" />
+                    <span>Alfred drafted this reply. Check it, change anything, then send.</span>
+                    <span className="ml-auto flex flex-wrap items-center gap-1.5 font-normal">
+                      Approving as
+                      {(desk.alfredApprovers?.length ? desk.alfredApprovers : ["Jason", "Ashleigh"]).map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => chooseApprover(name)}
+                          className={`rounded-[6px] border px-2 py-[2px] text-[11.5px] font-semibold ${approver === name ? "border-[#1c2b1e] bg-[#1c2b1e] text-white" : "border-[#ddd9cf] bg-white text-[#56534b]"}`}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                      <Link href={`/admin/alfred/waiting?draft=${alfredDraft.id}`} className="ml-1 underline">
+                        See the facts it used
+                      </Link>
+                    </span>
+                  </div>
+                ) : null}
                 <TermsEditor
                   value={draft}
                   onChange={setDraft}
@@ -778,11 +905,16 @@ export default function CustomerDeskClient({ customerId, initial }) {
                       isNote ? "bg-[#b8860b]" : "bg-[#1c2b1e]"
                     }`}
                   >
-                    {busy ? "Working..." : isNote ? "Save note" : "Send reply"}
+                    {busy ? "Working..." : isNote ? "Save note" : usingAlfred ? "Approve and send" : "Send reply"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDraft("")}
+                    onClick={() => {
+                      setDraft("");
+                      // Clearing Alfred's draft means writing your own: the box
+                      // stays empty and sends as an ordinary reply.
+                      if (alfredDraft) setAlfredLoaded(alfredDraft.id + ":cleared");
+                    }}
                     className="h-[32px] rounded-[7px] border border-[#ddd9cf] bg-white px-3 text-[12.5px] font-semibold text-[#56534b]"
                   >
                     Clear
@@ -816,6 +948,7 @@ export default function CustomerDeskClient({ customerId, initial }) {
           <div className="mt-4 grid gap-4">
             <CustomerPaymentsCard payments={payments} />
             <CustomerCreditsCard customerId={customerId} />
+            <CustomerReviewCard customerId={customerId} />
           </div>
 
           {/* quotes and orders */}

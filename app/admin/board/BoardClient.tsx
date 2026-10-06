@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import { AlfredMark, ALFRED } from '@/components/admin/AlfredMark'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { IconRefresh, IconAlertTriangle, IconMail } from '@tabler/icons-react'
@@ -39,6 +41,7 @@ type Card = {
   href: string
   ticketId?: string | null
   customerId?: string | null
+  alfredDraftId?: string | null
   subjectId?: string | null
   subjectType?: string | null
   stamp?: string | null
@@ -78,6 +81,7 @@ const HUE: Record<string, string> = {
   materials: '#0369a1',
   late: '#4338ca',
   chase: '#b45309',
+  posted: '#0f766e',
 }
 
 // HOW YOU LEFT IT.
@@ -726,6 +730,22 @@ function BoardCard({ card, showCat, onClose }: { card: Card; showCat: boolean; o
           </button>
         )}
       </div>
+
+      {/* Alfred has drafted the reply this card is asking for. */}
+      {card.alfredDraftId ? (
+        <Link
+          href={`/admin/alfred/waiting?draft=${card.alfredDraftId}`}
+          onClick={event => event.stopPropagation()}
+          className="relative z-10 mt-2 flex items-center gap-2 rounded-[6px] border px-2 py-[5px] text-[11px] font-semibold"
+          style={{ borderColor: ALFRED.border, background: ALFRED.bg, color: ALFRED.ink }}
+        >
+          <AlfredMark title="Alfred" />
+          {card.cat === 'posted' ? 'drafted an update' : 'drafted a reply'}
+          <span className="ml-auto rounded-[5px] px-2 py-[2px] text-[10.5px] text-white" style={{ background: ALFRED.strong }}>
+            Open draft
+          </span>
+        </Link>
+      ) : null}
     </div>
   )
 }

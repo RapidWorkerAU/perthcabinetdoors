@@ -37,7 +37,7 @@ test("the built-in defaults carry no terms wording of their own", () => {
 
 test("no code path writes the old terms sentence any more", () => {
   const writePaths = [
-    "app/api/admin/quote-requests/route.js",
+    "lib/pcd-quote-request-conversion.js",
     "app/admin/quotes/QuotesTable.tsx",
     // ImportModal is gone with Import to Quote. StageQuoteModal replaces it and
     // is checked in the same way below.
@@ -88,7 +88,7 @@ test("converting a quote request reads the terms library", () => {
   // this test has always protected still holds: the wording on a quote made
   // from a website enquiry is the configured wording, never a sentence written
   // into the route.
-  const src = read("app/api/admin/quote-requests/route.js");
+  const src = read("lib/pcd-quote-request-conversion.js");
   assert.match(src, /terms:\s*termsDefaults\.terms/);
   assert.match(src, /defaultQuoteTermsFor/);
 });
@@ -204,7 +204,7 @@ test("both quote creation paths apply the defaults", () => {
   // enquiry — and a default that reached one and not the other would be worse
   // than none at all.
   assert.match(read("app/api/admin/quotes/route.js"), /applyQuoteCostDefaults\(payload, businessDefaults\)/);
-  assert.match(read("app/api/admin/quote-requests/route.js"), /\.\.\.quoteCostDefaults\(businessDefaults\)/);
+  assert.match(read("lib/pcd-quote-request-conversion.js"), /\.\.\.quoteCostDefaults\(businessDefaults\)/);
 });
 
 // ── Zero is not an answer for an hourly rate ─────────────────────────────────

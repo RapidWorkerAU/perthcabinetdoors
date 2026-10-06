@@ -320,7 +320,7 @@ export default function StageQuoteModal({ projectId, onClose }) {
       setCommitWarnings(null);
       // The commit responds with { ok, results: { created, deleted, failed } }.
       const r = data.results || {};
-      setDone({ quoteId, created: r.created || 0, deleted: r.deleted || 0, failed: r.failed || 0 });
+      setDone({ quoteId, created: r.created || 0, deleted: r.deleted || 0, failed: r.failed || 0, notInLibrary: r.notInLibrary || [] });
     } catch {
       setCommitError("Commit failed.");
     } finally { setCommitting(false); }
@@ -382,6 +382,17 @@ export default function StageQuoteModal({ projectId, onClose }) {
             {done.failed > 0 && (
               <div style={{ fontSize: 12.5, color: "#b44230" }}>
                 {done.failed} line{done.failed === 1 ? "" : "s"} failed to save — check the quote.
+              </div>
+            )}
+            {/* Boards the colour library does not have were taken off their
+                line rather than saved as boards that do not exist. The words
+                are kept in each line's internal note. */}
+            {done.notInLibrary?.length > 0 && (
+              <div style={{ fontSize: 12.5, color: "#b44230", maxWidth: 520, textAlign: "left" }}>
+                {done.notInLibrary.length} line{done.notInLibrary.length === 1 ? " had a board" : "s had boards"} not in the colour library. Pick {done.notInLibrary.length === 1 ? "it" : "them"} again on the quote:
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                  {done.notInLibrary.slice(0, 5).map((note) => <li key={note}>{note}</li>)}
+                </ul>
               </div>
             )}
             <div style={{ display: "flex", gap: 10 }}>

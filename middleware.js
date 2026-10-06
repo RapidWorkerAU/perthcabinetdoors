@@ -20,6 +20,10 @@ function isBypassedPath(pathname) {
     // a week nobody visited.
     pathname === "/api/track" ||
     pathname.startsWith("/quotes") ||
+    // The review button and the unsubscribe in the thank you email. A customer
+    // pressing either must never meet the launch gate.
+    pathname.startsWith("/api/review-request") ||
+    pathname.startsWith("/reviews/unsubscribe") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/images") ||
     pathname.startsWith("/css") ||

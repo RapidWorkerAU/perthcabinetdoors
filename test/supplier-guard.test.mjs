@@ -149,7 +149,9 @@ const ROUTES = [
 ROUTES.forEach(([path, what]) => {
   test(`${what} is checked before it is written`, () => {
     const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-    assert.match(source, /createSupplierGuard/, `${path} writes a line without the brand check`);
+    // The brand check runs inside the line gate on the admin paths, which also
+    // checks the board is in the library. See lib/pcd-line-gate.js.
+    assert.match(source, /createSupplierGuard|createLineGate/, `${path} writes a line without the brand check`);
   });
 });
 
@@ -169,13 +171,16 @@ test("a variation add is checked against the row, which is what lands in the ord
     new URL("../app/api/admin/orders/[id]/variations/[variationId]/lines/route.js", import.meta.url),
     "utf8"
   );
-  assert.match(source, /refuseMixedBrands\(context\.supabase, row\)/);
+  assert.match(source, /refuseMixedBrands\(context\.supabase, row\b/);
 });
 
 // The refusal is the customer's to fix, so it must not read as a server fault.
 test("a mixed line refuses with 400, not 500", () => {
   const save = readFileSync(new URL("../app/api/admin/quotes/[id]/_quote-line-save.js", import.meta.url), "utf8");
-  assert.match(save, /refusal\.status = 400/);
+  assert.match(save, /passLineThroughGate/);
+  const gate = readFileSync(new URL("../lib/pcd-line-gate.js", import.meta.url), "utf8");
+  assert.match(gate, /refusal\.status = 400/);
+  assert.match(gate, /supplierConflicts\(line/, "the line gate must still run the brand check");
   const requests = readFileSync(new URL("../app/api/quote-requests/route.js", import.meta.url), "utf8");
   assert.match(requests, /Please reselect that line and try again[\s\S]{0,220}status: 400/);
 });

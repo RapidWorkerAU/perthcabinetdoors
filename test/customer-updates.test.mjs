@@ -415,7 +415,7 @@ test("a change inside panel_planning is described, not silently dropped", () => 
   // September ETA. The order history recorded nothing, so the weekly report had
   // nothing to tell him, and it looked as though the report was broken when in
   // fact the event had never been written down.
-  const route = read("app/api/admin/orders/[id]/items/[itemId]/route.js");
+  const route = read("lib/pcd-order-item-save.js");
   assert.match(route, /function describePlanningChanges/);
   assert.match(route, /changes\.push\(\.\.\.describePlanningChanges/);
   // Described field by field, not as one object.
