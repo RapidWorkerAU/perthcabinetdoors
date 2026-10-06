@@ -1,6 +1,8 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
 import { askAlfred, changeCard, draftBatch, sendChatEmail } from "../../../../../lib/pcd-alfred-ask";
 import { applyChange, previewChange } from "../../../../../lib/pcd-alfred-changes";
+import { applyBooking, bookingCard, previewBooking } from "../../../../../lib/pcd-alfred-bookings";
+import { siteUrl } from "../../../../../lib/pcd-stripe";
 
 // ASK ALFRED.
 //
@@ -15,6 +17,9 @@ import { applyChange, previewChange } from "../../../../../lib/pcd-alfred-change
 //                            from and to. Nothing is saved.
 //   action "change_apply"    a person approves that preview by name. Checked
 //                            again, and refused if anything moved since.
+//   action "booking_preview" the booking as it will be, or as it will change.
+//   action "booking_apply"   a person approves it by name. Saved through the
+//                            calendar's own save (lib/pcd-calendar-save.js).
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -33,6 +38,16 @@ async function finishReply(supabase, reply) {
     if (!built.ok) return { kind: "cannot", text: built.problem, options: [], facts: [] };
     reply.card = built.card;
     delete reply.proposal;
+  }
+  // The booking form, from the database: the calendar's kinds and durations
+  // and the customer's real jobs. Alfred's reading only fills it in.
+  if (reply.kind === "booking") {
+    try {
+      reply.card = await bookingCard(supabase, reply.proposal);
+      delete reply.proposal;
+    } catch (error) {
+      return { kind: "cannot", text: error?.message || "That booking cannot be offered.", options: [], facts: [] };
+    }
   }
   if (reply.kind === "batch") {
     const { data: people } = await supabase.from("pcd_customers").select("id, name, email").in("id", reply.batch.customerIds);
@@ -69,6 +84,12 @@ export async function POST(request) {
     }
     if (body.action === "change_preview") {
       return Response.json({ ok: true, preview: await previewChange(supabase, body.selection) });
+    }
+    if (body.action === "booking_preview") {
+      return Response.json({ ok: true, preview: await previewBooking(supabase, body.card || {}, body.draft || {}) });
+    }
+    if (body.action === "booking_apply") {
+      return Response.json(await applyBooking(supabase, body.card || {}, body.draft || {}, { approvedBy: body.approvedBy, baseUrl: siteUrl(request.url) }));
     }
     if (body.action === "change_apply") {
       return Response.json(await applyChange(supabase, body.selection, body.expected, { approvedBy: body.approvedBy }));

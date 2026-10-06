@@ -30,6 +30,7 @@ test("the chat's tools only look things up", () => {
   assert.deepEqual(TOOLS.map((t) => t.name).sort(), [
     "calendar",
     "customer_facts",
+    "customer_jobs",
     "find_customers",
     "find_orders",
     "find_quotes",
@@ -121,4 +122,17 @@ test("an edit made before sending teaches Alfred, and approving works before the
   assert.match(drafts, /edited \? \{ \.\.\.claim, original_body: draft\.body_text \} : claim/);
   assert.match(drafts, /claimError\?\.code === "PGRST204"/);
   assert.match(read("lib/pcd-alfred-context.js"), /\.eq\("edited_before_send", true\)/);
+});
+
+test("a table comes back as a table, never as rows of | in the words", async () => {
+  const { cleanTable, tableFromText } = await import("../lib/pcd-alfred-ask.js");
+  const facts = [{ key: "F1", text: "x" }];
+  const asked = checkAsk({ kind: "answer", text: "Three orders owe money.", facts_used: ["F1"], table: { columns: ["Order", "Owing"], rows: [["PCD-1", "$10.00"], ["PCD-2"], []] } }, { facts });
+  assert.deepEqual(asked.result.table, { columns: ["Order", "Owing"], rows: [["PCD-1", "$10.00"], ["PCD-2", ""]] }, "rows made as wide as the headings, empty rows dropped");
+  const written = checkAsk({ kind: "answer", text: "Here they are.\n\n| Order | Owing |\n|---|---|\n| PCD-1 | $10.00 |\n| PCD-2 | $5.00 |\n\nTotal $15.00.", facts_used: ["F1"], table: { columns: [], rows: [] } }, { facts });
+  assert.deepEqual(written.result.table, { columns: ["Order", "Owing"], rows: [["PCD-1", "$10.00"], ["PCD-2", "$5.00"]] });
+  assert.equal(written.result.text, "Here they are.\n\nTotal $15.00.");
+  assert.equal(cleanTable({ columns: [], rows: [["a"]] }), null);
+  assert.deepEqual(tableFromText("No table here."), { text: "No table here.", table: null });
+  assert.match(read("app/admin/alfred/AskAlfred.tsx"), /<AnswerTable table=\{turn\.table\} \/>/);
 });

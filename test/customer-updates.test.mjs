@@ -508,8 +508,9 @@ test("recording a booking can never fail the booking", () => {
   const activity = read("lib/pcd-booking-activity.js");
   assert.match(activity, /catch \(error\)/);
   assert.match(activity, /console\.error/);
-  const create = read("app/api/admin/calendar/route.js");
-  assert.match(create, /await logBookingActivity\(context\.supabase, fresh \|\| data, \{ action: "created" \}\)/);
+  // The save is shared with Alfred, in lib/pcd-calendar-save.js.
+  const create = read("lib/pcd-calendar-save.js");
+  assert.match(create, /await logBookingActivity\(supabase, fresh, \{ action: "created", actorType, approvedBy \}\)/);
 });
 
 test("a save that did not move the date records nothing", () => {

@@ -54,3 +54,13 @@ test("the update clock reads customers in small groups, newest emails first", ()
   assert.match(updates, /for \(let i = 0; i < customerIds\.length; i \+= 25\)/);
   assert.match(updates, /\.eq\("direction", "outbound"\)\s*\.order\("created_at", \{ ascending: false \}\)/);
 });
+
+// A refresh opens the same chat, it never saves it again as a new one.
+test("the chat on screen keeps its id across a refresh", () => {
+  const ask = read("app/admin/alfred/AskAlfred.tsx");
+  assert.match(ask, /url\.searchParams\.set\('chat', id\)/, "the id is in the address");
+  assert.match(ask, /window\.sessionStorage\.setItem\(STORE, JSON\.stringify\(\{ id, turns/, "and in the tab, with the turns");
+  assert.match(ask, /const id = chatInAddress\(\) \|\| kept\.id/, "and is read back on opening");
+  assert.match(ask, /if \(p\.ok\) showChat\(id, p\.chat\.turns \|\| \[\]\)/, "from the shared list, not from the tab's copy");
+  assert.match(ask, /method: 'DELETE'/, "a chat can be deleted");
+});

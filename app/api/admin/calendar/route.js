@@ -1,15 +1,6 @@
 import { requireAdminApiContext } from "../../../../lib/admin-api";
-import {
-  addDays,
-  bookingRowFromInput,
-  bookingSaveMessage,
-  isDay,
-  perthToday,
-  startOfWeek,
-} from "../../../../lib/pcd-calendar";
-import { pushBooking } from "../../../../lib/pcd-calendar-sync";
-import { logBookingActivity } from "../../../../lib/pcd-booking-activity";
-import { askOnSave } from "../../../../lib/pcd-booking-confirmation-sweep";
+import { addDays, bookingSaveMessage, isDay, perthToday, startOfWeek } from "../../../../lib/pcd-calendar";
+import { createBooking } from "../../../../lib/pcd-calendar-save";
 import { siteUrl } from "../../../../lib/pcd-stripe";
 
 // What is on between two dates, and booking something new.
@@ -110,55 +101,20 @@ export async function GET(request) {
   }
 }
 
+// Booking something new. The work is in lib/pcd-calendar-save.js, shared with
+// Alfred, so a booking is made the same way whoever makes it: saved, pushed to
+// Outlook, written into the order's history, and the customer asked to confirm
+// when it is inside a day.
 export async function POST(request) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;
 
   try {
     const payload = await request.json();
-    const { row, error: invalid } = bookingRowFromInput(payload);
-    if (invalid) return Response.json({ ok: false, error: invalid }, { status: 400 });
-
-    const { data, error } = await context.supabase
-      .from("pcd_calendar_events")
-      .insert(row)
-      .select("*")
-      .single();
-    if (error) throw error;
-
-    // SAVED FIRST, THEN SENT. The booking exists the moment it is saved, so a
-    // slow or unreachable Microsoft delays the tick in Outlook and never the
-    // booking itself. What happened is reported either way, so nothing can
-    // quietly sit unsent.
-    const sync = await pushBooking(context.supabase, data);
-
-    const { data: fresh } = await context.supabase
-      .from("pcd_calendar_events")
-      .select("*")
-      .eq("id", data.id)
-      .maybeSingle();
-
-    // Into the ORDER's history too, so a delivery being booked reaches the
-    // customer through the weekly update report. Bookings used to live only in
-    // the calendar, which meant the one thing a customer most wants to hear was
-    // the one thing the report could not see.
-    await logBookingActivity(context.supabase, fresh || data, { action: "created" });
-
-    // BOOKED INSIDE THE WINDOW, SO ASKED NOW.
-    //
-    // The hourly pass would find this within the hour, which is fine for a
-    // booking made on Tuesday for Friday and not fine for one made at two for
-    // tomorrow morning: an hour of a day's notice is a real slice of it. The
-    // pass and this share one claim on the row, so whichever gets there first
-    // sends and the other finds nothing to do.
-    //
-    // Never allowed to fail the booking. It is saved, it is in Outlook, and an
-    // ask that did not go leaves the row saying so.
-    const askBaseUrl = siteUrl(request.url);
-    const ask = await askOnSave(context.supabase, fresh || data, askBaseUrl);
-
-    return Response.json({ ok: true, event: fresh || data, sync, ask });
+    const { event, sync, ask } = await createBooking(context.supabase, payload, { baseUrl: siteUrl(request.url) });
+    return Response.json({ ok: true, event, sync, ask });
   } catch (error) {
-    return Response.json({ ok: false, error: bookingSaveMessage(error) }, { status: 500 });
+    const status = error?.status || 500;
+    return Response.json({ ok: false, error: status === 500 ? bookingSaveMessage(error) : error.message }, { status });
   }
 }

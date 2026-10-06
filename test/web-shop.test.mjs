@@ -325,7 +325,7 @@ test("the order carries where it came from", () => {
 test("an unpaid cart stays off every admin list", () => {
   assert.match(read("app/api/admin/quotes/route.js"), /\.neq\("status", "web_checkout"\)/);
   assert.match(read("lib/pcd-desk-data.js"), /\.neq\("status", "web_checkout"\)/);
-  assert.match(read("app/api/admin/calendar/jobs/route.js"), /"web_checkout"\)/);
+  assert.match(read("lib/pcd-calendar-jobs.js"), /"web_checkout"\)/);
 });
 
 // ── Two baskets, one configurator ───────────────────────────────────────────

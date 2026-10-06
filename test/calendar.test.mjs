@@ -255,13 +255,13 @@ test("the job dropdown offers only the chosen customer's jobs", () => {
   // loaded, unfiltered, so choosing Rebecca Casey offered Ian Brennan's raw
   // profiled doors. She has no orders at all. Picking one would have filed her
   // site measure against a stranger's job.
-  const route = readFileSync(new URL("../app/api/admin/calendar/jobs/route.js", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../lib/pcd-calendar-jobs.js", import.meta.url), "utf8");
   assert.match(route, /\.eq\("customer_id", customerId\)/, "orders are asked for by customer");
   assert.equal((route.match(/\.eq\("customer_id", customerId\)/g) || []).length, 2, "and so are quotes");
 
   // A blank id returns nothing rather than everything, which is how the
   // original bug would come back.
-  assert.match(route, /if \(!UUID\.test\(customerId\)\) return Response\.json\(\{ ok: true, jobs: \[\] \}\)/);
+  assert.match(route, /if \(!UUID\.test\(String\(customerId \|\| ""\)\)\) return \[\];/);
 
   const modal = readFileSync(new URL("../app/admin/calendar/BookingModal.tsx", import.meta.url), "utf8");
   const select = modal.slice(modal.indexOf('label="About which job"'), modal.indexOf("{/* ── When"));
@@ -272,7 +272,7 @@ test("the job dropdown offers only the chosen customer's jobs", () => {
 test("quotes and orders are both offered, and tellable apart", () => {
   // A measure is booked against a quote and an install against an order, so
   // offering orders only left the most common booking with nothing to attach to.
-  const route = readFileSync(new URL("../app/api/admin/calendar/jobs/route.js", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../lib/pcd-calendar-jobs.js", import.meta.url), "utf8");
   assert.match(route, /kind: "order"/);
   assert.match(route, /kind: "quote"/);
   assert.match(route, /from\("pcd_quotes"\)/);
@@ -421,8 +421,11 @@ test("the webhook proves it is ours before acting, and never trusts what arrived
 // ── The page ────────────────────────────────────────────────────────────────
 
 test("a booking is saved before it is sent, so Microsoft can never lose one", () => {
-  const insertAt = LIST_ROUTE.indexOf('.from("pcd_calendar_events")');
-  const pushAt = LIST_ROUTE.indexOf("pushBooking(");
+  // The save is shared with Alfred, in lib/pcd-calendar-save.js.
+  const SAVE = readFileSync(new URL("../lib/pcd-calendar-save.js", import.meta.url), "utf8");
+  const create = SAVE.slice(SAVE.indexOf("export async function createBooking"));
+  const insertAt = create.indexOf('.from("pcd_calendar_events").insert');
+  const pushAt = create.indexOf("pushBooking(");
   assert.ok(insertAt > 0 && pushAt > insertAt, "the row is inserted first and pushed afterwards");
 });
 

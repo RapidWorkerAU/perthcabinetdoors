@@ -1,11 +1,10 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
-import { bookingRowFromInput, bookingSaveMessage } from "../../../../../lib/pcd-calendar";
-import { pushBooking } from "../../../../../lib/pcd-calendar-sync";
-import { logBookingActivity } from "../../../../../lib/pcd-booking-activity";
-import { askOnSave } from "../../../../../lib/pcd-booking-confirmation-sweep";
+import { bookingSaveMessage } from "../../../../../lib/pcd-calendar";
+import { cancelBooking, updateBooking } from "../../../../../lib/pcd-calendar-save";
 import { siteUrl } from "../../../../../lib/pcd-stripe";
 
-// Changing or cancelling one booking.
+// Changing or cancelling one booking. The work is in lib/pcd-calendar-save.js,
+// shared with Alfred, so a booking changes the same way whoever changes it.
 //
 // A production run is not here, and cannot be. Its dates live on the order and
 // are changed on the order, which is what keeps the calendar and the order
@@ -20,97 +19,18 @@ export async function PATCH(request, { params }) {
   const { id } = await params;
 
   try {
-    const { data: existing, error: readError } = await context.supabase
-      .from("pcd_calendar_events")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-    if (readError) throw readError;
-    if (!existing) return Response.json({ ok: false, error: "That booking no longer exists." }, { status: 404 });
-
     const payload = await request.json();
-
-    // What the form sends back is the whole booking, not a patch of fields, so
-    // it goes through the same validation as a new one. Anything not sent falls
-    // back to what is already stored rather than being wiped.
-    //
-    // NOT SENT AND SENT EMPTY ARE DIFFERENT THINGS on the links below. The form
-    // sends an empty job when somebody moves a booking from an order to a
-    // quote, or takes the customer off it, and `??` read that as "nothing sent"
-    // and put the old link straight back, so those changes could not be made at
-    // all. `sent(...)` keeps an empty answer as the answer it is.
-    const sent = (value, stored) => (value === undefined ? stored : value || null);
-
-    const { row, error: invalid } = bookingRowFromInput({
-      kind: payload.kind ?? existing.kind,
-      title: payload.title ?? existing.title,
-      day: payload.day,
-      startMinutes: payload.startMinutes,
-      minutes: payload.minutes,
-      allDay: payload.allDay ?? existing.all_day,
-      customerId: sent(payload.customerId, existing.customer_id),
-      customerName: payload.customerName ?? existing.customer_name,
-      orderId: sent(payload.orderId, existing.order_id),
-      quoteId: sent(payload.quoteId, existing.quote_id),
-      quoteRequestId: sent(payload.quoteRequestId, existing.quote_request_id),
-      siteAddress: payload.siteAddress ?? existing.site_address,
-      notes: payload.notes ?? existing.notes,
-      status: payload.status ?? existing.status,
-      // A booking already in Outlook stays in Outlook unless somebody says
-      // otherwise, so an edit never quietly takes it off the mailbox calendar.
-      addToOutlook: payload.addToOutlook ?? existing.sync_state !== "skipped",
-    });
-    if (invalid) return Response.json({ ok: false, error: invalid }, { status: 400 });
-
-    // An event that came from Outlook keeps its source. Editing it here still
-    // pushes the change back, because it has an Outlook id to push against.
-    const { data, error } = await context.supabase
-      .from("pcd_calendar_events")
-      .update({ ...row, sync_state: row.sync_state === "skipped" ? "skipped" : "pending" })
-      .eq("id", id)
-      .select("*")
-      .single();
-    if (error) throw error;
-
-    // A booking that MOVED goes into the order's history, so the customer hears
-    // "Delivery moved from 12 to 15 September" rather than finding out on the
-    // day. `existing` is the row as it was before the update above, which is
-    // what makes the two dates comparable; a save that did not move the date
-    // records nothing.
-    await logBookingActivity(context.supabase, data, { action: "moved", previous: existing });
-
-    const sync = await pushBooking(context.supabase, data);
-
-    const { data: fresh } = await context.supabase
-      .from("pcd_calendar_events")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-
-    // MOVED INTO THE WINDOW, SO ASKED AGAIN NOW.
-    //
-    // A time change clears any answer already given, in a database trigger, so
-    // a booking confirmed for half past nine cannot stay confirmed once it is
-    // moved to two. That leaves it needing a fresh ask, and if the new time is
-    // already inside a day it needs one straight away rather than whenever the
-    // hourly pass next runs. Shares the claim on the row with that pass, so
-    // only one of them sends.
-    const ask = await askOnSave(context.supabase, fresh || data, siteUrl(request.url));
-
-    return Response.json({ ok: true, event: fresh || data, sync, ask });
+    const { event, sync, ask } = await updateBooking(context.supabase, id, payload, { baseUrl: siteUrl(request.url) });
+    return Response.json({ ok: true, event, sync, ask });
   } catch (error) {
-    return Response.json({ ok: false, error: bookingSaveMessage(error) }, { status: 500 });
+    const status = error?.status || 500;
+    return Response.json({ ok: false, error: status === 500 ? bookingSaveMessage(error) : error.message }, { status });
   }
 }
 
 /**
- * Cancel a booking.
- *
- * The row is kept and marked cancelled rather than deleted. A site measure that
- * was booked and called off is a thing that happened, and a row that vanishes
- * takes the reason with it. The Outlook event IS removed, because a cancelled
- * visit still sitting in the calendar is how somebody drives to Sorrento for
- * nothing.
+ * Cancel a booking. The row is kept and marked cancelled rather than deleted:
+ * a site measure that was booked and called off is a thing that happened.
  */
 export async function DELETE(request, { params }) {
   const context = await requireAdminApiContext();
@@ -119,17 +39,7 @@ export async function DELETE(request, { params }) {
   const { id } = await params;
 
   try {
-    const { data, error } = await context.supabase
-      .from("pcd_calendar_events")
-      .update({ status: "cancelled" })
-      .eq("id", id)
-      .select("*")
-      .single();
-    if (error) throw error;
-
-    await logBookingActivity(context.supabase, data, { action: "cancelled" });
-
-    const sync = await pushBooking(context.supabase, data);
+    const { sync } = await cancelBooking(context.supabase, id);
     return Response.json({ ok: true, sync });
   } catch (error) {
     return Response.json({ ok: false, error: error?.message || "Could not cancel the booking." }, { status: 500 });
