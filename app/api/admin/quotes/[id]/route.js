@@ -11,6 +11,7 @@ import { scheduleDate } from "../../../../../lib/pcd-order-schedule";
 import { suggestedScheduleProblems } from "../../../../../lib/pcd-quote-schedule";
 import { refreshQuoteCredits } from "../../../../../lib/pcd-customer-credits";
 import { createLineGate, passCabinetThroughGate, passLineThroughGate } from "../../../../../lib/pcd-line-gate";
+import { createMadeBySettler } from "../../../../../lib/pcd-made-by-settle";
 
 async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -226,6 +227,15 @@ export async function PUT(request, { params }) {
     const id = await quoteIdFromParams(params);
     await assertQuoteEditable(context.supabase, id);
     const payload = await request.json();
+    // Made in house or supplier made, settled before the totals are worked
+    // out, so the totals are of the prices that will be saved. See
+    // lib/pcd-made-by-settle.js.
+    if (Array.isArray(payload.lines) && payload.lines.length) {
+      const settle = await createMadeBySettler(context.supabase);
+      const { data: storedLines } = await context.supabase.from("pcd_quote_line_items").select("*").eq("quote_id", id);
+      const storedById = new Map((storedLines || []).map((line) => [line.id, line]));
+      payload.lines = payload.lines.map((line) => settle(line, (line?.id && storedById.get(line.id)) || null));
+    }
     const normalized = await normalizeQuotePayload(context.supabase, payload);
 
     // REFUSED HERE RATHER THAN ON THE ORDER IT BECOMES. This pair is copied

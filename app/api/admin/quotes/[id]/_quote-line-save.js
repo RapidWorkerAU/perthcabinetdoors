@@ -8,6 +8,9 @@ import { normaliseHingeSide, readMiddles } from "../../../../../lib/pcd-hinges";
 import { EDGE_FINISHES, GRAIN_DIRECTIONS, HOLE_TYPES, SUPPLIED_BY, bandedEdgeList, edgeFinishFromBanded, oneOf, panelUseFor } from "../../../../../lib/pcd-line-details";
 import { HARDWARE_TYPE_VALUES } from "../../../../../lib/pcd-hardware-types";
 import { isHardwareType } from "../../../../../lib/pcd-product-fields";
+import { asksMadeBy, cleanMadeBy } from "../../../../../lib/pcd-made-by";
+import { settleLineMadeBy } from "../../../../../lib/pcd-made-by-settle";
+import { getPolytecBoardCard } from "../../../../../lib/pcd-polytec-board-pricing-store";
 
 export async function quoteIdFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -161,6 +164,8 @@ export function quoteLineRow(line, quoteId, sortOrder) {
     hardware_type: isHardwareType(line.product_type)
       ? dbText(HARDWARE_TYPE_VALUES.includes(line.hardware_type) ? line.hardware_type : "")
       : null,
+    // Supply or made to order. Only on a board line; see lib/pcd-made-by.js.
+    made_by: asksMadeBy(line) ? dbText(cleanMadeBy(line.made_by)) : null,
     client_note: dbText(line.client_note),
     notes: dbText(line.notes),
   };
@@ -183,6 +188,7 @@ const LATE_COLUMNS = [
   "hole_type",
   "supplied_by",
   "hardware_type",
+  "made_by",
 ];
 
 export function isMissingSupplierNameSchemaError(error) {
@@ -548,6 +554,10 @@ export async function saveQuoteLine(supabase, quoteId, line, { lineId = line?.id
 
   const gate = await createLineGate(supabase);
   line = passLineThroughGate(gate, line || {}, before);
+  // MADE IN HOUSE OR SUPPLIER MADE, from the board the gate settled, the same
+  // for every path that saves a line. See lib/pcd-made-by-settle.js.
+  const { card: boardCard } = await getPolytecBoardCard(supabase);
+  line = settleLineMadeBy(line, { colourRows: gate.colourRows, boardCard, before, defaultMarkup: businessDefaults.markup_percent });
   // A cabinet's carcass and shelves are boards too. Same rule, judged against
   // the configuration as it is saved now.
   if (line.product_type === "base_cabinet" && line.cabinet_config) {

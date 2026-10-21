@@ -16,6 +16,7 @@ import {
   recalculateQuoteTotals,
   withoutSupplierName,
 } from "../_quote-line-save";
+import { createMadeBySettler } from "../../../../../../lib/pcd-made-by-settle";
 import { createLineGate, settleImportedCabinet, settleImportedLine } from "../../../../../../lib/pcd-line-gate";
 
 // READING A COMPLETED ORDER FORM ONTO A QUOTE.
@@ -180,9 +181,12 @@ export async function POST(request, { params }) {
       })
       .map((line) => (line.source_tab === "carcasses" ? withCalculatedCabinetCost(line) : line));
 
+    // Made in house or supplier made, from the library, the same as every
+    // other way a line is written. See lib/pcd-made-by-settle.js.
+    const settleMadeBy = await createMadeBySettler(context.supabase);
     const rows = prepared.map((line, index) =>
       quoteLineRow(
-        calculateQuoteLine({ ...line, markup_percent: businessDefaults.markup_percent }, businessDefaults),
+        calculateQuoteLine(settleMadeBy({ ...line, markup_percent: businessDefaults.markup_percent }), businessDefaults),
         quoteId,
         startAt + index
       )

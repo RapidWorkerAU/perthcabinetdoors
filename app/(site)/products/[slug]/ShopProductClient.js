@@ -474,7 +474,7 @@ export default function ShopProductClient({ product, catalogue }) {
       return (
         <BandedEdgesField
           value={line.bandedEdges}
-          hint="Tap an edge to leave it raw. An edge against a wall or another door is often left raw. The banding is worked out from what you tick and is already in the price."
+          hint="Tap an edge to leave it raw. An edge against a wall or another door is often left raw. Banding is included in the price."
           onChange={(bandedEdges) => update({ bandedEdges })}
         />
       );
@@ -650,8 +650,8 @@ export default function ShopProductClient({ product, catalogue }) {
             <div className={styles.shopUnpriced}>
               <strong>{line.colour} is quote only</strong>
               <p>
-                We have not got a live price on this colour yet. Set it up here and we will carry the whole thing across
-                to a quote list, sizes and hinge positions and all, and price it by hand.
+                We can make this one, it just cannot be bought online. Set it up here and we will carry the whole thing
+                across to a quote list, sizes and hinge positions and all, and price it by hand.
               </p>
               {/* ONLY ONCE IT IS SET UP, the same as Add to cart. A half
                   answered line on a quote list is one somebody has to ring

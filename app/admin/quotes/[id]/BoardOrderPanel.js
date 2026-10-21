@@ -566,7 +566,7 @@ export default function BoardOrderPanel({
               {entry.product_type.toLowerCase()}
             </React.Fragment>
           ))}
-          . Not made from decorative board.
+          . Not cut here from board we buy.
         </p>
       ) : null}
 

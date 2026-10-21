@@ -1,13 +1,13 @@
-// THE SHOP'S OWN MARKUP.
+// THE SHOP'S OWN MARGIN.
 //
-// A door bought off the website is priced by a machine, paid for on the spot
-// and posted. A quoted job is priced by hand and looked at before it goes out.
-// They are not marked up at the same rate, and the difference has to live on
-// the shop's lines rather than in Business Defaults, because that number prices
-// every quote in the business and moving it would reprice the lot.
+// Every piece sold on the web shop is made by Polytec and marked up at the
+// margin on its rate card in Settings (Decorative Board Pricing, or
+// Thermolaminate Pricing), never at the Business Default, because that number
+// prices every quote in the business and moving it would reprice the lot. The
+// fixed 100% shop rate on our own board cost was retired on 10 October 2026.
 //
 // Two things are worth locking, and neither is visible by reading the code:
-// that the rate is the shop's alone, and that it lands ON the line rather than
+// that the margin lives on the card, and that it lands ON the line rather than
 // on a price. calculateQuoteLine runs a second time on the way into the
 // database, and anything written onto a price field is recomputed away between
 // the figure the customer agreed to and the figure stored against their order.
@@ -15,37 +15,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { SHOP_MARKUP_PERCENT } from "../lib/pcd-shop.js";
+import { DEFAULT_POLYTEC_BOARD_CARD, normalizePolytecBoardCard } from "../lib/pcd-polytec-board-pricing.js";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS } from "../lib/pcd-quote-utils.js";
+import * as shop from "../lib/pcd-shop.js";
 
-test("the shop marks up at its own rate", () => {
-  assert.equal(SHOP_MARKUP_PERCENT, 100);
+test("the decorative board margin is a setting on its rate card, starting at 75%", () => {
+  assert.equal(DEFAULT_POLYTEC_BOARD_CARD.margin_percent, 75);
+  assert.equal(normalizePolytecBoardCard({ margin_percent: 90 }).margin_percent, 90);
 });
 
-// If this ever equals the business default, somebody has "tidied up" by
-// pointing one at the other, and the shop will silently follow every change
-// made to quoting.
-test("the shop rate is not the business default wearing another name", () => {
-  assert.notEqual(
-    SHOP_MARKUP_PERCENT,
-    DEFAULT_BUSINESS_DEFAULTS.markup_percent,
-    "the shop rate has to be its own number, or changing quoting changes the shop"
-  );
+test("the fixed shop rate is gone, so nothing can price from it", () => {
+  assert.equal("SHOP_MARKUP_PERCENT" in shop, false);
 });
 
 // THE PART THAT MATTERS. A line carrying its own markup keeps it when the line
 // is priced again; a line left blank falls back to the business default, which
 // is exactly what the shop must not do.
-test("a line carrying the shop rate keeps it through a recalculation", () => {
+test("a line carrying the card's margin keeps it through a recalculation", () => {
   const defaults = { ...DEFAULT_BUSINESS_DEFAULTS, markup_percent: 75 };
-  const line = { product_type: "Hardware", qty: 1, product_unit_cost_ex_gst: 100, markup_percent: SHOP_MARKUP_PERCENT };
+  const line = { product_type: "Door", qty: 1, product_unit_cost_ex_gst: 100, markup_percent: 90 };
 
   const once = calculateQuoteLine(line, defaults);
-  assert.equal(once.markup_percent, SHOP_MARKUP_PERCENT);
+  assert.equal(once.markup_percent, 90);
 
   // Run it again on its own output, which is what checkout does.
   const twice = calculateQuoteLine(once, defaults);
-  assert.equal(twice.markup_percent, SHOP_MARKUP_PERCENT, "the rate must not decay to the business default");
+  assert.equal(twice.markup_percent, 90, "the margin must not decay to the business default");
   assert.equal(twice.line_total_ex_gst, once.line_total_ex_gst, "and the price must not move on a second pass");
 });
 

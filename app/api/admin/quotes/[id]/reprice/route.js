@@ -57,6 +57,9 @@ import {
 
 import { isThermoLine, priceThermoLine, withThermoPrice } from "../../../../../../lib/pcd-thermo-pricing";
 import { getThermoRateCard } from "../../../../../../lib/pcd-thermo-pricing-store";
+import { pricePolytecBoardPiece, withMadeToOrderBoardPrice } from "../../../../../../lib/pcd-polytec-board-pricing";
+import { getPolytecBoardCard } from "../../../../../../lib/pcd-polytec-board-pricing-store";
+import { isMadeToOrderBoardLine } from "../../../../../../lib/pcd-made-by";
 
 const CABINET_PRODUCT_TYPE = "base_cabinet";
 
@@ -94,6 +97,7 @@ export async function POST(request, { params }) {
     const suppliersFilled = [];
     // Thermolaminate is priced from the rate card, not the colour library.
     const { card: thermoCard, error: thermoCardError } = await getThermoRateCard(context.supabase);
+    const { card: boardCard, error: boardCardError } = await getPolytecBoardCard(context.supabase);
 
     // The other option libraries, read once each. Only the ones this quote
     // actually has lines for, so a quote of nothing but doors does not fetch
@@ -291,6 +295,42 @@ export async function POST(request, { params }) {
           })()
         : boardCostLinePatch(match, { areaSqm: lineAreaSqm(line) });
       const afterRate = Number(patch.unit_cost_per_sqm_ex_gst || 0);
+
+      // DECORATIVE BOARD ANSWERED MADE TO ORDER: today's board rate, put
+      // through the Polytec decorative board rate card, since that is what
+      // Polytec charges. Skipped only when the price would not move.
+      if (isMadeToOrderBoardLine(line)) {
+        const entry = { id: line.id, product_name: line.product_name || line.product_type || "Line", colour: line.colour || "" };
+        if (!boardCard) {
+          madeToOrder.push({ ...entry, reason: "made_to_order", message: boardCardError || "The decorative board rate card could not be read." });
+          continue;
+        }
+        const result = pricePolytecBoardPiece(line, boardCard, afterRate);
+        if (!result.ok) {
+          madeToOrder.push({ ...entry, reason: "made_to_order", message: result.reason });
+          continue;
+        }
+        const beforeCost = Number(line.product_unit_cost_ex_gst || 0);
+        if (roundMoney(beforeCost) === roundMoney(result.unitCost) && line.unit_cost_mode === "auto") {
+          skipped += 1;
+          continue;
+        }
+        const next = withMadeToOrderBoardPrice({ ...line, ...patch }, boardCard, { forceAuto: true });
+        const row = quoteLineRow(
+          { ...calculateQuoteLine(next, businessDefaults), design_item_id: line.design_item_id, design_project_id: line.design_project_id },
+          quoteId,
+          line.sort_order || 0
+        );
+        let boardError = (await context.supabase.from("pcd_quote_line_items").update(row).eq("id", line.id)).error;
+        if (boardError && isMissingSupplierNameSchemaError(boardError)) {
+          boardError = (await context.supabase.from("pcd_quote_line_items").update(withoutSupplierName(row, boardError)).eq("id", line.id)).error;
+        }
+        if (boardError) throw boardError;
+        byLibrary.board += 1;
+        changed.push({ ...entry, from_rate: roundMoney(beforeCost), to_rate: roundMoney(result.unitCost), library: "Decorative board rate card" });
+        continue;
+      }
+
       // A cabinet is always manual, so the "already automatic at this rate"
       // test can never let one through and it is asked separately: nothing to
       // do when the rate has not moved.

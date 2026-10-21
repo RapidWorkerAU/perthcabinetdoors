@@ -30,6 +30,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { CARRIED_SPEC_COLUMNS } from "../lib/pcd-order-from-quote.js";
+import { fulfilmentForMadeBy } from "../lib/pcd-made-by.js";
 
 const CONVERSION = readFileSync(new URL("../lib/pcd-order-from-quote.js", import.meta.url), "utf8");
 const VARIATION = readFileSync(new URL("../lib/pcd-order-variations.js", import.meta.url), "utf8");
@@ -136,9 +137,17 @@ test("accepting a quote carries everything a variation carries", () => {
 test("accepting a quote leaves fulfilment undecided so unplanned work stays countable", () => {
   assert.match(
     ORDER_LINES,
-    /fulfilment_method:\s*isThermolaminatedLine\(line\)\s*\?\s*"supplier_ready_made"\s*:\s*null/,
-    "defaulting this to in house makes an order nobody has looked at indistinguishable from a planned one"
+    /fulfilment_method:\s*isThermolaminatedLine\(line\)\s*\?\s*"supplier_ready_made"\s*:\s*fulfilmentForMadeBy\(line\)/
   );
+  // Nobody answered supply or made to order: still not decided. Defaulting
+  // this to in house makes an order nobody has looked at indistinguishable
+  // from a planned one.
+  assert.equal(fulfilmentForMadeBy({ material: "Decorative Board" }), null);
+  assert.equal(fulfilmentForMadeBy({ material: "Decorative Board", product_type: "base_cabinet", made_by: "mto" }), null);
+  // Answered on the quote, it lands decided.
+  assert.equal(fulfilmentForMadeBy({ material: "Decorative Board", made_by: "supply" }), "in_house");
+  assert.equal(fulfilmentForMadeBy({ material: "Decorative Board", made_by: "mto" }), "supplier_ready_made");
+  assert.equal(fulfilmentForMadeBy({ material: "Compact Laminate" }), "supplier_ready_made");
 });
 
 // ── a spec field must not be editable outside a variation ──────────────────

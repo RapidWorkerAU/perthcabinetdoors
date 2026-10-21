@@ -73,8 +73,11 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import AdminLoading from "@/components/admin/AdminLoading";
 import AlfredLineNote, { alfredNoteFor } from "@/components/admin/AlfredLineNote";
+import MadeByField from "@/components/admin/MadeByField";
 import { tableStyles } from "@/components/ui/table-styles";
 import { isThermoLine, priceThermoLine, withThermoPrice } from "../../../../lib/pcd-thermo-pricing";
+import { withMadeToOrderBoardPrice } from "../../../../lib/pcd-polytec-board-pricing";
+import { asksMadeBy, colourOrderTypesIndex, isMadeToOrderBoardLine, madeByOptionsForLine, settleMadeBy } from "../../../../lib/pcd-made-by";
 import { cn } from "@/lib/utils";
 import styles from "../../admin-content.module.css";
 import quoteStyles from "./quote-editor.module.css";
@@ -154,6 +157,8 @@ const emptyLine = {
   hole_type: "",
   grain_direction: "",
   supplied_by: "",
+  // Supply or made to order, answered after the colour. See lib/pcd-made-by.js.
+  made_by: "",
   product_unit_cost_ex_gst: "",
   unit_cost_mode: "manual",
   unit_cost_source_id: null,
@@ -296,6 +301,7 @@ function lineFromQuoteLine(line) {
     hinge_from_top_mm: line.hinge_from_top_mm ?? "",
     hinge_middles_mm: readMiddles(line.hinge_middles_mm),
     hinge_qty: line.hinge_qty ?? "",
+    made_by: line.made_by || "",
     product_unit_cost_ex_gst: line.product_unit_cost_ex_gst ?? "",
     unit_cost_mode: line.unit_cost_mode === "auto" ? "auto" : "manual",
     unit_cost_source_id: line.unit_cost_source_id || null,
@@ -856,10 +862,18 @@ function ThermoCostNote({ line, card, error }) {
 // as a board line, so a typed cost still wins and Reset still offers the
 // calculated one. With no card loaded (or none readable) it is left alone, and
 // the line says why rather than pricing from anywhere else.
-function applyCalculatedUnitCost(line, { forceAuto = false, thermoCard = null } = {}) {
+//
+// DECORATIVE BOARD ANSWERED MADE TO ORDER prices from the Polytec decorative
+// board rate card in the same way: per piece, banding included. Supply prices
+// from the rate per m2 below.
+function applyCalculatedUnitCost(line, { forceAuto = false, thermoCard = null, boardCard = null } = {}) {
   if (isThermoLine(line)) {
     if (!thermoCard) return line;
     return withThermoPrice(line, thermoCard, { forceAuto });
+  }
+  if (isMadeToOrderBoardLine(line)) {
+    if (!boardCard) return line;
+    return withMadeToOrderBoardPrice(line, boardCard, { forceAuto });
   }
   const calculated = calculatedUnitCostFromLine(line);
   const hasAutoSource = Number(line?.unit_cost_per_sqm_ex_gst || 0) > 0;
@@ -1240,7 +1254,7 @@ const QuoteColourCombobox = memo(function QuoteColourCombobox({ compact = true, 
 });
 
 const QUOTE_COL_KEY = 'pcd-quote-table-col-widths'
-const QUOTE_COL_DEFAULTS = [22, 34, 130, 150, 110, 105, 170, 85, 80, 80, 65, 105, 85, 130, 135, 135, 95, 95, 105, 110, 190]
+const QUOTE_COL_DEFAULTS = [22, 34, 130, 150, 110, 105, 170, 115, 85, 80, 80, 65, 105, 85, 130, 135, 135, 95, 95, 105, 110, 190]
 const QUOTE_COL_TOTAL = QUOTE_COL_DEFAULTS.reduce((a, b) => a + b, 0)
 const QUOTE_COL_MIN = 36
 // Drag handles appear between resizable columns only (indices 2-13); cols 0,1,15 are fixed utility cols
@@ -1341,7 +1355,11 @@ export default function QuoteEditor({ quoteId }) {
   // it cannot be read thermolaminate lines are not priced automatically.
   const [thermoCard, setThermoCard] = useState(null);
   const [thermoCardError, setThermoCardError] = useState("");
-  const priceLine = (line, options = {}) => applyCalculatedUnitCost(line, { ...options, thermoCard });
+  // The Polytec decorative board rate card, for decorative board answered made
+  // to order. Null until it loads, and while it cannot be read those lines are
+  // not priced automatically.
+  const [boardCard, setBoardCard] = useState(null);
+  const priceLine = (line, options = {}) => applyCalculatedUnitCost(line, { ...options, thermoCard, boardCard });
   // Which calculated field the cursor is in, so it can hold an empty box while
   // somebody is clearing it. See showsTyped.
   const [focusedField, setFocusedField] = useState("");
@@ -1546,6 +1564,10 @@ export default function QuoteEditor({ quoteId }) {
     });
     return { byId, byName };
   }, [colourSwatches]);
+
+  // What each colour can be, as ticked in the Board Library. See lib/pcd-made-by.js.
+  const colourOrderTypes = useMemo(() => colourOrderTypesIndex(colourSwatches), [colourSwatches]);
+  const madeByOptionsFor = useCallback((line) => madeByOptionsForLine(line, colourOrderTypes), [colourOrderTypes]);
 
   /**
    * The brands that stock this line's material.
@@ -1846,6 +1868,7 @@ export default function QuoteEditor({ quoteId }) {
     loadCustomers();
     loadBusinessDefaults();
     loadThermoCard();
+    loadBoardCard();
     loadColourSwatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteId]);
@@ -1975,6 +1998,16 @@ export default function QuoteEditor({ quoteId }) {
   // them, so a failed load meant the editor quietly priced the job at the
   // built-in 40% and $85/hr while showing no sign anything was wrong. Say so
   // instead: the numbers on screen are not the configured ones.
+  async function loadBoardCard() {
+    try {
+      const response = await fetch("/api/admin/polytec-board-pricing", { cache: "no-store" });
+      const payload = await response.json();
+      if (response.ok && payload.ok && payload.card) setBoardCard(payload.card);
+    } catch {
+      // Left null: made to order decorative lines are then priced by hand.
+    }
+  }
+
   async function loadThermoCard() {
     try {
       const response = await fetch("/api/admin/thermo-pricing", { cache: "no-store" });
@@ -2254,6 +2287,13 @@ export default function QuoteEditor({ quoteId }) {
 
   function applyProductLinePatch(line, patch) {
     const next = { ...line, ...patch };
+    // A line leaving made to order decorative board gives back the Polytec
+    // card's margin, unless somebody changed the markup from it.
+    const dropBoardMargin = () => {
+      if (boardCard && isMadeToOrderBoardLine(line) && Number(line.markup_percent) === Number(boardCard.margin_percent)) {
+        next.markup_percent = defaultsLoaded ? businessDefaults.markup_percent : "";
+      }
+    };
 
     if (Object.prototype.hasOwnProperty.call(patch, "product_type")) {
       next.product_name = patch.product_type || "";
@@ -2371,6 +2411,8 @@ export default function QuoteEditor({ quoteId }) {
       next.thickness = "";
       next.finish = "";
       next.colour = "";
+      next.made_by = "";
+      dropBoardMargin();
       next.unit_cost_mode = "manual";
       next.unit_cost_source_id = null;
       next.unit_cost_source_label = "";
@@ -2419,6 +2461,8 @@ export default function QuoteEditor({ quoteId }) {
         next.thickness = "";
         next.finish = "";
         next.colour = "";
+        next.made_by = "";
+        dropBoardMargin();
         next.unit_cost_mode = "manual";
         next.unit_cost_source_id = null;
         next.unit_cost_source_label = "";
@@ -2435,12 +2479,39 @@ export default function QuoteEditor({ quoteId }) {
       if (!patchIncludesColourSelection) {
         next.finish = "";
         next.colour = "";
+        next.made_by = "";
+        dropBoardMargin();
         next.unit_cost_mode = "manual";
         next.unit_cost_source_id = null;
         next.unit_cost_source_label = "";
         next.unit_cost_per_sqm_ex_gst = 0;
         next.calculated_unit_cost_ex_gst = 0;
       }
+    }
+
+    // SUPPLY OR MADE TO ORDER, settled whenever the colour changes: kept if
+    // the new colour can still be made that way, the only way if there is one,
+    // otherwise made to order. Answered by hand, it is just taken. Either way
+    // the markup follows: made to order decorative board takes the Polytec
+    // card's margin, and going back to supply puts the usual markup back if
+    // nobody changed it from the card's.
+    const answeringMadeBy = Object.prototype.hasOwnProperty.call(patch, "made_by");
+    if (
+      answeringMadeBy ||
+      Object.prototype.hasOwnProperty.call(patch, "colour") ||
+      Object.prototype.hasOwnProperty.call(patch, "unit_cost_per_sqm_ex_gst")
+    ) {
+      next.made_by = next.colour ? settleMadeBy(next.made_by, madeByOptionsFor(next)) : "";
+      const boardMargin = boardCard ? Number(boardCard.margin_percent) : null;
+      if (boardMargin !== null && Number.isFinite(boardMargin)) {
+        const wasMto = isMadeToOrderBoardLine(line);
+        const isMto = isMadeToOrderBoardLine(next);
+        if (isMto && !wasMto) next.markup_percent = boardMargin;
+        else if (!isMto && wasMto && Number(line.markup_percent) === boardMargin) {
+          next.markup_percent = defaultsLoaded ? businessDefaults.markup_percent : "";
+        }
+      }
+      if (answeringMadeBy) return priceLine(next, { forceAuto: Number(next.unit_cost_per_sqm_ex_gst || 0) > 0 });
     }
 
     if (Object.prototype.hasOwnProperty.call(patch, "unit_cost_per_sqm_ex_gst") && isThermoLine(next)) {
@@ -3563,7 +3634,7 @@ export default function QuoteEditor({ quoteId }) {
               </colgroup>
               <thead>
                 <tr className="bg-[#f5f8f4] border-b border-[#dbd8cc]">
-                  {['', '#', 'Type', 'Item / material', 'Supplier', 'Finish', 'Colour', 'Thickness', 'H mm', 'W mm', 'Qty', 'Unit cost', 'Markup', 'Edge profile', 'Profile type', 'Front profile', 'Hinge drill', 'Hinge qty', 'Unit price', 'Total', 'Actions'].map((h, i) => (
+                  {['', '#', 'Type', 'Item / material', 'Supplier', 'Finish', 'Colour', 'Made by', 'Thickness', 'H mm', 'W mm', 'Qty', 'Unit cost', 'Markup', 'Edge profile', 'Profile type', 'Front profile', 'Hinge drill', 'Hinge qty', 'Unit price', 'Total', 'Actions'].map((h, i) => (
                     <th
                       key={i}
                       className={stickyHeaderClass(i)}
@@ -3800,6 +3871,22 @@ export default function QuoteEditor({ quoteId }) {
                               written in that line's notes. The Board to Order tab
                               holds whether a board has a grain and what Standard
                               means on it. */}
+                        </td>
+
+                        {/* Made by: supply or made to order, after the colour
+                            because the colour decides what is possible. */}
+                        <td className={td}>
+                          {cabinetOwnsBoard ? (
+                            <span className={naText}>N/A</span>
+                          ) : (
+                            <MadeByField
+                              line={line}
+                              options={madeByOptionsFor(line)}
+                              editable={isEditable}
+                              label={`Made by, line ${index + 1}`}
+                              onChange={(made_by) => updateProductLine(index, { made_by })}
+                            />
+                          )}
                         </td>
 
                         {/* Thickness */}
@@ -4183,7 +4270,7 @@ export default function QuoteEditor({ quoteId }) {
 
                 {form.lines.length === 0 && (
                   <tr>
-                    <td colSpan={21} className="py-10 text-center">
+                    <td colSpan={QUOTE_COL_DEFAULTS.length} className="py-10 text-center">
                       <p className="text-[13px] font-medium text-[#1a1a18] mb-1">No line items yet</p>
                       <p className="text-[11px] text-[#8b8a81] mb-3">Add your first line to start building this quote.</p>
                       <button
@@ -5708,6 +5795,18 @@ export default function QuoteEditor({ quoteId }) {
                     <span className={mfl}>Finish, colour &amp; thickness</span>
                     <QuoteColourCombobox compact={false} disabled={isHardware || isBenchtop || cabinetOwnsBoard} line={line} onChange={patch => updateProductLine(idx, patch)} />
                   </div>
+                  {asksMadeBy(line) && !cabinetOwnsBoard ? (
+                    <div className="col-span-2">
+                      <span className={mfl}>Made by</span>
+                      <MadeByField
+                        line={line}
+                        options={madeByOptionsFor(line)}
+                        editable
+                        label={`Made by, line ${idx + 1}`}
+                        onChange={(made_by) => updateProductLine(idx, { made_by })}
+                      />
+                    </div>
+                  ) : null}
                   {/* A cabinet's own sizes live on the cabinet. Everything
                       below them is what this quote charges for it, so it is
                       asked of every line. Qty and Markup used to be inside

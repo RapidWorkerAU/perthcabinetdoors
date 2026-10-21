@@ -7,6 +7,7 @@ import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
 import { defaultQuoteTermsFor } from "../../../../lib/pcd-quote-terms";
 import { sanitizeTermsHtml, toTermsHtml } from "../../../../lib/pcd-terms-html";
 import { applyQuoteCostDefaults, calculateQuoteTotals, normaliseCurrencyCode, quoteCurrencyProblem } from "../../../../lib/pcd-quote-utils";
+import { createMadeBySettler } from "../../../../lib/pcd-made-by-settle";
 import { scheduleDate } from "../../../../lib/pcd-order-schedule";
 import { suggestedScheduleProblems } from "../../../../lib/pcd-quote-schedule";
 import { isEdgeProfileSelectionAvailable } from "../../../../lib/quote-form-data";
@@ -138,6 +139,12 @@ export async function POST(request) {
 
   try {
     const payload = await request.json();
+    // Made in house or supplier made, settled before the totals. See
+    // lib/pcd-made-by-settle.js.
+    if (Array.isArray(payload.lines) && payload.lines.length) {
+      const settle = await createMadeBySettler(context.supabase);
+      payload.lines = payload.lines.map((line) => settle(line));
+    }
     const normalized = await normalizeQuotePayload(context.supabase, payload);
 
     // A currency nothing can format reaches the customer as a number with no

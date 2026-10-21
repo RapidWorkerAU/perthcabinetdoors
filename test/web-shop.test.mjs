@@ -3,9 +3,10 @@
 // Decided 8 and 11 September 2026 (the "Two Paths, One Website" plan):
 //
 //   Polytec decorative board only: a flat door, a drawer front, a flat panel.
-//   Priced EXACTLY as a quote is: board cost per square metre plus the markup,
-//     banded edges at the ABS rate for the edges ticked, $5 a hole, hinges from
-//     the catalogue at cost plus markup as their own line.
+//   $5 a hole, hinges from the catalogue at cost plus markup as their own line.
+//   Since 10 October 2026 the piece is priced from what Polytec charges to make
+//     it (the decorative board rate card) plus the card's margin, banding
+//     included. See test/polytec-board-pricing.test.mjs for the portal prices.
 //   Quotes everywhere charge edging on the banded edges only.
 //   A hidden quote sits behind every web order and goes through the deposit
 //     gate's claim, paid in full. Unpaid checkouts are archived quietly.
@@ -19,7 +20,6 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 import {
-  SHOP_MARKUP_PERCENT,
   boringForHinge,
   checkoutDetailProblems,
   isMetroPostcode,
@@ -36,6 +36,11 @@ import { matchBoardCost } from "../lib/pcd-board-cost.js";
 import { createHardwareResolver } from "../lib/pcd-hardware-line.js";
 import { calculateQuoteLine, calculateQuoteTotals, edgingLinealMetres, normalizeBusinessDefaults } from "../lib/pcd-quote-utils.js";
 import { businessDefaultsToDbRow } from "../lib/pcd-business-defaults.js";
+import { normalizePolytecBoardCard } from "../lib/pcd-polytec-board-pricing.js";
+
+// A margin of 80%, deliberately not the 75% business default, so a line that
+// fell back to the business rate would show up rather than pass unnoticed.
+const BOARD_CARD = normalizePolytecBoardCard({ margin_percent: 80 });
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -74,6 +79,7 @@ const CATALOGUE = {
   hardwareRows: [HINGE_ROW, CUP_ROW],
   defaults: DEFAULTS,
   limit: shopSizeLimit(DEFAULTS),
+  boardCard: BOARD_CARD,
 };
 const RESOLVERS = {
   resolveBoard: (spec) => matchBoardCost(LIBRARY, spec),
@@ -99,27 +105,55 @@ function door(over = {}) {
 test("a door is priced exactly as a quote prices it, worked through by hand", () => {
   const priced = priceShopLine(door(), CATALOGUE, RESOLVERS);
   assert.equal(priced.ok, true, JSON.stringify(priced.problems));
-  // MARKED UP AT THE SHOP'S RATE, NOT THE BUSINESS DEFAULT. The fixture above
-  // sets the business default to 75%, deliberately different, so that a line
-  // falling back to it would show up here rather than pass unnoticed. See
-  // SHOP_MARKUP_PERCENT.
+  // WHAT POLYTEC CHARGES, PLUS THE CARD'S MARGIN. A 720 x 397 door is charged
+  // as 750 x 400: $60.74 x (0.24704 + 0.065229 x 1.15 + 1.07078 x 0.30) =
+  // $39.07 each, banding included. Two doors $78.14, at the card's 80% margin
+  // (not the 75% business default) $140.65. No separate edging.
   //
-  // 0.720 x 0.397 = 0.28584 m2, x2 doors = 0.57168 m2 x $60.74 = $34.72 of
-  // board, doubled at 100% is $69.45. Edged all round: 2 x (0.720 + 0.397) x 2
-  // doors = 4.468m at $2.50 = $11.17, and edging is not marked up. So the doors
-  // are $80.62.
-  //
-  // THE HINGES DO NOT DOUBLE. They are bought in and sold on, so they stay at
-  // the business rate every other hinge in the business is sold at: 4 x $7.22 =
-  // $28.88 of hardware, x1.75 = $50.54. The drilling is a rate a hole rather
-  // than a cost with a margin on it, so 4 holes at $5 stays $20.
+  // THE HINGES KEEP THE BUSINESS RATE. They are bought in and sold on: 4 x
+  // $7.22 = $28.88 of hardware, x1.75 = $50.54. The drilling is a rate a hole,
+  // so 4 holes at $5 stays $20.
   assert.deepEqual(priced.parts, [
-    ["Door, cut and edged", 80.62],
+    ["Door, cut and edged", 140.65],
     ["Hinge holes, 4", 20],
     ["Hinges, 4", 50.54],
   ]);
-  assert.equal(priced.totalExGst, 151.16);
-  assert.equal(priced.unitExGst, 75.58);
+  assert.equal(priced.totalExGst, 211.19);
+  assert.equal(priced.unitExGst, 105.6);
+});
+
+// THE ORDER THAT STARTED THIS. PCD-O-2026-E165EE sold a 176 x 353 drawer front
+// for $10.19 against Polytec's $22.59, and a 580 x 340 door for $28.56 against
+// $32.43. Both now cost what Polytec charges before any margin goes on.
+test("no piece sells below what Polytec charges to make it", () => {
+  const plain = { hingeSide: "", preDrill: false, supplyHinges: false, qty: 1 };
+  const front = priceShopLine(door({ ...plain, height: 176, width: 353 }), CATALOGUE, RESOLVERS);
+  const tall = priceShopLine(door({ ...plain, height: 580, width: 340 }), CATALOGUE, RESOLVERS);
+  assert.equal(calculateQuoteLine(front.quoteLines[0], DEFAULTS).product_unit_cost_ex_gst, 22.59);
+  assert.equal(calculateQuoteLine(tall.quoteLines[0], DEFAULTS).product_unit_cost_ex_gst, 32.43);
+  assert.equal(front.totalExGst, 40.66, "$22.59 at 80%");
+  assert.equal(tall.totalExGst, 58.37, "$32.43 at 80%");
+});
+
+test("a piece under 150mm is a facia and goes to the quote list", () => {
+  const strip = priceShopLine(door({ height: 100, width: 400, preDrill: false, supplyHinges: false }), CATALOGUE, RESOLVERS);
+  assert.equal(strip.ok, false);
+  assert.equal(strip.handPriced, true);
+  assert.equal(strip.code, "facia");
+});
+
+test("no decorative board card, no online price: it is priced by hand", () => {
+  const priced = priceShopLine(door(), { ...CATALOGUE, boardCard: null }, RESOLVERS);
+  assert.equal(priced.handPriced, true);
+  assert.equal(priced.code, "unavailable");
+});
+
+test("the board line is stored at the Polytec price, manual, so a Reprice cannot undo it", () => {
+  const priced = priceShopLine(door(), CATALOGUE, RESOLVERS);
+  const board = priced.quoteLines[0];
+  assert.equal(board.unit_cost_mode, "manual");
+  assert.equal(board.product_unit_cost_ex_gst, 39.07);
+  assert.match(board.unit_cost_source_label, /Polytec made to order: charged as 750 x 400/);
 });
 
 // THE RATE IS THE BOARD'S, NOT THE ORDER'S. A hinge on the same line is bought
@@ -133,12 +167,12 @@ test("the shop rate lands on the board and leaves the hinges alone", () => {
   const board = markups.find((line) => line.product_type !== "Hardware");
   const hardware = markups.find((line) => line.product_type === "Hardware");
 
-  assert.equal(board.markup_percent, SHOP_MARKUP_PERCENT, "the piece we make carries the shop rate");
+  assert.equal(board.markup_percent, BOARD_CARD.margin_percent, "the piece we make carries the card's margin");
   assert.equal(hardware.markup_percent, DEFAULTS.markup_percent, "the hinges keep the business rate");
-  assert.notEqual(SHOP_MARKUP_PERCENT, DEFAULTS.markup_percent, "the fixture has to keep the two apart to prove anything");
+  assert.notEqual(BOARD_CARD.margin_percent, DEFAULTS.markup_percent, "the fixture has to keep the two apart to prove anything");
 });
 
-test("only the banded edges are charged, and none is a real answer", () => {
+test("banding is in the Polytec price, so raw edges cost the same", () => {
   const drawer = {
     ...newShopLine(shopProduct("drawer-front"), { id: "f1" }),
     colourLibraryId: "matt-white-16",
@@ -149,11 +183,13 @@ test("only the banded edges are charged, and none is a real answer", () => {
     bandedEdges: ["Top", "Bottom"],
   };
   const priced = priceShopLine(drawer, CATALOGUE, RESOLVERS);
-  // 3 x 0.597 x 2 edges = 3.58m at $2.50 is $8.95, on $39.18 of board sold.
-  assert.deepEqual(priced.parts, [["Drawer front, cut and edged", 48.13]]);
+  // Charged as 200 x 600: $60.74 x (0.24704 + 0.065229 x 0.8 + 1.07078 x 0.12)
+  // = $25.98 each, three is $77.94, at 80% is $140.29.
+  assert.deepEqual(priced.parts, [["Drawer front, cut and edged", 140.29]]);
 
   const raw = priceShopLine({ ...drawer, bandedEdges: [] }, CATALOGUE, RESOLVERS);
-  assert.deepEqual(raw.parts, [["Drawer front, cut and edged", 39.18]], "no edges, no edging");
+  assert.deepEqual(raw.parts, priced.parts, "the price does not move with the edges");
+  assert.deepEqual(raw.quoteLines[0].banded_edges, [], "but the bench is still told which edges are raw");
 });
 
 test("the cart total is the quote's own total, delivery included", () => {
@@ -162,9 +198,11 @@ test("the cart total is the quote's own total, delivery included", () => {
     ...webQuoteCosts(DEFAULTS, { deliveryExGst: 45 }),
     business_defaults: DEFAULTS,
   });
-  assert.equal(totals.subtotal_ex_gst, 151.16 + 45);
-  // $196.16 plus 10% GST.
-  assert.equal(totals.total_inc_gst, 215.78);
+  assert.equal(totals.subtotal_ex_gst, 211.19 + 45);
+  assert.equal(totals.edging_cost_ex_gst, 0, "the banding is inside the Polytec price");
+  assert.equal(totals.labour_cost_ex_gst, 0, "and Polytec does the making");
+  // $256.19 plus 10% GST.
+  assert.equal(totals.total_inc_gst, 281.81);
 });
 
 test("the hinges we supply are their own Hardware line, one a hole", () => {

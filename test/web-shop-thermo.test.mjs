@@ -25,7 +25,6 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 import {
-  SHOP_MARKUP_PERCENT,
   SHOP_THERMO_MATERIAL,
   newShopLine,
   shopLineItems,
@@ -41,6 +40,7 @@ import { matchBoardCost } from "../lib/pcd-board-cost.js";
 import { createHardwareResolver } from "../lib/pcd-hardware-line.js";
 import { calculateQuoteLine, normalizeBusinessDefaults } from "../lib/pcd-quote-utils.js";
 import { normalizeThermoRateCard, priceThermoLine, thermoNotMadeByFinish } from "../lib/pcd-thermo-pricing.js";
+import { normalizePolytecBoardCard } from "../lib/pcd-polytec-board-pricing.js";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -118,6 +118,7 @@ function catalogue(over = {}) {
     ],
     edges: [{ name: "EM2 Thumb Mould", image: "" }, { name: "EM0 Square", image: "" }],
     thermoCard: CARD,
+    boardCard: normalizePolytecBoardCard({}),
     thermoLimit: thermoPricedRange(CARD),
     thermoNotMade: thermoNotMadeByFinish(CARD),
     ...over,
@@ -172,7 +173,6 @@ test("a thermolaminate front takes the card's margin, not the shop's or the busi
   const priced = price(front());
   const piece = calculateQuoteLine(priced.quoteLines[0], DEFAULTS);
   assert.equal(piece.markup_percent, CARD.margin_percent);
-  assert.notEqual(CARD.margin_percent, SHOP_MARKUP_PERCENT, "the fixture keeps the shop rate apart");
   assert.notEqual(CARD.margin_percent, DEFAULTS.markup_percent, "and the business rate");
   assert.equal(piece.edging_lineal_metres, 0, "a wrapped front has no edge to tape");
 });

@@ -17,6 +17,7 @@ import BookingSettingsCard from './BookingSettingsCard'
 import AlfredSettingsCard from './AlfredSettingsCard'
 import ListsManager from './ListsManager'
 import ThermoPricingCard from './ThermoPricingCard'
+import PolytecBoardPricingCard from './PolytecBoardPricingCard'
 import SiteSettingsCard from './SiteSettingsCard'
 
 interface DefaultField {
@@ -329,7 +330,7 @@ const primaryBtn = 'h-[36px] px-4 bg-[#1c2b1e] text-white text-[13px] font-mediu
 const secondaryBtn = 'h-[36px] px-4 bg-white border border-[#dbd8cc] text-[13px] font-medium rounded-[6px] text-[#1a1a18] hover:bg-[#f5f8f4] disabled:opacity-50 transition-colors'
 const fieldLabelClass = 'flex flex-col gap-1.5 text-[12px] font-medium text-[#5a5a52]'
 
-type Tab = 'profile' | 'launch' | 'site' | 'defaults' | 'thermo' | 'lists' | 'bookings' | 'alfred'
+type Tab = 'profile' | 'launch' | 'site' | 'defaults' | 'thermo' | 'board' | 'lists' | 'bookings' | 'alfred'
 
 export default function AccountSettingsForm({ currentEmail }: { currentEmail?: string }) {
   const [activeTab,        setActiveTab]        = useState<Tab>('profile')
@@ -580,6 +581,9 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     // Beside Business Defaults because it is the same kind of setting: it
     // decides what a thermolaminate line costs on every quote.
     { key: 'thermo',   label: 'Thermolaminate Pricing', description: 'Polytec rate card and our margin',                icon: 'TP' },
+    // The same kind of card for the decorative board pieces Polytec makes for
+    // the web shop.
+    { key: 'board',    label: 'Decorative Board Pricing', description: 'What Polytec charges for shop pieces, and our margin', icon: 'DB' },
     // Last, because it is the one you visit rarely and on purpose. Business
     // Defaults changes what every quote costs; this changes what a dropdown
     // offers.
@@ -912,6 +916,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     activeTab === 'launch'   ? launchContent   :
     activeTab === 'site'     ? <SiteSettingsCard /> :
     activeTab === 'thermo'   ? <ThermoPricingCard /> :
+    activeTab === 'board'    ? <PolytecBoardPricingCard /> :
     activeTab === 'lists'    ? <ListsManager /> :
     activeTab === 'bookings' ? <BookingSettingsCard /> :
     activeTab === 'alfred'   ? <AlfredSettingsCard /> :

@@ -289,5 +289,5 @@ test("switching brand drops a thickness the new brand does not stock", () => {
 // material, and their thickness is set by whichever colour gets picked rather
 // than chosen on its own, so the same rule already holds there.
 test("the quote editor asks for the supplier straight after the material", () => {
-  assert.match(QUOTE_EDITOR, /'Type', 'Item \/ material', 'Supplier', 'Finish', 'Colour', 'Thickness'/);
+  assert.match(QUOTE_EDITOR, /'Type', 'Item \/ material', 'Supplier', 'Finish', 'Colour', 'Made by', 'Thickness'/);
 });

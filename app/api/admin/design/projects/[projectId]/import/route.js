@@ -5,6 +5,7 @@ import { calculateQuoteLine, calculateQuoteTotals, GST_RATE } from "../../../../
 import { getBusinessDefaults } from "../../../../../../../lib/pcd-business-defaults";
 import { getDatabaseColourRows, isMadeToOrder, normaliseColourMaterialKey } from "../../../../../../../lib/pcd-colour-library";
 import { withLibraryBoardRatesForAll } from "../../../../../../../lib/pcd-design-board-rates";
+import { createMadeBySettler } from "../../../../../../../lib/pcd-made-by-settle";
 // The same rule for bought items: an accessory is priced from the hardware
 // library the day the quote is staged, not from a copy taken when it was drawn.
 import { withLibraryHardwareRatesForGenerated } from "../../../../../../../lib/pcd-design-hardware-rates";
@@ -155,6 +156,9 @@ export async function POST(request, { params }) {
     // staging-table flow: review before committing.
     if (preview) {
       const gstRate = businessDefaults.gst_rate ?? GST_RATE;
+      // Made in house or supplier made, settled here exactly as saving the line
+      // will settle it, so the preview shows the price that gets saved.
+      const settleMadeBy = await createMadeBySettler(context.supabase);
       const warnings = computeItemWarnings({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items, isMadeToOrderBoard });
       const { generated, missing: missingHardware } = withLibraryHardwareRatesForGenerated(
         generateImportLines({ importableItems, selections, selectedCabinetItems, roomNameById, roomById, items }),
@@ -171,7 +175,7 @@ export async function POST(request, { params }) {
       const byRoom = new Map(); // roomName → Map(itemId → { itemId, label, isCabinet, lines })
       for (const { line, itemId, part } of mergeIdenticalLines(generated)) {
         const src = mergedById.get(itemId);
-        const priced = calculateQuoteLine(withCalculatedUnitCost({ ...line }, { thermoCard }), businessDefaults);
+        const priced = calculateQuoteLine(settleMadeBy(withCalculatedUnitCost({ ...line }, { thermoCard })), businessDefaults);
         pricedLines.push(priced);
         const roomName = roomNameById.get(src?.room_id) || "Unassigned";
         if (!byRoom.has(roomName)) byRoom.set(roomName, new Map());

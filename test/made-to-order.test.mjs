@@ -123,3 +123,13 @@ test("a made-to-order line converts unpriced, and is reported apart from a gap",
   assert.deepEqual(unpricedSummary(entries).map((e) => e.colour), ["Raw"]);
   assert.deepEqual(madeToOrderSummary(entries).map((e) => e.colour), ["Topiary"]);
 });
+
+test("ticked for both, a priced board is still a priced board", () => {
+  const both = { ...SUPPLY_PRICED, order_types: ["supply board", "made to order MTO"] };
+  assert.equal(isMadeToOrder(both), true, "the shop reads this as Polytec makes it to order");
+  assert.equal(isMissingBoardPrice(both), false);
+  const match = matchBoardCost([both], {
+    material: both.material_type, thickness: both.thickness, finish: both.finish_type, colour: both.name, supplier: "Polytec",
+  });
+  assert.equal(match.ok, true, "a board ticked for both still prices from its rate");
+});

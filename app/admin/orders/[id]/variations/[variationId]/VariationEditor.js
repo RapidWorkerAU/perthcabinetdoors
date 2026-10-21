@@ -16,6 +16,9 @@ import AdminLoading from "@/components/admin/AdminLoading";
 import { tableStyles } from "@/components/ui/table-styles";
 import { useToast } from "@/components/ui/Toast";
 import { QuoteColourCombobox, QuoteImageCombobox, QuoteTileCombobox } from "@/components/admin/QuoteComboboxes";
+import MadeByField from "@/components/admin/MadeByField";
+import { asksMadeBy, colourOrderTypesIndex, isMadeToOrderBoardLine, madeByOptionsForLine, settleMadeBy } from "../../../../../../lib/pcd-made-by";
+import { pricePolytecBoardPiece } from "../../../../../../lib/pcd-polytec-board-pricing";
 import styles from "../../../../admin-content.module.css";
 import { calculateQuoteLine, DEFAULT_BUSINESS_DEFAULTS, formatItemSpecs, formatMoney, roundMoney, toNumber } from "../../../../../../lib/pcd-quote-utils";
 import { HINGE_SIDES, readMiddles } from "../../../../../../lib/pcd-hinges";
@@ -288,6 +291,8 @@ function emptyLine() {
     grain_direction: "",
     supplied_by: "",
     hardware_type: "",
+    // Supply or made to order, after the colour. See lib/pcd-made-by.js.
+    made_by: "",
     qty: 1,
     original_line_total_ex_gst: 0,
     proposed_line_total_ex_gst: "",
@@ -311,7 +316,14 @@ function lineAreaSqm(line) {
   return (width * height) / 1000000;
 }
 
-function calculatedUnitCostFromLine(line) {
+// Decorative board answered made to order prices from the Polytec decorative
+// board rate card, the same as on a quote. Without the card it is not priced
+// automatically.
+function calculatedUnitCostFromLine(line, boardCard = null) {
+  if (isMadeToOrderBoardLine(line)) {
+    const made = boardCard ? pricePolytecBoardPiece(line, boardCard, line.unit_cost_per_sqm_ex_gst) : null;
+    return made?.ok ? made.unitCost : 0;
+  }
   let rate = Number(line?.unit_cost_per_sqm_ex_gst || 0);
   const boardCost = Number(line?.cost_per_board_ex_gst || 0);
   const boardWidth = Number(line?.preferred_board_width_mm || 0);
@@ -341,7 +353,7 @@ function hasBoardCostSource(line) {
 // markup), exactly like a quote line. A typed unit cost flips the line to
 // "manual" and is left alone until the operator resets it. Hardware and base
 // cabinets have no board rate, so they price off the typed unit cost.
-function applyVariationLinePricing(line, businessDefaults = DEFAULT_BUSINESS_DEFAULTS) {
+function applyVariationLinePricing(line, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, boardCard = null) {
   if (line.action === "remove") {
     return { ...line, proposed_line_total_ex_gst: 0 };
   }
@@ -363,7 +375,7 @@ function applyVariationLinePricing(line, businessDefaults = DEFAULT_BUSINESS_DEF
   }
 
   const isBoard = isBoardVariationDraft(line);
-  const calculatedUnitCost = isBoard ? calculatedUnitCostFromLine(line) : 0;
+  const calculatedUnitCost = isBoard ? calculatedUnitCostFromLine(line, boardCard) : 0;
   const hasAutoSource = isBoard && hasBoardCostSource(line);
   const next = {
     ...line,
@@ -388,7 +400,7 @@ function applyVariationLinePricing(line, businessDefaults = DEFAULT_BUSINESS_DEF
   return next;
 }
 
-function variationLinePricingError(line) {
+function variationLinePricingError(line, boardCard = null) {
   if (!["add", "change"].includes(line.action) || !isBoardVariationDraft(line)) return "";
   if (line.unit_cost_mode === "manual" && toNumber(line.product_unit_cost_ex_gst) > 0) return "";
   if (!line.colour || !line.thickness) {
@@ -397,7 +409,7 @@ function variationLinePricingError(line) {
   if (!hasBoardCostSource(line)) {
     return "This board does not have an uploaded price. Add the board cost before saving this variation line.";
   }
-  if (calculatedUnitCostFromLine(line) <= 0) {
+  if (calculatedUnitCostFromLine(line, boardCard) <= 0) {
     return "Enter width and height so this board variation can be priced.";
   }
   return "";
@@ -428,6 +440,11 @@ export default function VariationEditor({ orderId, variationId }) {
   const [order, setOrder] = useState(null);
   const [variation, setVariation] = useState(null);
   const [lineDraft, setLineDraft] = useState(emptyLine);
+  // The Board Library as items, for what each colour can be (supply, made to
+  // order, or both), and the Polytec decorative board rate card.
+  const [colourItems, setColourItems] = useState([]);
+  const [boardCard, setBoardCard] = useState(null);
+  const colourOrderTypes = useMemo(() => colourOrderTypesIndex(colourItems), [colourItems]);
   const [editingLineId, setEditingLineId] = useState(null);
   const [isAddLineModalOpen, setIsAddLineModalOpen] = useState(false);
   const [publishEmail, setPublishEmail] = useState(null);
@@ -536,7 +553,7 @@ export default function VariationEditor({ orderId, variationId }) {
       ? [...names, selectedSupplier]
       : names;
   })();
-  const lineDraftPricingError = variationLinePricingError(lineDraft);
+  const lineDraftPricingError = variationLinePricingError(lineDraft, boardCard);
 
   useEffect(() => {
     toastRef.current = toast;
@@ -582,6 +599,16 @@ export default function VariationEditor({ orderId, variationId }) {
           fetch("/api/admin/hardware", { cache: "no-store" }),
           fetch("/api/admin/business-defaults", { cache: "no-store" }),
         ]);
+        // What each colour can be, and the decorative board rate card for
+        // lines answered made to order. Neither stops the editor if it fails.
+        Promise.all([
+          fetch("/api/colour-library?items=1", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+          fetch("/api/admin/polytec-board-pricing", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+        ]).then(([colours, board]) => {
+          if (cancelled) return;
+          if (colours?.ok) setColourItems(colours.items || []);
+          if (board?.ok && board.card) setBoardCard(board.card);
+        });
         const [hardwarePayload, defaultsPayload] = await Promise.all([
           hardwareResponse.json(),
           defaultsResponse.json(),
@@ -610,6 +637,7 @@ export default function VariationEditor({ orderId, variationId }) {
   function clearBoardSelection(next) {
     next.finish = "";
     next.colour = "";
+    next.made_by = "";
     next.thickness = "";
     next.edge_mould = "";
     next.profile_type = "";
@@ -680,15 +708,29 @@ export default function VariationEditor({ orderId, variationId }) {
         // A colour pick brings its own board rate, so go back to auto pricing.
         next.unit_cost_mode = "auto";
       }
+      // SUPPLY OR MADE TO ORDER, settled whenever the colour changes, the same
+      // rule as the quote editor. Made to order decorative board takes the
+      // Polytec card's margin; going back to supply gives it back.
+      if (has("colour") || has("made_by")) {
+        next.made_by = next.colour ? settleMadeBy(next.made_by, madeByOptionsForLine(next, colourOrderTypes)) : "";
+        if (has("made_by")) next.unit_cost_mode = "auto";
+        const margin = boardCard ? Number(boardCard.margin_percent) : null;
+        if (margin !== null && Number.isFinite(margin)) {
+          const wasMto = isMadeToOrderBoardLine(current);
+          const isMto = isMadeToOrderBoardLine(next);
+          if (isMto && !wasMto) next.markup_percent = margin;
+          else if (!isMto && wasMto && Number(current.markup_percent) === margin) next.markup_percent = "";
+        }
+      }
       if (has("product_unit_cost_ex_gst")) {
         next.unit_cost_mode = "manual";
       }
       if ([
         "qty", "width_mm", "height_mm", "unit_cost_per_sqm_ex_gst", "colour", "finish", "thickness",
         "markup_percent", "product_unit_cost_ex_gst", "material", "product_type", "unit_cost_mode",
-        "supplier_name",
+        "supplier_name", "made_by",
       ].some(has)) {
-        next = applyVariationLinePricing(next, businessDefaults);
+        next = applyVariationLinePricing(next, businessDefaults, boardCard);
       }
       return next;
     });
@@ -742,7 +784,7 @@ export default function VariationEditor({ orderId, variationId }) {
       // Nulls from the database would turn controlled inputs uncontrolled.
       draft[field] = value === null ? emptyLine()[field] ?? "" : value;
     });
-    const calculated = calculatedUnitCostFromLine(draft);
+    const calculated = calculatedUnitCostFromLine(draft, boardCard);
     draft.unit_cost_mode = calculated > 0 && toNumber(draft.product_unit_cost_ex_gst) !== calculated ? "manual" : "auto";
     setEditingLineId(line.id);
     setLineDraft(draft);
@@ -783,7 +825,7 @@ export default function VariationEditor({ orderId, variationId }) {
       unit_cost_per_sqm_ex_gst: 0,
       calculated_unit_cost_ex_gst: 0,
       product_unit_cost_ex_gst: Number(item.unit_cost_ex_gst || 0),
-    }, businessDefaults));
+    }, businessDefaults, boardCard));
   }
 
   /**
@@ -853,6 +895,8 @@ export default function VariationEditor({ orderId, variationId }) {
       grain_direction: item?.grain_direction || "",
       supplied_by: item?.supplied_by || "",
       hardware_type: item?.hardware_type || "",
+      // How the order plans the line being changed, as supply or made to order.
+      made_by: item?.fulfilment_method === "supplier_ready_made" ? "mto" : item?.fulfilment_method === "in_house" ? "supply" : "",
       qty: item?.qty || 1,
       unit_cost_mode: item?.unit_cost_source_id ? "auto" : "manual",
       unit_cost_source_id: item?.unit_cost_source_id || null,
@@ -1363,6 +1407,16 @@ export default function VariationEditor({ orderId, variationId }) {
                 onChange={(patch) => updateLineDraft(patch)}
               />
             </label>
+            {asksMadeBy(lineDraft) ? (
+              <label className={tw.fieldLabel}>Made by
+                <MadeByField
+                  line={lineDraft}
+                  options={madeByOptionsForLine(lineDraft, colourOrderTypes)}
+                  editable={!isRemove && !isPriceAdjustment}
+                  onChange={(made_by) => updateLineDraft({ made_by })}
+                />
+              </label>
+            ) : null}
             {/* No grain control, the same as on the quote. Every job runs the
                 standard direction; anything else goes in the line's notes. */}
           </>

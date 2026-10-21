@@ -14,6 +14,10 @@ import { normaliseHingeSide, readMiddles } from "../../../../../../../../../lib/
 import { createLineGate } from "../../../../../../../../../lib/pcd-line-gate";
 import { LINE_ANSWER_KEYS, validatedLineAnswers } from "../../../../../../../../../lib/pcd-line-details";
 import { lineAnswers } from "../../../../../../../../../lib/pcd-order-from-quote";
+import { asksMadeBy, cleanMadeBy, isMadeToOrderBoardLine } from "../../../../../../../../../lib/pcd-made-by";
+import { pricePolytecBoardPiece } from "../../../../../../../../../lib/pcd-polytec-board-pricing";
+import { getPolytecBoardCard } from "../../../../../../../../../lib/pcd-polytec-board-pricing-store";
+import { createMadeBySettler } from "../../../../../../../../../lib/pcd-made-by-settle";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -46,8 +50,14 @@ function lineAreaSqm(row) {
   return (width * height) / 1000000;
 }
 
-function calculatedUnitCost(row) {
+// Decorative board answered made to order is priced from the Polytec
+// decorative board rate card, the same as on a quote. See lib/pcd-made-by.js.
+function calculatedUnitCost(row, boardCard = null) {
   const rate = toNumber(row.unit_cost_per_sqm_ex_gst);
+  if (isMadeToOrderBoardLine(row)) {
+    const made = boardCard ? pricePolytecBoardPiece(row, boardCard, rate) : null;
+    return made?.ok ? made.unitCost : 0;
+  }
   const area = lineAreaSqm(row);
   if (rate <= 0 || area <= 0) return 0;
   return roundMoney(rate * area);
@@ -219,7 +229,7 @@ async function settledPricingInput(supabase, payload, beforeGate, afterGate) {
   };
 }
 
-function updatesFromPayload(payload, before, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null, order = null) {
+function updatesFromPayload(payload, before, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null, order = null, boardCard = null) {
   const nextAction = payload.action || before.action;
   if (nextAction === JOB_COST_ACTION) return jobCostUpdates(payload, before, order);
 
@@ -280,6 +290,10 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
   if (!Object.prototype.hasOwnProperty.call(updates, "markup_percent")) {
     updates.markup_percent = toNumber(before.markup_percent, businessDefaults.markup_percent);
   }
+  // Supply or made to order. Only on a board line.
+  if (Object.prototype.hasOwnProperty.call(payload, "made_by")) {
+    updates.made_by = asksMadeBy({ ...before, ...updates }) ? cleanMadeBy(payload.made_by) || null : null;
+  }
   // THE ANSWERS BEYOND THE BOARD, re-checked against the line as it will be.
   // Re-checked even when none of them was sent, because changing the material
   // or unticking the drilling can make one that was valid a stale one.
@@ -312,7 +326,7 @@ function updatesFromPayload(payload, before, sourceLine = null, businessDefaults
     // Anything with no cost is named at the send step instead, once, with every
     // line in view. See lib/pcd-variation-pricing.js.
     if (manualUnitCost > 0 || toNumber(next.unit_cost_per_sqm_ex_gst) > 0) {
-      const calculatedCost = calculatedUnitCost(next);
+      const calculatedCost = calculatedUnitCost(next, boardCard);
       const unitCost = manualUnitCost > 0 ? manualUnitCost : Math.max(0, calculatedCost);
       const calculated = calculateQuoteLine({
         ...next,
@@ -362,6 +376,7 @@ function withoutFallbackColumns(row, error) {
   if (isMissingSupplierNameColumn(error)) delete rest.supplier_name;
   if (isMissingOriginalSnapshotColumn(error)) delete rest.original_item_snapshot;
   if (isMissingDesignItemColumn(error)) delete rest.design_item_id;
+  if (error?.code === "PGRST204" && String(error?.message || "").includes("made_by")) delete rest.made_by;
   if (isMissingPricingColumn(error)) {
     delete rest.unit_cost_source_id;
     delete rest.unit_cost_source_label;
@@ -400,10 +415,20 @@ export async function PATCH(request, { params }) {
       return Response.json({ ok: false, error: "Choose an order line for this variation action." }, { status: 400 });
     }
     const businessDefaults = await getBusinessDefaults(context.supabase);
+    const { card: boardCard } = await getPolytecBoardCard(context.supabase);
+    // Made in house or supplier made, settled the same way as a quote line.
+    // A line saved before the question, with its board unchanged, is left as
+    // it is. See lib/pcd-made-by-settle.js.
+    if (["add", "change"].includes(nextAction)) {
+      const asked = { ...before, ...payload };
+      const settled = (await createMadeBySettler(context.supabase))(asked, before);
+      if (settled.made_by !== asked.made_by) payload.made_by = settled.made_by;
+      if (settled.markup_percent !== asked.markup_percent) payload.markup_percent = settled.markup_percent;
+    }
     const pricingSource = await boardPricingSource(context.supabase, payload.unit_cost_source_id);
     const order = nextAction === JOB_COST_ACTION ? await loadOrder(context.supabase, orderId) : null;
 
-    const updates = updatesFromPayload(payload, before, sourceLine, businessDefaults, pricingSource, order);
+    const updates = updatesFromPayload(payload, before, sourceLine, businessDefaults, pricingSource, order, boardCard);
 
     // ONE BRAND PER LINE. Against the line as it will be, not the fields that
     // arrived: changing only the profile still has to agree with the colour
@@ -416,7 +441,7 @@ export async function PATCH(request, { params }) {
     Object.assign(updates, patch);
     const settled = await settledPricingInput(context.supabase, payload, beforeGate, updates);
     if (settled) {
-      Object.assign(updates, updatesFromPayload(settled.input, before, sourceLine, businessDefaults, settled.source, order), patch);
+      Object.assign(updates, updatesFromPayload(settled.input, before, sourceLine, businessDefaults, settled.source, order, boardCard), patch);
     }
 
     let { data: line, error } = await context.supabase

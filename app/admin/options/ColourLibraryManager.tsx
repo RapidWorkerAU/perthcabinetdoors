@@ -298,7 +298,12 @@ export default function ColourLibraryManager({
   // completely priced. A number that is always wrong is a number nobody reads.
   const activeRows = useMemo(() => rows.filter(row => row.is_active !== false), [rows])
   const activeCount = activeRows.length
-  const supplyRows = useMemo(() => activeRows.filter(row => !isMadeToOrder(row)), [activeRows])
+  // A board ticked for both that holds a rate is priced like any supply board,
+  // so it is counted with them rather than as "holds no rate".
+  const supplyRows = useMemo(
+    () => activeRows.filter(row => !isMadeToOrder(row) || Number(row.cost_per_sqm_ex_gst || 0) > 0),
+    [activeRows]
+  )
   const unpricedCount = useMemo(() => supplyRows.filter(isMissingBoardPrice).length, [supplyRows])
   const madeToOrderCount = activeCount - supplyRows.length
 

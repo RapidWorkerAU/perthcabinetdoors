@@ -14,6 +14,10 @@ import { normaliseHingeSide, readMiddles } from "../../../../../../../../lib/pcd
 import { createLineGate } from "../../../../../../../../lib/pcd-line-gate";
 import { LINE_ANSWER_KEYS, validatedLineAnswers } from "../../../../../../../../lib/pcd-line-details";
 import { lineAnswers } from "../../../../../../../../lib/pcd-order-from-quote";
+import { asksMadeBy, cleanMadeBy, isMadeToOrderBoardLine } from "../../../../../../../../lib/pcd-made-by";
+import { pricePolytecBoardPiece } from "../../../../../../../../lib/pcd-polytec-board-pricing";
+import { getPolytecBoardCard } from "../../../../../../../../lib/pcd-polytec-board-pricing-store";
+import { createMadeBySettler } from "../../../../../../../../lib/pcd-made-by-settle";
 
 async function idsFromParams(params) {
   const resolved = await Promise.resolve(params);
@@ -46,8 +50,14 @@ function lineAreaSqm(row) {
   return (width * height) / 1000000;
 }
 
-function calculatedUnitCost(row) {
+// Decorative board answered made to order is priced from the Polytec
+// decorative board rate card, the same as on a quote. See lib/pcd-made-by.js.
+function calculatedUnitCost(row, boardCard = null) {
   const rate = toNumber(row.unit_cost_per_sqm_ex_gst);
+  if (isMadeToOrderBoardLine(row)) {
+    const made = boardCard ? pricePolytecBoardPiece(row, boardCard, rate) : null;
+    return made?.ok ? made.unitCost : 0;
+  }
   const area = lineAreaSqm(row);
   if (rate <= 0 || area <= 0) return 0;
   return roundMoney(rate * area);
@@ -200,7 +210,7 @@ function jobCostLinePayload(payload, order) {
   return row;
 }
 
-function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null, order = null) {
+function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSINESS_DEFAULTS, pricingSource = null, order = null, boardCard = null) {
   const action = VARIATION_LINE_ACTIONS.includes(payload.action) ? payload.action : "add";
   if (action === JOB_COST_ACTION) return jobCostLinePayload(payload, order);
 
@@ -257,6 +267,8 @@ function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSI
     original_item_snapshot: action === "change" || action === "remove" ? originalItemSnapshot(sourceLine) : null,
     notes: cleanText(payload.notes),
   };
+  // Supply or made to order. Only on a board line.
+  row.made_by = asksMadeBy(row) ? cleanMadeBy(payload.made_by ?? sourceLine?.made_by) || null : null;
 
   // THE ANSWERS BEYOND THE BOARD. What the form sent, falling back to the line
   // being changed like every field above, so a variation that only moves a
@@ -285,7 +297,7 @@ function linePayload(payload, sourceLine = null, businessDefaults = DEFAULT_BUSI
     // the work put on it, and the send step names anything with no cost so it
     // can be decided on once, with all the lines in view.
     if (manualUnitCost > 0 || toNumber(row.unit_cost_per_sqm_ex_gst) > 0) {
-      row.calculated_unit_cost_ex_gst = calculatedUnitCost(row);
+      row.calculated_unit_cost_ex_gst = calculatedUnitCost(row, boardCard);
       row.product_unit_cost_ex_gst =
         manualUnitCost > 0 ? manualUnitCost : Math.max(0, row.calculated_unit_cost_ex_gst);
       const calculated = calculateQuoteLine(row, businessDefaults);
@@ -334,6 +346,7 @@ function withoutFallbackColumns(row, error) {
   if (isMissingSupplierNameColumn(error)) delete rest.supplier_name;
   if (isMissingOriginalSnapshotColumn(error)) delete rest.original_item_snapshot;
   if (isMissingDesignItemColumn(error)) delete rest.design_item_id;
+  if (error?.code === "PGRST204" && String(error?.message || "").includes("made_by")) delete rest.made_by;
   if (isMissingPricingColumn(error)) {
     delete rest.unit_cost_source_id;
     delete rest.unit_cost_source_label;
@@ -407,6 +420,15 @@ export async function POST(request, { params }) {
       return Response.json({ ok: false, error: "Choose an order line for this variation action." }, { status: 400 });
     }
     const businessDefaults = await getBusinessDefaults(context.supabase);
+    const { card: boardCard } = await getPolytecBoardCard(context.supabase);
+    // Made in house or supplier made, settled the same way as a quote line.
+    // See lib/pcd-made-by-settle.js.
+    if (["add", "change"].includes(payload.action || "add")) {
+      const asked = { ...(sourceLine || {}), ...payload };
+      const settled = (await createMadeBySettler(context.supabase))(asked);
+      payload.made_by = settled.made_by ?? payload.made_by;
+      if (settled.markup_percent !== asked.markup_percent) payload.markup_percent = settled.markup_percent;
+    }
     const pricingSource = await boardPricingSource(context.supabase, payload.unit_cost_source_id);
     // A job cost line records what the cost is on the order right now, so the
     // order is what it is measured against. Read here rather than trusted from
@@ -421,7 +443,7 @@ export async function POST(request, { params }) {
     const row = {
       variation_id: variationId,
       sort_order: count || 0,
-      ...linePayload(payload, sourceLine, businessDefaults, pricingSource, order),
+      ...linePayload(payload, sourceLine, businessDefaults, pricingSource, order, boardCard),
     };
 
     const beforeGate = { ...row };
@@ -430,7 +452,7 @@ export async function POST(request, { params }) {
     const settled = await settledPricingInput(context.supabase, payload, beforeGate, row);
     if (settled) {
       const gated = { ...row };
-      Object.assign(row, linePayload(settled.input, sourceLine, businessDefaults, settled.source, order));
+      Object.assign(row, linePayload(settled.input, sourceLine, businessDefaults, settled.source, order, boardCard));
       // The gate's own words stand: only the price is worked out again.
       for (const key of Object.keys(gated)) if (gated[key] !== beforeGate[key]) row[key] = gated[key];
     }
