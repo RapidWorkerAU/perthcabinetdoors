@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import AdminLoading from "@/components/admin/AdminLoading";
 import {
   DEFAULT_SITE_SETTINGS,
+  SITE_BANNER_MAX_MESSAGES,
   SITE_MESSAGE_MAX,
   SITE_MESSAGE_PLACEMENTS,
   leadTimeRangeWords,
@@ -95,6 +96,16 @@ export default function SiteSettingsCard() {
     }));
     setMessage("");
   }
+
+  // THE BANNER'S MESSAGES, a list. See lib/pcd-site-settings.js.
+  function setBannerMessages(update) {
+    setSettings((current) => ({ ...current, banner_messages: update(current.banner_messages || []) }));
+    setMessage("");
+  }
+  const setBannerField = (index, field, value) =>
+    setBannerMessages((list) => list.map((entry, i) => (i === index ? { ...entry, [field]: value } : entry)));
+  const addBannerMessage = () => setBannerMessages((list) => [...list, { text: "", starts_on: "", ends_on: "" }]);
+  const removeBannerMessage = (index) => setBannerMessages((list) => list.filter((_, i) => i !== index));
 
   async function save() {
     setBusy(true);
@@ -230,6 +241,66 @@ export default function SiteSettingsCard() {
           shows from the start of its first day to the end of its last.
         </p>
         {SITE_MESSAGE_PLACEMENTS.map((placement) => {
+          if (placement.key === "banner") {
+            const list = settings.banner_messages || [];
+            return (
+              <div key={placement.key} className="border-b border-[#f3f1ea] px-4 py-4 last:border-b-0">
+                <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                  <span>
+                    <span className={tw.label}>{placement.label}</span>
+                    <span className={tw.hint}>
+                      {placement.where} Every message showing runs one after another, then starts again.
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className={tw.btn}
+                    disabled={list.length >= SITE_BANNER_MAX_MESSAGES}
+                    onClick={addBannerMessage}
+                  >
+                    Add message
+                  </button>
+                </div>
+                {list.length ? null : (
+                  <p className="m-0 text-[12px] text-[#8b8a81]">No banner messages, so the banner is hidden.</p>
+                )}
+                {list.map((entry, index) => {
+                  const [statusLabel, statusClass] = STATUS[messageStatus(normalizeSiteSettings({ messages: { banner: entry } }).messages.banner)];
+                  return (
+                    <div key={index} className="mt-3 rounded-[6px] border border-[#f3f1ea] p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-[12px] font-medium text-[#5a5a52]">Message {index + 1}</span>
+                        <span className={statusClass}>{statusLabel}</span>
+                      </div>
+                      <textarea
+                        className={tw.area}
+                        maxLength={SITE_MESSAGE_MAX}
+                        value={entry.text}
+                        placeholder="Empty, so nothing shows."
+                        onChange={(event) => setBannerField(index, "text", event.target.value)}
+                      />
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] text-[#5a5a52]">
+                        <label className="flex items-center gap-2">
+                          From
+                          <input className={tw.date} type="date" value={entry.starts_on || ""} onChange={(event) => setBannerField(index, "starts_on", event.target.value)} />
+                        </label>
+                        <label className="flex items-center gap-2">
+                          Until
+                          <input className={tw.date} type="date" value={entry.ends_on || ""} onChange={(event) => setBannerField(index, "ends_on", event.target.value)} />
+                        </label>
+                        <span className="text-[11px] text-[#8b8a81]">
+                          {String(entry.text || "").length}/{SITE_MESSAGE_MAX}
+                        </span>
+                        <button type="button" className={tw.btn} onClick={() => removeBannerMessage(index)}>
+                          Remove message
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }
           const entry = settings.messages?.[placement.key] || { text: "", starts_on: "", ends_on: "" };
           const [statusLabel, statusClass] = STATUS[messageStatus(normalizeSiteSettings({ messages: { [placement.key]: entry } }).messages[placement.key])];
           return (

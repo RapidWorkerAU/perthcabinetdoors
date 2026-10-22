@@ -231,3 +231,34 @@ test("the table is one row, staff only, in one runnable block", () => {
   assert.match(sql, /enable row level security/);
   assert.ok(!/^\s*select\b/im.test(sql), "no check query appended");
 });
+
+// ── the banner takes several messages ────────────────────────────────────────
+import { activeBannerMessages, SITE_BANNER_MAX_MESSAGES } from "../lib/pcd-site-settings.js";
+
+test("a row saved before the banner took a list reads as a list of its one message", () => {
+  const clean = normalizeSiteSettings({ messages: { banner: { text: "Holiday hours" } } });
+  assert.deepEqual(clean.banner_messages.map((m) => m.text), ["Holiday hours"]);
+  assert.deepEqual(activeBannerMessages(clean), ["Holiday hours"]);
+});
+
+test("banner messages run in order, each only inside its own dates, and the first is still messages.banner", () => {
+  const now = new Date("2026-10-22T02:00:00Z"); // 22 October in Perth
+  const clean = normalizeSiteSettings({
+    banner_messages: [
+      { text: "First" },
+      { text: "Not yet", starts_on: "2026-11-01" },
+      { text: "", starts_on: "", ends_on: "" },
+      { text: "Over", ends_on: "2026-10-01" },
+      { text: "Second", starts_on: "2026-10-22", ends_on: "2026-10-22" },
+    ],
+  });
+  assert.equal(clean.banner_messages.length, 4, "an empty message is dropped");
+  assert.equal(clean.messages.banner.text, "First");
+  assert.deepEqual(activeBannerMessages(clean, now), ["First", "Second"]);
+});
+
+test("removing every banner message hides the banner, and the list is capped", () => {
+  assert.deepEqual(activeBannerMessages(normalizeSiteSettings({ banner_messages: [], messages: { banner: { text: "Old" } } })), []);
+  const many = Array.from({ length: SITE_BANNER_MAX_MESSAGES + 3 }, (_, i) => ({ text: `Message ${i}` }));
+  assert.equal(normalizeSiteSettings({ banner_messages: many }).banner_messages.length, SITE_BANNER_MAX_MESSAGES);
+});

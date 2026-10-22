@@ -25,14 +25,28 @@
   animation-play-state: paused;
 }
 
+.bannerSet {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+/* Every message carries the dot after it, so the gap between the last message
+   of one set and the first of the next is the same as any other gap. */
 .bannerItem {
   flex: 0 0 auto;
-  padding: 10px 48px;
+  padding: 10px 0;
   white-space: nowrap;
 }
 
-/* Two copies of the text run end to end, so moving by half the track brings
-   the second copy exactly where the first began and the loop has no seam. */
+.bannerItem::after {
+  content: "\2022";
+  padding: 0 28px;
+  opacity: 0.55;
+}
+
+/* The run is two identical halves, each wide enough to cover the screen, so
+   moving by half the track brings the second half exactly where the first
+   began and the loop has no seam. */
 @keyframes bannerScroll {
   from {
     transform: translateX(0);
@@ -50,14 +64,25 @@
     width: auto;
     justify-content: center;
   }
+  .bannerSet {
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 9px 16px;
+  }
+  .bannerSet + .bannerSet {
+    display: none;
+  }
   .bannerItem {
     white-space: normal;
     text-align: center;
     line-height: 1.4;
-    padding: 9px 16px;
+    padding: 0;
   }
-  .bannerItem + .bannerItem {
-    display: none;
+  .bannerItem::after {
+    padding: 0 12px;
+  }
+  .bannerItem:last-child::after {
+    content: none;
   }
 }
 
