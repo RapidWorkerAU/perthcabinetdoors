@@ -7,7 +7,7 @@
 // shown as words, never as markup.
 
 import { useEffect, useRef, useState } from "react";
-import { activeBannerMessages, activeMessage, leadTimeDays, leadTimeDaysForLines, leadTimeWords } from "@/lib/pcd-site-settings";
+import { activeBannerMessages, activeMessage, activePopup, leadTimeDays, leadTimeDaysForLines, leadTimeWords } from "@/lib/pcd-site-settings";
 import { useSiteSettings } from "./SiteSettingsProvider";
 import styles from "./site-messages.module.css";
 
@@ -87,6 +87,85 @@ export function SiteNotice({ placement, label = "Please note" }) {
     <div className={styles.notice} role="note">
       <strong>{label}</strong>
       {text}
+    </div>
+  );
+}
+
+// Remembered for the visit only: a new visit shows it again, by choice.
+const POPUP_SEEN_KEY = "pcd-site-popup-seen";
+
+/**
+ * The popup over the Contact and Request a Quote pages, while it has words and
+ * today is inside its dates. Acknowledged once a visit: the browser tab
+ * remembers it until it closes, and an edited popup shows again straight away.
+ *
+ * Opened after the page has drawn, never on the server, because whether it has
+ * been seen lives only in the browser.
+ */
+export function SitePopup() {
+  const popup = activePopup(useSiteSettings());
+  const buttonRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const fingerprint = popup ? `${popup.heading}\n${popup.text}` : "";
+
+  useEffect(() => {
+    if (!fingerprint) return;
+    let seen = "";
+    try {
+      seen = window.sessionStorage.getItem(POPUP_SEEN_KEY) || "";
+    } catch {}
+    if (seen !== fingerprint) setOpen(true);
+  }, [fingerprint]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    buttonRef.current?.focus();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
+  if (!popup || !open) return null;
+
+  function acknowledge() {
+    try {
+      window.sessionStorage.setItem(POPUP_SEEN_KEY, fingerprint);
+    } catch {}
+    setOpen(false);
+  }
+
+  const paragraphs = popup.text.split(/\n+/).filter(Boolean);
+  return (
+    <div className={styles.popupBackdrop}>
+      <div
+        className={styles.popup}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={popup.heading ? "site-popup-heading" : undefined}
+        aria-describedby={paragraphs.length ? "site-popup-text" : undefined}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") acknowledge();
+          // The one button is the only stop, so Tab stays inside the popup.
+          if (event.key === "Tab") {
+            event.preventDefault();
+            buttonRef.current?.focus();
+          }
+        }}
+      >
+        {popup.heading ? <h2 id="site-popup-heading">{popup.heading}</h2> : null}
+        {paragraphs.length ? (
+          <div id="site-popup-text">
+            {paragraphs.map((line, index) => (
+              <p key={index}>{line}</p>
+            ))}
+          </div>
+        ) : null}
+        <button ref={buttonRef} type="button" className={styles.popupButton} onClick={acknowledge}>
+          Acknowledge
+        </button>
+      </div>
     </div>
   );
 }

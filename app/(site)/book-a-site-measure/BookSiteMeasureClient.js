@@ -30,6 +30,7 @@ import styles from "./book-site-measure.module.css";
 import CancellationPolicyBody from "./CancellationPolicyBody";
 import { CANCELLATION_POLICY_PATH } from "../../../lib/pcd-cancellation-policy";
 import { SALES_EMAIL } from "../../../lib/pcd-business-identity";
+import { DEFAULT_BOOKING_SETTINGS } from "../../../lib/pcd-booking-settings";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -67,6 +68,21 @@ function addDays(day, count) {
 
 const emptyForm = { name: "", email: "", phone: "", street: "", suburb: "", postcode: "", notes: "" };
 
+const EMAIL_RE = /([^\s@]+@[^\s@]+\.[a-z]{2,})/gi;
+
+// The closed wording typed in Settings. One paragraph per line, and any email
+// address in it becomes a link, so nobody has to write HTML to get one.
+function ClosedMessage({ text }) {
+  const paragraphs = String(text || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return paragraphs.map((line, index) => (
+    <p key={index} style={{ margin: 0 }}>
+      {line.split(EMAIL_RE).map((part, i) =>
+        i % 2 === 1 ? <a key={i} href={`mailto:${part}`}>{part}</a> : part
+      )}
+    </p>
+  ));
+}
+
 export default function BookSiteMeasureClient() {
   const [state, setState] = useState({ loading: true, live: false, error: "" });
   const [availability, setAvailability] = useState(null);
@@ -92,7 +108,13 @@ export default function BookSiteMeasureClient() {
           return;
         }
         setAvailability(payload.live ? payload : null);
-        setState({ loading: false, live: Boolean(payload.live), error: "" });
+        setState({
+          loading: false,
+          live: Boolean(payload.live),
+          error: "",
+          closedHeading: payload.closedHeading,
+          closedMessage: payload.closedMessage,
+        });
       } catch (error) {
         if (!cancelled) setState({ loading: false, live: false, error: error?.message || "We could not load our diary." });
       }
@@ -235,12 +257,9 @@ export default function BookSiteMeasureClient() {
   if (!state.live) {
     return (
       <div className={styles.card}>
-        <div className={styles.cardHead}>Booking is closed at the moment</div>
+        <div className={styles.cardHead}>{state.closedHeading || DEFAULT_BOOKING_SETTINGS.closed_heading}</div>
         <div className={styles.cardBody}>
-          <p style={{ margin: 0 }}>
-            We are not taking site measure bookings online right now. Email{" "}
-            <a href={`mailto:${SALES_EMAIL}`}>{SALES_EMAIL}</a> and we will find you a day.
-          </p>
+          <ClosedMessage text={state.closedMessage || DEFAULT_BOOKING_SETTINGS.closed_message} />
           {state.error ? <p className={styles.error}>{state.error}</p> : null}
         </div>
       </div>

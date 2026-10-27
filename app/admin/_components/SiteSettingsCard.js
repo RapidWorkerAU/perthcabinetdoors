@@ -15,9 +15,13 @@ import {
   SITE_BANNER_MAX_MESSAGES,
   SITE_MESSAGE_MAX,
   SITE_MESSAGE_PLACEMENTS,
+  SITE_POPUP_HEADING_MAX,
+  SITE_POPUP_PAGES,
+  SITE_POPUP_TEXT_MAX,
   leadTimeRangeWords,
   messageStatus,
   normalizeSiteSettings,
+  popupStatus,
 } from "../../../lib/pcd-site-settings";
 
 const tw = {
@@ -106,6 +110,11 @@ export default function SiteSettingsCard() {
     setBannerMessages((list) => list.map((entry, i) => (i === index ? { ...entry, [field]: value } : entry)));
   const addBannerMessage = () => setBannerMessages((list) => [...list, { text: "", starts_on: "", ends_on: "" }]);
   const removeBannerMessage = (index) => setBannerMessages((list) => list.filter((_, i) => i !== index));
+
+  function setPopupField(field, value) {
+    setSettings((current) => ({ ...current, popup: { ...current.popup, [field]: value } }));
+    setMessage("");
+  }
 
   async function save() {
     setBusy(true);
@@ -359,6 +368,73 @@ export default function SiteSettingsCard() {
           );
         })}
       </div>
+
+      {/* THE POPUP, on Contact and Request a Quote. */}
+      {(() => {
+        const popup = settings.popup || { heading: "", text: "", starts_on: "", ends_on: "" };
+        const [statusLabel, statusClass] = STATUS[popupStatus(popup)];
+        return (
+          <div className={tw.card}>
+            <div className={tw.head}>
+              <span>Popup</span>
+              <span className={statusClass}>{statusLabel}</span>
+            </div>
+            <div className={tw.body}>
+              <p className="m-0 mb-3 max-w-[640px] text-[12px] leading-[1.5] text-[#5a5a52]">
+                Opens over the {SITE_POPUP_PAGES.join(" and ")} pages with an Acknowledge button. Each visitor sees it
+                once a visit, and again on their next visit. Leave both boxes empty to turn it off. Dates run in Perth
+                time, from the start of the first day to the end of the last.
+              </p>
+              <label className="mb-3 block">
+                <span className={tw.label}>Heading</span>
+                <input
+                  className={tw.date + " mt-1 w-full max-w-[560px]"}
+                  type="text"
+                  maxLength={SITE_POPUP_HEADING_MAX}
+                  value={popup.heading}
+                  placeholder="Empty, so no heading."
+                  onChange={(event) => setPopupField("heading", event.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className={tw.label}>Message</span>
+                <textarea
+                  className={tw.area + " mt-1 min-h-[110px]"}
+                  maxLength={SITE_POPUP_TEXT_MAX}
+                  value={popup.text}
+                  placeholder="Empty, so no message. Each new line is a new paragraph."
+                  onChange={(event) => setPopupField("text", event.target.value)}
+                />
+              </label>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] text-[#5a5a52]">
+                <label className="flex items-center gap-2">
+                  From
+                  <input className={tw.date} type="date" value={popup.starts_on || ""} onChange={(event) => setPopupField("starts_on", event.target.value)} />
+                </label>
+                <label className="flex items-center gap-2">
+                  Until
+                  <input className={tw.date} type="date" value={popup.ends_on || ""} onChange={(event) => setPopupField("ends_on", event.target.value)} />
+                </label>
+                <span className="text-[11px] text-[#8b8a81]">
+                  {String(popup.text || "").length}/{SITE_POPUP_TEXT_MAX}
+                </span>
+                {popup.heading || popup.text || popup.starts_on || popup.ends_on ? (
+                  <button
+                    type="button"
+                    className={tw.btn}
+                    onClick={() => set({ popup: { heading: "", text: "", starts_on: "", ends_on: "" } })}
+                  >
+                    Clear
+                  </button>
+                ) : null}
+                <a className={tw.btn + " inline-flex items-center"} href="/contact" target="_blank" rel="noreferrer">
+                  Preview on Contact
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" className={tw.primary} disabled={busy || !changed} onClick={save}>

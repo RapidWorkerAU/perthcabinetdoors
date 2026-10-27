@@ -22,11 +22,16 @@ export async function GET() {
     const settings = await getBookingSettings(supabase);
     const today = perthToday();
 
-    // A page that is not live gets the flag and nothing else. No availability,
-    // no fee, no days: there is nothing to show and nothing worth leaking about
-    // a page that has not been turned on.
+    // A page that is not live gets the flag and the closed wording from
+    // Settings, nothing else. No availability, no fee, no days: there is nothing
+    // to show and nothing worth leaking about a page that has not been turned on.
     if (!settings.is_live) {
-      return Response.json({ ok: true, live: false });
+      return Response.json({
+        ok: true,
+        live: false,
+        closedHeading: settings.closed_heading,
+        closedMessage: settings.closed_message,
+      });
     }
 
     const { earliest, latest } = bookableRange(settings, today);

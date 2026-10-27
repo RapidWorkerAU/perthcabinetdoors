@@ -2,7 +2,7 @@ import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicCrossLink from "@/components/public/PublicCrossLink";
 import PublicFooter from "@/components/public/PublicFooter";
-import { SiteNotice } from "@/components/public/SiteMessages";
+import { SiteNotice, SitePopup } from "@/components/public/SiteMessages";
 import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 import { evenColumns } from "@/lib/pcd-grid-columns";
 import PublicSiteNav from "../PublicSiteNav";
@@ -109,6 +109,8 @@ export default async function RequestQuotePage() {
 
         <PublicFooter className={styles.siteFooter} />
       </main>
+      {/* The popup from Settings, while it is in its dates. */}
+      <SitePopup />
     </>
   );
 }

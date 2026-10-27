@@ -162,6 +162,37 @@ export default function BookingSettingsCard() {
       </div>
 
       <div className={tw.card}>
+        <div className={tw.head}>When bookings are closed</div>
+        <div className="grid gap-3 px-4 py-[14px]">
+          <label className="grid gap-1.5 text-[12px] font-semibold text-[#5a5a52]" htmlFor="booking-closed-heading">
+            Heading
+            <input
+              id="booking-closed-heading"
+              className={`${tw.time} w-full font-sans`}
+              type="text"
+              maxLength={120}
+              value={settings.closed_heading}
+              onChange={(event) => update({ closed_heading: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1.5 text-[12px] font-semibold text-[#5a5a52]" htmlFor="booking-closed-message">
+            Message
+            <textarea
+              id="booking-closed-message"
+              className={tw.textarea}
+              maxLength={2000}
+              value={settings.closed_message}
+              onChange={(event) => update({ closed_message: event.target.value })}
+            />
+          </label>
+          <p className="m-0 text-[11px] leading-snug text-[#8b8a81]">
+            Shown on the booking page while it is closed to the public. Each new line is a new paragraph, and an
+            email address becomes a link. Clear a box and save to go back to the standard wording.
+          </p>
+        </div>
+      </div>
+
+      <div className={tw.card}>
         <div className={tw.head}>
           <span>Days we take bookings</span>
         </div>

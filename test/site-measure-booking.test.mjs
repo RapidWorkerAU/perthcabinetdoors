@@ -135,8 +135,18 @@ test("the customer is never offered a time, only a block", () => {
 
 // ── what crosses to the browser ─────────────────────────────────────────────
 
-test("a page that is not live is told that and nothing else", () => {
-  assert.match(AVAIL_ROUTE, /if \(!settings\.is_live\) \{\s*\n\s*return Response\.json\(\{ ok: true, live: false \}\);/);
+test("a page that is not live is told that and the closed wording, nothing else", () => {
+  assert.match(
+    AVAIL_ROUTE,
+    /if \(!settings\.is_live\) \{\s*return Response\.json\(\{\s*ok: true,\s*live: false,\s*closedHeading: settings\.closed_heading,\s*closedMessage: settings\.closed_message,\s*\}\);/
+  );
+});
+
+test("a blank closed message refills with the standard wording", () => {
+  const settings = normalizeBookingSettings({ closed_heading: "  ", closed_message: "" });
+  assert.equal(settings.closed_heading, DEFAULT_BOOKING_SETTINGS.closed_heading);
+  assert.equal(settings.closed_message, DEFAULT_BOOKING_SETTINGS.closed_message);
+  assert.equal(normalizeBookingSettings({ closed_message: " Back in May. " }).closed_message, "Back in May.");
 });
 
 test("the postcode list never reaches the browser", () => {

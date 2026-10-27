@@ -262,3 +262,32 @@ test("removing every banner message hides the banner, and the list is capped", (
   const many = Array.from({ length: SITE_BANNER_MAX_MESSAGES + 3 }, (_, i) => ({ text: `Message ${i}` }));
   assert.equal(normalizeSiteSettings({ banner_messages: many }).banner_messages.length, SITE_BANNER_MAX_MESSAGES);
 });
+
+// ── The popup on Contact and Request a Quote ────────────────────────────────
+
+test("the popup keeps its paragraphs, swaps backwards dates, and shows only inside them", async () => {
+  const { activePopup, popupStatus } = await import("../lib/pcd-site-settings.js");
+  const now = new Date("2026-10-22T02:00:00Z"); // 22 October in Perth
+  const clean = normalizeSiteSettings({
+    popup: { heading: "  Full for 2026 ", text: "First line\r\n\r\n\r\nSecond   line ", starts_on: "2026-12-31", ends_on: "2026-10-20" },
+  });
+  assert.deepEqual(clean.popup, {
+    heading: "Full for 2026",
+    text: "First line\n\nSecond line",
+    starts_on: "2026-10-20",
+    ends_on: "2026-12-31",
+  });
+  assert.equal(activePopup(clean, now).heading, "Full for 2026");
+  assert.equal(popupStatus({ heading: "Soon", starts_on: "2026-11-01" }, now), "scheduled");
+  assert.equal(popupStatus({ text: "Over", ends_on: "2026-10-21" }, now), "ended");
+  assert.equal(popupStatus({ heading: "", text: "  " }, now), "off");
+  assert.equal(activePopup(normalizeSiteSettings({}), now), null, "an old row without a popup shows none");
+});
+
+test("the popup is on Contact and Request a Quote and nowhere else", () => {
+  for (const page of ["app/(site)/contact/page.js", "app/(site)/request-quote/page.js"]) {
+    assert.match(read(page), /<SitePopup \/>/, page);
+  }
+  assert.doesNotMatch(read("app/(site)/layout.js"), /SitePopup/);
+  assert.doesNotMatch(read("app/(site)/book-a-site-measure/page.js"), /SitePopup/);
+});

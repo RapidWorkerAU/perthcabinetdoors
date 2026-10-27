@@ -1,6 +1,7 @@
 import { pageMetadata } from "@/lib/pcd-seo";
 import Link from "next/link";
 import PublicFooter from "@/components/public/PublicFooter";
+import { SitePopup } from "@/components/public/SiteMessages";
 import { readPublicSiteSettings } from "@/lib/pcd-site-settings-store";
 import PublicSiteNav from "../PublicSiteNav";
 import ContactFormClient from "./ContactFormClient";
@@ -87,6 +88,8 @@ export default async function ContactPage() {
 
         <PublicFooter className={styles.siteFooter} />
       </main>
+      {/* The popup from Settings, while it is in its dates. */}
+      <SitePopup />
     </>
   );
 }
