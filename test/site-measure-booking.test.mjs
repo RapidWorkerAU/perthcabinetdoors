@@ -14,6 +14,8 @@ import {
   DEFAULT_BOOKING_SETTINGS,
   availabilityCalendar,
   bookableRange,
+  closedRuns,
+  daysFromTo,
   dayState,
   normalizeBookingSettings,
   placesLeft,
@@ -377,4 +379,33 @@ test("the settings are one row and the window is snapshotted onto the booking", 
 
 test("a Stripe session settles exactly one booking", () => {
   assert.match(MIGRATION, /create unique index if not exists idx_pcd_site_measure_bookings_session/);
+});
+
+// ── closing a stretch of days ───────────────────────────────────────────────
+
+test("a range of closed days is stored as the days it covers and read back as one run", () => {
+  const days = daysFromTo("2026-12-24", "2026-12-27");
+  assert.deepEqual(days, ["2026-12-24", "2026-12-25", "2026-12-26", "2026-12-27"]);
+  assert.deepEqual(daysFromTo("2026-12-27", "2026-12-24"), [], "backwards is nothing");
+  assert.deepEqual(closedRuns([...days, "2027-01-26"]), [
+    { from: "2026-12-24", to: "2026-12-27" },
+    { from: "2027-01-26", to: "2027-01-26" },
+  ]);
+});
+
+test("closing the rest of the year moves the whole window to when we reopen", () => {
+  const today = "2026-11-10";
+  const settings = live({ notice_days: 3, horizon_weeks: 8, closed_dates: daysFromTo("2026-11-10", "2026-12-31") });
+  const { earliest, latest } = bookableRange(settings, today);
+  assert.equal(earliest, "2027-01-01");
+  assert.equal(latest, "2027-02-26", "8 weeks counted from the reopening, not from today");
+
+  const view = publicBookingView(settings, { today });
+  assert.equal(view.firstFree, "2027-01-05", "the first Tuesday back");
+  assert.ok(view.days.every((d) => d.day >= "2027-01-01"));
+});
+
+test("a closed day in the middle of the window does not move it", () => {
+  const settings = live({ notice_days: 3, horizon_weeks: 1, closed_dates: ["2026-09-23"] });
+  assert.deepEqual(bookableRange(settings, TODAY), { earliest: "2026-09-22", latest: "2026-09-26" });
 });

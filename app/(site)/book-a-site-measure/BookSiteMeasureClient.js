@@ -31,6 +31,16 @@ import CancellationPolicyBody from "./CancellationPolicyBody";
 import { CANCELLATION_POLICY_PATH } from "../../../lib/pcd-cancellation-policy";
 import { SALES_EMAIL } from "../../../lib/pcd-business-identity";
 import { DEFAULT_BOOKING_SETTINGS } from "../../../lib/pcd-booking-settings";
+import {
+  JOB_TYPES,
+  MAX_PER_ROOM,
+  isJobType,
+  jobTypeLabel,
+  normalizeMeasureRooms,
+  roomCountWords,
+  roomsWords,
+} from "../../../lib/pcd-site-measure-scope";
+import { ROOM_AREAS } from "../../../lib/pcd-line-details";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -66,7 +76,10 @@ function addDays(day, count) {
   return date.toISOString().slice(0, 10);
 }
 
-const emptyForm = { name: "", email: "", phone: "", street: "", suburb: "", postcode: "", notes: "" };
+const emptyForm = {
+  name: "", email: "", phone: "", street: "", suburb: "", postcode: "", notes: "",
+  rooms: {}, jobType: "",
+};
 
 const EMAIL_RE = /([^\s@]+@[^\s@]+\.[a-z]{2,})/gi;
 
@@ -90,6 +103,7 @@ export default function BookSiteMeasureClient() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(emptyForm);
   const [touched, setTouched] = useState({});
+  const [scopeTouched, setScopeTouched] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -173,6 +187,9 @@ export default function BookSiteMeasureClient() {
   }, [availability, byDay]);
 
   const chosen = selected ? byDay.get(selected) : null;
+  // Said in words above the strip, so a diary that is shut until January does
+  // not look like a diary with nothing in it.
+  const nextFree = availability?.firstFree ? byDay.get(availability.firstFree) : null;
   const fee = availability?.fee || 0;
   const confirmHours = availability?.confirmHours || 48;
 
@@ -193,10 +210,46 @@ export default function BookSiteMeasureClient() {
 
   const detailsComplete = Object.keys(detailErrors).length === 0;
 
-  function goToDetails() {
+  // WHAT WE ARE MEASURING. Rooms are { "Bathroom": 2 } while they pick, and
+  // become the [{ room, count }] list the route and the emails read. Ordered
+  // as Settings > Lists has them, not in the order they were tapped.
+  const roomOptions = availability?.rooms?.length ? availability.rooms : ROOM_AREAS;
+  const pickedRooms = useMemo(
+    () => normalizeMeasureRooms(
+      Object.entries(form.rooms).map(([room, count]) => ({ room, count })),
+      roomOptions
+    ),
+    [form.rooms, roomOptions]
+  );
+  const scopeComplete = pickedRooms.length > 0 && isJobType(form.jobType);
+
+  function setRoomCount(room, count) {
+    setForm((current) => {
+      const rooms = { ...current.rooms };
+      if (count < 1) delete rooms[room];
+      else rooms[room] = Math.min(MAX_PER_ROOM, count);
+      return { ...current, rooms };
+    });
+  }
+
+  function goToScope() {
     if (!selected) return;
     setMessage("");
     setStep(2);
+  }
+
+  function goToDetails() {
+    setScopeTouched(true);
+    if (!scopeComplete) {
+      setMessage(
+        !pickedRooms.length
+          ? "Pick at least one room, so we know how long to allow."
+          : "Tell us what kind of job it is."
+      );
+      return;
+    }
+    setMessage("");
+    setStep(3);
   }
 
   function goToPayment() {
@@ -206,7 +259,7 @@ export default function BookSiteMeasureClient() {
       return;
     }
     setMessage("");
-    setStep(3);
+    setStep(4);
   }
 
   async function pay() {
@@ -217,7 +270,7 @@ export default function BookSiteMeasureClient() {
       const response = await fetch("/api/public/site-measure/book", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ day: selected, ...form }),
+        body: JSON.stringify({ day: selected, ...form, rooms: pickedRooms }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -232,7 +285,7 @@ export default function BookSiteMeasureClient() {
           const next = await refreshed.json();
           if (next?.ok && next.live) setAvailability(next);
         }
-        if (payload.field === "postcode") setStep(2);
+        if (payload.field === "postcode") setStep(3);
         setBusy(false);
         return;
       }
@@ -266,7 +319,7 @@ export default function BookSiteMeasureClient() {
     );
   }
 
-  const stepNames = ["Pick a day", "Your details", "Pay and confirm"];
+  const stepNames = ["Pick a day", "What we are measuring", "Your details", "Pay and confirm"];
 
   return (
     <>
@@ -274,7 +327,11 @@ export default function BookSiteMeasureClient() {
         {stepNames.map((name, index) => {
           const number = index + 1;
           const done = number < step;
-          const canGo = done || (number === 2 && selected) || (number === 3 && selected && detailsComplete);
+          const canGo =
+            done ||
+            (number === 2 && selected) ||
+            (number === 3 && selected && scopeComplete) ||
+            (number === 4 && selected && scopeComplete && detailsComplete);
           return (
             <button
               key={name}
@@ -302,6 +359,25 @@ export default function BookSiteMeasureClient() {
           <div className={styles.cardBody}>
             {weeks.length ? (
               <>
+                {nextFree ? (
+                  <div className={styles.nextFree}>
+                    <span>Next available day: <b>{nextFree.label}</b></span>
+                    {selected !== nextFree.day ? (
+                      <button
+                        type="button"
+                        className={`${styles.button} ${styles.ghost}`}
+                        onClick={() => {
+                          setSelected(nextFree.day);
+                          document
+                            .querySelector(`[data-day="${nextFree.day}"]`)
+                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }}
+                      >
+                        Select this day
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className={styles.strip}>
                   {weeks.map((week) => (
                     <div className={styles.week} key={week.weekOf}>
@@ -331,6 +407,7 @@ export default function BookSiteMeasureClient() {
                             <button
                               type="button"
                               key={cell.day}
+                              data-day={cell.day}
                               className={className}
                               aria-pressed={isSelected}
                               aria-label={`${cell.label}, ${cell.left} place${cell.left === 1 ? "" : "s"} left`}
@@ -362,7 +439,7 @@ export default function BookSiteMeasureClient() {
                 ) : null}
 
                 <div className={styles.actions}>
-                  <button type="button" className={styles.button} disabled={!selected} onClick={goToDetails}>
+                  <button type="button" className={styles.button} disabled={!selected} onClick={goToScope}>
                     Continue
                   </button>
                   {!selected ? <span className={styles.tiny}>Pick a day to continue.</span> : null}
@@ -379,6 +456,95 @@ export default function BookSiteMeasureClient() {
       ) : null}
 
       {step === 2 ? (
+        <section className={styles.card}>
+          <div className={styles.cardHead}>What would you like measured</div>
+          <div className={styles.cardBody}>
+            <fieldset className={`${styles.scopeGroup} ${scopeTouched && !pickedRooms.length ? styles.scopeBad : ""}`}>
+              <legend>Which rooms, and how many of each</legend>
+              <div className={styles.rooms}>
+                {roomOptions.map((room) => {
+                  const count = Number(form.rooms[room]) || 0;
+                  if (!count) {
+                    return (
+                      <button
+                        type="button" key={room} className={styles.room}
+                        onClick={() => setRoomCount(room, 1)}
+                      >
+                        <span>{room}</span>
+                        <span className={styles.roomAdd} aria-hidden="true">+</span>
+                      </button>
+                    );
+                  }
+                  return (
+                    <div key={room} className={`${styles.room} ${styles.roomOn}`}>
+                      <span>{room}</span>
+                      <span className={styles.stepper}>
+                        <button
+                          type="button" aria-label={`One fewer ${room}`}
+                          onClick={() => setRoomCount(room, count - 1)}
+                        >
+                          &minus;
+                        </button>
+                        <b aria-live="polite">{count}</b>
+                        <button
+                          type="button" aria-label={`One more ${room}`}
+                          disabled={count >= MAX_PER_ROOM}
+                          onClick={() => setRoomCount(room, count + 1)}
+                        >
+                          +
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className={styles.tiny}>
+                {pickedRooms.length
+                  ? `${roomCountWords(pickedRooms)}: ${roomsWords(pickedRooms)}`
+                  : "Tap each room we are measuring. Two bathrooms? Tap Bathroom, then +."}
+              </p>
+            </fieldset>
+
+            <fieldset className={`${styles.scopeGroup} ${scopeTouched && !isJobType(form.jobType) ? styles.scopeBad : ""}`}>
+              <legend>What kind of job is it</legend>
+              <div className={styles.jobTypes}>
+                {JOB_TYPES.map((type) => (
+                  <label
+                    key={type.key}
+                    className={`${styles.jobType} ${form.jobType === type.key ? styles.jobTypeOn : ""}`}
+                  >
+                    <input
+                      type="radio" name="sm-job-type" value={type.key}
+                      checked={form.jobType === type.key}
+                      onChange={() => setField("jobType", type.key)}
+                    />
+                    <span>{type.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <label className={styles.field}>
+              <span>Anything else we should know</span>
+              <textarea
+                id="sm-notes"
+                placeholder="What you are planning, which parts of each room, and anything about getting in: parking, access, a dog."
+                value={form.notes}
+                onChange={(e) => setField("notes", e.target.value)}
+              />
+            </label>
+
+            {message ? <p className={styles.error}>{message}</p> : null}
+
+            <div className={styles.actions}>
+              <button type="button" className={styles.button} onClick={goToDetails}>Continue</button>
+              <button type="button" className={`${styles.button} ${styles.ghost}`} onClick={() => setStep(1)}>Back</button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {step === 3 ? (
         <section className={styles.card}>
           <div className={styles.cardHead}>Where are we coming, and who do we ask for</div>
           <div className={styles.cardBody}>
@@ -449,26 +615,17 @@ export default function BookSiteMeasureClient() {
               This is the address we measure at. We check it is in the area we cover before you pay.
             </p>
 
-            <label className={styles.field}>
-              <span>Anything we should know</span>
-              <textarea
-                id="sm-notes" placeholder="Parking, access, a dog, or what you are thinking of doing."
-                value={form.notes}
-                onChange={(e) => setField("notes", e.target.value)}
-              />
-            </label>
-
             {message ? <p className={styles.error}>{message}</p> : null}
 
             <div className={styles.actions}>
               <button type="button" className={styles.button} onClick={goToPayment}>Continue to payment</button>
-              <button type="button" className={`${styles.button} ${styles.ghost}`} onClick={() => setStep(1)}>Back</button>
+              <button type="button" className={`${styles.button} ${styles.ghost}`} onClick={() => setStep(2)}>Back</button>
             </div>
           </div>
         </section>
       ) : null}
 
-      {step === 3 ? (
+      {step === 4 ? (
         <section className={styles.card}>
           <div className={styles.cardHead}>Confirm and pay</div>
           <div className={styles.cardBody}>
@@ -494,6 +651,11 @@ export default function BookSiteMeasureClient() {
               <div className={styles.summaryRow}><span>Site measure</span><b>{chosen?.label || ""}</b></div>
               <div className={styles.summaryRow}><span>Arriving between</span><b>{chosen?.windowWords || ""}</b></div>
               <div className={styles.summaryRow}><span>Exact time confirmed</span><b>{confirmHours} hours before</b></div>
+              <div className={styles.summaryRow}>
+                <span>Measuring</span>
+                <b>{roomsWords(pickedRooms)} ({roomCountWords(pickedRooms)})</b>
+              </div>
+              <div className={styles.summaryRow}><span>Job</span><b>{jobTypeLabel(form.jobType)}</b></div>
               <div className={styles.summaryRow}>
                 <span>Address</span>
                 <b>{[form.street, form.suburb, form.postcode].filter(Boolean).join(", ")}</b>
@@ -523,7 +685,7 @@ export default function BookSiteMeasureClient() {
               <button type="button" className={styles.button} disabled={busy || !acknowledged} onClick={pay}>
                 {busy ? "Opening payment..." : `Pay ${money(fee)} and book this day`}
               </button>
-              <button type="button" className={`${styles.button} ${styles.ghost}`} disabled={busy} onClick={() => setStep(2)}>
+              <button type="button" className={`${styles.button} ${styles.ghost}`} disabled={busy} onClick={() => setStep(3)}>
                 Back
               </button>
             </div>

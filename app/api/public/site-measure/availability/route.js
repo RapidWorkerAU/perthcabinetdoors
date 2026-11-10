@@ -10,7 +10,7 @@
 
 import { createSupabaseAdminClient } from "../../../../../lib/supabase/admin";
 import { bookableRange, publicBookingView } from "../../../../../lib/pcd-booking-settings";
-import { getBookingSettings, usedByDay } from "../../../../../lib/pcd-booking-store";
+import { getBookingSettings, measureRoomOptions, usedByDay } from "../../../../../lib/pcd-booking-store";
 import { perthToday } from "../../../../../lib/pcd-calendar";
 import { cancellationRules, cancellationSummary } from "../../../../../lib/pcd-cancellation-policy";
 
@@ -37,11 +37,15 @@ export async function GET() {
     const { earliest, latest } = bookableRange(settings, today);
     const used = await usedByDay(supabase, { from: earliest, to: latest });
     const view = publicBookingView(settings, { today, usedByDay: used });
+    const rooms = await measureRoomOptions(supabase);
 
     return Response.json({
       ok: true,
       live: true,
       ...view,
+      // The rooms the form offers, from Settings > Lists. The booking route
+      // checks against the same list.
+      rooms,
       // The cancellation rule travels with the availability, so the page never
       // has to know the confirm window means two things. See
       // lib/pcd-cancellation-policy.js.

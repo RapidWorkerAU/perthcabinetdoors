@@ -18,7 +18,15 @@
 // lib/pcd-cancellation-policy.js.
 
 import { useEffect, useState } from "react";
-import { DAY_LABELS, WEEK_ORDER } from "../../../lib/pcd-booking-settings";
+import { DAY_LABELS, WEEK_ORDER, closedRuns, daysFromTo } from "../../../lib/pcd-booking-settings";
+
+/** "25 Dec 2026", for the closed day pills. */
+function pillDay(day) {
+  const [y, m, d] = String(day).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-AU", {
+    timeZone: "UTC", day: "numeric", month: "short", year: "numeric",
+  });
+}
 
 const tw = {
   card: "overflow-hidden rounded-[8px] border border-[#dbd8cc] bg-white",
@@ -49,7 +57,11 @@ export default function BookingSettingsCard() {
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [newClosedDate, setNewClosedDate] = useState("");
+  const [newClosedFrom, setNewClosedFrom] = useState("");
+  const [newClosedTo, setNewClosedTo] = useState("");
+  // A To left blank closes the From day alone. Capped at a year so a typo in
+  // the year cannot write a decade of dates.
+  const newClosedDays = newClosedFrom ? daysFromTo(newClosedFrom, newClosedTo || newClosedFrom, { max: 366 }) : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -308,7 +320,7 @@ export default function BookingSettingsCard() {
           <label className={tw.row} htmlFor="booking-horizon">
             <span className="min-w-0">
               <span className={tw.rowLabel}>How far ahead</span>
-              <span className={tw.rowHint}>The last day the website will show, so nobody books next March.</span>
+              <span className={tw.rowHint}>The last day the website will show, so nobody books next March. While we are closed, this counts from the day we reopen.</span>
             </span>
             <span className="flex flex-shrink-0 items-center gap-1">
               <input
@@ -346,44 +358,67 @@ export default function BookingSettingsCard() {
         <div className="grid gap-2 px-4 py-[14px]">
           {settings.closed_dates.length ? (
             <div className="flex flex-wrap gap-1.5">
-              {settings.closed_dates.map((date) => (
-                <span key={date} className={tw.pill}>
-                  {date}
-                  <button
-                    type="button"
-                    className="text-[13px] leading-none text-[#2d5e28] hover:text-[#111b13]"
-                    aria-label={`Open ${date} again`}
-                    onClick={() => update({ closed_dates: settings.closed_dates.filter((d) => d !== date) })}
-                  >
-                    &times;
-                  </button>
-                </span>
-              ))}
+              {closedRuns(settings.closed_dates).map((run) => {
+                const words = run.from === run.to ? pillDay(run.from) : `${pillDay(run.from)} to ${pillDay(run.to)}`;
+                const inRun = new Set(daysFromTo(run.from, run.to));
+                return (
+                  <span key={run.from} className={tw.pill}>
+                    {words}
+                    <button
+                      type="button"
+                      className="text-[13px] leading-none text-[#2d5e28] hover:text-[#111b13]"
+                      aria-label={`Open ${words} again`}
+                      onClick={() => update({ closed_dates: settings.closed_dates.filter((d) => !inRun.has(d)) })}
+                    >
+                      &times;
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <p className="m-0 text-[12px] text-[#8b8a81]">Nothing closed. Public holidays go here.</p>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              id="booking-closed-date"
-              className={`${tw.time} w-[170px] max-w-full`}
-              type="date"
-              aria-label="Add a closed day"
-              value={newClosedDate}
-              onChange={(event) => setNewClosedDate(event.target.value)}
-            />
+            <label className="flex items-center gap-1.5 text-[12px] text-[#5a5a52]" htmlFor="booking-closed-from">
+              From
+              <input
+                id="booking-closed-from"
+                className={`${tw.time} w-[170px] max-w-full`}
+                type="date"
+                value={newClosedFrom}
+                onChange={(event) => setNewClosedFrom(event.target.value)}
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-[12px] text-[#5a5a52]" htmlFor="booking-closed-to">
+              To
+              <input
+                id="booking-closed-to"
+                className={`${tw.time} w-[170px] max-w-full`}
+                type="date"
+                min={newClosedFrom || undefined}
+                value={newClosedTo}
+                onChange={(event) => setNewClosedTo(event.target.value)}
+              />
+            </label>
             <button
               type="button"
               className={tw.btn}
-              disabled={!newClosedDate || settings.closed_dates.includes(newClosedDate)}
+              disabled={!newClosedDays.length}
               onClick={() => {
-                update({ closed_dates: [...settings.closed_dates, newClosedDate].sort() });
-                setNewClosedDate("");
+                update({ closed_dates: [...new Set([...settings.closed_dates, ...newClosedDays])].sort() });
+                setNewClosedFrom("");
+                setNewClosedTo("");
               }}
             >
-              Add closed day
+              {newClosedDays.length > 1 ? `Close ${newClosedDays.length} days` : "Close this day"}
             </button>
           </div>
+          {newClosedFrom && newClosedTo && newClosedTo < newClosedFrom ? (
+            <p className="m-0 text-[12px] text-[#991b1b]">The To date is before the From date.</p>
+          ) : (
+            <p className="m-0 text-[11px] text-[#8b8a81]">Leave To blank to close a single day.</p>
+          )}
         </div>
         <p className={tw.note}>
           A closed day disappears from the website even when its weekday is open. Bookings already taken on it stay

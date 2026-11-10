@@ -631,3 +631,103 @@
     animation: none !important;
   }
 }
+
+/* ── the next free day, so an empty looking diary never reads as no days ──── */
+.nextFree {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+  border: 1px solid var(--green-soft);
+  background: var(--green-panel);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.nextFree span { font-size: 14px; color: #2f4a2b; line-height: 1.5; }
+.nextFree b { color: var(--green); }
+.nextFree .button { font-size: 14px; padding: 8px 16px; }
+
+/* ── what we are measuring ─────────────────────────────────────────────────── */
+.scopeGroup {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+.scopeGroup legend {
+  padding: 0;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.scopeBad legend { color: #991b1b; }
+.scopeBad legend::after { content: " (needed)"; font-weight: 400; }
+
+.rooms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+.room {
+  font: inherit;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+button.room:hover { border-color: var(--green-mid); background: var(--green-panel); }
+.roomAdd { color: var(--green-dark); font-size: 18px; line-height: 1; padding-right: 4px; }
+.roomOn {
+  border-color: var(--green-soft);
+  background: var(--green-panel);
+  cursor: default;
+  font-weight: 600;
+}
+.stepper { display: inline-flex; align-items: center; gap: 2px; }
+.stepper b { min-width: 22px; text-align: center; font-size: 14px; }
+.stepper button {
+  font: inherit;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--green-soft);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--green-dark);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.stepper button:hover { background: var(--green-panel); }
+.stepper button:disabled { opacity: 0.4; cursor: default; }
+
+.jobTypes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.jobType {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.jobType:hover { border-color: var(--green-mid); }
+.jobType input { accent-color: var(--green-dark); margin: 0; }
+.jobTypeOn { border-color: var(--green-soft); background: var(--green-panel); font-weight: 600; }

@@ -24,7 +24,8 @@
 import { createSupabaseAdminClient } from "../../../../../lib/supabase/admin";
 import { createCheckoutSession, returnOrigin } from "../../../../../lib/pcd-stripe";
 import { dayState, postcodeAllowed, windowForDay } from "../../../../../lib/pcd-booking-settings";
-import { getBookingSettings, holdDay, usedByDay } from "../../../../../lib/pcd-booking-store";
+import { getBookingSettings, holdDay, measureRoomOptions, usedByDay } from "../../../../../lib/pcd-booking-store";
+import { isJobType, normalizeMeasureRooms } from "../../../../../lib/pcd-site-measure-scope";
 import { perthToday } from "../../../../../lib/pcd-calendar";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,9 @@ export async function POST(request) {
     const street = text(payload.street);
     const suburb = text(payload.suburb);
     const postcode = text(payload.postcode);
+    // Only rooms on the list the page offered. See lib/pcd-site-measure-scope.js.
+    const rooms = normalizeMeasureRooms(payload.rooms, await measureRoomOptions(supabase));
+    const jobType = text(payload.jobType);
 
     // EVERY FIELD NAMED ON ITS OWN. A single "please fill in the form" makes
     // somebody hunt for what they missed, on a page where the next step is
@@ -63,6 +67,8 @@ export async function POST(request) {
     if (!street) missing.push("a street address");
     if (!suburb) missing.push("a suburb");
     if (!postcode) missing.push("a postcode");
+    if (!rooms.length) missing.push("the rooms you would like measured");
+    if (!isJobType(jobType)) missing.push("what kind of job it is");
     if (missing.length) {
       return Response.json({ ok: false, error: `We still need ${missing.join(", ")}.` }, { status: 400 });
     }
@@ -107,7 +113,9 @@ export async function POST(request) {
       customer: {
         name, email, phone, street, suburb, postcode,
         address: [street, suburb, postcode].filter(Boolean).join(", "),
-        notes: text(payload.notes) || null,
+        notes: text(payload.notes).slice(0, 2000) || null,
+        rooms,
+        jobType,
       },
     });
     if (!held.ok) {
