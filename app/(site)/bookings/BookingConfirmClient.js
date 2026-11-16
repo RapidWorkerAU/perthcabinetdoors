@@ -28,6 +28,12 @@ import styles from "../quotes/quote-public.module.css";
 
 const MOBILE_PATTERN = /^(\+?61|0)[2-478]\d{8}$/;
 
+function money(amount) {
+  return Number(amount || 0).toLocaleString("en-AU", {
+    style: "currency", currency: "AUD", minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+}
+
 async function readJson(response) {
   const text = await response.text();
   try {
@@ -142,6 +148,12 @@ export default function BookingConfirmClient() {
         setMessage(payload.error || "We could not record your answer.");
         return;
       }
+      // Not paid yet, so confirming means paying. The answer is held until the
+      // payment clears. Saving stays on so the button cannot be pressed twice.
+      if (payload.checkoutUrl) {
+        window.location.href = payload.checkoutUrl;
+        return;
+      }
       setDone(payload.answer);
     } catch (thrown) {
       setMessage(thrown?.message || "We could not record your answer.");
@@ -201,6 +213,12 @@ export default function BookingConfirmClient() {
       </div>
     );
   }
+
+  // A site measure booked by phone that has not been paid for. Confirming it
+  // means paying, and after the cutoff it cannot be confirmed here at all.
+  const payment = booking.payment && booking.payment.due ? booking.payment : null;
+  const fee = payment ? money(payment.fee) : "";
+  const cannotConfirm = Boolean(payment && !payment.open);
 
   const wantMobile = booking.needMobile;
   const wantAddress = booking.needAddress;
@@ -279,18 +297,30 @@ export default function BookingConfirmClient() {
         <div className={styles.panelHeader}>Your Answer</div>
         <div className={styles.panelBody}>
           <div className={styles.formStack}>
+            {payment ? (
+              <p className={styles.variationScopeNotice}>
+                <strong>
+                  {cannotConfirm ? "This booking can no longer be confirmed online" : "Not confirmed until paid"}
+                </strong>
+                {cannotConfirm
+                  ? `The ${fee} site measure fee has not been paid, and online payment closed ${payment.closesWords}. Please call us and we will sort it out.`
+                  : `The ${fee} site measure fee has not been paid yet, so this booking is held but not confirmed. Choose yes below to pay and confirm in one step. You can pay online until ${payment.closesWords}. The fee comes off any order you place from the quote we send you afterwards.`}
+              </p>
+            ) : null}
             <label className={styles.publicPaymentAck}>
               <input
                 type="radio"
                 name="booking-answer"
                 checked={choice === "confirm"}
+                disabled={cannotConfirm}
                 onChange={() => {
                   setChoice("confirm");
                   setMessage("");
                 }}
               />
               <span>
-                <strong>Yes, that suits.</strong> We will see you {booking.dayShort}
+                <strong>{payment ? `Yes, that suits. I will pay ${fee} to confirm.` : "Yes, that suits."}</strong>{" "}
+                We will see you {booking.dayShort}
                 {booking.startTime ? ` at ${booking.startTime}` : ""}.
               </span>
             </label>
@@ -339,7 +369,7 @@ export default function BookingConfirmClient() {
                 onClick={submit}
                 disabled={saving}
               >
-                {choice === "decline" ? "Send my answer" : "Confirm appointment"}
+                {choice === "decline" ? "Send my answer" : payment ? `Pay ${fee} and confirm` : "Confirm appointment"}
               </button>
             </div>
 

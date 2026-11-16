@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
 import useIsMobile from '@/hooks/useIsMobile'
 import BookingModal, { KIND_COLOUR, type BookingDraft } from './BookingModal'
+import SiteMeasurePaymentModal from './SiteMeasurePaymentModal'
 import {
   ASKABLE_KINDS,
   addDays,
@@ -211,6 +212,8 @@ export default function CalendarManager() {
   const [bookingOpen, setBooking]   = React.useState(false)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [cancelling, setCancelling] = React.useState<Booking | null>(null)
+  // The site measure whose payment link is being sent.
+  const [paying, setPaying] = React.useState<Booking | null>(null)
   // Which day the phone's month grid is showing underneath. Empty means today,
   // and moving to another month clears it rather than leaving a day selected
   // that is no longer on screen.
@@ -776,6 +779,7 @@ export default function CalendarManager() {
             today={today}
             onEdit={editBooking}
             onCancel={booking => setCancelling(booking)}
+            onSendPaymentLink={booking => setPaying(booking)}
             onBookFor={bookFor}
           />
         </aside>
@@ -822,6 +826,7 @@ export default function CalendarManager() {
           hideHeading
           onEdit={editBooking}
           onCancel={booking => setCancelling(booking)}
+          onSendPaymentLink={booking => setPaying(booking)}
           onBookFor={bookFor}
         />
       </Modal>
@@ -840,6 +845,17 @@ export default function CalendarManager() {
         settings={settings}
         onChange={saveSettings}
       />
+
+      {paying && (
+        <SiteMeasurePaymentModal
+          bookingId={paying.id}
+          onClose={() => setPaying(null)}
+          onSent={async () => {
+            setSelected(null)
+            await load()
+          }}
+        />
+      )}
 
       <ConfirmModal
         open={Boolean(cancelling)}
@@ -1328,7 +1344,7 @@ function SyncLine({ sync }: { sync: Record<string, unknown> | null }) {
 // would drift, and the one nobody looks at on a big monitor would be the one
 // that ended up missing a field.
 function DetailBody({
-  selection, runs, bookings, today, hideHeading = false, onEdit, onCancel, onBookFor,
+  selection, runs, bookings, today, hideHeading = false, onEdit, onCancel, onSendPaymentLink, onBookFor,
 }: {
   selection:    Selection | null
   runs:         Run[]
@@ -1337,6 +1353,7 @@ function DetailBody({
   hideHeading?: boolean
   onEdit:       (booking: Booking) => void
   onCancel:     (booking: Booking) => void
+  onSendPaymentLink: (booking: Booking) => void
   onBookFor:    (run: Run, kind: string) => void
 }) {
   // Nothing selected. Rather than an empty box, the panel answers the question
@@ -1410,6 +1427,14 @@ function DetailBody({
   const fromOutlook = booking.source === 'outlook'
   const unclaimed = isUnclaimed(booking)
   const colour = KIND_COLOUR[booking.kind] || KIND_COLOUR.other
+  // A site measure nobody has paid for yet, still ahead of us. Paid ones, and
+  // ones being paid on the website right now, have nothing to send.
+  const canSendPaymentLink =
+    booking.kind === 'measure'
+    && booking.status !== 'cancelled'
+    && !unclaimed
+    && booking.day >= today
+    && (!booking.measurePayment || booking.measurePayment.awaiting)
 
   return (
     <div className="flex flex-col gap-3">
@@ -1467,6 +1492,9 @@ function DetailBody({
           }
         />
         <Field label="Confirmed" value={<ConfirmValue booking={booking} />} />
+        {booking.kind === 'measure' && booking.measurePayment && (
+          <Field label="Fee" value={<FeeValue payment={booking.measurePayment} />} />
+        )}
       </div>
 
       {booking.syncError && (
@@ -1516,6 +1544,11 @@ function DetailBody({
         <Button size="sm" onClick={() => onEdit(booking)}>
           {unclaimed ? 'Say what it is' : 'Edit'}
         </Button>
+        {canSendPaymentLink && (
+          <Button variant="secondary" size="sm" onClick={() => onSendPaymentLink(booking)}>
+            {booking.measurePayment?.awaiting ? 'Send payment link again' : 'Send payment link'}
+          </Button>
+        )}
         <Button variant="danger" size="sm" onClick={() => onCancel(booking)}>Cancel booking</Button>
       </div>
     </div>
@@ -1863,3 +1896,37 @@ function MobileCalendar({
   )
 }
 
+
+/**
+ * Whether a site measure has been paid for. "Held, not paid" is the whole point:
+ * nothing is confirmed until the money arrives, and the calendar has to say so.
+ */
+function FeeValue({ payment }: { payment: NonNullable<Booking['measurePayment']> }) {
+  const pill = (text: string, className: string, title?: string) => (
+    <span title={title} className={`rounded-full border px-[6px] py-px text-[10.5px] font-bold ${className}`}>
+      {text}
+    </span>
+  )
+  if (payment.paid) {
+    return pill(
+      payment.source === 'payment_link' ? 'Paid through the link' : 'Paid online',
+      'border-[#cbe0c4] bg-[#f4faf3] text-[#2d5e28]'
+    )
+  }
+  if (payment.awaiting) {
+    const closes = payment.expiresAt
+      ? new Date(payment.expiresAt).toLocaleString('en-AU', {
+          timeZone: 'Australia/Perth', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+        })
+      : ''
+    return (
+      <span className="flex flex-col items-end gap-[2px] text-right">
+        {pill('Held, not paid', 'border-[#e8d68f] bg-[#fffdf0] text-[#8a6d0b]')}
+        <span className="text-[11px] text-[#8b8a81]">
+          {[payment.sentTo ? `Link sent to ${payment.sentTo}` : '', closes ? `closes ${closes}` : ''].filter(Boolean).join(', ')}
+        </span>
+      </span>
+    )
+  }
+  return pill('Being paid on the website', 'border-[#dbd8cc] bg-[#f5f8f4] text-[#5a5a52]')
+}

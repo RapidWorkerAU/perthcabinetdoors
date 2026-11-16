@@ -1,6 +1,11 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
 import { bookingWhen, kindLabel, missingFor } from "../../../../lib/pcd-booking-confirmations";
+import { getBookingSettings } from "../../../../lib/pcd-booking-store";
+import {
+  awaitingBookingForEvent,
+  confirmPayState,
+} from "../../../../lib/pcd-site-measure-payment-link-store";
 
 // WHAT THE CONFIRMATION PAGE IS ALLOWED TO SEE.
 //
@@ -53,6 +58,12 @@ export async function GET(request) {
     const closed =
       row.status === "cancelled" ? "cancelled" : started ? "passed" : "";
 
+    // A SITE MEASURE BOOKED BY PHONE AND NOT PAID YET cannot be confirmed
+    // without paying. The page offers "pay and confirm" until the cutoff in
+    // Settings and nothing after it. See lib/pcd-site-measure-payment-link.js.
+    const awaiting = row.kind === "measure" ? await awaitingBookingForEvent(supabase, row.id) : null;
+    const payment = awaiting ? confirmPayState(awaiting, row, await getBookingSettings(supabase)) : null;
+
     return Response.json({
       ok: true,
       booking: {
@@ -77,6 +88,7 @@ export async function GET(request) {
         answeredBy: row.confirm_answered_by || "",
         notes: row.confirm_notes || "",
         closed,
+        payment,
       },
     });
   } catch (error) {

@@ -76,7 +76,7 @@ import AlfredLineNote, { alfredNoteFor } from "@/components/admin/AlfredLineNote
 import MadeByField from "@/components/admin/MadeByField";
 import { tableStyles } from "@/components/ui/table-styles";
 import { isThermoLine, priceThermoLine, withThermoPrice } from "../../../../lib/pcd-thermo-pricing";
-import { withMadeToOrderBoardPrice } from "../../../../lib/pcd-polytec-board-pricing";
+import { pricePolytecBoardPiece, withMadeToOrderBoardPrice } from "../../../../lib/pcd-polytec-board-pricing";
 import { asksMadeBy, colourOrderTypesIndex, isMadeToOrderBoardLine, madeByOptionsForLine, settleMadeBy } from "../../../../lib/pcd-made-by";
 import { cn } from "@/lib/utils";
 import styles from "../../admin-content.module.css";
@@ -785,16 +785,35 @@ function calculatedUnitCostFromLine(line) {
   return roundMoney(area * rate);
 }
 
-// What the rate card says about a thermolaminate line: what it was charged as,
-// or why it could not be priced. { text, warn }, or null for any other line.
-// A line that cannot be priced says so rather than sitting at $0 looking like a
-// price; warn marks the ones that need somebody to look.
-function thermoCostNoteText(line, card, error) {
-  if (!isThermoLine(line)) return null;
-  if (!card) return { text: error || "Waiting for the thermolaminate rate card to price this line.", warn: true };
-  const result = priceThermoLine(line, card);
-  if (!result.ok) return { text: result.reason, warn: true };
+// What the rate card says about a line it prices: thermolaminate, or decorative
+// board answered supplier made. What it was charged as, or why it could not be
+// priced. { text, warn }, or null for any other line. A line that cannot be
+// priced says so rather than sitting at $0 looking like a price; warn marks the
+// ones that need somebody to look.
+//
+// SUPPLIER MADE DECORATIVE BOARD USED TO HAVE NO NOTE AT ALL, so a scribe under
+// the facia width, which the card prices by hand, simply showed no price (or the
+// price of whatever size the row was before) with nothing saying why.
+function thermoCostNoteText(line, card, error, boardCard = null) {
+  let result;
+  let cardName;
+  if (isThermoLine(line)) {
+    if (!card) return { text: error || "Waiting for the thermolaminate rate card to price this line.", warn: true };
+    result = priceThermoLine(line, card);
+    cardName = "thermolaminate rate card";
+  } else if (isMadeToOrderBoardLine(line)) {
+    if (!boardCard) return { text: "Waiting for the decorative board rate card to price this line.", warn: true };
+    result = pricePolytecBoardPiece(line, boardCard, line.unit_cost_per_sqm_ex_gst);
+    cardName = "decorative board rate card";
+  } else {
+    return null;
+  }
   const cost = Number(line.product_unit_cost_ex_gst) || 0;
+  if (!result.ok) {
+    // Priced by hand, as the card says it must be: nothing wrong.
+    if (cost > 0 && line.unit_cost_mode === "manual") return { text: `Typed cost. ${result.reason}`, warn: false };
+    return { text: `${result.reason} Type the cost in.`, warn: true };
+  }
   const charged = `charged as ${result.chargedHeight} x ${result.chargedWidth}${result.surcharge ? ", full width surcharge" : ""}`;
   if (!(cost > 0)) {
     return { text: `Not priced yet. Rate card says $${result.unitCost.toFixed(2)} (${charged}). Edit the line or press Reprice.`, warn: true };
@@ -802,7 +821,7 @@ function thermoCostNoteText(line, card, error) {
   if (line.unit_cost_mode === "manual") {
     return { text: `Typed cost. Rate card says $${result.unitCost.toFixed(2)}, ${charged}.`, warn: false };
   }
-  return { text: `Priced from the thermolaminate rate card, ${charged}.`, warn: false };
+  return { text: `Priced from the ${cardName}, ${charged}.`, warn: false };
 }
 
 // A small information icon beside a thermolaminate line's unit cost, with the
@@ -813,9 +832,9 @@ function thermoCostNoteText(line, card, error) {
 // Portalled to the body and fixed, for the same reason as LineNoteButton: the
 // table scrolls sideways and its sticky cells paint over anything inside a row.
 const THERMO_INFO_WIDTH = 260;
-function ThermoCostNote({ line, card, error }) {
+function ThermoCostNote({ line, card, error, boardCard = null }) {
   const [anchor, setAnchor] = useState(null);
-  const note = thermoCostNoteText(line, card, error);
+  const note = thermoCostNoteText(line, card, error, boardCard);
   if (!note) return null;
 
   function show(event) {
@@ -886,8 +905,11 @@ function applyCalculatedUnitCost(line, { forceAuto = false, thermoCard = null, b
     next.unit_cost_mode = "auto";
   }
 
-  if (next.unit_cost_mode === "auto" && hasAutoSource && calculated > 0) {
-    next.product_unit_cost_ex_gst = calculated;
+  if (next.unit_cost_mode === "auto" && hasAutoSource) {
+    // No size yet, or not a whole one: blank rather than the price of whatever
+    // size the row was before. The same rule as the rate cards, see
+    // withRateCardResult. A typed price is manual and never reaches here.
+    next.product_unit_cost_ex_gst = calculated > 0 ? calculated : "";
   }
 
   return next;
@@ -3998,7 +4020,7 @@ export default function QuoteEditor({ quoteId }) {
                                     className="h-full min-w-0 flex-1 border-0 bg-transparent px-[5px] text-[10px] font-mono text-[#1a1a18] focus:outline-none"
                                   />
                                 </div>
-                                <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} />
+                                <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} boardCard={boardCard} />
                               </div>
                               {canResetUnitCost && (
                                 <button type="button" onClick={() => resetLineUnitCost(index)} className="mt-[3px] block text-[10px] font-medium text-[#2d5e28] hover:underline">
@@ -4009,7 +4031,7 @@ export default function QuoteEditor({ quoteId }) {
                           ) : (
                             <span className="inline-flex items-center gap-[4px]">
                               <span className="text-[11px] text-[#1a1a18] font-mono leading-[1.25]">{formatMoney(line.product_unit_cost_ex_gst || calculated.product_unit_cost_ex_gst || 0, form.currency)}</span>
-                              <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} />
+                              <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} boardCard={boardCard} />
                             </span>
                           )}
                         </td>
@@ -5857,7 +5879,7 @@ export default function QuoteEditor({ quoteId }) {
                               onChange={e => updateLine(idx, 'product_unit_cost_ex_gst', e.target.value)}
                               className="flex-1 h-full px-3 text-[14px] font-mono text-[#1a1a18] focus:outline-none bg-transparent border-none" />
                           </div>
-                          <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} />
+                          <ThermoCostNote line={line} card={thermoCard} error={thermoCardError} boardCard={boardCard} />
                         </div>
                         {canResetUnitCost && (
                           <button type="button" onClick={() => resetLineUnitCost(idx)} className="text-[11px] text-[#6b9e61] hover:underline mt-[3px] block">

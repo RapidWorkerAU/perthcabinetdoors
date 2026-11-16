@@ -410,6 +410,12 @@ function variationLinePricingError(line, boardCard = null) {
     return "This board does not have an uploaded price. Add the board cost before saving this variation line.";
   }
   if (calculatedUnitCostFromLine(line, boardCard) <= 0) {
+    // Supplier made: the card says why, which is usually not a missing size.
+    // Under the facia width or oversize it is priced by hand.
+    if (isMadeToOrderBoardLine(line) && boardCard) {
+      const made = pricePolytecBoardPiece(line, boardCard, line.unit_cost_per_sqm_ex_gst);
+      if (!made.ok && made.code !== "size_missing") return `${made.reason} Type the cost in.`;
+    }
     return "Enter width and height so this board variation can be priced.";
   }
   return "";

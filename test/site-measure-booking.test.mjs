@@ -205,14 +205,14 @@ test("a payment page that could not be opened gives the day straight back", () =
 // ── the fee clearing ────────────────────────────────────────────────────────
 
 test("the booking is claimed, so a webhook delivered twice does the work once", () => {
-  assert.match(COMPLETE, /\.in\("status", \["holding", "expired"\]\)/);
+  assert.match(COMPLETE, /\.in\("status", \["holding", "expired", "awaiting_payment"\]\)/);
   assert.match(COMPLETE, /alreadyDone: true/);
 });
 
 test("an expired hold that was paid anyway still becomes a booking", () => {
   // They paid. The day is theirs even if the twenty minutes ran out while
   // Stripe was thinking about it.
-  assert.match(COMPLETE, /"expired"\]\)/);
+  assert.match(COMPLETE, /\["holding", "expired"/);
 });
 
 test("no customer record is created for a hold nobody paid", () => {

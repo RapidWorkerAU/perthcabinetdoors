@@ -2,6 +2,7 @@ import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { addDays, bookingSaveMessage, isDay, perthToday, startOfWeek } from "../../../../lib/pcd-calendar";
 import { createBooking } from "../../../../lib/pcd-calendar-save";
 import { siteUrl } from "../../../../lib/pcd-stripe";
+import { bookingsByEvent } from "../../../../lib/pcd-site-measure-payment-link-store";
 
 // What is on between two dates, and booking something new.
 //
@@ -81,12 +82,23 @@ export async function GET(request) {
     if (ordersQuery.error) throw ordersQuery.error;
     if (eventsQuery.error) throw eventsQuery.error;
 
+    // WHETHER EACH MEASURE IS PAID FOR. A measure taken on the website, or one
+    // sent a payment link, has a booking row carrying the fee. Read as its own
+    // select and attached, so the calendar can say "held, not paid" without a
+    // column on the event that could drift from the money.
+    const events = eventsQuery.data || [];
+    const measureIds = events.filter((event) => event.kind === "measure").map((event) => event.id);
+    const fees = await bookingsByEvent(context.supabase, measureIds);
+    for (const event of events) {
+      if (fees.has(event.id)) event.site_measure = fees.get(event.id);
+    }
+
     return Response.json({
       ok: true,
       from,
       to,
       orders: ordersQuery.data || [],
-      events: eventsQuery.data || [],
+      events,
     });
   } catch (error) {
     return Response.json({

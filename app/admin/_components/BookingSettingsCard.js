@@ -350,6 +350,24 @@ export default function BookingSettingsCard() {
               <span className="text-[12px] text-[#8b8a81]">hours before</span>
             </span>
           </label>
+
+          <label className={tw.row} htmlFor="booking-pay-cutoff">
+            <span className="min-w-0">
+              <span className={tw.rowLabel}>Stop taking payment</span>
+              <span className={tw.rowHint}>
+                For a measure booked by phone and sent a payment link. Someone who still has not paid can pay and
+                confirm on the day before confirmation page until this point. After it, the page tells them to call us.
+              </span>
+            </span>
+            <span className="flex flex-shrink-0 items-center gap-1">
+              <input
+                id="booking-pay-cutoff" className={tw.num} type="number" min="1" max="168" step="1"
+                value={settings.pay_cutoff_hours}
+                onChange={(event) => update({ pay_cutoff_hours: Number(event.target.value) })}
+              />
+              <span className="text-[12px] text-[#8b8a81]">hours before</span>
+            </span>
+          </label>
         </div>
       </div>
 

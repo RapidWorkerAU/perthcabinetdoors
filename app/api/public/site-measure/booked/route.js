@@ -20,7 +20,7 @@ import { createSupabaseAdminClient } from "../../../../../lib/supabase/admin";
 import { retrieveCheckoutSession, returnOrigin } from "../../../../../lib/pcd-stripe";
 import { completeSiteMeasureBooking } from "../../../../../lib/pcd-site-measure-booking";
 import { getBookingSettings } from "../../../../../lib/pcd-booking-store";
-import { dayWordsOf, windowWordsOf } from "../../../../../lib/pcd-site-measure-emails";
+import { dayWordsOf, timeRangeWordsOf, windowWordsOf } from "../../../../../lib/pcd-site-measure-emails";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +51,9 @@ export async function GET(request) {
 
     const { data: booking } = await supabase
       .from("pcd_site_measure_bookings")
-      .select("id, status, booking_date, window_from, window_to, customer_name, customer_email, site_address, fee_amount")
+      // Everything, rather than a column list, so this page keeps working on a
+      // database that has not had the payment link columns added yet.
+      .select("*")
       .eq("stripe_checkout_session_id", sessionId)
       .maybeSingle();
 
@@ -73,11 +75,14 @@ export async function GET(request) {
       booked: booking.status === "booked",
       booking: {
         dayWords: dayWordsOf(booking),
-        windowWords: windowWordsOf(booking),
+        windowWords: booking.source === "payment_link" ? timeRangeWordsOf(booking) : windowWordsOf(booking),
         address: booking.site_address,
         name: booking.customer_name,
         email: booking.customer_email,
         fee: Number(booking.fee_amount) || 0,
+        // Booked on the phone: its time was agreed on the call, so the page
+        // does not promise to narrow down a window.
+        fromLink: booking.source === "payment_link",
       },
       confirmHours: settings.confirm_hours,
     });

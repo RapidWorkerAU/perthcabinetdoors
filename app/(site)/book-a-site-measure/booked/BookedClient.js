@@ -99,13 +99,17 @@ export default function BookedClient() {
 
           <div className={styles.summary}>
             <div className={styles.summaryRow}><span>Date</span><b>{booking.dayWords}</b></div>
-            <div className={styles.summaryRow}><span>Arriving between</span><b>{booking.windowWords}</b></div>
+            <div className={styles.summaryRow}><span>{booking.fromLink ? "Time" : "Arriving between"}</span><b>{booking.windowWords}</b></div>
             <div className={styles.summaryRow}><span>Address</span><b>{booking.address}</b></div>
             <div className={styles.summaryRow}><span>Fee paid</span><b>{money(booking.fee)}</b></div>
           </div>
 
           <div className={styles.window}>
-            <b>We will confirm the exact time with you in the {confirmHours} hours before.</b>
+            <b>
+              {booking.fromLink
+                ? "We will email you the day before to check the time still suits."
+                : `We will confirm the exact time with you in the ${confirmHours} hours before.`}
+            </b>
             <span>
               The {money(booking.fee)} fee covers our time and travel for the site measure. It comes off any order
               you place from the quote we send you afterwards.

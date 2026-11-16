@@ -1,6 +1,13 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { rateLimit, tooManyAttempts } from "../../../../lib/pcd-rate-limit";
-import { siteUrl } from "../../../../lib/pcd-stripe";
+import { returnOrigin, siteUrl } from "../../../../lib/pcd-stripe";
+import { getBookingSettings } from "../../../../lib/pcd-booking-store";
+import { payCutoffAt } from "../../../../lib/pcd-site-measure-payment-link";
+import {
+  awaitingBookingForEvent,
+  confirmPayState,
+  startLinkCheckout,
+} from "../../../../lib/pcd-site-measure-payment-link-store";
 import {
   fillCustomerBlanks,
   joinAddress,
@@ -94,6 +101,48 @@ export async function POST(request) {
         if (missing.address && (!street || !suburb || !postcode)) {
           return bad("We need a street address, a suburb and a postcode so we know where to go.");
         }
+      }
+    }
+
+    // NOT PAID, SO NOT CONFIRMED YET. A site measure booked by phone whose fee
+    // is still outstanding is confirmed by paying. The answer is held on the
+    // booking and written onto the calendar when the payment clears, so a
+    // confirmation can never exist without the money behind it. Declining
+    // needs no payment and goes through as normal below.
+    if (answer === "confirmed" && row.kind === "measure") {
+      const awaiting = await awaitingBookingForEvent(supabase, row.id);
+      if (awaiting) {
+        const settings = await getBookingSettings(supabase);
+        const pay = confirmPayState(awaiting, row, settings);
+        if (!pay?.open) {
+          return bad(
+            "This site measure has not been paid for, and it is too close to the visit to pay online now. Please call us.",
+            409
+          );
+        }
+        const { error: holdError } = await supabase
+          .from("pcd_site_measure_bookings")
+          .update({
+            pending_confirmation: {
+              answeredBy,
+              notes: String(payload.notes || "").trim(),
+              contactName,
+              mobile,
+              siteAddress,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", awaiting.id)
+          .eq("status", "awaiting_payment");
+        if (holdError) throw holdError;
+
+        const origin = returnOrigin(request);
+        const session = await startLinkCheckout(supabase, awaiting, {
+          successUrl: `${origin}/book-a-site-measure/booked?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${origin}/bookings/confirm?code=${encodeURIComponent(code)}`,
+          closesAt: payCutoffAt(row.starts_at, settings.pay_cutoff_hours),
+        });
+        return Response.json({ ok: true, answer: "pay", checkoutUrl: session.url });
       }
     }
 
