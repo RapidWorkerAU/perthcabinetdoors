@@ -137,7 +137,6 @@ test("the icons that replaced them come from the one icon set", () => {
   // the files this swept, so a later edit cannot quietly introduce a rival.
   const swept = [
     "app/admin/quotes/[id]/QuoteEditor.js",
-    "app/admin/quotes/[id]/SiteMeasurePanel.js",
     "app/admin/orders/[id]/OrderDetail.js",
     "app/admin/_components/SecondarySidebar.tsx",
     "app/admin/_components/ListsManager.tsx",

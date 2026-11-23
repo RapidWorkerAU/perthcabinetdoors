@@ -21,13 +21,9 @@ export const REPORTS: SecondaryLink[] = [
   // Financials leads and is where /admin/reporting lands: it is the one looked
   // at daily. Its route did not move, it is still /admin/financials.
   { href: '/admin/financials', label: 'Financials' },
-  { href: '/admin/reporting/customer-updates', label: 'Weekly customer updates' },
   { href: '/admin/reporting/materials', label: 'Colours and materials' },
   { href: '/admin/reporting/leads', label: 'Lead conversion' },
   { href: '/admin/reporting/issues', label: 'Order issues' },
-  // Boards on live quotes and orders that are not in the colour library, saved
-  // before the line gate. Last, because it is a fix-up list, not a report.
-  { href: '/admin/reporting/data-checks', label: 'Data checks' },
 ]
 
 export default function ReportingShell({ children }: { children: React.ReactNode }) {

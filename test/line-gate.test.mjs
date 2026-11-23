@@ -142,32 +142,13 @@ test("an imported line with a board the library lacks is settled, not refused, a
   assert.equal(good.line.unit_cost_source_id, "r-white");
 });
 
-test("the three import paths settle their lines through the gate", () => {
+test("the two import paths settle their lines through the gate", () => {
   for (const path of [
-    "app/api/admin/quotes/[id]/import-order-form/route.js",
     "lib/pcd-quote-request-conversion.js",
     "app/api/admin/design/projects/[projectId]/import/route.js",
   ]) {
     assert.match(read(path), /settleImportedLine/, `${path} does not check imported lines against the library`);
   }
-});
-
-test("the data check lists live lines whose board is not in the library, and nothing else", async () => {
-  const { boardsNotInLibrary } = await import("../lib/pcd-data-checks.js");
-  const gate = (line, before) => check(line, before);
-  const rows = boardsNotInLibrary(gate, {
-    quotes: [{ id: "q1", quote_number: "Q-1", customer_name: "Mark" }],
-    quoteLines: [
-      { id: "a", quote_id: "q1", sort_order: 0, ...door() },
-      { id: "b", quote_id: "q1", sort_order: 1, ...door({ colour: "White Shaker" }) },
-      { id: "c", quote_id: "q1", sort_order: 2, ...door({ material: "decorative board" }) },
-    ],
-    orders: [{ id: "o1", order_number: "PCD-1", customer_name: "Sarah" }],
-    orderLines: [{ id: "d", order_id: "o1", sort_order: 0, ...door({ supplier_name: "Formica", colour: "" }) }],
-  });
-  assert.deepEqual(rows.map((r) => [r.kind, r.ref, r.lineNo]), [["Order", "PCD-1", 1], ["Quote", "Q-1", 2]]);
-  assert.match(rows[1].problem, /White Shaker is not in the colour library/);
-  assert.equal(rows[1].href, "/admin/quotes/q1");
 });
 
 test("a cabinet's carcass and shelf boards must be in the library too", async () => {

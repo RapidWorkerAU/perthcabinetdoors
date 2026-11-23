@@ -15,7 +15,6 @@ import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { useFocusedRow } from '../_utils/useFocusedRow'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
-import OrderFormActions from '../_components/OrderFormActions'
 import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
 import { LIST_PAGE_SIZE, tableStyles } from '@/components/ui/table-styles'
 import { sizeLabel } from '@/lib/pcd-size-label'
@@ -541,7 +540,6 @@ export default function QuoteRequestsManager() {
           <h1 className="text-[20px] font-bold text-[#1a1a18]">Quote Requests</h1>
           <p className="text-[13px] text-[#5a5a52] mt-[2px]">Manage incoming quote requests</p>
         </div>
-        <OrderFormActions />
       </div>
 
       {/* Status filter bar */}

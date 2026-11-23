@@ -161,7 +161,7 @@ Ordered by what a fault costs, not by what is easy. The first five are where a b
 The largest and most dangerous surface on the site. This is where the September bug was, it holds the biggest file in the codebase, and every number it produces ends up in a contract.
 
 **Pages:** `/admin/quotes` (list), `/admin/quotes/[id]` (the editor)
-**Components:** `QuoteEditor.js` (5,888 lines), `QuotesTable.tsx`, `BoardOrderPanel.js`, `ImportOrderFormModal.js`, `SiteMeasurePanel.js`
+**Components:** `QuoteEditor.js` (5,888 lines), `QuotesTable.tsx`, `BoardOrderPanel.js`
 **Routes:** the 17 routes under `/api/admin/quotes/`, plus `_quote-line-save.js`, the shared saver both write paths go through
 **Deciding code:** `pcd-quote-utils.js` (totals and business defaults, 755 lines), `pcd-board.js`, `pcd-board-cost.js`, `pcd-board-order.js`, `pcd-quote-ready.js`, `pcd-quote-lock.js`, `pcd-size-limits.js`, `pcd-line-details.js`, `pcd-hinges.js`, `pcd-quote-profit.js`
 **Settings already here:** markup, GST, hourly rate, labour hours per cabinet, in-house processing hours, ABS edging rate, the six default job costs, hinge drilling cost, saw kerf, board trim
@@ -709,14 +709,12 @@ All three release checks green after the Pass 4 fixes: 3,322 tests pass, lint re
 
 Where a wrong number gets cut into a board.
 
-**Routes:** `cut-list-pdf`, `cutting-plan`, `labels`, `delivery-label`, `order-form`, `order-form/email`
-**Deciding code:** `pcd-cut-list.js`, `pcd-cutting-plan.js` (1,088 lines), `pcd-cutting-plan-pdf.js`, `pcd-order-label-pdf.js` (918 lines), `pcd-order-labels.js`, `pcd-order-label-delivery.js`, `pcd-order-form-workbook.js` (1,394 lines), `pcd-order-form-import.js`, `pcd-order-form-tabs.js`, `pcd-production-groups.js`, `pcd-order-panel-numbers.js`, `pcd-order-reference-images.js`
+**Routes:** `cut-list-pdf`, `cutting-plan`, `labels`, `delivery-label`
+**Deciding code:** `pcd-cut-list.js`, `pcd-cutting-plan.js` (1,088 lines), `pcd-cutting-plan-pdf.js`, `pcd-order-label-pdf.js` (918 lines), `pcd-order-labels.js`, `pcd-order-label-delivery.js`, `pcd-production-groups.js`, `pcd-order-panel-numbers.js`, `pcd-order-reference-images.js`
 **Settings already here:** cutting plan settings on the order, saw kerf, board trim
 
 **Questions:**
-- The Excel order form builds its dropdowns live from the libraries and its validations are chained. Checks A3 and A4: does a colour added to the library reach every tab that should offer it?
 - `pcd-order-reference-images.js` is the file that took a function from 444MB to 47MB against a 250MB ceiling. Confirm nothing has crept back.
-- `ITEM_ROWS = 100` caps how many lines an order form carries. What happens on line 101?
 
 ---
 
@@ -787,7 +785,7 @@ Six scheduled jobs and two outside services. Nobody is watching when these fail.
 
 Cuts across everything, so it is read once on its own rather than a piece at a time.
 
-**Deciding code:** `pcd-email-templates.js` (1,154 lines), `pcd-customer-confirmations.js`, `pcd-quote-expiry-emails.js`, `pcd-deposit-emails.js`, `pcd-site-measure-emails.js`, `pcd-booking-confirmation-emails.js`, `pcd-tax-invoice-email.js`, `pcd-design-share-email.js`, `pcd-order-form-email.js`, `pcd-update-wording.js`, `pcd-line-summary.js`, `pcd-mail-senders.js`, `pcd-send-email.js`, `pcd-business-identity.js`
+**Deciding code:** `pcd-email-templates.js` (1,154 lines), `pcd-customer-confirmations.js`, `pcd-quote-expiry-emails.js`, `pcd-deposit-emails.js`, `pcd-site-measure-emails.js`, `pcd-booking-confirmation-emails.js`, `pcd-tax-invoice-email.js`, `pcd-design-share-email.js`, `pcd-update-wording.js`, `pcd-line-summary.js`, `pcd-mail-senders.js`, `pcd-send-email.js`, `pcd-business-identity.js`
 **Settings already here:** email signature
 
 **Questions:**
@@ -811,7 +809,6 @@ Candidates found while mapping. **None of these are decisions yet.** Each gets t
 | Expiry warning, 7 days before | `pcd-quote-clock.js` | code | 2 |
 | Deposit percent as a business default | per quote today | not a default | 3 |
 | Late threshold on the board, 8 | `pcd-board.js` | code | 4 |
-| Order form row cap, 100 | `pcd-order-form-tabs.js` | code | 5 |
 | Booking slot hold, 20 minutes | `pcd-booking-store.js` | code | 6 |
 | Design session item cap, 80 | `pcd-public-design.js` | code | 6 |
 | Metro postcode range, 6000 to 6199 | `pcd-shop.js` | code | 8 |

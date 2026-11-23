@@ -154,7 +154,6 @@ test("every route that retries a bulk write says which column failed", () => {
     "../lib/pcd-quote-request-conversion.js",
     "../app/api/admin/quotes/route.js",
     "../app/api/admin/quotes/[id]/duplicate/route.js",
-    "../app/api/admin/quotes/[id]/import-order-form/route.js",
     "../app/api/admin/quotes/[id]/reprice/route.js",
     "../app/api/admin/quotes/[id]/route.js",
   ]) {

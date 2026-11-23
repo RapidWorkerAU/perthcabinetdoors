@@ -44,7 +44,6 @@ import {
   customerPaymentReceivedHtml,
   customerQuoteApprovedHtml,
   customerQuoteRequestHtml,
-  customerUpdateHtml,
   customerVariationApprovedHtml,
   salesDepositUnpaidHtml,
 } from "../lib/pcd-email-templates.js";
@@ -70,7 +69,6 @@ const TO_CUSTOMER = [
   ["variation approved", customerVariationApprovedHtml({ customerName: "T", variationNumber: "V1", orderNumber: "O1" })],
   ["deposit reminder", customerDepositReminderHtml(DEPOSIT)],
   ["deposit final reminder", customerDepositFinalHtml(DEPOSIT)],
-  ["weekly order update", customerUpdateHtml({ customerName: "T", body: "Hi T,\n\nPCD-O-1 - Job\n  1 August 2026 - Something happened\n\nEnd." })],
   ["desk reply", deskReplyEmailHtml({ bodyHtml: "<p>Hello</p>", subject: "Re: your job" })],
 ];
 

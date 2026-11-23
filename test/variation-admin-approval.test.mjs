@@ -27,8 +27,6 @@ const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf
 const ROUTE = read("app/api/admin/orders/[id]/variations/[variationId]/approve-override/route.js");
 const VARIATIONS = read("lib/pcd-order-variations.js");
 const EDITOR = read("app/admin/orders/[id]/variations/[variationId]/VariationEditor.js");
-const WEEKLY = read("lib/pcd-weekly-updates.js");
-const WORDING = read("lib/pcd-update-wording.js");
 
 const orderLine = {
   id: "line-1",
@@ -318,17 +316,6 @@ test("the history says it was not charged, with the figure it was not charged at
   assert.match(VARIATIONS, /Variation applied to order at no charge/);
   assert.match(VARIATIONS, /not charged/);
   assert.match(VARIATIONS, /pricing_held: holdPricing/);
-});
-
-// ── What the customer is told ───────────────────────────────────────────────
-
-test("a no-charge variation never reaches a customer as an amount owing", () => {
-  // The activity row names the figure so WE can see what was given away. Read
-  // as an amount it would go out in an email telling the customer their order
-  // went up by a sum nobody is charging them.
-  assert.match(WEEKLY, /const held = Boolean\(row\.metadata\?\.pricing_held\)/);
-  assert.match(WEEKLY, /amount: held \? 0 : money\(desc\)/);
-  assert.match(WORDING, /at no extra cost/);
 });
 
 // ── The screen ──────────────────────────────────────────────────────────────

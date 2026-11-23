@@ -30,7 +30,6 @@ const read = (path) => readFileSync(join(root, path), "utf8");
 const REPORTS = {
   "colours and materials": read("app/admin/reporting/materials/MaterialsReport.js"),
   "lead conversion": read("app/admin/reporting/leads/LeadConversionReport.js"),
-  "weekly customer updates": read("app/admin/reporting/customer-updates/CustomerUpdatesReport.js"),
 };
 
 Object.entries(REPORTS).forEach(([name, source]) => {

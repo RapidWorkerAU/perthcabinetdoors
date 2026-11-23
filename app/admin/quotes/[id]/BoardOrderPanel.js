@@ -688,7 +688,7 @@ export default function BoardOrderPanel({
               ))}
             </span>
             <span className={`${tw.muted} font-normal`}>
-              By panel type runs a drawer front across its width, the way the order form describes it. A board with no
+              By panel type runs a drawer front across its width, which is our house rule. A board with no
               grain ignores this: every panel on it can be turned.
             </span>
           </div>

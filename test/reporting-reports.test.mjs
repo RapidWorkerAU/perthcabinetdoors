@@ -197,10 +197,10 @@ test("no report is listed that cannot be opened", () => {
   const list = shell.slice(shell.indexOf("export const REPORTS"), shell.indexOf("export default"));
 
   assert.ok(!/soon: true/.test(list), "a list of things that are not coming is worse than a short list");
-  ["Sales by month", "Production throughput", "Aged receivables"].forEach((gone) => {
+  ["Sales by month", "Production throughput", "Aged receivables", "Weekly customer updates", "Data checks"].forEach((gone) => {
     assert.ok(!list.includes(gone), `${gone} was removed and must stay removed until it can be built`);
   });
-  ["Colours and materials", "Lead conversion", "Weekly customer updates", "Financials"].forEach((live) => {
+  ["Colours and materials", "Lead conversion", "Financials"].forEach((live) => {
     assert.ok(list.includes(live), `${live} must be listed`);
   });
 });

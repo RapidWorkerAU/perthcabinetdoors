@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import TermsEditor from "../../_components/TermsEditor";
 import { joinTermsHtml, termsHtmlToPlainText } from "../../../../lib/pcd-terms-html";
-import { IconArrowLeft, IconCheck, IconChevronRight, IconCopy, IconEdit, IconExternalLink, IconInfoCircle, IconMessage, IconRuler, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
+import { IconArrowLeft, IconCheck, IconChevronRight, IconCopy, IconEdit, IconExternalLink, IconInfoCircle, IconMessage, IconSettings, IconTrash, IconX } from "@tabler/icons-react";
 import { addressColumns, addressFromRecord, addressIsEmpty } from "../../../../lib/pcd-contact-details";
 import { baseFor, QUOTE_HEADER_FIELDS, QUOTE_LINE_FIELDS } from "../../../../lib/pcd-save-clash";
 import { edgeImageSrc } from "../../../../lib/pcd-profile-images";
@@ -31,10 +31,7 @@ import { calculateQuoteLine, calculateQuoteTotals, DEFAULT_BUSINESS_DEFAULTS, fo
 import AddressFields from "../../../../components/admin/AddressFields";
 import JobDetailsScopeNote from "../../../../components/admin/JobDetailsScopeNote";
 import OverrideModal from "../../_components/OverrideModal";
-import ImportOrderFormModal from "./ImportOrderFormModal";
 import BoardOrderPanel from "./BoardOrderPanel";
-import SiteMeasurePanel from "./SiteMeasurePanel";
-import { measuredQuoteLine } from "../../../../lib/pcd-site-measure";
 import { BOARD_ORDER_DEFAULTS } from "../../../../lib/pcd-board-order";
 import {
   BANDED_EDGES,
@@ -1348,7 +1345,6 @@ export default function QuoteEditor({ quoteId }) {
   // Which edges get tape, and the edge profile beside it. Opened from the Edge
   // profile cell the way the drilling opens from the hinge cell.
   const [edgesModal, setEdgesModal] = useState(null);
-  const [importOpen, setImportOpen] = useState(false);
   const [profileModal, setProfileModal] = useState(null);
   const [lineNoteModal, setLineNoteModal] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -2619,46 +2615,11 @@ export default function QuoteEditor({ quoteId }) {
     }
   }
 
-  // SITE MEASURE.
-  //
-  // Opened over the quote it belongs to, and every item it adds goes through
-  // saveLineAtIndex, the same save the items table uses for a line typed by
-  // hand. No new endpoint, no second way for a line to reach the quote: a
-  // measured line is an ordinary line that happened to be typed in a kitchen.
-  async function openSiteMeasure() {
-    // A row left open for editing is saved first, exactly as adding a line
-    // does, so the measure cannot append underneath an unsaved draft.
-    if (editableLineIndex !== null) {
-      const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex], { updateDraft: false });
-      if (!saved) return;
-      setEditableLineIndex(null);
-      setEditableLineDraft(null);
-    }
-    setSiteMeasureOpen(true);
-  }
-
-  // ONE WAY TO CHANGE SECTION. There are two navs, the desktop rail and the
-  // phone list, and a site measure that takes the content area over the top of
-  // whichever section you were in. Picking a section has to leave the measure
-  // as well as set the section, or the builder shows the measure with Costs &
-  // Markup lit up in the sidebar and no way to tell what the back arrow does.
+  // ONE WAY TO CHANGE SECTION, for both navs: the desktop rail and the phone list.
   function goToSection(key) {
-    setSiteMeasureOpen(false);
     setActiveSection(key);
   }
 
-  async function addMeasuredItem(item) {
-    const index = form.lines.length;
-    const line = measuredQuoteLine(item, emptyLineWithDefaults(businessDefaults, defaultsLoaded));
-    setForm((current) => ({ ...current, lines: [...current.lines, line] }));
-    // saveLineAtIndex is given the line and the index outright, so it does not
-    // wait on the state above having settled.
-    const saved = await saveLineAtIndex(index, line, { updateDraft: false });
-    // A save that failed has already said why. The line is taken back off so
-    // the list cannot show something the quote has not got.
-    if (!saved) setForm((current) => ({ ...current, lines: current.lines.filter((_, i) => i !== index) }));
-    return saved;
-  }
   async function addLine() {
     if (editableLineIndex !== null) {
       const saved = await saveLineAtIndex(editableLineIndex, editableLineDraft || form.lines[editableLineIndex], { updateDraft: false });
@@ -3612,25 +3573,6 @@ export default function QuoteEditor({ quoteId }) {
               title="Look every line up in the option libraries again — boards, hardware and benchtops — and apply the price each one holds now"
             >
               {isRepricing ? 'Repricing...' : 'Reprice from option libraries'}
-            </button>
-            <button
-              type="button"
-              className="h-[32px] px-3 bg-white border border-[#a8c5a0] text-[12px] font-semibold rounded-[6px] text-[#2d5e28] hover:bg-[#edf4eb] disabled:opacity-50 transition-colors"
-              onClick={() => setImportOpen(true)}
-              disabled={isLocked}
-              title="Read a completed PCD order form spreadsheet into this quote"
-            >
-              Upload order form
-            </button>
-            <button
-              type="button"
-              className="h-[32px] px-3 bg-[#1c2b1e] text-white text-[12px] font-semibold rounded-[6px] hover:bg-[#2d3f2f] disabled:opacity-50 transition-colors inline-flex items-center gap-[6px]"
-              onClick={openSiteMeasure}
-              disabled={isLocked || savingLineIndex !== null}
-              title="Capture sizes and hinges on site. Each item is saved to this quote as you add it."
-            >
-              <IconRuler size={14} />
-              Site measure
             </button>
             <button
               type="button"
@@ -4893,15 +4835,6 @@ export default function QuoteEditor({ quoteId }) {
   }
 
   function renderSectionBody() {
-    // SITE MEASURE IS A DRILL DOWN, NOT A DIALOG. It takes the content area the
-    // way a section does, so on a desktop the card and the running list sit
-    // side by side and adding an item does not push the list off the bottom.
-    // Rendered here rather than mounted separately so it is inside the same
-    // form and the same locked region as every other section, and so the one
-    // sidebar keeps working while it is open.
-    if (siteMeasureOpen) {
-      return <SiteMeasurePanel lines={form.lines} onClose={() => setSiteMeasureOpen(false)} onAdd={addMeasuredItem} />;
-    }
     if (activeSection === "items") return renderItems();
     if (activeSection === "cabinets") return renderCabinets();
     if (activeSection === "boards") return renderBoards();
@@ -4996,7 +4929,6 @@ export default function QuoteEditor({ quoteId }) {
   // went to the wrong address. Nothing about the quote changes. Only an accepted
   // one is past sending, and generating its PDF is read-only either way.
   const isAccepted = Boolean(form.order_id);
-  const [siteMeasureOpen, setSiteMeasureOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -5192,14 +5124,14 @@ export default function QuoteEditor({ quoteId }) {
               <div className="flex items-center gap-2 px-4 py-3 bg-white border-b border-[#edf4eb] flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => (siteMeasureOpen ? setSiteMeasureOpen(false) : setActiveSection(""))}
+                  onClick={() => setActiveSection("")}
                   className="w-[32px] h-[32px] flex items-center justify-center text-[#5a5a52] hover:text-[#1a1a18] transition-colors -ml-1"
-                  aria-label={siteMeasureOpen ? "Back to quote items" : "Back to sections"}
+                  aria-label="Back to sections"
                 >
                   <IconArrowLeft size={18} />
                 </button>
                 <span className="text-[15px] font-semibold text-[#1a1a18]">
-                  {siteMeasureOpen ? "Site measure" : sections.find((s) => s.key === activeSection)?.label}
+                  {sections.find((s) => s.key === activeSection)?.label}
                 </span>
               </div>
               <div className="p-4 bg-[#f5f8f4]">
@@ -5217,7 +5149,7 @@ export default function QuoteEditor({ quoteId }) {
           {/* On the Items tab the panel fills the height and lets the table
               scroll internally (sticky header); other tabs scroll normally so
               the sidebar stays put either way. */}
-          <form onSubmit={saveQuote} className={`flex-1 min-h-0 p-6 ${activeSection === 'items' && !siteMeasureOpen ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
+          <form onSubmit={saveQuote} className={`flex-1 min-h-0 p-6 ${activeSection === 'items' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
             <LockedRegion locked={isLocked && !isLoading && !loadError}>{contentPanel}</LockedRegion>
             {form.order_id ? <div className="mt-3 px-4 py-3 rounded-[6px] bg-[#edf4eb] border border-[#a8c5a0] text-[13px] text-[#2d5e28]">This quote has been approved and converted to an order, so it can no longer be edited. Raise a variation on the order to change the work.</div> : null}
           </form>
@@ -5481,16 +5413,6 @@ export default function QuoteEditor({ quoteId }) {
             </label>
           </div>
         </Modal>
-      )}
-      {importOpen && (
-        <ImportOrderFormModal
-          quoteId={quoteId}
-          onClose={() => setImportOpen(false)}
-          // The lines are in the database, not in this component's state, so the
-          // page is reloaded rather than patched. Anything cleverer would be a
-          // second copy of what the import just wrote.
-          onImported={() => loadQuote()}
-        />
       )}
       {edgesModal && (() => {
         const line = edgesModal.lineIndex === editableLineIndex && editableLineDraft ? editableLineDraft : form.lines[edgesModal.lineIndex];
