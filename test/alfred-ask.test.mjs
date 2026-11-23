@@ -1,4 +1,4 @@
-// ALFRED, PHASE 4: ASK ALFRED, AND THE PRIVACY LINE.
+// ASK ALFRED: THE CHAT, WHICH IS ALL OF ALFRED NOW.
 //
 // ── WHAT THIS PROTECTS ───────────────────────────────────────────────────────
 //
@@ -6,19 +6,16 @@
 //   save, send or change something would be a decision made in code review,
 //   not slipped in beside these.
 //
-//   EVERY REPLY IS ONE OF FIVE KINDS, and an answer or an email that leans on
-//   a fact it never looked up is refused.
+//   EVERY REPLY IS ONE OF A FIXED SET OF KINDS, and an answer that leans on a
+//   fact it never looked up is refused.
 //
-//   AN EMAIL GOES TO A CUSTOMER IT LOOKED UP, and is sent through approveDraft
-//   like every other Alfred draft.
-//
-//   THE PRIVACY PAGE SAYS A PERSON APPROVES EVERY EMAIL.
+//   IT NEVER DRAFTS OR SENDS AN EMAIL, AND NEVER SENDS A PAYMENT LINK.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { TOOLS, chatMessages, checkAsk } from "../lib/pcd-alfred-ask.js";
-import { AI_DRAFTING_LINE, privacyPolicySections } from "../lib/pcd-privacy-policy.js";
+import { privacyPolicySections } from "../lib/pcd-privacy-policy.js";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const facts = [
@@ -57,13 +54,17 @@ test("an answer must rest on something looked up", () => {
   assert.equal(checkAsk({ kind: "answer", text: "Noted.", facts_used: ["team"] }, { facts }).ok, true, "what the person said counts");
 });
 
-test("an email goes only to a customer it looked up", () => {
-  const raw = { kind: "plan", text: "I will email Sarah.", facts_used: ["F1"], email: { customer_id: "c1", subject: "Re: Your doors", body: "Hi Sarah — your order is active." } };
-  assert.match(checkAsk(raw, { facts, seen: new Set() }).problem, /without looking the customer up/);
-  const ok = checkAsk(raw, { facts, seen: new Set(["c1"]) });
-  assert.equal(ok.ok, true);
-  assert.equal(ok.result.email.subject, "Your doors");
-  assert.equal(ok.result.email.body, "Hi Sarah, your order is active.", "no dashes, ever");
+test("the chat cannot draft an email or a batch of them, or send a payment link", () => {
+  const seen = new Set(["c1"]);
+  const plan = { kind: "plan", text: "I will email Sarah.", facts_used: ["F1"], email: { customer_id: "c1", subject: "Doors", body: "Hi Sarah" } };
+  assert.equal(checkAsk(plan, { facts, seen }).ok, false);
+  const batch = { kind: "batch", text: "I will email them.", facts_used: [], batch: { customer_ids: ["c1"], instruction: "Say hello." } };
+  assert.equal(checkAsk(batch, { facts, seen }).ok, false);
+  const ask = read("lib/pcd-alfred-ask.js");
+  assert.doesNotMatch(ask, /approveDraft|sendDeskReply|sendChatEmail|draftBatch|pcd_alfred_drafts/);
+  assert.match(ask, /What you cannot do: draft, write or send an email to anyone; send or create a payment link or a payment request;/);
+  const route = read("app/api/admin/alfred/ask/route.js");
+  assert.doesNotMatch(route, /action === "send"|action === "batch"/);
 });
 
 test("confirm keeps at most four options; cannot and unclear need no facts", () => {
@@ -79,49 +80,22 @@ test("the chat history carries text only, alternating, starting with the person"
     { role: "alfred", text: "Hello" },
     { role: "you", text: "Where is PCD-1042?" },
     { role: "you", text: "And the ETA?" },
-    { role: "alfred", text: "I will email her.", email: { subject: "Doors", body: "Hi" } },
+    { role: "alfred", text: "It is active." },
   ]);
   assert.deepEqual(m.map((x) => x.role), ["user", "assistant"]);
   assert.match(m[0].content, /PCD-1042\?\n\nAnd the ETA\?/);
-  assert.match(m[1].content, /Drafted email, subject "Doors"/);
+  assert.equal(m[1].content, "It is active.");
 });
 
-test("a chat email is sent the same way as every other draft", () => {
-  const ask = read("lib/pcd-alfred-ask.js");
-  assert.match(ask, /kind: "chat"/);
-  assert.match(ask, /return approveDraft\(supabase, saved\.id/);
-  assert.match(read("lib/pcd-alfred-drafts.js"), /draft\.kind === "chat"/);
-});
-
-test("the privacy page says a person approves every email", () => {
-  assert.match(AI_DRAFTING_LINE, /A person reads and approves every email before it is sent\./);
+test("the privacy page no longer talks about AI drafting, and still names the AI service", () => {
   const sections = privacyPolicySections({ salesEmail: "s@x", tradingName: "T", legalEntity: "L" });
-  assert.ok(sections.some((s) => (s.paragraphs || []).includes(AI_DRAFTING_LINE)));
+  assert.ok(!sections.some((s) => s.key === "ai"), "no AI drafting section");
+  for (const s of sections) for (const t of [...(s.paragraphs || []), ...(s.bullets || [])]) assert.doesNotMatch(t, /draft/i);
+  assert.ok(sections.some((s) => (s.bullets || []).some((b) => /AI service/.test(b))), "the AI service is still listed as seeing records");
   assert.ok(sections.some((s) => (s.bullets || []).some((b) => /never reach us/.test(b))), "card details");
   for (const s of sections) for (const t of [...(s.paragraphs || []), ...(s.bullets || [])]) assert.doesNotMatch(t, /[–—]/);
   assert.match(read("components/public/PublicFooter.tsx"), /href="\/privacy"/);
   assert.match(read("lib/pcd-seo.js"), /path: "\/privacy"/);
-});
-
-test("a declined draft's reason teaches Alfred, except reasons that say nothing about the draft", async () => {
-  const { DECLINE_REASONS, LESSON_REASONS } = await import("../lib/pcd-alfred-reasons.js");
-  const { replyPrompt } = await import("../lib/pcd-alfred-model.js");
-  assert.ok(LESSON_REASONS.every((r) => DECLINE_REASONS.includes(r)), "every lesson is a button");
-  assert.ok(!LESSON_REASONS.includes("We already rang them"));
-  const prompt = replyPrompt({ facts: [], thread: [], examples: [], lessons: [{ reason: "Tone is off", kind: "reply", text: "Hey mate!!" }] });
-  assert.match(prompt, /<declined_drafts>\n<declined reason="Tone is off" kind="reply">\nHey mate!!\n<\/declined>/);
-  assert.match(read("lib/pcd-alfred-context.js"), /\.in\("decline_reason", LESSON_REASONS\)/);
-  assert.doesNotMatch(read("app/admin/alfred/AlfredClient.tsx"), /Alfred will remember/);
-});
-
-test("an edit made before sending teaches Alfred, and approving works before the SQL runs", async () => {
-  const { replyPrompt } = await import("../lib/pcd-alfred-model.js");
-  const prompt = replyPrompt({ facts: [], thread: [], examples: [], edits: [{ kind: "reply", before: "Hi Sarah!!", after: "Hi Sarah," }] });
-  assert.match(prompt, /<edited_drafts>\n<edit kind="reply">\n<alfred_wrote>\nHi Sarah!!\n<\/alfred_wrote>\n<we_sent>\nHi Sarah,\n<\/we_sent>/);
-  const drafts = read("lib/pcd-alfred-drafts.js");
-  assert.match(drafts, /edited \? \{ \.\.\.claim, original_body: draft\.body_text \} : claim/);
-  assert.match(drafts, /claimError\?\.code === "PGRST204"/);
-  assert.match(read("lib/pcd-alfred-context.js"), /\.eq\("edited_before_send", true\)/);
 });
 
 test("a table comes back as a table, never as rows of | in the words", async () => {

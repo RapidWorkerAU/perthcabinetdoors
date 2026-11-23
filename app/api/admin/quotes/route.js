@@ -1,6 +1,5 @@
 ﻿import { randomBytes } from "node:crypto";
 import { requireAdminApiContext } from "../../../../lib/admin-api";
-import { alfredWaitingBy } from "../../../../lib/pcd-alfred-dots";
 import { logOrderActivity } from "../../../../lib/pcd-activity-log";
 import { getBusinessDefaults } from "../../../../lib/pcd-business-defaults";
 import { resolveQuoteCustomer } from "../../../../lib/pcd-customer-utils";
@@ -119,7 +118,7 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return Response.json({ ok: true, quotes: data || [], alfredWaiting: await alfredWaitingBy(context.supabase, "quote_id") });
+    return Response.json({ ok: true, quotes: data || [] });
   } catch (error) {
     return Response.json(
       {

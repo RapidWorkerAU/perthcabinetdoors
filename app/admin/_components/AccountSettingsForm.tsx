@@ -596,7 +596,7 @@ export default function AccountSettingsForm({ currentEmail }: { currentEmail?: s
     { key: 'bookings', label: 'Site Measures',      description: 'Days, windows and the fee for online bookings',       icon: 'SM' },
     // Last: the assistant that prepares work for approval. Its own tab because
     // it is the one place his switch and limits live.
-    { key: 'alfred',   label: 'Alfred',             description: 'The assistant: switch, jobs and limits',              icon: 'AL' },
+    { key: 'alfred',   label: 'Alfred',             description: 'The chat: switch, monthly limit and approvers',              icon: 'AL' },
   ]
 
   // Profile tab content

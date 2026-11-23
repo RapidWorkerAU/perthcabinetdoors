@@ -3,8 +3,7 @@ import { sendDeskReply } from "@/lib/pcd-desk-reply";
 
 // Replying to a customer, and writing internal notes.
 //
-// The work is in lib/pcd-desk-reply.js, shared with Alfred's approve button, so
-// there is one way to email a customer from the desk. This route only reads the
+// The work is in lib/pcd-desk-reply.js, so there is one way to email a customer from the desk. This route only reads the
 // request and says what happened.
 
 export const dynamic = "force-dynamic";

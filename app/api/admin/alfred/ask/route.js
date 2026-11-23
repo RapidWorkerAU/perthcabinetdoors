@@ -1,5 +1,5 @@
 import { requireAdminApiContext } from "../../../../../lib/admin-api";
-import { askAlfred, changeCard, draftBatch, sendChatEmail } from "../../../../../lib/pcd-alfred-ask";
+import { askAlfred, changeCard } from "../../../../../lib/pcd-alfred-ask";
 import { applyChange, previewChange } from "../../../../../lib/pcd-alfred-changes";
 import { applyBooking, bookingCard, previewBooking } from "../../../../../lib/pcd-alfred-bookings";
 import { siteUrl } from "../../../../../lib/pcd-stripe";
@@ -9,10 +9,6 @@ import { siteUrl } from "../../../../../lib/pcd-stripe";
 //   action "ask"             the chat so far. Streams what Alfred is looking up
 //                            as it goes, one JSON line each, then his reply.
 //                            Reads only.
-//   action "send"            a person approves an email from the chat, or saves
-//                            it to the Waiting list (send: false).
-//   action "batch"           a person approves a list of customers; one draft
-//                            each goes to the Waiting list. Nothing is sent.
 //   action "change_preview"  the exact changes a picked value and items make,
 //                            from and to. Nothing is saved.
 //   action "change_apply"    a person approves that preview by name. Checked
@@ -25,12 +21,6 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 async function finishReply(supabase, reply) {
-  // Who an email goes to, shown above it: always the address on their record.
-  if (reply.kind === "plan") {
-    const { data: customer } = await supabase.from("pcd_customers").select("name, email").eq("id", reply.email.customerId).maybeSingle();
-    reply.email.toName = customer?.name || "";
-    reply.email.toEmail = customer?.email || "";
-  }
   // The buttons for a change are built here, from the database, never from
   // what the model said. If the change cannot be offered, say why instead.
   if (reply.kind === "change") {
@@ -49,13 +39,6 @@ async function finishReply(supabase, reply) {
       return { kind: "cannot", text: error?.message || "That booking cannot be offered.", options: [], facts: [] };
     }
   }
-  if (reply.kind === "batch") {
-    const { data: people } = await supabase.from("pcd_customers").select("id, name, email").in("id", reply.batch.customerIds);
-    reply.batch.customers = reply.batch.customerIds.map((id) => {
-      const person = (people || []).find((p) => p.id === id);
-      return { id, name: person?.name || "Unnamed", email: person?.email || "" };
-    });
-  }
   return reply;
 }
 
@@ -66,22 +49,6 @@ export async function POST(request) {
   const supabase = context.supabase;
 
   try {
-    if (body.action === "send") {
-      return Response.json(
-        await sendChatEmail(supabase, {
-          email: body.email,
-          facts: body.facts,
-          request: body.request,
-          approvedBy: body.approvedBy,
-          bodyText: body.bodyText,
-          agentEmail: context.user?.email || "",
-          send: body.send !== false,
-        })
-      );
-    }
-    if (body.action === "batch") {
-      return Response.json(await draftBatch(supabase, { customerIds: body.customerIds, instruction: String(body.instruction || ""), approvedBy: body.approvedBy }));
-    }
     if (body.action === "change_preview") {
       return Response.json({ ok: true, preview: await previewChange(supabase, body.selection) });
     }

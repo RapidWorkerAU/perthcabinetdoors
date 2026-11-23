@@ -1,6 +1,5 @@
 import { requireAdminApiContext } from "../../../../lib/admin-api";
 import { convertQuoteRequest } from "../../../../lib/pcd-quote-request-conversion";
-import { alfredWaitingBy } from "../../../../lib/pcd-alfred-dots";
 
 export async function GET() {
   const context = await requireAdminApiContext();
@@ -12,15 +11,14 @@ export async function GET() {
       .select("*, pcd_quote_request_line_items(*)")
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return Response.json({ ok: true, quoteRequests: data || [], alfredWaiting: await alfredWaitingBy(context.supabase, "quote_request_id") });
+    return Response.json({ ok: true, quoteRequests: data || [] });
   } catch (error) {
     return Response.json({ ok: false, quoteRequests: [], setupRequired: true, error: error?.message || "Could not load quote requests." });
   }
 }
 
 // The Convert to quote button. The work is in
-// lib/pcd-quote-request-conversion.js, shared with Alfred, so a quote made from
-// a request is made the same way whoever made it.
+// lib/pcd-quote-request-conversion.js.
 export async function POST(request) {
   const context = await requireAdminApiContext();
   if (context.error) return context.error;

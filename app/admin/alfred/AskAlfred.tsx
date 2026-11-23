@@ -2,21 +2,18 @@
 
 // ASK ALFRED, THE CHAT.
 //
-// Ask about our records, ask for an email or a batch of them, or ask for a
-// change. Every reply is one of these, each drawn its own way:
+// Ask about our records, or ask for a change or a booking. Alfred never
+// drafts or sends an email. Every reply is one of these, each drawn its own way:
 //
 //   answer    plain text, with the facts it used behind a link
-//   plan      the email in full: Approve and send, Save to Waiting, Edit email,
-//             Discard email
-//   batch     the customers, each ticked, and what the emails will say. Drafts
-//             go to the Waiting list; nothing is sent from here
 //   change    buttons built from the real order: the value, then the items,
 //             then every change as from and to, approved by name
+//   booking   the calendar's own booking form, approved by name
 //   confirm   the question, with each option a button that answers it
 //   cannot    why not, and the proper way, in amber
 //   unclear   what it did not follow, with an example
 //
-// Nothing is sent or changed without a person's name on it. Chats are kept in
+// Nothing is changed without a person's name on it. Chats are kept in
 // one shared list (supabase/202610061800_pcd_alfred_chats.sql); before that has
 // run, a chat is kept in this tab only.
 //
@@ -34,8 +31,6 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import { tableStyles as t } from '@/components/ui/table-styles'
 import { AlfredApproval, AlfredMark, ALFRED } from '@/components/admin/AlfredMark'
-import { deskReplyEmailHtml } from '../../../lib/pcd-desk-email'
-import { toTermsHtml } from '../../../lib/pcd-terms-html'
 import { defaultMinutesFor, defaultTitle, formatMinutes } from '../../../lib/pcd-calendar'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -43,14 +38,11 @@ type Row = Record<string, any>
 type Turn = {
   role: 'you' | 'alfred'
   text: string
-  kind?: 'answer' | 'plan' | 'confirm' | 'cannot' | 'unclear' | 'problem' | 'change' | 'batch' | 'booking'
+  kind?: 'answer' | 'confirm' | 'cannot' | 'unclear' | 'problem' | 'change' | 'booking'
   options?: string[]
   facts?: string[]
-  email?: { customerId: string; subject: string; body: string; toName?: string; toEmail?: string }
-  sent?: { by: string; edited: boolean; saved?: boolean } | null
   cancelled?: boolean
   card?: Row
-  batch?: { customerIds: string[]; instruction: string; customers?: { id: string; name: string; email: string }[] }
   table?: { columns: string[]; rows: string[][] }
   outcome?: string
 }
@@ -115,7 +107,7 @@ const btn = 'inline-flex h-[30px] items-center whitespace-nowrap rounded-[6px] b
 const btnPrimary = 'inline-flex h-[30px] items-center whitespace-nowrap rounded-[6px] bg-[#1c2b1e] px-3 text-[12px] font-medium text-white hover:bg-[#2d3f2f] disabled:opacity-50'
 const btnDanger = 'inline-flex h-[30px] items-center whitespace-nowrap rounded-[6px] border border-[#f0c7c3] bg-white px-3 text-[12px] font-medium text-[#b42318]'
 
-export default function AskAlfred({ asApprover, signature, enabled }: { asApprover: (then: (name: string) => void) => void; signature: string; enabled: boolean }) {
+export default function AskAlfred({ asApprover, enabled }: { asApprover: (then: (name: string) => void) => void; enabled: boolean }) {
   const [turns, setTurns] = useState<Turn[]>([])
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
@@ -241,7 +233,7 @@ export default function AskAlfred({ asApprover, signature, enabled }: { asApprov
       const res = await fetch('/api/admin/alfred/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ask', turns: next.filter(t => t.kind !== 'problem').map(t => ({ role: t.role, text: t.outcome ? `${t.text}\n(${t.outcome})` : t.text, email: t.email, table: t.table })) }),
+        body: JSON.stringify({ action: 'ask', turns: next.filter(t => t.kind !== 'problem').map(t => ({ role: t.role, text: t.outcome ? `${t.text}\n(${t.outcome})` : t.text, table: t.table })) }),
       })
       // One JSON line per event: what Alfred is looking up, then his reply.
       const reader = res.body?.getReader()
@@ -270,7 +262,6 @@ export default function AskAlfred({ asApprover, signature, enabled }: { asApprov
   }
 
   const patchTurn = (index: number, patch: Partial<Turn>) => update(turns.map((t, i) => (i === index ? { ...t, ...patch } : t)))
-  const lastQuestion = (index: number) => [...turns.slice(0, index)].reverse().find(t => t.role === 'you')?.text || ''
 
   async function openChat(id: string) {
     try {
@@ -343,7 +334,7 @@ export default function AskAlfred({ asApprover, signature, enabled }: { asApprov
       <div className="flex min-h-[520px] min-w-0 flex-col rounded-[8px] border border-[#dbd8cc] bg-white">
         <div className="border-b border-[#edf4eb] px-4 py-3">
           <p className="m-0 text-[12px] text-[#5a5a52]">
-            Ask about orders, quotes, money owing, suppliers or the calendar, ask for emails, or ask for a change to an order. Nothing is sent or changed until you approve it.
+            Ask about orders, quotes, money owing, suppliers or the calendar, or ask for a change to an order or a booking. Nothing is changed until you approve it.
           </p>
         </div>
 
@@ -373,11 +364,9 @@ export default function AskAlfred({ asApprover, signature, enabled }: { asApprov
                 turn={turn}
                 latest={index === turns.length - 1}
                 busy={busy}
-                signature={signature}
                 onOption={ask}
                 onChange={patch => patchTurn(index, patch)}
                 asApprover={asApprover}
-                request={lastQuestion(index)}
               />
             )
           )}
@@ -428,20 +417,16 @@ function AlfredTurn({
   turn,
   latest,
   busy,
-  signature,
   onOption,
   onChange,
   asApprover,
-  request,
 }: {
   turn: Turn
   latest: boolean
   busy: boolean
-  signature: string
   onOption: (text: string) => void
   onChange: (patch: Partial<Turn>) => void
   asApprover: (then: (name: string) => void) => void
-  request: string
 }) {
   const [showFacts, setShowFacts] = useState(false)
   const tone =
@@ -479,10 +464,8 @@ function AlfredTurn({
 
       {turn.table?.columns?.length ? <AnswerTable table={turn.table} /> : null}
 
-      {turn.kind === 'plan' && turn.email ? <EmailCard turn={turn} signature={signature} onChange={onChange} asApprover={asApprover} request={request} /> : null}
       {turn.kind === 'change' && turn.card ? <ChangeCard turn={turn} onChange={onChange} asApprover={asApprover} /> : null}
       {turn.kind === 'booking' && turn.card ? <BookingCard turn={turn} onChange={onChange} asApprover={asApprover} /> : null}
-      {turn.kind === 'batch' && turn.batch ? <BatchCard turn={turn} onChange={onChange} asApprover={asApprover} /> : null}
 
       {turn.facts?.length ? (
         <div className="text-[11.5px] text-[#8b8a81]">
@@ -555,189 +538,6 @@ function AnswerTable({ table }: { table: { columns: string[]; rows: string[][] }
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
-  )
-}
-
-/* ── An email ─────────────────────────────────────────────────────────────── */
-
-function EmailCard({ turn, signature, onChange, asApprover, request }: { turn: Turn; signature: string; onChange: (p: Partial<Turn>) => void; asApprover: (then: (name: string) => void) => void; request: string }) {
-  const { toast } = useToast()
-  const email = turn.email!
-  const [editing, setEditing] = useState(false)
-  const [preview, setPreview] = useState(false)
-  const [body, setBody] = useState(email.body || '')
-  const [sending, setSending] = useState(false)
-
-  async function go(by: string, send: boolean) {
-    setSending(true)
-    try {
-      const res = await fetch('/api/admin/alfred/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'send', email, facts: turn.facts, request, approvedBy: by, bodyText: body, send }),
-      })
-      const p = await res.json()
-      if (!res.ok || !p.ok) {
-        toast({ title: p.error || (send ? 'It was not sent.' : 'It was not saved.'), variant: 'error' })
-        return
-      }
-      const edited = body.trim() !== String(email.body || '').trim()
-      onChange({ sent: { by, edited, saved: !send }, email: { ...email, body }, outcome: send ? `Sent, approved by ${by}` : 'Saved to the Waiting list' })
-      setEditing(false)
-      toast({
-        title: send ? `Sent to ${email.toEmail || 'the customer'}.` : 'Saved to Waiting for you.',
-        description: send ? `Written by Alfred, approved by ${by}${edited ? ', edited before sending' : ''}.` : undefined,
-        variant: 'success',
-      })
-    } finally {
-      setSending(false)
-    }
-  }
-
-  return (
-    <div className="rounded-[8px] border border-[#dbd8cc] bg-white">
-      <div className="border-b border-[#edf4eb] px-3 py-2 text-[12px] text-[#5a5a52]">
-        To <b className="text-[#1a1a18]">{email.toName || 'the customer'}</b> &lt;{email.toEmail}&gt;
-        <div>
-          Subject <b className="text-[#1a1a18]">{email.subject}</b>
-        </div>
-      </div>
-      {preview ? (
-        <iframe
-          title="The email the customer receives"
-          sandbox=""
-          className="h-[420px] w-full bg-white"
-          srcDoc={deskReplyEmailHtml({ bodyHtml: toTermsHtml(body), signatureHtml: toTermsHtml(signature || ''), reference: null, subject: email.subject || '' })}
-        />
-      ) : editing ? (
-        <textarea value={body} onChange={e => setBody(e.target.value)} className="block min-h-[220px] w-full border-0 px-3 py-2 text-[13.5px] leading-relaxed outline-none" />
-      ) : (
-        <div className="whitespace-pre-wrap px-3 py-2 text-[13.5px] leading-relaxed">{body}</div>
-      )}
-      <div className="flex flex-wrap items-center gap-2 border-t border-[#edf4eb] px-3 py-2">
-        {turn.sent ? (
-          turn.sent.saved ? (
-            <span className="text-[12px] text-[#5a5a52]">
-              Saved to{' '}
-              <Link href="/admin/alfred/waiting" className="font-semibold text-[#2d5e28] hover:underline">
-                Waiting for you
-              </Link>
-              . Nothing was sent.
-            </span>
-          ) : (
-            <AlfredApproval approvedBy={turn.sent.by} edited={turn.sent.edited} />
-          )
-        ) : turn.cancelled ? (
-          <span className="text-[12px] text-[#8b8a81]">Discarded. Nothing was sent.</span>
-        ) : (
-          <>
-            <button type="button" onClick={() => onChange({ cancelled: true, outcome: 'Discarded' })} className={cn(btnDanger, 'mr-auto')}>
-              Discard email
-            </button>
-            <button type="button" onClick={() => setPreview(v => !v)} className={btn}>
-              {preview ? 'Hide preview' : 'Preview email'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setPreview(false)
-                setEditing(v => !v)
-              }}
-              className={btn}
-            >
-              {editing ? 'Done editing' : 'Edit email'}
-            </button>
-            <button type="button" disabled={sending || !body.trim()} onClick={() => asApprover(by => go(by, false))} className={btn}>
-              Save to Waiting
-            </button>
-            <button type="button" disabled={sending || !body.trim()} onClick={() => asApprover(by => go(by, true))} className={btnPrimary}>
-              {sending ? 'Sending...' : 'Approve and send'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ── A batch of emails ────────────────────────────────────────────────────── */
-
-function BatchCard({ turn, onChange, asApprover }: { turn: Turn; onChange: (p: Partial<Turn>) => void; asApprover: (then: (name: string) => void) => void }) {
-  const { toast } = useToast()
-  const batch = turn.batch!
-  const people = batch.customers || []
-  const [picked, setPicked] = useState<string[]>(people.filter(p => p.email).map(p => p.id))
-  const [instruction, setInstruction] = useState(batch.instruction)
-  const [working, setWorking] = useState(false)
-  const done = Boolean(turn.outcome)
-
-  async function draft(by: string) {
-    setWorking(true)
-    try {
-      const res = await fetch('/api/admin/alfred/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'batch', customerIds: picked, instruction, approvedBy: by }),
-      })
-      const p = await res.json()
-      if (!res.ok || !p.ok) {
-        toast({ title: p.error || 'Nothing was drafted.', variant: 'error' })
-        return
-      }
-      const outcome = `${p.drafted.length} drafted to the Waiting list${p.skipped.length ? `, ${p.skipped.length} not drafted` : ''}. Nothing was sent.`
-      onChange({ outcome, batch: { ...batch, instruction }, facts: [...(turn.facts || []), ...p.skipped] })
-      toast({ title: outcome, description: p.skipped[0], variant: p.skipped.length ? 'warning' : 'success' })
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  return (
-    <div className="rounded-[8px] border border-[#dbd8cc] bg-white">
-      <div className="border-b border-[#edf4eb] px-3 py-2">
-        <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8a81]">What each email should say</div>
-        {done ? (
-          <p className="m-0 text-[13px]">{instruction}</p>
-        ) : (
-          <textarea value={instruction} onChange={e => setInstruction(e.target.value)} rows={2} className="block w-full rounded-[6px] border border-[#dbd8cc] px-2 py-1 text-[13px] outline-none focus:border-[#6b9e61]" />
-        )}
-      </div>
-      <div className="max-h-[260px] overflow-y-auto">
-        {people.map(p => (
-          <label key={p.id} className={cn('flex items-center gap-2 border-b border-[#f0eee6] px-3 py-[7px] text-[12.5px]', !p.email && 'text-[#8b8a81]')}>
-            <input
-              type="checkbox"
-              disabled={!p.email || done}
-              checked={picked.includes(p.id)}
-              onChange={e => setPicked(current => (e.target.checked ? [...current, p.id] : current.filter(id => id !== p.id)))}
-            />
-            <span className="min-w-0 flex-1">
-              {p.name} <span className="text-[#8b8a81]">{p.email || 'no email on their record'}</span>
-            </span>
-          </label>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        {done ? (
-          <span className="text-[12px] text-[#5a5a52]">
-            {turn.outcome}{' '}
-            <Link href="/admin/alfred/waiting" className="font-semibold text-[#2d5e28] hover:underline">
-              Open Waiting for you
-            </Link>
-          </span>
-        ) : (
-          <>
-            <button type="button" onClick={() => onChange({ outcome: 'Discarded. Nothing was drafted.' })} className={cn(btnDanger, 'mr-auto')}>
-              Discard
-            </button>
-            <span className="text-[11.5px] text-[#8b8a81]">Each is written from that customer&apos;s own records and waits for you to check.</span>
-            <button type="button" disabled={working || !picked.length || !instruction.trim()} onClick={() => asApprover(by => draft(by))} className={btnPrimary}>
-              {working ? 'Drafting...' : `Draft ${picked.length} email${picked.length === 1 ? '' : 's'}`}
-            </button>
-          </>
-        )}
       </div>
     </div>
   )

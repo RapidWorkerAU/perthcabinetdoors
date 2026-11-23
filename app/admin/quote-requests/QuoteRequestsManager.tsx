@@ -15,7 +15,6 @@ import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { useFocusedRow } from '../_utils/useFocusedRow'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
-import { AlfredDot } from '@/components/admin/AlfredMark'
 import OrderFormActions from '../_components/OrderFormActions'
 import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
 import { LIST_PAGE_SIZE, tableStyles } from '@/components/ui/table-styles'
@@ -317,7 +316,6 @@ export default function QuoteRequestsManager() {
   const router = useRouter()
 
   const [quoteRequests,            setQuoteRequests]            = React.useState<QuoteRequest[]>([])
-  const [alfredWaiting,            setAlfredWaiting]            = React.useState<Record<string, boolean>>({})
   const [previewRequest,           setPreviewRequest]           = React.useState<QuoteRequest | null>(null)
   const { toast } = useToast()
   const [isLoading,                setIsLoading]                = React.useState(true)
@@ -350,7 +348,6 @@ export default function QuoteRequestsManager() {
       const res     = await fetch('/api/admin/quote-requests', { cache: 'no-store' })
       const payload = await res.json()
       setQuoteRequests(payload.quoteRequests || [])
-      setAlfredWaiting(payload.alfredWaiting || {})
       if (payload.error) toast({ title: payload.error, variant: 'error' })
     } finally {
       setIsLoading(false)
@@ -462,7 +459,6 @@ export default function QuoteRequestsManager() {
       className: 'font-medium',
       cell: request => (
         <>
-          {alfredWaiting[request.id] ? <AlfredDot title="Alfred drafted a quote from this request" /> : null}
           {request.customer_name || '-'}
         </>
       ),

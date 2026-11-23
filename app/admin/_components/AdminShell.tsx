@@ -78,8 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
       // where everybody has to be are both the question of what is happening
       // now. Neither route moved, so `covers` keeps this row lit on both.
       { label: 'Work Management', href: '/admin/board', icon: IconLayoutColumns, covers: ['/admin/calendar'] },
-      // ALFRED SITS WITH THE DAY TO DAY WORK because what he prepares is the
-      // day's work, waiting for a yes. His count is drafts and questions.
+      // Alfred is the chat: questions about our records and approved changes.
       { label: 'Alfred', href: '/admin/alfred', icon: IconBowTie },
       { label: 'Customers', href: '/admin/customers', icon: IconUsers },
     ],

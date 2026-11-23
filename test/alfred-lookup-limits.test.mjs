@@ -49,12 +49,6 @@ test("no lookup is cut short without a count", () => {
   assert.match(read("lib/pcd-alfred-ask.js"), /When a tool says it is showing only some of a list, say so and give the real total\./);
 });
 
-test("the update clock reads customers in small groups, newest emails first", () => {
-  const updates = read("lib/pcd-alfred-updates.js");
-  assert.match(updates, /for \(let i = 0; i < customerIds\.length; i \+= 25\)/);
-  assert.match(updates, /\.eq\("direction", "outbound"\)\s*\.order\("created_at", \{ ascending: false \}\)/);
-});
-
 // A refresh opens the same chat, it never saves it again as a new one.
 test("the chat on screen keeps its id across a refresh", () => {
   const ask = read("app/admin/alfred/AskAlfred.tsx");

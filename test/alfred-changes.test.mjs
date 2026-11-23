@@ -177,17 +177,6 @@ test("a proposed change needs a record and items Alfred actually looked up", () 
   assert.match(checkAsk(raw({ field: "supplier_name" }), { seen }).problem, /not allowed/);
 });
 
-test("a batch is at most 20 customers Alfred looked up, and only drafts", () => {
-  const seen = new Set(Array.from({ length: 25 }, (_, i) => `c${i}`));
-  const raw = (ids) => ({ kind: "batch", text: "I will email them.", facts_used: [], batch: { customer_ids: ids, instruction: "Say the paint shop is running a week behind." } });
-  assert.equal(checkAsk(raw(["c1", "c2"]), { seen }).ok, true);
-  assert.match(checkAsk(raw(["c1", "nobody"]), { seen }).problem, /never looked up/);
-  assert.match(checkAsk(raw(Array.from({ length: 21 }, (_, i) => `c${i}`)), { seen }).problem, /at most 20/);
-  const ask = read("lib/pcd-alfred-ask.js");
-  const batch = ask.slice(ask.indexOf("export async function draftBatch"), ask.indexOf("export async function changeCard"));
-  assert.doesNotMatch(batch, /approveDraft|sendDeskReply/, "a batch never sends");
-});
-
 test("the change buttons are built from the database, never from the model", () => {
   const route = read("app/api/admin/alfred/ask/route.js");
   assert.ok(route.includes("const built = await changeCard(supabase, reply.proposal);"));

@@ -72,7 +72,6 @@ import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { useToast } from "@/components/ui/Toast";
 import AdminLoading from "@/components/admin/AdminLoading";
-import AlfredLineNote, { alfredNoteFor } from "@/components/admin/AlfredLineNote";
 import MadeByField from "@/components/admin/MadeByField";
 import { tableStyles } from "@/components/ui/table-styles";
 import { isThermoLine, priceThermoLine, withThermoPrice } from "../../../../lib/pcd-thermo-pricing";
@@ -1685,8 +1684,6 @@ export default function QuoteEditor({ quoteId }) {
     return value;
   }
 
-  // Alfred's draft behind this quote, when he made it from a request.
-  const [alfredDraft, setAlfredDraft] = useState(null);
 
   async function loadQuote() {
     setIsLoading(true);
@@ -1703,7 +1700,6 @@ export default function QuoteEditor({ quoteId }) {
       serverQuoteRef.current = null;
       rememberServer(payload.quote);
       setForm(formFromQuote(payload.quote));
-      setAlfredDraft(payload.alfred || null);
       loadCredits(payload.quote?.customer_id);
       setEditableLineIndex(null);
       setEditableLineDraft(null);
@@ -4259,7 +4255,6 @@ export default function QuoteEditor({ quoteId }) {
                                 disabled={isLineSaving || savingLineIndex !== null}
                                 onOpen={() => runLineAction(() => openLineNoteModal(index))}
                               />
-                              {alfredDraft ? <AlfredLineNote index={index} note={alfredNoteFor(alfredDraft.line_notes, line, index)} /> : null}
                               <button
                                 type="button"
                                 onClick={() => runLineAction(() => duplicateLine(index))}
@@ -4341,7 +4336,6 @@ export default function QuoteEditor({ quoteId }) {
                       disabled={isLineSaving || savingLineIndex !== null}
                       onOpen={() => runLineAction(() => openLineNoteModal(index))}
                     />
-                    {alfredDraft ? <AlfredLineNote index={index} note={alfredNoteFor(alfredDraft.line_notes, line, index)} /> : null}
                     <ActionMenu label={`Open actions for quote line ${index + 1}`} size="xs" disabled={isLineSaving || savingLineIndex !== null}>
                       <ActionMenuItem icon={<IconEdit size={14} />} onClick={() => runLineAction(() => editLine(index))}>
                         Edit

@@ -1,14 +1,6 @@
-import AdminShell from '../../_components/AdminShell'
-import { requireAdminSession } from '../../../../lib/admin-guard'
-import AlfredClient from '../AlfredClient'
+import { redirect } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
-
-export default async function AlfredViewPage() {
-  await requireAdminSession()
-  return (
-    <AdminShell>
-      <AlfredClient view="ask" />
-    </AdminShell>
-  )
+// The chat used to live here, beside tabs that are gone. Old links still land on it.
+export default function AlfredAskPage() {
+  redirect('/admin/alfred')
 }

@@ -10,7 +10,6 @@ import { formatAdminLabel } from '../_utils/formatAdminLabel'
 import { useFocusedRow } from '../_utils/useFocusedRow'
 import { useToast } from '@/components/ui/Toast'
 import AdminLoading from '@/components/admin/AdminLoading'
-import { AlfredDot } from '@/components/admin/AlfredMark'
 import { AdminDataTable, type AdminDataTableColumn } from '@/components/ui/AdminDataTable'
 import { tableStyles } from '@/components/ui/table-styles'
 
@@ -119,7 +118,6 @@ function EnquiryPreviewModal({ enquiry, onClose, onUpdateStatus }: {
 export default function EnquiriesManager() {
   const { toast } = useToast()
   const [enquiries,      setEnquiries]      = React.useState<Enquiry[]>([])
-  const [alfredWaiting,  setAlfredWaiting]  = React.useState<Record<string, boolean>>({})
   const [isLoading,      setIsLoading]      = React.useState(true)
   const [isSaving,       setIsSaving]       = React.useState(false)
   const [statusFilter,   setStatusFilter]   = React.useState('new')
@@ -151,7 +149,6 @@ export default function EnquiriesManager() {
       const res     = await fetch('/api/admin/enquiries', { cache: 'no-store' })
       const payload = await res.json()
       setEnquiries(payload.enquiries || [])
-      setAlfredWaiting(payload.alfredWaiting || {})
       if (payload.error) toast({ title: payload.error, variant: 'error' })
     } finally {
       setIsLoading(false)
@@ -213,7 +210,6 @@ export default function EnquiriesManager() {
       className: 'font-medium',
       cell: enquiry => (
         <>
-          {alfredWaiting[enquiry.id] ? <AlfredDot title="Alfred has a reply or question waiting" /> : null}
           {enquiry.customer_name || '-'}
         </>
       ),

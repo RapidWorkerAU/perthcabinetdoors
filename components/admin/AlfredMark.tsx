@@ -56,18 +56,6 @@ export function AlfredMark({ title = 'Alfred', className = '' }: { title?: strin
   )
 }
 
-/** The coloured dot on a list row with something of Alfred's waiting. */
-export function AlfredDot({ title = 'Alfred has something waiting' }: { title?: string }) {
-  return (
-    <span
-      title={title}
-      aria-label={title}
-      className="mr-[6px] inline-block h-[7px] w-[7px] rounded-full align-middle"
-      style={{ background: ALFRED.strong }}
-    />
-  )
-}
-
 /** Written by Alfred, approved by a person, and whether it was edited first. */
 export function AlfredApproval({ approvedBy, edited = false }: { approvedBy?: string | null; edited?: boolean }) {
   return (

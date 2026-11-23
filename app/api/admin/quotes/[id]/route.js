@@ -199,18 +199,7 @@ export async function GET(_request, { params }) {
   try {
     const id = await quoteIdFromParams(params);
     const quote = await loadQuoteWithRelations(context.supabase, id);
-    // Alfred's draft behind this quote, if he made it: the banner and the bow
-    // tie on each line he left a note on. Kept beside the quote, not on it, so
-    // it never travels back in a save.
-    const { data: alfred } = await context.supabase
-      .from("pcd_alfred_drafts")
-      .select("id, status, decided_by, line_notes, quote_request_id, created_at")
-      .eq("quote_id", id)
-      .eq("kind", "quote")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return Response.json({ ok: true, quote, alfred: alfred || null });
+    return Response.json({ ok: true, quote });
   } catch (error) {
     return Response.json(
       { ok: false, error: error?.message || "Could not load quote." },

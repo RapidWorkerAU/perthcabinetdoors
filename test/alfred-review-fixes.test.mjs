@@ -1,16 +1,14 @@
 // WHAT THE PRE GO-LIVE REVIEW FOUND, KEPT FIXED (2026-10-06).
 //
 //   No API key in a file that is committed.
-//   A person's own reply is never sent as Alfred's approved draft, and an
-//   untouched draft is not recorded as edited.
 //   An email that has gone is never sent again because a later step failed.
 //   One quote request never becomes two quotes.
 //   A board the gate clears or repoints takes its price with it.
-//   The morning summary goes once a day.
+//   Nothing of Alfred's runs on a clock any more (removed 2026-11-23).
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { settleImportedLine } from "../lib/pcd-line-gate.js";
 import { QUOTE_LINE_FIELDS } from "../lib/pcd-save-clash.js";
 
@@ -21,17 +19,8 @@ test("no API key is written into the example settings file", () => {
   assert.match(read(".env.example"), /^ANTHROPIC_API_KEY=$/m);
 });
 
-test("the desk only approves Alfred's draft when it was actually put in the box", () => {
-  const desk = read("app/admin/customers/[id]/CustomerDeskClient.js");
-  assert.ok(desk.includes('if (!leftOver && draft.replace(/<[^>]*>/g, "").trim()) return;'), "the person's own words are kept and nothing is marked loaded");
-  assert.ok(desk.includes("bodyText: draft === alfredHtmlRef.current ? alfredDraft.body_text"), "untouched goes back exactly as written");
-});
-
 test("an email that went is never sent again because something after it failed", () => {
   assert.match(read("lib/pcd-desk-reply.js"), /if \(emailed && error && typeof error === "object"\) error\.alreadySent = true;/);
-  const drafts = read("lib/pcd-alfred-drafts.js");
-  assert.match(drafts, /sentOk = true;/);
-  assert.match(drafts, /if \(sentOk \|\| error\?\.alreadySent\) \{/);
 });
 
 test("a quote request is claimed before a quote is made from it", () => {
@@ -79,8 +68,9 @@ test("when somebody else's board is kept, its price is kept with it", () => {
   }
 });
 
-test("the morning summary is scheduled once and runs once a day", () => {
-  assert.doesNotMatch(read("vercel.json"), /alfred-morning/);
-  assert.match(read(".github/workflows/alfred.yml"), /alfred-morning/);
-  assert.match(read("lib/pcd-alfred-morning.js"), /\.eq\("job", "morning"\)\.gte\("started_at", midnight\)/);
+test("nothing of Alfred's runs on a clock", () => {
+  assert.doesNotMatch(read("vercel.json"), /alfred/);
+  for (const gone of [".github/workflows/alfred.yml", "app/api/cron/alfred/route.js", "app/api/cron/alfred-morning/route.js"]) {
+    assert.ok(!existsSync(new URL(`../${gone}`, import.meta.url)), `${gone} should be gone`);
+  }
 });

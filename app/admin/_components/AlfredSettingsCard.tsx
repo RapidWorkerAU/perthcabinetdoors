@@ -2,11 +2,8 @@
 
 // SETTINGS > ALFRED.
 //
-// The switch at the top, each job, and the limits. Every job reads these before
-// it does anything, so switching Alfred off stops everything at once.
-//
-// THERE IS NO "SEND WITHOUT APPROVAL" SWITCH. It is shown, locked, so nobody
-// goes looking for it. Every customer email needs a person.
+// The switch, the monthly limit and who can approve. Alfred is the chat and
+// nothing else: off means the chat stops answering.
 
 import { useEffect, useState } from 'react'
 import { AlfredMark } from '@/components/admin/AlfredMark'
@@ -90,112 +87,24 @@ export default function AlfredSettingsCard() {
         <div className="flex items-center gap-2 border-b border-[#edf4eb] px-5 py-4">
           <h3 className="text-[15px] font-semibold text-[#1a1a18]">Alfred</h3>
           <AlfredMark />
-          <p className="ml-2 text-[12px] text-[#5a5a52]">What Alfred prepares for you. Nothing is sent without a person approving it.</p>
+          <p className="ml-2 text-[12px] text-[#5a5a52]">The chat on the Alfred page. Nothing is changed without a person approving it.</p>
         </div>
         <div className={tw.head}>Main switch</div>
         <div className={tw.row}>
           <span>
             <span className={tw.label}>Alfred on</span>
-            <span className={tw.hint}>Off stops every job at once. Drafts already made stay where they are.</span>
+            <span className={tw.hint}>Off stops the chat answering.</span>
           </span>
           <Toggle on={settings.enabled} label="Alfred on" onChange={v => set({ enabled: v })} />
         </div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Sending without approval</span>
-            <span className={tw.hint}>Not available. Every customer email needs a person.</span>
-          </span>
-          <span className="text-[11px] font-bold text-[#b42318]">Locked off</span>
-        </div>
-
-        <div className={tw.head}>Jobs</div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Draft replies to customer emails</span>
-            <span className={tw.hint}>Checked every hour through the working day. The draft waits on the Alfred page and in the customer&apos;s reply box.</span>
-          </span>
-          <Toggle on={settings.jobs?.replies} label="Draft replies" onChange={v => set({ jobs: { ...settings.jobs, replies: v } })} />
-        </div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Keep active orders updated</span>
-            <span className={tw.hint}>Active and on hold orders. Checked at 6:30am. Alfred drafts an update two days before the gap below runs out, or asks you if nothing has changed.</span>
-          </span>
-          <Toggle on={settings.jobs?.updates} label="Keep orders updated" onChange={v => set({ jobs: { ...settings.jobs, updates: v } })} />
-        </div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Longest gap between updates, days</span>
-            <span className={tw.hint}>Counted from the last email a person wrote or approved, or the Customer Updates report. Quotes, invoices and automatic emails do not count.</span>
-          </span>
-          <input id="alfred-gap-days" type="number" min={3} max={60} className={tw.num} value={settings.update_gap_days} onChange={e => set({ update_gap_days: Number(e.target.value) })} />
-        </div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Draft quotes from requests</span>
-            <span className={tw.hint}>A request nobody has quoted after the wait below becomes a draft quote, made by the same Convert to quote you use. Nothing is sent. Lines that need a price carry Alfred&apos;s note.</span>
-          </span>
-          <Toggle on={settings.jobs?.quotes} label="Draft quotes" onChange={v => set({ jobs: { ...settings.jobs, quotes: v } })} />
-        </div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Wait before drafting a quote, hours</span>
-            <span className={tw.hint}>Counted from when the request came in.</span>
-          </span>
-          <input id="alfred-quote-wait" type="number" min={4} max={168} className={tw.num} value={settings.quote_wait_hours} onChange={e => set({ quote_wait_hours: Number(e.target.value) })} />
-        </div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Draft replies to website enquiries</span>
-            <span className={tw.hint}>After the automatic &ldquo;we got your message&rdquo; email. Checked every hour through the working day.</span>
-          </span>
-          <Toggle on={settings.jobs?.enquiries} label="Draft enquiry replies" onChange={v => set({ jobs: { ...settings.jobs, enquiries: v } })} />
-        </div>
-
-        <div className={tw.head}>Morning summary</div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Email a summary at 6:30am</span>
-            <span className={tw.hint}>Drafts and questions waiting, and orders due an update. Monday to Saturday.</span>
-          </span>
-          <Toggle on={settings.summary_enabled} label="Morning summary" onChange={v => set({ summary_enabled: v })} />
-        </div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Send the summary to</span>
-          </span>
-          <input
-            id="alfred-summary-email"
-            type="email"
-            className="h-[36px] w-[260px] rounded-[6px] border border-[#dbd8cc] px-3 text-[13px] outline-none focus:border-[#6b9e61]"
-            value={settings.summary_email || ''}
-            onChange={e => set({ summary_email: e.target.value })}
-          />
-        </div>
-
         <div className={tw.head}>Limits</div>
         <div className={tw.row}>
           <span>
-            <span className={tw.label}>Most drafts in a day</span>
-            <span className={tw.hint}>A ceiling in case something goes wrong.</span>
-          </span>
-          <input id="alfred-daily-cap" type="number" min={1} max={200} className={tw.num} value={settings.daily_draft_cap} onChange={e => set({ daily_draft_cap: Number(e.target.value) })} />
-        </div>
-        <div className={tw.row}>
-          <span>
             <span className={tw.label}>Monthly spend limit, US$</span>
-            <span className={tw.hint}>Alfred stops drafting for the month when it is reached. Set a limit in the Anthropic console as well.</span>
+            <span className={tw.hint}>Alfred stops answering for the month when it is reached. Set a limit in the Anthropic console as well.</span>
           </span>
           <input id="alfred-monthly-cap" type="number" min={1} max={1000} className={tw.num} value={settings.monthly_spend_cap_usd} onChange={e => set({ monthly_spend_cap_usd: Number(e.target.value) })} />
         </div>
-        <div className={tw.row}>
-          <span>
-            <span className={tw.label}>Remake a draft after this many days</span>
-            <span className={tw.hint}>A draft nobody approved is withdrawn and made again from fresh facts, so last week&apos;s news is never sent.</span>
-          </span>
-          <input id="alfred-stale-days" type="number" min={1} max={14} className={tw.num} value={settings.stale_after_days} onChange={e => set({ stale_after_days: Number(e.target.value) })} />
-        </div>
-
         <div className={tw.head}>Who can approve</div>
         <div className={tw.row}>
           <span>
